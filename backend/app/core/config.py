@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     # API Keys
     KAKAO_MAP_API_KEY: str = ""
+    KAKAO_REST_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
 
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
