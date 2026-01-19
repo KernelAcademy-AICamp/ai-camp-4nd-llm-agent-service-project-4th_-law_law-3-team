@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { Lawyer } from '../types'
 import { LawyerCard } from './LawyerCard'
+import { SEOUL_DISTRICTS } from '../constants'
 
 interface SearchPanelProps {
   lawyers: Lawyer[]
@@ -10,17 +11,21 @@ interface SearchPanelProps {
   selectedLawyer: Lawyer | null
   onLawyerSelect: (lawyer: Lawyer) => void
   onRadiusChange: (radius: number) => void
-  onSearch: (query: { name?: string; office?: string; district?: string }) => void
+  onSearch: (query: string) => void
+  onSearchReset: () => void
   radius: number
   totalCount: number
+  sigungu: string
+  onSigunguChange: (sigungu: string) => void
+  searchQuery: string  // 부모에서 관리하는 검색어
 }
 
 const RADIUS_OPTIONS = [
+  { value: 500, label: '500m' },
   { value: 1000, label: '1km' },
   { value: 3000, label: '3km' },
   { value: 5000, label: '5km' },
   { value: 10000, label: '10km' },
-  { value: 20000, label: '20km' },
 ]
 
 export function SearchPanel({
@@ -30,124 +35,119 @@ export function SearchPanel({
   onLawyerSelect,
   onRadiusChange,
   onSearch,
+  onSearchReset,
   radius,
   totalCount,
+  sigungu,
+  onSigunguChange,
+  searchQuery,
 }: SearchPanelProps) {
-  const [searchMode, setSearchMode] = useState<'nearby' | 'search'>('nearby')
-  const [searchName, setSearchName] = useState('')
-  const [searchOffice, setSearchOffice] = useState('')
-  const [searchDistrict, setSearchDistrict] = useState('')
+  const [inputValue, setInputValue] = useState('')
 
   const handleSearch = () => {
-    if (searchName || searchOffice || searchDistrict) {
-      onSearch({
-        name: searchName || undefined,
-        office: searchOffice || undefined,
-        district: searchDistrict || undefined,
-      })
+    if (inputValue.trim()) {
+      onSearch(inputValue.trim())
     }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch()
+    }
+  }
+
+  const handleReset = () => {
+    setInputValue('')
+    onSearchReset()
   }
 
   return (
     <div className="w-96 bg-white border-r border-gray-200 flex flex-col h-full">
-      {/* 모드 탭 */}
-      <div className="flex border-b">
-        <button
-          className={`flex-1 py-3 text-sm font-medium ${
-            searchMode === 'nearby'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-          onClick={() => setSearchMode('nearby')}
-        >
-          주변 검색
-        </button>
-        <button
-          className={`flex-1 py-3 text-sm font-medium ${
-            searchMode === 'search'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-          onClick={() => setSearchMode('search')}
-        >
-          이름/사무소 검색
-        </button>
-      </div>
-
       {/* 검색 옵션 */}
-      <div className="p-4 border-b">
-        {searchMode === 'nearby' ? (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              검색 반경
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {RADIUS_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  className={`px-3 py-1.5 text-sm rounded-full transition ${
-                    radius === option.value
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                  onClick={() => onRadiusChange(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+      <div className="p-4 border-b space-y-3">
+        {/* 지역 선택 */}
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <select
+            value={sigungu}
+            onChange={(e) => onSigunguChange(e.target.value)}
+            className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">서울 전체</option>
+            {SEOUL_DISTRICTS.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* 검색 반경 */}
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" strokeWidth={2} />
+            <circle cx="12" cy="12" r="3" strokeWidth={2} />
+          </svg>
+          <div className="flex-1 flex flex-wrap gap-2">
+            {RADIUS_OPTIONS.map((option) => (
+              <button
+                type="button"
+                key={option.value}
+                className={`flex-1 px-3 py-1.5 text-sm rounded-full transition ${
+                  radius === option.value
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+                onClick={() => onRadiusChange(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
-        ) : (
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">변호사 이름</label>
-              <input
-                type="text"
-                value={searchName}
-                onChange={(e) => setSearchName(e.target.value)}
-                placeholder="예: 홍길동"
-                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">사무소명</label>
-              <input
-                type="text"
-                value={searchOffice}
-                onChange={(e) => setSearchOffice(e.target.value)}
-                placeholder="예: 법무법인 ○○"
-                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">지역 (구/군)</label>
-              <input
-                type="text"
-                value={searchDistrict}
-                onChange={(e) => setSearchDistrict(e.target.value)}
-                placeholder="예: 강남구"
-                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <button
-              onClick={handleSearch}
-              disabled={!searchName && !searchOffice && !searchDistrict}
-              className="w-full py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
-              검색
-            </button>
-          </div>
-        )}
+        </div>
+
+        {/* 검색창 */}
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="변호사 또는 사무소 검색 (Enter)"
+            className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
       </div>
 
       {/* 결과 헤더 */}
-      <div className="px-4 py-2 bg-gray-50 border-b text-sm text-gray-600">
+      <div className="px-4 py-2 bg-gray-50 border-b text-sm h-10 flex items-center">
         {loading ? (
-          <span>검색 중...</span>
+          <span className="text-gray-600">검색 중...</span>
         ) : (
-          <span>
-            검색 결과 <strong className="text-gray-900">{totalCount}</strong>명
-          </span>
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2 text-gray-600">
+              {searchQuery && <span className="text-blue-600 font-semibold">"{searchQuery}"</span>}
+              <span>검색 결과</span>
+              <span className="text-gray-400">|</span>
+              <span className="text-gray-900 font-medium">{totalCount}명</span>
+            </div>
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={handleReset}
+                className="flex items-center gap-1 px-2 py-0.5 text-xs text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded transition"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                검색 해제
+              </button>
+            )}
+          </div>
         )}
       </div>
 

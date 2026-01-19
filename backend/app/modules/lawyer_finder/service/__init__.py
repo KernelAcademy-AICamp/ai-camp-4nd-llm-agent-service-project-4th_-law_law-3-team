@@ -115,27 +115,68 @@ def search_lawyers(
     name: Optional[str] = None,
     office: Optional[str] = None,
     district: Optional[str] = None,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+    radius_m: int = 5000,
     limit: int = 50
 ) -> List[dict]:
-    """이름/사무소/지역으로 검색"""
+    """
+    이름/사무소/지역으로 검색 (이름/사무소는 OR 조건, 지역은 AND 조건)
+    위치 필터가 제공되면 해당 반경 내 결과만 반환
+
+    Raises:
+        ValueError: latitude와 longitude 중 하나만 제공된 경우
+    """
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
+
+    # 위치 필터링 입력 검증: 둘 다 제공되거나 둘 다 없어야 함
+    has_latitude = latitude is not None
+    has_longitude = longitude is not None
+    if has_latitude != has_longitude:
+        missing = "longitude" if has_latitude else "latitude"
+        provided = "latitude" if has_latitude else "longitude"
+        raise ValueError(
+            f"위치 필터링을 사용하려면 latitude와 longitude가 모두 필요합니다. "
+            f"{provided}만 제공되었고 {missing}가 누락되었습니다."
+        )
+
+    # 위치 필터링용 바운딩 박스
+    bbox = None
+    if has_latitude and has_longitude:
+        radius_km = radius_m / 1000
+        bbox = get_bounding_box(latitude, longitude, radius_km)
 
     results = []
 
     for idx, lawyer in enumerate(lawyers):
-        # 이름 검색
-        if name and name not in lawyer.get("name", ""):
-            continue
+        # 이름 또는 사무소 검색 (OR 조건)
+        if name or office:
+            name_match = name and name in lawyer.get("name", "")
+            office_match = office and office in (lawyer.get("office_name") or "")
 
-        # 사무소 검색
-        if office and office not in (lawyer.get("office_name") or ""):
-            continue
+            # 둘 다 제공된 경우 OR 조건, 하나만 제공된 경우 해당 조건만
+            if not (name_match or office_match):
+                continue
 
-        # 지역(구/군) 검색
+        # 지역(구/군) 검색 (AND 조건)
         if district:
             address = lawyer.get("address") or ""
             if district not in address:
+                continue
+
+        # 위치 필터링 (AND 조건)
+        if bbox:
+            lat = lawyer.get("latitude")
+            lng = lawyer.get("longitude")
+            if lat is None or lng is None:
+                continue
+            min_lat, max_lat, min_lng, max_lng = bbox
+            if not (min_lat <= lat <= max_lat and min_lng <= lng <= max_lng):
+                continue
+            # 정확한 거리 계산
+            dist = haversine(longitude, latitude, lng, lat)
+            if dist > (radius_m / 1000):
                 continue
 
         results.append({**lawyer, "id": idx})

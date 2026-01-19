@@ -35,13 +35,16 @@ export const lawyerFinderService = {
   },
 
   /**
-   * 이름/사무소/지역으로 검색
+   * 이름/사무소/지역으로 검색 (선택적 위치 필터 포함)
    */
   searchLawyers: async (
     params: {
       name?: string
       office?: string
       district?: string
+      latitude?: number
+      longitude?: number
+      radius?: number
       limit?: number
     }
   ): Promise<SearchResponse> => {
@@ -49,6 +52,9 @@ export const lawyerFinderService = {
     if (params.name) searchParams.append('name', params.name)
     if (params.office) searchParams.append('office', params.office)
     if (params.district) searchParams.append('district', params.district)
+    if (params.latitude !== undefined) searchParams.append('latitude', params.latitude.toString())
+    if (params.longitude !== undefined) searchParams.append('longitude', params.longitude.toString())
+    if (params.radius !== undefined) searchParams.append('radius', params.radius.toString())
     if (params.limit) searchParams.append('limit', params.limit.toString())
 
     const response = await api.get(`${endpoints.lawyerFinder}/search?${searchParams}`)
