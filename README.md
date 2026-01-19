@@ -69,6 +69,95 @@ law-3-team/
 | **law_study** | 로스쿨 학생용 학습 자료, 퀴즈 제공 |
 | **small_claims** | 소액 소송 나홀로 소송 지원 (내용증명, 지급명령, 소액심판) |
 
+## 데이터
+
+### 변호사 데이터 (lawyer_finder 모듈)
+
+변호사 찾기 기능은 JSON 파일 기반의 변호사 데이터를 사용합니다.
+
+```
+data/
+├── lawyers_with_coords.json   # 지오코딩된 변호사 데이터 (위경도 포함)
+└── geocode_failed.json        # 지오코딩 실패 목록
+```
+
+**데이터 구조:**
+```json
+{
+  "metadata": {
+    "source": "koreanbar.or.kr",
+    "crawled_at": "2026-01-16T12:57:41",
+    "total_count": 8506,
+    "total_geocoded": 6574
+  },
+  "lawyers": [
+    {
+      "name": "홍길동",
+      "status": "개업",
+      "office_name": "법무법인 예시",
+      "address": "서울 강남구 테헤란로 123",
+      "phone": "02-1234-5678",
+      "latitude": 37.5059,
+      "longitude": 127.0329
+    }
+  ]
+}
+```
+
+**데이터 출처:** 대한변호사협회 (koreanbar.or.kr)
+
+### 데이터 생성 방법
+
+#### 1단계: 원본 데이터 준비 (`all_lawyers.json`)
+
+대한변호사협회에서 변호사 목록을 크롤링하여 `all_lawyers.json` 파일을 생성합니다.
+
+```json
+{
+  "metadata": {
+    "source": "koreanbar.or.kr",
+    "crawled_at": "2026-01-16T12:57:41"
+  },
+  "lawyers": [
+    {
+      "name": "홍길동",
+      "status": "개업",
+      "office_name": "법무법인 예시",
+      "address": "서울 강남구 테헤란로 123",
+      "phone": "02-1234-5678"
+    }
+  ]
+}
+```
+
+> **참고:** 크롤링 스크립트는 별도로 제공되지 않습니다. 직접 크롤러를 작성하거나 수동으로 데이터를 수집해야 합니다.
+
+#### 2단계: 지오코딩 실행 (주소 → 좌표 변환)
+
+```bash
+cd backend
+
+# 카카오 REST API 키가 .env에 설정되어 있어야 함
+uv run python scripts/geocode_lawyers.py
+
+# 또는 API 키를 직접 전달
+uv run python scripts/geocode_lawyers.py --api-key YOUR_KAKAO_REST_API_KEY
+```
+
+**입출력 파일:**
+| 파일 | 설명 |
+|------|------|
+| `all_lawyers.json` (입력) | 원본 변호사 데이터 |
+| `data/lawyers_with_coords.json` (출력) | 좌표가 추가된 데이터 |
+| `data/geocode_failed.json` (출력) | 지오코딩 실패 목록 |
+
+**주의사항:**
+- 카카오 REST API 키 필요 (발급: https://developers.kakao.com)
+- 약 8,000건 처리 시 API 호출 제한에 주의 (초당 10건)
+- 동일 주소는 캐싱하여 중복 호출 방지
+
+> **참고:** 데이터 파일이 없으면 변호사 찾기 기능이 빈 결과를 반환합니다.
+
 ## 모듈 추가/삭제 방법
 
 ### 스크립트로 추가 (권장)
@@ -119,7 +208,40 @@ ENABLED_MODULES=["lawyer_finder","small_claims"]
 
 ## 실행 방법
 
-### Backend (uv 사용)
+### 1. 사전 준비
+
+#### PostgreSQL 설치 및 데이터베이스 생성
+```bash
+# macOS (Homebrew)
+brew install postgresql@15
+brew services start postgresql@15
+
+# 데이터베이스 생성
+createdb lawdb
+
+# 또는 psql로 접속하여 생성
+psql postgres
+CREATE DATABASE lawdb;
+CREATE USER lawuser WITH PASSWORD 'your_password';
+GRANT ALL PRIVILEGES ON DATABASE lawdb TO lawuser;
+\q
+```
+
+#### API 키 발급
+
+| 서비스 | 발급 URL | 용도 |
+|--------|----------|------|
+| **카카오 개발자** | https://developers.kakao.com | 지도 API (변호사 찾기) |
+| **OpenAI** | https://platform.openai.com/api-keys | AI 기능 (판례 분석 등) |
+
+**카카오 API 키 발급 절차:**
+1. [카카오 개발자](https://developers.kakao.com) 접속 → 로그인
+2. 내 애플리케이션 → 애플리케이션 추가
+3. 앱 키 → **JavaScript 키** (`KAKAO_MAP_API_KEY`)
+4. 앱 키 → **REST API 키** (`KAKAO_REST_API_KEY`)
+5. 플랫폼 → Web → 사이트 도메인에 `http://localhost:3000` 추가
+
+### 2. Backend 실행
 
 ```bash
 # uv 설치 (아직 없다면)
@@ -127,8 +249,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 cd backend
 uv sync                   # 의존성 설치 (가상환경 자동 생성)
-cp .env.example .env      # 환경변수 설정
-uv run uvicorn app.main:app --reload
+cp .env.example .env      # 환경변수 파일 생성
+# .env 파일을 열어 API 키와 DB 정보 입력
+
+uv run uvicorn app.main:app --reload  # 서버 실행 (localhost:8000)
 ```
 
 #### 개발 의존성 포함 설치
@@ -136,23 +260,52 @@ uv run uvicorn app.main:app --reload
 uv sync --dev             # pytest, ruff, mypy 포함
 ```
 
-### Frontend
+### 3. Frontend 실행
 
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev               # 개발 서버 (localhost:3000)
 ```
 
-## API 문서
+### 4. 접속 확인
 
-서버 실행 후 `http://localhost:8000/docs`에서 Swagger UI 확인
+- **Frontend**: http://localhost:3000
+- **Backend API 문서**: http://localhost:8000/docs (Swagger UI)
 
 ## 환경 변수
 
-| 변수 | 설명 |
-|------|------|
-| `DATABASE_URL` | PostgreSQL 연결 문자열 |
-| `KAKAO_MAP_API_KEY` | 카카오맵 API 키 |
-| `OPENAI_API_KEY` | OpenAI API 키 |
-| `ENABLED_MODULES` | 활성화할 모듈 목록 (JSON 배열) |
+### 필수 환경 변수
+
+| 변수 | 설명 | 예시 |
+|------|------|------|
+| `DATABASE_URL` | PostgreSQL 연결 문자열 | `postgresql://user:password@localhost:5432/lawdb` |
+| `OPENAI_API_KEY` | OpenAI API 키 | `sk-...` |
+
+### 선택 환경 변수
+
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `APP_NAME` | 애플리케이션 이름 | `Law Platform API` |
+| `DEBUG` | 디버그 모드 | `true` |
+| `CORS_ORIGINS` | 허용할 CORS 출처 (JSON 배열) | `["http://localhost:3000"]` |
+| `KAKAO_MAP_API_KEY` | 카카오맵 JavaScript API 키 (변호사 찾기 기능) | - |
+| `KAKAO_REST_API_KEY` | 카카오 REST API 키 (주소 검색 등) | - |
+| `ENABLED_MODULES` | 활성화할 모듈 목록 (빈 배열이면 모두 활성화) | `[]` |
+
+### .env 파일 예시
+
+```env
+# 필수
+DATABASE_URL=postgresql://lawuser:your_password@localhost:5432/lawdb
+OPENAI_API_KEY=sk-your-openai-api-key
+
+# 카카오 API (변호사 찾기 기능 사용 시 필요)
+KAKAO_MAP_API_KEY=your_javascript_key
+KAKAO_REST_API_KEY=your_rest_api_key
+
+# 선택
+DEBUG=true
+CORS_ORIGINS=["http://localhost:3000"]
+ENABLED_MODULES=[]
+```
