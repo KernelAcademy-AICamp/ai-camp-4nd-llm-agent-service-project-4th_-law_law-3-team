@@ -1,0 +1,30 @@
+version: "2"
+
+# 1. 언어 설정: 한국어로 리뷰
+language: "ko-KR"
+
+# 2. 리뷰 스타일 및 강도
+reviews:
+  profile: "assertive"  # 'chill'(친절함) 추천. 'assertive'(단호함)도 가능
+  request_changes_workflow: false # 봇이 직접 PR 승인 거절을 하지 않도록 설정 (사람이 최종 결정)
+  high_level_summary: true # PR 전체 요약 켜기
+  
+  # 3. 자동 리뷰 설정
+  auto_review:
+    enabled: true
+    drafts: false # Draft PR은 리뷰 안 함 (완성되면 리뷰)
+    ignore_title_keywords: # 이 단어가 제목에 있으면 리뷰 안 함
+      - "WIP"
+      - "Do not merge"
+
+# 4. 채팅 기능 (댓글로 봇과 대화)
+chat:
+  auto_reply: true
+
+# 5. [선택] AI 엔지니어를 위한 맞춤 지침 (필요하면 주석 풀고 수정하세요)
+# instructions: |
+#   이 프로젝트는 Python 기반의 AI 모델링 프로젝트입니다.
+#   다음 사항을 중점적으로 봐주세요:
+#   - PyTorch 텐서 연산의 효율성 체크
+#   - 불필요한 메모리 복사가 일어나는지 확인
+#   - 타입 힌트(Type Hint) 누락 여부 확인
