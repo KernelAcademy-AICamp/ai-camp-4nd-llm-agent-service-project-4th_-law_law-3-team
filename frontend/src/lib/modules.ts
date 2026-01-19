@@ -26,7 +26,7 @@ export const modules: Module[] = [
   {
     id: 'case-precedent',
     name: '판례 검색',
-    description: '상황에 맞는 관련 판례를 찾아드립니다',
+    description: 'RAG 기반 판례 검색 및 AI 질문',
     href: '/case-precedent',
     icon: '📚',
     enabled: true,
@@ -62,7 +62,7 @@ export const modules: Module[] = [
   {
     id: 'small-claims',
     name: '소액 소송 도우미',
-    description: '나홀로 소송을 도와드립니다',
+    description: '4단계 위자드로 내용증명, 지급명령, 소액심판 서류 작성',
     href: '/small-claims',
     icon: '⚖️',
     enabled: true,

@@ -3,32 +3,63 @@
 import { useState, useRef, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { useUI } from '@/context/UIContext'
+import { useChat } from '@/context/ChatContext'
+import { api } from '@/lib/api'
+import ReactMarkdown from 'react-markdown'
+import ChatActions, { ChatAction } from './ChatActions'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  actions?: ChatAction[]
+  agentUsed?: string
+}
+
+interface ChatSource {
+  case_name: string
+  case_number: string
+  doc_type: string
+  similarity: number
+}
+
+interface MultiAgentChatResponse {
+  response: string
+  agent_used: string
+  sources: ChatSource[]
+  actions: ChatAction[]
+  session_data: Record<string, unknown>
 }
 
 export default function ChatWidget() {
   const pathname = usePathname()
   const { isChatOpen, toggleChat, setChatOpen } = useUI()
-  
+  const {
+    userRole,
+    setUserRole,
+    sessionData,
+    setSessionData,
+    userLocation,
+    requestUserLocation,
+    resetSession,
+  } = useChat()
+
   // Determine if we are on the map page
   const isMapPage = pathname === '/lawyer-finder'
 
   // Local state for view mode: 'split' or 'floating'
-  // Default to 'floating' on map page, 'split' elsewhere
   const [viewMode, setViewMode] = useState<'split' | 'floating'>('split')
 
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: '안녕하세요! 저는 당신의 법률 AI 어시스턴트입니다. 무엇을 도와드릴까요?',
+      content:
+        '안녕하세요! 저는 당신의 법률 AI 어시스턴트입니다.\n\n**무엇을 도와드릴까요?**\n- 변호사 찾기\n- 판례 검색\n- 소액소송 가이드',
     },
   ])
   const [input, setInput] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Sync view mode with page change
@@ -44,28 +75,155 @@ export default function ChatWidget() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, isChatOpen, viewMode])
+  }, [messages, isChatOpen, viewMode, isLoading])
 
-  const handleSend = () => {
-    if (!input.trim()) return
+  const handleSend = async (overrideMessage?: string) => {
+    const messageToSend = overrideMessage || input
+    if (!messageToSend.trim() || isLoading) return
 
     const userMsg: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: messageToSend,
     }
     setMessages((prev) => [...prev, userMsg])
-    setInput('')
 
-    // Fake AI response
-    setTimeout(() => {
+    if (!overrideMessage) {
+      setInput('')
+    }
+    setIsLoading(true)
+
+    try {
+      // 대화 기록 준비 (최근 10개)
+      const history = messages.slice(-10).map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }))
+
+      // 멀티 에이전트 API 호출
+      const response = await api.post<MultiAgentChatResponse>(
+        '/multi-agent/chat',
+        {
+          message: messageToSend,
+          user_role: userRole,
+          history: history,
+          session_data: sessionData,
+          user_location: userLocation,
+        }
+      )
+
+      // 세션 데이터 업데이트
+      if (response.data.session_data) {
+        setSessionData(response.data.session_data)
+      }
+
+      // 응답 메시지 생성
+      let assistantContent = response.data.response
+
+      // 참고 자료가 있으면 추가 (마크다운 리스트 형식)
+      if (response.data.sources && response.data.sources.length > 0) {
+        const sourcesText = response.data.sources
+          .filter((s) => s.case_name || s.case_number)
+          .slice(0, 3)
+          .map((s) => `- ${s.case_name || '판례'} (${s.case_number})`)
+          .join('\n')
+
+        if (sourcesText) {
+          assistantContent += `\n\n**참고 판례:**\n\n${sourcesText}`
+        }
+      }
+
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `"${input}"에 대해 법률 정보를 분석 중입니다. (이것은 데모 응용 프로그램입니다)`,
+        content: assistantContent,
+        actions: response.data.actions,
+        agentUsed: response.data.agent_used,
       }
       setMessages((prev) => [...prev, assistantMsg])
-    }, 1000)
+    } catch (error) {
+      console.error('Chat API error:', error)
+      const errorMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: '죄송합니다. 응답을 생성하는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+      }
+      setMessages((prev) => [...prev, errorMsg])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleAction = async (action: string) => {
+    // 액션에 따른 처리
+    switch (action) {
+      case 'reset_search':
+      case 'reset_session':
+        resetSession()
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: '세션을 초기화했습니다. 새로운 질문을 해주세요.',
+          },
+        ])
+        break
+
+      case 'expand_search':
+        // 범위 넓혀 검색 - 메시지로 전달
+        handleSend('더 넓은 범위에서 변호사를 검색해주세요')
+        break
+
+      case 'dispute_type_goods':
+        handleSend('물품 대금 미지급 관련 소액소송을 진행하고 싶습니다')
+        break
+
+      case 'dispute_type_fraud':
+        handleSend('중고거래 사기 관련 소액소송을 진행하고 싶습니다')
+        break
+
+      case 'dispute_type_deposit':
+        handleSend('임대차 보증금 관련 소액소송을 진행하고 싶습니다')
+        break
+
+      case 'draft_demand_letter':
+        handleSend('내용증명 작성을 도와주세요')
+        break
+
+      case 'skip_to_court':
+        handleSend('바로 소송 절차를 진행하고 싶습니다')
+        break
+
+      case 'draft_complaint':
+        handleSend('소장 작성을 도와주세요')
+        break
+
+      default:
+        // 기타 액션은 메시지로 전달
+        handleSend(action)
+    }
+  }
+
+  const handleRequestLocation = async () => {
+    setIsLoading(true)
+    const location = await requestUserLocation()
+    setIsLoading(false)
+
+    if (location) {
+      // 위치 획득 성공 - 자동으로 변호사 검색
+      handleSend('현재 위치 주변 변호사를 찾아주세요')
+    } else {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content:
+            '위치 정보를 가져올 수 없습니다. 브라우저 설정에서 위치 권한을 허용하거나, 특정 지역명을 입력해주세요.',
+        },
+      ])
+    }
   }
 
   // Toggle view mode manually
@@ -74,41 +232,48 @@ export default function ChatWidget() {
   }
 
   // Theme configuration
-  // Map page uses 'light' theme (unless in split mode? or always light? User said design match)
-  // Let's stick to Light theme for Map Page regardless of mode, or mainly for floating.
-  // Actually, split screen might look odd if it's light theme next to map? No, map is light.
   const isLightTheme = isMapPage
 
   // Styles based on theme
   const themeClasses = isLightTheme
     ? {
-        container: 'bg-white/90 backdrop-blur-xl border-l border-gray-200 shadow-2xl text-gray-900',
+        container:
+          'bg-white/90 backdrop-blur-xl border-l border-gray-200 shadow-2xl text-gray-900',
         header: 'bg-gray-50 border-b border-gray-200',
         headerTitle: 'text-gray-900',
         headerSubtitle: 'text-blue-600',
         messageUser: 'bg-blue-600 text-white shadow-md',
         messageBot: 'bg-gray-100 text-gray-800 border border-gray-200',
         inputArea: 'bg-gray-50 border-t border-gray-200',
-        input: 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:bg-white',
+        input:
+          'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:bg-white',
         closeBtn: 'text-gray-400 hover:bg-gray-100 hover:text-gray-600',
+        roleSelector: 'bg-gray-100 border-gray-200',
+        roleActive: 'bg-blue-600 text-white',
+        roleInactive: 'text-gray-600 hover:bg-gray-200',
       }
     : {
-        container: 'bg-slate-900/95 backdrop-blur-xl border-l border-white/10 shadow-2xl text-white',
+        container:
+          'bg-slate-900/95 backdrop-blur-xl border-l border-white/10 shadow-2xl text-white',
         header: 'bg-blue-600/10 border-b border-white/10',
         headerTitle: 'text-white',
         headerSubtitle: 'text-blue-400',
         messageUser: 'bg-blue-600 text-white shadow-lg',
         messageBot: 'bg-white/5 text-gray-200 border border-white/5',
         inputArea: 'bg-white/5 border-t border-white/10',
-        input: 'bg-black/20 border-white/10 text-white placeholder-white/30 focus:border-blue-500/50 focus:bg-white/5',
+        input:
+          'bg-black/20 border-white/10 text-white placeholder-white/30 focus:border-blue-500/50 focus:bg-white/5',
         closeBtn: 'text-white/50 hover:bg-white/10 hover:text-white',
+        roleSelector: 'bg-white/10 border-white/10',
+        roleActive: 'bg-blue-600 text-white',
+        roleInactive: 'text-white/70 hover:bg-white/10',
       }
 
   // Layout classes based on viewMode
-  // If undefined/hidden, we don't render this part (handled below)
-  const layoutClasses = viewMode === 'split'
-    ? 'fixed top-0 right-0 w-1/2 h-screen z-50 flex flex-col animate-in slide-in-from-right duration-500'
-    : 'fixed bottom-6 right-6 w-[380px] h-[600px] z-50 rounded-2xl flex flex-col animate-in slide-in-from-bottom zoom-in duration-300' // Floating
+  const layoutClasses =
+    viewMode === 'split'
+      ? 'fixed top-0 right-0 w-1/2 h-screen z-50 flex flex-col animate-in slide-in-from-right duration-500'
+      : 'fixed bottom-6 right-6 w-[380px] h-[600px] z-50 rounded-2xl flex flex-col animate-in slide-in-from-bottom zoom-in duration-300'
 
   // Floating Button (Collapsed)
   if (!isChatOpen) {
@@ -117,7 +282,14 @@ export default function ChatWidget() {
         onClick={toggleChat}
         className="fixed bottom-6 right-6 w-16 h-16 bg-blue-600 hover:bg-blue-500 text-white rounded-full shadow-lg flex items-center justify-center text-3xl z-50 transition-all hover:scale-110 active:scale-95 animate-in fade-in zoom-in duration-300"
       >
-        🤖
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+          />
+        </svg>
       </button>
     )
   }
@@ -126,45 +298,109 @@ export default function ChatWidget() {
   return (
     <div className={`${layoutClasses} ${themeClasses.container}`}>
       {/* Header */}
-      <div className={`p-4 md:p-6 flex justify-between items-center ${themeClasses.header} ${viewMode === 'floating' ? 'rounded-t-2xl' : ''}`}>
+      <div
+        className={`p-4 md:p-6 flex justify-between items-center ${themeClasses.header} ${viewMode === 'floating' ? 'rounded-t-2xl' : ''}`}
+      >
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-xl shadow-lg">🤖</div>
+          <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+              />
+            </svg>
+          </div>
           <div>
             <h3 className={`font-bold text-lg ${themeClasses.headerTitle}`}>AI 법률 상담</h3>
-            <p className={`text-xs font-bold uppercase tracking-widest ${themeClasses.headerSubtitle}`}>Active Now</p>
+            <p className={`text-xs font-bold uppercase tracking-widest ${themeClasses.headerSubtitle}`}>
+              {sessionData.active_agent
+                ? `${sessionData.active_agent === 'lawyer_finder' ? '변호사 찾기' : sessionData.active_agent === 'small_claims' ? '소액소송' : '판례 검색'}`
+                : 'Active Now'}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Role Selector */}
+          <div
+            className={`flex rounded-lg border text-xs ${themeClasses.roleSelector}`}
+          >
+            <button
+              onClick={() => setUserRole('user')}
+              className={`px-2 py-1 rounded-l-md transition-colors ${
+                userRole === 'user'
+                  ? themeClasses.roleActive
+                  : themeClasses.roleInactive
+              }`}
+            >
+              일반인
+            </button>
+            <button
+              onClick={() => setUserRole('lawyer')}
+              className={`px-2 py-1 rounded-r-md transition-colors ${
+                userRole === 'lawyer'
+                  ? themeClasses.roleActive
+                  : themeClasses.roleInactive
+              }`}
+            >
+              변호사
+            </button>
+          </div>
+
           {/* Toggle View Mode Button (Only on Map Page) */}
           {isMapPage && (
             <button
               onClick={toggleViewMode}
               className={`p-2 rounded-lg transition-colors ${themeClasses.closeBtn}`}
-              title={viewMode === 'split' ? "작게 보기" : "크게 보기"}
+              title={viewMode === 'split' ? '작게 보기' : '크게 보기'}
             >
               {viewMode === 'split' ? (
-                 // Minimize Icon
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 14h6v6" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 10h-6V4" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M20 10h-6V4"
+                  />
                 </svg>
               ) : (
-                // Maximize Icon
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20h6v-6" />
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 20h6v-6"
+                  />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 4h-6v6" />
                 </svg>
               )}
             </button>
           )}
-          
+
           {/* Close Button */}
           <button
             onClick={() => setChatOpen(false)}
             className={`p-2 rounded-lg transition-colors ${themeClasses.closeBtn}`}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -187,40 +423,98 @@ export default function ChatWidget() {
                   : `${themeClasses.messageBot} rounded-tl-none`
               }`}
             >
-              {msg.content}
+              {msg.role === 'assistant' ? (
+                <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  {msg.actions && msg.actions.length > 0 && (
+                    <ChatActions
+                      actions={msg.actions}
+                      onAction={handleAction}
+                      onRequestLocation={handleRequestLocation}
+                      isLightTheme={isLightTheme}
+                    />
+                  )}
+                </div>
+              ) : (
+                <span className="whitespace-pre-wrap">{msg.content}</span>
+              )}
             </div>
           </div>
         ))}
+        {/* Loading indicator */}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className={`max-w-[85%] p-4 rounded-2xl rounded-tl-none ${themeClasses.messageBot}`}>
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                  style={{ animationDelay: '0ms' }}
+                />
+                <div
+                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                  style={{ animationDelay: '150ms' }}
+                />
+                <div
+                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                  style={{ animationDelay: '300ms' }}
+                />
+                <span className="ml-2 text-sm opacity-70">응답을 생성하고 있습니다...</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Input */}
-      <div className={`p-4 md:p-6 ${themeClasses.inputArea} ${viewMode === 'floating' ? 'rounded-b-2xl' : ''}`}>
+      <div
+        className={`p-4 md:p-6 ${themeClasses.inputArea} ${viewMode === 'floating' ? 'rounded-b-2xl' : ''}`}
+      >
         <div className="relative flex items-center gap-3">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="법률 질문을 입력하세요..."
-            className={`flex-1 rounded-xl px-4 py-3 md:px-6 md:py-4 text-sm md:text-base focus:outline-none transition-all shadow-sm ${themeClasses.input}`}
+            onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSend()}
+            placeholder={isLoading ? '응답을 기다리는 중...' : '법률 질문을 입력하세요...'}
+            disabled={isLoading}
+            className={`flex-1 rounded-xl px-4 py-3 md:px-6 md:py-4 text-sm md:text-base focus:outline-none transition-all shadow-sm ${themeClasses.input} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
           />
           <button
-            onClick={handleSend}
-            className="p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors shadow-lg active:scale-95"
+            onClick={() => handleSend()}
+            disabled={isLoading || !input.trim()}
+            className={`p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors shadow-lg active:scale-95 ${isLoading || !input.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            <svg
-              className="w-5 h-5 md:w-6 md:h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-              />
-            </svg>
+            {isLoading ? (
+              <svg className="w-5 h-5 md:w-6 md:h-6 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="w-5 h-5 md:w-6 md:h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                />
+              </svg>
+            )}
           </button>
         </div>
       </div>

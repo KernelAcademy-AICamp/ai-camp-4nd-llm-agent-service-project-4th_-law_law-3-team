@@ -1,0 +1,65 @@
+# Git
+.git
+.gitignore
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/*$py.class
+**/*.so
+**/.Python
+**/*.egg-info
+**/*.egg
+.venv
+venv
+ENV
+.uv
+
+# Node
+**/node_modules
+**/.pnp
+**/.pnp.js
+
+# Build outputs
+.next
+out
+dist
+build
+
+# Testing
+.coverage
+htmlcov
+.pytest_cache
+.mypy_cache
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+.DS_Store
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.docker
+
+# Documentation
+*.md
+!README.md
+
+# Data (mount separately)
+data/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+
+# Misc
+.eslintcache
+*.tsbuildinfo

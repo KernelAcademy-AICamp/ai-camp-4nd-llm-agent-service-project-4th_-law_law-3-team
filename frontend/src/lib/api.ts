@@ -15,4 +15,5 @@ export const endpoints = {
   storyboard: '/storyboard',
   lawStudy: '/law-study',
   smallClaims: '/small-claims',
+  multiAgent: '/multi-agent',
 }
