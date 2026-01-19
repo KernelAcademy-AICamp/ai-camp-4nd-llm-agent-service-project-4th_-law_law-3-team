@@ -16,6 +16,9 @@ function LawyerItem({
   return (
     <div
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick() }}
+      role="button"
+      tabIndex={0}
       className="p-4 border rounded-lg cursor-pointer transition-all border-gray-200 hover:border-blue-300 hover:shadow-sm hover:bg-blue-50/30"
     >
       <div className="flex gap-3">
@@ -34,6 +37,7 @@ function LawyerItem({
                 className="w-7 h-7 text-gray-400"
                 fill="currentColor"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
               </svg>
@@ -86,11 +90,12 @@ export function OfficeDetailPanel({
           )}
         </div>
         <button
+          type="button"
           onClick={onClose}
           className="ml-2 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
           title="닫기"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
@@ -100,7 +105,7 @@ export function OfficeDetailPanel({
       <div className="p-4 bg-gray-50 border-b">
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-1.5 text-blue-600">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
             <span className="font-medium">{office.lawyers.length}명의 변호사</span>
@@ -124,6 +129,7 @@ export function OfficeDetailPanel({
       {/* 푸터 */}
       <div className="p-3 border-t bg-gray-50">
         <button
+          type="button"
           onClick={onClose}
           className="w-full py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
         >

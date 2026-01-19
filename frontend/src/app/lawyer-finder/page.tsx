@@ -6,40 +6,13 @@ import { SearchPanel } from '@/features/lawyer-finder/components/SearchPanel'
 import { OfficeDetailPanel } from '@/features/lawyer-finder/components/OfficeDetailPanel'
 import { useGeolocation } from '@/features/lawyer-finder/hooks/useGeolocation'
 import { lawyerFinderService } from '@/features/lawyer-finder/services'
+import { DISTRICT_COORDS } from '@/features/lawyer-finder/constants'
 import type { Lawyer, Office } from '@/features/lawyer-finder/types'
-
-// 서울 구별 좌표 데이터
-const DISTRICT_COORDS: Record<string, { lat: number; lng: number }> = {
-  '강남구': { lat: 37.5172, lng: 127.0473 },
-  '강동구': { lat: 37.5301, lng: 127.1238 },
-  '강북구': { lat: 37.6396, lng: 127.0257 },
-  '강서구': { lat: 37.5509, lng: 126.8495 },
-  '관악구': { lat: 37.4784, lng: 126.9516 },
-  '광진구': { lat: 37.5385, lng: 127.0823 },
-  '구로구': { lat: 37.4954, lng: 126.8874 },
-  '금천구': { lat: 37.4519, lng: 126.9020 },
-  '노원구': { lat: 37.6542, lng: 127.0568 },
-  '도봉구': { lat: 37.6688, lng: 127.0471 },
-  '동대문구': { lat: 37.5744, lng: 127.0396 },
-  '동작구': { lat: 37.5124, lng: 126.9393 },
-  '마포구': { lat: 37.5663, lng: 126.9014 },
-  '서대문구': { lat: 37.5791, lng: 126.9368 },
-  '서초구': { lat: 37.4837, lng: 127.0324 },
-  '성동구': { lat: 37.5633, lng: 127.0371 },
-  '성북구': { lat: 37.5894, lng: 127.0167 },
-  '송파구': { lat: 37.5145, lng: 127.1066 },
-  '양천구': { lat: 37.5170, lng: 126.8667 },
-  '영등포구': { lat: 37.5264, lng: 126.8962 },
-  '용산구': { lat: 37.5324, lng: 126.9906 },
-  '은평구': { lat: 37.6027, lng: 126.9291 },
-  '종로구': { lat: 37.5735, lng: 126.9790 },
-  '중구': { lat: 37.5636, lng: 126.9976 },
-  '중랑구': { lat: 37.6063, lng: 127.0925 },
-}
 
 export default function LawyerFinderPage() {
   const [lawyers, setLawyers] = useState<Lawyer[]>([])
   const [selectedLawyer, setSelectedLawyer] = useState<Lawyer | null>(null)
+  const [selectionTrigger, setSelectionTrigger] = useState<number>(0)  // 선택 시점 (timestamp)
   const [selectedOffice, setSelectedOffice] = useState<Office | null>(null)
   const [loading, setLoading] = useState(false)
   const [radius, setRadius] = useState(3000)
@@ -128,18 +101,21 @@ export default function LawyerFinderPage() {
     }
   }
 
-  // 이 지역에서 재검색 (검색어 유지 + 현재 위치 기준)
+  // 이 지역에서 재검색 (검색어 유지 + 현재 지도 위치 기준)
   const handleSearchInArea = async () => {
     if (!searchQuery) return
 
+    const location = getSearchLocation()
     setLoading(true)
     setError(null)
 
     try {
-      // TODO: 백엔드에서 위치 + 검색어 조합 지원 시 개선
       const response = await lawyerFinderService.searchLawyers({
         name: searchQuery,
         office: searchQuery,
+        latitude: location.lat,
+        longitude: location.lng,
+        radius: radius,
         limit: 100,
       })
       setLawyers(response.lawyers)
@@ -158,20 +134,21 @@ export default function LawyerFinderPage() {
     // searchQuery가 빈 문자열이 되면 useEffect에서 fetchNearbyLawyers 호출됨
   }, [])
 
-  // 변호사 선택 (지도 이동 트리거를 위해 새 객체 생성)
-  const handleLawyerSelect = (lawyer: Lawyer) => {
-    setSelectedLawyer({ ...lawyer })
-  }
+  // 변호사 선택 (명시적 트리거로 지도 이동)
+  const handleLawyerSelect = useCallback((lawyer: Lawyer) => {
+    setSelectedLawyer(lawyer)
+    setSelectionTrigger(Date.now())
+  }, [])
 
   // 반경 변경
-  const handleRadiusChange = (newRadius: number) => {
+  const handleRadiusChange = useCallback((newRadius: number) => {
     setRadius(newRadius)
-  }
+  }, [])
 
   // 지도 준비 완료
-  const handleMapReady = () => {
+  const handleMapReady = useCallback(() => {
     setMapReady(true)
-  }
+  }, [])
 
   // 내 위치로 이동
   const handleMyLocation = useCallback(() => {
@@ -268,13 +245,14 @@ export default function LawyerFinderPage() {
           {/* 이 지역에서 재검색 버튼 (검색어가 있을 때만) */}
           {searchQuery && (
             <button
+              type="button"
               onClick={handleSearchInArea}
               className="absolute top-4 left-1/2 -translate-x-1/2 z-10
                          bg-white px-4 py-2 rounded-full shadow-lg border border-gray-200
                          text-sm font-medium text-gray-700 hover:bg-gray-50 transition
                          flex items-center gap-2"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               이 지역에서 재검색
@@ -286,6 +264,7 @@ export default function LawyerFinderPage() {
             userLocation={userLocation}
             lawyers={lawyers}
             selectedLawyer={selectedLawyer}
+            selectionTrigger={selectionTrigger}
             radius={radius}
             onMapReady={handleMapReady}
             onLawyerClick={handleLawyerSelect}

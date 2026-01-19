@@ -115,11 +115,23 @@ def search_lawyers(
     name: Optional[str] = None,
     office: Optional[str] = None,
     district: Optional[str] = None,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+    radius_m: int = 5000,
     limit: int = 50
 ) -> List[dict]:
-    """이름/사무소/지역으로 검색 (이름/사무소는 OR 조건, 지역은 AND 조건)"""
+    """
+    이름/사무소/지역으로 검색 (이름/사무소는 OR 조건, 지역은 AND 조건)
+    위치 필터가 제공되면 해당 반경 내 결과만 반환
+    """
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
+
+    # 위치 필터링용 바운딩 박스
+    bbox = None
+    if latitude is not None and longitude is not None:
+        radius_km = radius_m / 1000
+        bbox = get_bounding_box(latitude, longitude, radius_km)
 
     results = []
 
@@ -137,6 +149,20 @@ def search_lawyers(
         if district:
             address = lawyer.get("address") or ""
             if district not in address:
+                continue
+
+        # 위치 필터링 (AND 조건)
+        if bbox:
+            lat = lawyer.get("latitude")
+            lng = lawyer.get("longitude")
+            if lat is None or lng is None:
+                continue
+            min_lat, max_lat, min_lng, max_lng = bbox
+            if not (min_lat <= lat <= max_lat and min_lng <= lng <= max_lng):
+                continue
+            # 정확한 거리 계산
+            dist = haversine(longitude, latitude, lng, lat)
+            if dist > (radius_m / 1000):
                 continue
 
         results.append({**lawyer, "id": idx})

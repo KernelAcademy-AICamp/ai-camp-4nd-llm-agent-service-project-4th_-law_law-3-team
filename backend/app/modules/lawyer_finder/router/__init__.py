@@ -77,14 +77,20 @@ async def search_lawyers_endpoint(
     name: Optional[str] = Query(None, description="변호사 이름"),
     office: Optional[str] = Query(None, description="사무소명"),
     district: Optional[str] = Query(None, description="지역 (구/군)"),
+    latitude: Optional[float] = Query(None, ge=-90, le=90, description="위치 필터 - 위도"),
+    longitude: Optional[float] = Query(None, ge=-180, le=180, description="위치 필터 - 경도"),
+    radius: int = Query(5000, ge=100, le=50000, description="위치 필터 - 반경 (미터)"),
     limit: int = Query(50, ge=1, le=200, description="최대 결과 수"),
 ):
     """
-    변호사 검색 (이름/사무소/지역)
+    변호사 검색 (이름/사무소/지역 + 선택적 위치 필터)
 
     - **name**: 이름에 포함된 문자열
     - **office**: 사무소명에 포함된 문자열
     - **district**: 주소에 포함된 구/군 (예: "강남구", "송파구")
+    - **latitude**: 위치 필터 - 위도 (선택)
+    - **longitude**: 위치 필터 - 경도 (선택)
+    - **radius**: 위치 필터 - 반경 (미터, 기본 5km)
     """
     if not any([name, office, district]):
         raise HTTPException(
@@ -92,7 +98,7 @@ async def search_lawyers_endpoint(
             detail="최소 하나의 검색 조건이 필요합니다 (name, office, district)"
         )
 
-    lawyers = search_lawyers(name, office, district, limit)
+    lawyers = search_lawyers(name, office, district, latitude, longitude, radius, limit)
 
     return {
         "lawyers": lawyers,

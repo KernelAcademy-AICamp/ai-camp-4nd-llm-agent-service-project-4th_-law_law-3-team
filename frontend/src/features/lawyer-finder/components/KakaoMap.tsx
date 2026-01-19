@@ -3,6 +3,13 @@
 import { useEffect, useRef } from 'react'
 import type { Lawyer, Office } from '../types'
 
+// HTML 이스케이프 함수 (XSS 방지)
+function escapeHtml(text: string): string {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
+
 // 변호사를 사무소별로 그룹화하는 함수
 function groupLawyersByOffice(lawyers: Lawyer[]): Office[] {
   const officeMap = new Map<string, Office>()
@@ -39,7 +46,7 @@ function createPopupContent(office: Office, onClick?: () => void): HTMLElement {
     .map(
       (lawyer) => `
       <div class="lawyer-item">
-        <span class="lawyer-name">${lawyer.name}</span>
+        <span class="lawyer-name">${escapeHtml(lawyer.name)}</span>
       </div>
     `
     )
@@ -49,8 +56,8 @@ function createPopupContent(office: Office, onClick?: () => void): HTMLElement {
 
   container.innerHTML = `
     <div class="office-header">
-      <div class="office-name">${office.name}</div>
-      ${office.address ? `<div class="office-address">${office.address}</div>` : ''}
+      <div class="office-name">${escapeHtml(office.name)}</div>
+      ${office.address ? `<div class="office-address">${escapeHtml(office.address)}</div>` : ''}
       <div class="lawyer-count">${office.lawyers.length}명의 변호사</div>
     </div>
     <div class="lawyer-list">
@@ -74,6 +81,7 @@ interface KakaoMapProps {
   userLocation?: { lat: number; lng: number } | null  // 실제 GPS 위치 (파란 마커용)
   lawyers: Lawyer[]
   selectedLawyer: Lawyer | null
+  selectionTrigger?: number  // 선택 시점 timestamp (지도 이동 트리거)
   radius: number
   onMapReady?: (map: kakao.maps.Map) => void
   onLawyerClick?: (lawyer: Lawyer) => void
@@ -88,6 +96,7 @@ export function KakaoMap({
   userLocation,
   lawyers,
   selectedLawyer,
+  selectionTrigger,
   radius,
   onMapReady,
   onLawyerClick,
@@ -106,6 +115,7 @@ export function KakaoMap({
   const onCenterChangeRef = useRef(onCenterChange)
   const prevCenterRef = useRef<{ lat: number; lng: number } | null>(null)
   const skipCenterPanRef = useRef(false)
+  const hideTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
   // 콜백 ref 업데이트
   useEffect(() => {
@@ -228,6 +238,10 @@ export function KakaoMap({
       clustererRef.current.clear()
     }
 
+    // 기존 타임아웃 정리
+    hideTimeoutsRef.current.forEach(clearTimeout)
+    hideTimeoutsRef.current = []
+
     // 기존 마커 및 오버레이 제거
     markersRef.current.forEach((marker) => marker.setMap(null))
     markersRef.current = []
@@ -304,11 +318,13 @@ export function KakaoMap({
       }
 
       const hideOverlay = () => {
-        hideTimeout = setTimeout(() => {
+        const timeout = setTimeout(() => {
           if (!isOverMarker && !isOverPopup) {
             overlay.setMap(null)
           }
         }, 100)
+        hideTimeout = timeout
+        hideTimeoutsRef.current.push(timeout)
       }
 
       // 팝업에 마우스 이벤트 추가
@@ -394,6 +410,10 @@ export function KakaoMap({
     })
 
     return () => {
+      // 타임아웃 정리
+      hideTimeoutsRef.current.forEach(clearTimeout)
+      hideTimeoutsRef.current = []
+
       if (clustererRef.current) {
         clustererRef.current.clear()
       }
@@ -402,26 +422,12 @@ export function KakaoMap({
     }
   }, [lawyers, selectedLawyer, onLawyerClick, onOfficeClick])
 
-  // 선택된 변호사로 지도 이동 (id 기준으로 트리거)
+  // 선택된 변호사로 지도 이동 (selectionTrigger 변경 시 트리거)
   useEffect(() => {
-    console.log('selectedLawyer effect triggered:', selectedLawyer)
-
-    if (!mapRef.current) {
-      console.log('mapRef.current is null')
-      return
-    }
-
-    if (!selectedLawyer) {
-      console.log('selectedLawyer is null')
-      return
-    }
-
-    if (!selectedLawyer.latitude || !selectedLawyer.longitude) {
-      console.log('selectedLawyer has no coordinates:', selectedLawyer.latitude, selectedLawyer.longitude)
-      return
-    }
-
-    console.log('Moving map to:', selectedLawyer.latitude, selectedLawyer.longitude)
+    if (!selectionTrigger) return  // 초기값 0이면 무시
+    if (!mapRef.current) return
+    if (!selectedLawyer) return
+    if (!selectedLawyer.latitude || !selectedLawyer.longitude) return
 
     // center useEffect의 panTo를 스킵하도록 플래그 설정
     skipCenterPanRef.current = true
@@ -432,7 +438,7 @@ export function KakaoMap({
     )
     mapRef.current.panTo(position)
     mapRef.current.setLevel(4)
-  }, [selectedLawyer])
+  }, [selectionTrigger, selectedLawyer])
 
   return (
     <div className="relative w-full h-full">
@@ -441,6 +447,7 @@ export function KakaoMap({
       {/* 내 위치 버튼 */}
       {onMyLocationClick && (
         <button
+          type="button"
           onClick={onMyLocationClick}
           className="absolute top-4 left-4 z-10 w-10 h-10 bg-white rounded-lg shadow-md
                      flex items-center justify-center hover:bg-gray-50 transition-colors
@@ -453,6 +460,7 @@ export function KakaoMap({
             stroke="currentColor"
             strokeWidth={2}
             viewBox="0 0 24 24"
+            aria-hidden="true"
           >
             <circle cx="12" cy="12" r="3" />
             <path strokeLinecap="round" d="M12 2v4m0 12v4m-10-10h4m12 0h4" />
