@@ -58,3 +58,7 @@ npm-debug.log*
 
 data/
 all_lawyers.json
+
+# Docker
+.env.docker
+docker-compose.override.yml

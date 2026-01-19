@@ -1,0 +1,25 @@
+# Development Docker Compose - PostgreSQL only
+# Usage: docker-compose up -d postgres
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: law-platform-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: lawuser
+      POSTGRES_PASSWORD: lawpassword
+      POSTGRES_DB: lawdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lawuser -d lawdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
