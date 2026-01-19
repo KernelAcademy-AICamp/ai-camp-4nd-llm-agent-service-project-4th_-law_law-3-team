@@ -40,20 +40,27 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI Dependency Injection용 DB 세션 제공
 
+    Note:
+        - 읽기 전용 요청은 commit 불필요
+        - 쓰기 작업 시 호출자가 명시적으로 await db.commit() 호출 필요
+        - 세션 종료는 async context manager가 자동 처리
+
     Usage:
         @router.get("/items")
         async def get_items(db: AsyncSession = Depends(get_db)):
             ...
+
+        @router.post("/items")
+        async def create_item(db: AsyncSession = Depends(get_db)):
+            db.add(item)
+            await db.commit()  # 명시적 commit 필요
     """
     async with async_session_factory() as session:
         try:
             yield session
-            await session.commit()
         except Exception:
             await session.rollback()
             raise
-        finally:
-            await session.close()
 
 
 async def init_db() -> None:

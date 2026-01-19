@@ -80,7 +80,8 @@ class VectorStore:
 
     def __init__(self, collection_name: Optional[str] = None):
         self.client = get_chroma_client()
-        self.collection = get_collection(self.client, collection_name)
+        self.collection_name = collection_name or settings.CHROMA_COLLECTION_NAME
+        self.collection = get_collection(self.client, self.collection_name)
 
     def add_documents(
         self,
@@ -168,5 +169,5 @@ class VectorStore:
 
     def reset(self) -> None:
         """컬렉션 초기화 (주의: 모든 데이터 삭제)"""
-        self.client.delete_collection(self.collection.name)
-        self.collection = get_collection(self.client)
+        self.client.delete_collection(self.collection_name)
+        self.collection = get_collection(self.client, self.collection_name)

@@ -13,6 +13,129 @@ from app.common.chat_service import search_relevant_documents
 router = APIRouter()
 
 
+# 서류 템플릿 정의 (동적 값은 {placeholder} 형식)
+SMALL_CLAIMS_TEMPLATES = {
+    "demand_letter": {
+        "title": "내용증명",
+        "template_sections": {
+            "header": "내용증명\n\n발신일: {today}",
+            "recipient": "수신: {defendant_name}",
+            "sender": "발신: {plaintiff_name}\n주소: {plaintiff_address}",
+            "body": "",
+            "footer": "위와 같이 내용증명 우편으로 통지합니다.\n\n14일 이내에 이행하지 않을 경우 법적 조치를 취할 것임을 알려드립니다.",
+        },
+        "ai_prompt": """한국어 내용증명 본문을 작성해주세요.
+
+분쟁 유형: {dispute_type}
+청구 금액: {amount_formatted}원
+분쟁 경위: {description}
+발생일: {incident_date}
+
+요구사항:
+1. 법적 효력이 있는 공식적인 문체 사용
+2. 사실관계를 명확히 기술
+3. 청구 금액과 지급 기한(14일) 명시
+4. 불이행 시 법적 조치 경고
+5. 500자 내외로 작성""",
+    },
+    "payment_order": {
+        "title": "지급명령신청서",
+        "template_sections": {
+            "header": "지급명령신청서\n\n{today}",
+            "court": "○○지방법원 귀중",
+            "parties": "채권자(신청인): {plaintiff_name}\n주소: {plaintiff_address}\n\n채무자(피신청인): {defendant_name}\n주소: {defendant_address}",
+            "claim": "청구금액: 금 {amount_formatted}원",
+            "reason": "",
+            "evidence": "",
+            "footer": "위와 같이 지급명령을 신청합니다.",
+        },
+        "ai_prompt": """지급명령신청서의 '청구원인' 부분을 작성해주세요.
+
+분쟁 유형: {dispute_type}
+청구 금액: {amount_formatted}원
+분쟁 경위: {description}
+발생일: {incident_date}
+
+요구사항:
+1. 채권 발생 원인을 명확히 기술
+2. 변제기(지급 기한) 명시
+3. 법률적 근거 포함
+4. 간결하고 명확한 문체
+5. 400자 내외로 작성""",
+    },
+    "complaint": {
+        "title": "소액심판 청구서",
+        "template_sections": {
+            "header": "소액사건심판 청구서\n\n{today}",
+            "court": "○○지방법원 귀중",
+            "parties": "원고: {plaintiff_name}\n주소: {plaintiff_address}\n\n피고: {defendant_name}\n주소: {defendant_address}",
+            "claim": "청구취지: 피고는 원고에게 금 {amount_formatted}원 및 이에 대하여 이 사건 소장 부본 송달 다음날부터 다 갚는 날까지 연 12%의 비율로 계산한 돈을 지급하라.",
+            "reason": "",
+            "evidence": "",
+            "footer": "위와 같이 청구합니다.",
+        },
+        "ai_prompt": """소액심판 청구서의 '청구원인' 부분을 작성해주세요.
+
+분쟁 유형: {dispute_type}
+청구 금액: {amount_formatted}원
+분쟁 경위: {description}
+발생일: {incident_date}
+
+요구사항:
+1. 사실관계를 시간순으로 명확히 기술
+2. 원고의 권리 발생 근거 설명
+3. 피고의 의무 불이행 사실 명시
+4. 법률적 청구 근거 포함
+5. 500자 내외로 작성""",
+    },
+}
+
+
+def render_template_for_case(
+    case_info: "CaseInfo",
+    today: str,
+    document_type: str,
+) -> dict:
+    """
+    템플릿을 케이스 정보로 렌더링
+
+    Args:
+        case_info: 사건 정보
+        today: 오늘 날짜 문자열
+        document_type: 서류 유형 (demand_letter, payment_order, complaint)
+
+    Returns:
+        렌더링된 템플릿 (title, template_sections, ai_prompt)
+    """
+    template = SMALL_CLAIMS_TEMPLATES.get(document_type)
+    if not template:
+        return {}
+
+    # 템플릿 변수
+    variables = {
+        "today": today,
+        "plaintiff_name": case_info.plaintiff_name,
+        "plaintiff_address": case_info.plaintiff_address,
+        "defendant_name": case_info.defendant_name,
+        "defendant_address": case_info.defendant_address or "(주소 조사 필요)",
+        "amount_formatted": f"{case_info.amount:,}",
+        "dispute_type": case_info.dispute_type,
+        "description": case_info.description,
+        "incident_date": case_info.incident_date or "미상",
+    }
+
+    # template_sections 렌더링
+    rendered_sections = {}
+    for key, value in template["template_sections"].items():
+        rendered_sections[key] = value.format(**variables)
+
+    return {
+        "title": template["title"],
+        "template_sections": rendered_sections,
+        "ai_prompt": template["ai_prompt"].format(**variables),
+    }
+
+
 # 증거 체크리스트 데이터
 EVIDENCE_CHECKLISTS = {
     "product_payment": {
@@ -248,91 +371,14 @@ async def generate_document(request: DocumentGenerateRequest):
         document_type = request.document_type
         today = datetime.now().strftime("%Y년 %m월 %d일")
 
-        # 서류 유형별 템플릿 및 프롬프트
-        templates = {
-            "demand_letter": {
-                "title": "내용증명",
-                "template_sections": {
-                    "header": f"내용증명\n\n발신일: {today}",
-                    "recipient": f"수신: {case_info.defendant_name}",
-                    "sender": f"발신: {case_info.plaintiff_name}\n주소: {case_info.plaintiff_address}",
-                    "body": "",
-                    "footer": "위와 같이 내용증명 우편으로 통지합니다.\n\n14일 이내에 이행하지 않을 경우 법적 조치를 취할 것임을 알려드립니다.",
-                },
-                "ai_prompt": f"""한국어 내용증명 본문을 작성해주세요.
-
-분쟁 유형: {case_info.dispute_type}
-청구 금액: {case_info.amount:,}원
-분쟁 경위: {case_info.description}
-발생일: {case_info.incident_date or "미상"}
-
-요구사항:
-1. 법적 효력이 있는 공식적인 문체 사용
-2. 사실관계를 명확히 기술
-3. 청구 금액과 지급 기한(14일) 명시
-4. 불이행 시 법적 조치 경고
-5. 500자 내외로 작성""",
-            },
-            "payment_order": {
-                "title": "지급명령신청서",
-                "template_sections": {
-                    "header": f"지급명령신청서\n\n{today}",
-                    "court": "○○지방법원 귀중",
-                    "parties": f"채권자(신청인): {case_info.plaintiff_name}\n주소: {case_info.plaintiff_address}\n\n채무자(피신청인): {case_info.defendant_name}\n주소: {case_info.defendant_address or '(주소 조사 필요)'}",
-                    "claim": f"청구금액: 금 {case_info.amount:,}원",
-                    "reason": "",
-                    "evidence": "",
-                    "footer": "위와 같이 지급명령을 신청합니다.",
-                },
-                "ai_prompt": f"""지급명령신청서의 '청구원인' 부분을 작성해주세요.
-
-분쟁 유형: {case_info.dispute_type}
-청구 금액: {case_info.amount:,}원
-분쟁 경위: {case_info.description}
-발생일: {case_info.incident_date or "미상"}
-
-요구사항:
-1. 채권 발생 원인을 명확히 기술
-2. 변제기(지급 기한) 명시
-3. 법률적 근거 포함
-4. 간결하고 명확한 문체
-5. 400자 내외로 작성""",
-            },
-            "complaint": {
-                "title": "소액심판 청구서",
-                "template_sections": {
-                    "header": f"소액사건심판 청구서\n\n{today}",
-                    "court": "○○지방법원 귀중",
-                    "parties": f"원고: {case_info.plaintiff_name}\n주소: {case_info.plaintiff_address}\n\n피고: {case_info.defendant_name}\n주소: {case_info.defendant_address or '(주소 조사 필요)'}",
-                    "claim": f"청구취지: 피고는 원고에게 금 {case_info.amount:,}원 및 이에 대하여 이 사건 소장 부본 송달 다음날부터 다 갚는 날까지 연 12%의 비율로 계산한 돈을 지급하라.",
-                    "reason": "",
-                    "evidence": "",
-                    "footer": "위와 같이 청구합니다.",
-                },
-                "ai_prompt": f"""소액심판 청구서의 '청구원인' 부분을 작성해주세요.
-
-분쟁 유형: {case_info.dispute_type}
-청구 금액: {case_info.amount:,}원
-분쟁 경위: {case_info.description}
-발생일: {case_info.incident_date or "미상"}
-
-요구사항:
-1. 사실관계를 시간순으로 명확히 기술
-2. 원고의 권리 발생 근거 설명
-3. 피고의 의무 불이행 사실 명시
-4. 법률적 청구 근거 포함
-5. 500자 내외로 작성""",
-            },
-        }
-
-        if document_type not in templates:
+        if document_type not in SMALL_CLAIMS_TEMPLATES:
             raise HTTPException(
                 status_code=400,
                 detail=f"지원하지 않는 서류 유형입니다: {document_type}. "
-                       f"지원 유형: demand_letter, payment_order, complaint",
+                       f"지원 유형: {', '.join(SMALL_CLAIMS_TEMPLATES.keys())}",
             )
 
-        template = templates[document_type]
+        template = render_template_for_case(case_info, today, document_type)
 
         # AI로 본문 생성
         client = OpenAI(api_key=settings.OPENAI_API_KEY)

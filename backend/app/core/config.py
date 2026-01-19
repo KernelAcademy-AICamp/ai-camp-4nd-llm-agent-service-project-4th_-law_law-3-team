@@ -1,6 +1,7 @@
+from urllib.parse import urlparse, urlunparse
+
 from pydantic_settings import BaseSettings
 from typing import List
-from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -15,11 +16,13 @@ class Settings(BaseSettings):
 
     # Async Database URL (for SQLAlchemy async)
     @property
-    def DATABASE_URL_ASYNC(self) -> str:
-        """Convert to async driver URL"""
-        return self.DATABASE_URL.replace(
-            "postgresql://", "postgresql+asyncpg://"
-        )
+    def DATABASE_URL_ASYNC(self) -> str:  # noqa: N802
+        """Convert to async driver URL, handling various PostgreSQL scheme variants."""
+        parsed = urlparse(self.DATABASE_URL)
+        # Normalize scheme: postgres, postgresql, postgresql+psycopg2 → postgresql+asyncpg
+        if parsed.scheme in ("postgres", "postgresql", "postgresql+psycopg2"):
+            parsed = parsed._replace(scheme="postgresql+asyncpg")
+        return urlunparse(parsed)
 
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]

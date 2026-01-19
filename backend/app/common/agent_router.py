@@ -147,7 +147,7 @@ def detect_intent(
 
     # 3. 기본 에이전트 (일반 사용자: 판례 검색, 변호사: 판례 분석)
     if user_role == UserRole.LAWYER:
-        return AgentType.CASE_SEARCH
+        return AgentType.CASE_ANALYSIS
     return AgentType.CASE_SEARCH  # 기본적으로 판례 검색
 
 
