@@ -123,13 +123,27 @@ def search_lawyers(
     """
     이름/사무소/지역으로 검색 (이름/사무소는 OR 조건, 지역은 AND 조건)
     위치 필터가 제공되면 해당 반경 내 결과만 반환
+
+    Raises:
+        ValueError: latitude와 longitude 중 하나만 제공된 경우
     """
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
 
+    # 위치 필터링 입력 검증: 둘 다 제공되거나 둘 다 없어야 함
+    has_latitude = latitude is not None
+    has_longitude = longitude is not None
+    if has_latitude != has_longitude:
+        missing = "longitude" if has_latitude else "latitude"
+        provided = "latitude" if has_latitude else "longitude"
+        raise ValueError(
+            f"위치 필터링을 사용하려면 latitude와 longitude가 모두 필요합니다. "
+            f"{provided}만 제공되었고 {missing}가 누락되었습니다."
+        )
+
     # 위치 필터링용 바운딩 박스
     bbox = None
-    if latitude is not None and longitude is not None:
+    if has_latitude and has_longitude:
         radius_km = radius_m / 1000
         bbox = get_bounding_box(latitude, longitude, radius_km)
 

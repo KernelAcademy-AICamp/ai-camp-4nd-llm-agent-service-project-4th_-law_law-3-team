@@ -54,7 +54,7 @@ export const lawyerFinderService = {
     if (params.district) searchParams.append('district', params.district)
     if (params.latitude !== undefined) searchParams.append('latitude', params.latitude.toString())
     if (params.longitude !== undefined) searchParams.append('longitude', params.longitude.toString())
-    if (params.radius) searchParams.append('radius', params.radius.toString())
+    if (params.radius !== undefined) searchParams.append('radius', params.radius.toString())
     if (params.limit) searchParams.append('limit', params.limit.toString())
 
     const response = await api.get(`${endpoints.lawyerFinder}/search?${searchParams}`)

@@ -88,8 +88,8 @@ async def search_lawyers_endpoint(
     - **name**: 이름에 포함된 문자열
     - **office**: 사무소명에 포함된 문자열
     - **district**: 주소에 포함된 구/군 (예: "강남구", "송파구")
-    - **latitude**: 위치 필터 - 위도 (선택)
-    - **longitude**: 위치 필터 - 경도 (선택)
+    - **latitude**: 위치 필터 - 위도 (선택, longitude와 함께 사용)
+    - **longitude**: 위치 필터 - 경도 (선택, latitude와 함께 사용)
     - **radius**: 위치 필터 - 반경 (미터, 기본 5km)
     """
     if not any([name, office, district]):
@@ -98,7 +98,10 @@ async def search_lawyers_endpoint(
             detail="최소 하나의 검색 조건이 필요합니다 (name, office, district)"
         )
 
-    lawyers = search_lawyers(name, office, district, latitude, longitude, radius, limit)
+    try:
+        lawyers = search_lawyers(name, office, district, latitude, longitude, radius, limit)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     return {
         "lawyers": lawyers,
