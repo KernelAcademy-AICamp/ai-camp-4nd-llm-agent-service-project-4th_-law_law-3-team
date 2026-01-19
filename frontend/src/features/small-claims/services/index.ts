@@ -1,4 +1,12 @@
 import { api, endpoints } from '@/lib/api'
+import type {
+  EvidenceChecklistResponse,
+  CaseInfo,
+  DocumentResponse,
+  RelatedCasesResponse,
+  DocumentType,
+  DisputeType,
+} from '../types'
 
 export const smallClaimsService = {
   startInterview: async (caseType: string) => {
@@ -43,6 +51,33 @@ export const smallClaimsService = {
 
   getLawsuitGuide: async (caseType: string) => {
     const response = await api.get(`${endpoints.smallClaims}/guide/${caseType}`)
+    return response.data
+  },
+
+  // New endpoints
+  getEvidenceChecklist: async (disputeType: DisputeType): Promise<EvidenceChecklistResponse> => {
+    const response = await api.get(`${endpoints.smallClaims}/evidence-checklist/${disputeType}`)
+    return response.data
+  },
+
+  getDisputeTypes: async () => {
+    const response = await api.get(`${endpoints.smallClaims}/dispute-types`)
+    return response.data
+  },
+
+  generateDocument: async (
+    documentType: DocumentType,
+    caseInfo: CaseInfo
+  ): Promise<DocumentResponse> => {
+    const response = await api.post(`${endpoints.smallClaims}/generate-document`, {
+      document_type: documentType,
+      case_info: caseInfo,
+    })
+    return response.data
+  },
+
+  getRelatedCases: async (disputeType: DisputeType): Promise<RelatedCasesResponse> => {
+    const response = await api.get(`${endpoints.smallClaims}/related-cases/${disputeType}`)
     return response.data
   },
 }
