@@ -15,6 +15,7 @@ export default function LawyerFinderPage() {
   const [totalCount, setTotalCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
+  const [searchCenter, setSearchCenter] = useState<{ lat: number; lng: number } | null>(null)
 
   const {
     getCurrentPosition,
@@ -29,11 +30,16 @@ export default function LawyerFinderPage() {
     getCurrentPosition()
   }, [getCurrentPosition])
 
+  // 검색에 사용할 위치 (지도 드래그 위치 또는 GPS 위치)
+  const getSearchLocation = useCallback(() => {
+    return searchCenter || getEffectiveLocation()
+  }, [searchCenter, getEffectiveLocation])
+
   // 주변 변호사 검색
   const fetchNearbyLawyers = useCallback(async () => {
     if (!mapReady) return
 
-    const location = getEffectiveLocation()
+    const location = getSearchLocation()
     setLoading(true)
     setError(null)
 
@@ -54,7 +60,7 @@ export default function LawyerFinderPage() {
     } finally {
       setLoading(false)
     }
-  }, [getEffectiveLocation, radius, mapReady])
+  }, [getSearchLocation, radius, mapReady])
 
   // 위치 또는 반경 변경 시 검색
   useEffect(() => {
@@ -104,7 +110,21 @@ export default function LawyerFinderPage() {
     setMapReady(true)
   }
 
-  const center = getEffectiveLocation()
+  // 내 위치로 이동
+  const handleMyLocation = useCallback(() => {
+    setSearchCenter(null)  // 드래그 위치 초기화
+    getCurrentPosition()
+  }, [getCurrentPosition])
+
+  // 지도 드래그 완료 시 중심 변경
+  const handleCenterChange = useCallback((newCenter: { lat: number; lng: number }) => {
+    setSearchCenter(newCenter)
+  }, [])
+
+  const center = getSearchLocation()
+
+  // 실제 GPS 위치 (파란 마커용) - 항상 GPS 위치에 표시
+  const userLocation = hasLocation ? getEffectiveLocation() : null
 
   return (
     <div className="h-screen flex flex-col">
@@ -149,11 +169,14 @@ export default function LawyerFinderPage() {
           )}
           <KakaoMap
             center={center}
+            userLocation={userLocation}
             lawyers={lawyers}
             selectedLawyer={selectedLawyer}
             radius={radius}
             onMapReady={handleMapReady}
             onLawyerClick={handleLawyerSelect}
+            onMyLocationClick={handleMyLocation}
+            onCenterChange={handleCenterChange}
             showRadius={true}
           />
         </div>
