@@ -117,22 +117,23 @@ def search_lawyers(
     district: Optional[str] = None,
     limit: int = 50
 ) -> List[dict]:
-    """이름/사무소/지역으로 검색"""
+    """이름/사무소/지역으로 검색 (이름/사무소는 OR 조건, 지역은 AND 조건)"""
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
 
     results = []
 
     for idx, lawyer in enumerate(lawyers):
-        # 이름 검색
-        if name and name not in lawyer.get("name", ""):
-            continue
+        # 이름 또는 사무소 검색 (OR 조건)
+        if name or office:
+            name_match = name and name in lawyer.get("name", "")
+            office_match = office and office in (lawyer.get("office_name") or "")
 
-        # 사무소 검색
-        if office and office not in (lawyer.get("office_name") or ""):
-            continue
+            # 둘 다 제공된 경우 OR 조건, 하나만 제공된 경우 해당 조건만
+            if not (name_match or office_match):
+                continue
 
-        # 지역(구/군) 검색
+        # 지역(구/군) 검색 (AND 조건)
         if district:
             address = lawyer.get("address") or ""
             if district not in address:

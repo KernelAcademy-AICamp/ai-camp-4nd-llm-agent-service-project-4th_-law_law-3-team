@@ -53,3 +53,12 @@ export interface StatsResponse {
   crawled_at: string | null
   geocoded_at: string | null
 }
+
+// 사무소 정보 (지도 팝업용)
+export interface Office {
+  name: string
+  address: string | null
+  lat: number
+  lng: number
+  lawyers: Lawyer[]
+}
