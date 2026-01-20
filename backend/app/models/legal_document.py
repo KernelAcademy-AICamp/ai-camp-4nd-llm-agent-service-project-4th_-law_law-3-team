@@ -1,7 +1,7 @@
 """
 법률 문서 모델
 
-판례, 헌재결정례, 행정심판례, 법령해석례 통합 테이블
+판례, 헌재결정례, 행정심판례, 법령해석례, 위원회 결정문 통합 테이블
 """
 
 from datetime import datetime, date
@@ -29,6 +29,23 @@ class DocType(str, Enum):
     CONSTITUTIONAL = "constitutional"  # 헌재결정례
     ADMINISTRATION = "administration"  # 행정심판례
     LEGISLATION = "legislation"        # 법령해석례
+    COMMITTEE = "committee"            # 위원회 결정문
+
+
+# 위원회 코드 매핑 (source -> 위원회명)
+COMMITTEE_SOURCES = {
+    "ftc": "공정거래위원회",
+    "nhrck": "국가인권위원회",
+    "acrc": "국민권익위원회",
+    "ppc": "개인정보보호위원회",
+    "kcc": "방송통신위원회",
+    "fsc": "금융위원회",
+    "ecc": "중앙선거관리위원회",
+    "eiac": "환경분쟁조정위원회",
+    "sfc": "해양환경관리공단",
+    "iaciac": "산업재해보상보험심사위원회",
+    "oclt": "원자력안전위원회",
+}
 
 
 class LegalDocument(Base):
@@ -52,12 +69,19 @@ class LegalDocument(Base):
         String(20),
         nullable=False,
         index=True,
-        comment="문서 유형: precedent, constitutional, administration, legislation",
+        comment="문서 유형: precedent, constitutional, administration, legislation, committee",
     )
     serial_number = Column(
-        String(50),
+        String(100),
         nullable=False,
         comment="원본 일련번호 (판례정보일련번호 등)",
+    )
+    source = Column(
+        String(50),
+        nullable=False,
+        default="",
+        index=True,
+        comment="데이터 출처 (precedents, ftc, nhrck 등)",
     )
 
     # 사건 기본 정보
@@ -140,19 +164,23 @@ class LegalDocument(Base):
     # Constraints
     __table_args__ = (
         UniqueConstraint(
-            "doc_type", "serial_number",
-            name="uq_legal_docs_type_serial"
+            "doc_type", "serial_number", "source",
+            name="uq_legal_docs_type_serial_source"
         ),
         Index(
             "idx_legal_docs_search",
             "doc_type", "case_type", "court_name", "decision_date",
+        ),
+        Index(
+            "idx_legal_docs_source",
+            "source",
         ),
     )
 
     def __repr__(self) -> str:
         return (
             f"<LegalDocument(id={self.id}, type={self.doc_type}, "
-            f"case_number={self.case_number})>"
+            f"source={self.source}, case_number={self.case_number})>"
         )
 
     @property
@@ -178,11 +206,12 @@ class LegalDocument(Base):
         return "\n".join(parts)
 
     @classmethod
-    def from_precedent(cls, data: dict) -> "LegalDocument":
+    def from_precedent(cls, data: dict, source: str = "precedents") -> "LegalDocument":
         """판례 데이터에서 인스턴스 생성"""
         return cls(
             doc_type=DocType.PRECEDENT.value,
             serial_number=data.get("판례정보일련번호", ""),
+            source=source,
             case_name=data.get("사건명"),
             case_number=data.get("사건번호"),
             decision_date=cls._parse_date(data.get("선고일자")),
@@ -198,7 +227,7 @@ class LegalDocument(Base):
         )
 
     @classmethod
-    def from_constitutional(cls, data: dict) -> "LegalDocument":
+    def from_constitutional(cls, data: dict, source: str = "constitutional") -> "LegalDocument":
         """헌재결정례 데이터에서 인스턴스 생성"""
         # 참조조문 + 심판대상조문 결합
         ref_articles = "\n".join(filter(None, [
@@ -209,6 +238,7 @@ class LegalDocument(Base):
         return cls(
             doc_type=DocType.CONSTITUTIONAL.value,
             serial_number=data.get("헌재결정례일련번호", ""),
+            source=source,
             case_name=data.get("사건명"),
             case_number=data.get("사건번호"),
             decision_date=cls._parse_date(data.get("종국일자")),
@@ -222,11 +252,12 @@ class LegalDocument(Base):
         )
 
     @classmethod
-    def from_administration(cls, data: dict) -> "LegalDocument":
+    def from_administration(cls, data: dict, source: str = "administration") -> "LegalDocument":
         """행정심판례 데이터에서 인스턴스 생성"""
         return cls(
             doc_type=DocType.ADMINISTRATION.value,
             serial_number=data.get("행정심판례일련번호", ""),
+            source=source,
             case_name=data.get("사건명"),
             case_number=data.get("사건번호"),
             decision_date=cls._parse_date(data.get("의결일자")),
@@ -239,7 +270,7 @@ class LegalDocument(Base):
         )
 
     @classmethod
-    def from_legislation(cls, data: dict) -> "LegalDocument":
+    def from_legislation(cls, data: dict, source: str = "legislation") -> "LegalDocument":
         """법령해석례 데이터에서 인스턴스 생성"""
         # 회답 + 이유 결합
         reasoning = "\n\n".join(filter(None, [
@@ -250,12 +281,57 @@ class LegalDocument(Base):
         return cls(
             doc_type=DocType.LEGISLATION.value,
             serial_number=data.get("법령해석례일련번호", ""),
+            source=source,
             case_name=data.get("안건명"),
             case_number=data.get("안건번호"),
             decision_date=cls._parse_date(data.get("등록일시")),
             court_name=data.get("해석기관명"),
             summary=data.get("질의요지"),
             reasoning=reasoning if reasoning else None,
+            raw_data=data,
+        )
+
+    @classmethod
+    def from_committee(cls, data: dict, source: str) -> "LegalDocument":
+        """위원회 결정문 데이터에서 인스턴스 생성
+
+        Args:
+            data: 위원회 결정문 JSON 데이터
+            source: 위원회 출처 코드 (ftc, nhrck, ppc 등)
+        """
+        # 위원회명 결정 (source 코드에서 매핑)
+        court_name = COMMITTEE_SOURCES.get(source, source)
+
+        # 결정요지 또는 판단요지
+        summary = data.get("결정요지") or data.get("판단요지") or data.get("주문", "")
+
+        # 이유 또는 의결문
+        reasoning = data.get("이유") or data.get("의결문", "")
+
+        # 사건번호 (다양한 필드명 대응)
+        case_number = data.get("사건번호") or data.get("결정번호", "")
+
+        # 사건명
+        case_name = data.get("사건명", "")
+        if case_name == "null":
+            case_name = ""
+
+        # 의결일자 / 결정일자
+        decision_date_str = data.get("의결일자") or data.get("결정일자", "")
+
+        return cls(
+            doc_type=DocType.COMMITTEE.value,
+            serial_number=data.get("결정문일련번호", ""),
+            source=source,
+            case_name=case_name,
+            case_number=case_number,
+            decision_date=cls._parse_date(decision_date_str),
+            court_name=court_name,
+            court_type=data.get("회의종류") or data.get("문서유형", ""),
+            summary=summary,
+            reasoning=reasoning,
+            full_text=data.get("별지", ""),
+            claim=data.get("신청취지", ""),
             raw_data=data,
         )
 

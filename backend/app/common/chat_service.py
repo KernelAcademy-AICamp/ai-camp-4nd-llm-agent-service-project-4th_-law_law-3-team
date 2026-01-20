@@ -8,9 +8,12 @@ from typing import List, Optional
 from pathlib import Path
 
 from openai import OpenAI
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.common.vectorstore import VectorStore
+from app.common.database import sync_session_factory
+from app.models.legal_document import LegalDocument
 
 
 # 로컬 임베딩 모델 (lazy loading)
@@ -49,6 +52,38 @@ def create_query_embedding(query: str) -> List[float]:
         return response.data[0].embedding
 
 
+def _fetch_document_texts(doc_ids: List[int], chunk_positions: dict) -> dict:
+    """
+    PostgreSQL에서 문서 원문을 가져와 청크 텍스트 추출
+
+    Args:
+        doc_ids: 문서 ID 목록
+        chunk_positions: {doc_id: [(chunk_start, chunk_end), ...]}
+
+    Returns:
+        {chunk_key: chunk_text}
+    """
+    if not doc_ids:
+        return {}
+
+    with sync_session_factory() as session:
+        result = session.execute(
+            select(LegalDocument).where(LegalDocument.id.in_(doc_ids))
+        )
+        docs = {doc.id: doc for doc in result.scalars().all()}
+
+    chunk_texts = {}
+    for doc_id, positions in chunk_positions.items():
+        doc = docs.get(doc_id)
+        if doc:
+            text = doc.embedding_text or ""
+            for start, end in positions:
+                key = f"{doc_id}_{start}_{end}"
+                chunk_texts[key] = text[start:end] if text else ""
+
+    return chunk_texts
+
+
 def search_relevant_documents(
     query: str,
     n_results: int = 5,
@@ -73,24 +108,56 @@ def search_relevant_documents(
     # 필터 조건
     where = {"doc_type": doc_type} if doc_type else None
 
-    # 검색
+    # 검색 (documents 없이 metadatas만)
     results = store.search(
         query_embedding=query_embedding,
         n_results=n_results,
         where=where,
+        include=["metadatas", "distances"],
     )
+
+    # 결과가 없으면 빈 목록 반환
+    if not results or not results.get("ids") or not results["ids"][0]:
+        return []
+
+    # doc_id와 청크 위치 수집
+    doc_ids = set()
+    chunk_positions = {}  # {doc_id: [(start, end), ...]}
+
+    for i, chunk_id in enumerate(results["ids"][0]):
+        metadata = results["metadatas"][0][i] if results.get("metadatas") else {}
+        doc_id = metadata.get("doc_id")
+        chunk_start = metadata.get("chunk_start", 0)
+        chunk_end = metadata.get("chunk_end", 0)
+
+        if doc_id:
+            doc_ids.add(doc_id)
+            if doc_id not in chunk_positions:
+                chunk_positions[doc_id] = []
+            chunk_positions[doc_id].append((chunk_start, chunk_end))
+
+    # PostgreSQL에서 원문 가져오기
+    chunk_texts = _fetch_document_texts(list(doc_ids), chunk_positions)
 
     # 결과 정리
     documents = []
-    if results and results.get("ids") and results["ids"][0]:
-        for i, doc_id in enumerate(results["ids"][0]):
-            doc = {
-                "id": doc_id,
-                "content": results["documents"][0][i] if results.get("documents") else "",
-                "metadata": results["metadatas"][0][i] if results.get("metadatas") else {},
-                "similarity": 1 - results["distances"][0][i] if results.get("distances") else 0,
-            }
-            documents.append(doc)
+    for i, chunk_id in enumerate(results["ids"][0]):
+        metadata = results["metadatas"][0][i] if results.get("metadatas") else {}
+        doc_id = metadata.get("doc_id")
+        chunk_start = metadata.get("chunk_start", 0)
+        chunk_end = metadata.get("chunk_end", 0)
+
+        # 청크 텍스트 가져오기
+        chunk_key = f"{doc_id}_{chunk_start}_{chunk_end}"
+        content = chunk_texts.get(chunk_key, "")
+
+        doc = {
+            "id": chunk_id,
+            "content": content,
+            "metadata": metadata,
+            "similarity": 1 - results["distances"][0][i] if results.get("distances") else 0,
+        }
+        documents.append(doc)
 
     return documents
 

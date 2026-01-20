@@ -32,6 +32,8 @@ from sqlalchemy import select, func
 from app.common.database import async_session_factory
 from app.common.vectorstore import VectorStore
 from app.models.legal_document import LegalDocument, DocType
+from app.models.law import Law
+from app.models.legal_reference import LegalReference, RefType
 
 
 async def validate_postgresql() -> dict:
@@ -41,97 +43,120 @@ async def validate_postgresql() -> dict:
     Returns:
         검증 결과 딕셔너리
     """
-    print("\n" + "="*50)
+    print("\n" + "="*60)
     print("PostgreSQL Validation")
-    print("="*50)
+    print("="*60)
 
     stats = {
-        "total_records": 0,
-        "by_type": {},
-        "null_serial_numbers": 0,
-        "empty_content": 0,
-        "missing_dates": 0,
+        "legal_documents": {},
+        "laws": {},
+        "legal_references": {},
         "issues": [],
     }
 
     async with async_session_factory() as session:
-        # 전체 카운트
-        total_result = await session.execute(
+        # =========================================================
+        # 1. LegalDocument 검증
+        # =========================================================
+        print("\n[LegalDocument Table]")
+
+        total_docs = await session.execute(
             select(func.count(LegalDocument.id))
         )
-        stats["total_records"] = total_result.scalar() or 0
-        print(f"Total records: {stats['total_records']:,}")
+        doc_count = total_docs.scalar() or 0
+        stats["legal_documents"]["total"] = doc_count
+        print(f"  Total records: {doc_count:,}")
 
-        # 타입별 카운트
-        type_result = await session.execute(
+        # doc_type + source 별 카운트
+        type_source_result = await session.execute(
             select(
                 LegalDocument.doc_type,
+                LegalDocument.source,
                 func.count(LegalDocument.id)
-            ).group_by(LegalDocument.doc_type)
+            ).group_by(LegalDocument.doc_type, LegalDocument.source)
         )
 
-        print("\nBy type:")
-        for doc_type, count in type_result.fetchall():
-            stats["by_type"][doc_type] = count
-            print(f"  - {doc_type}: {count:,}")
+        print("  By type and source:")
+        by_type_source = {}
+        for doc_type, source, count in type_source_result.fetchall():
+            key = f"{doc_type}/{source}"
+            by_type_source[key] = count
+            print(f"    - {key}: {count:,}")
+        stats["legal_documents"]["by_type_source"] = by_type_source
 
-        # NULL serial_number 체크
-        null_serial = await session.execute(
-            select(func.count(LegalDocument.id)).where(
-                LegalDocument.serial_number == None
-            )
-        )
-        stats["null_serial_numbers"] = null_serial.scalar() or 0
-
-        if stats["null_serial_numbers"] > 0:
-            stats["issues"].append(
-                f"NULL serial_number: {stats['null_serial_numbers']} records"
-            )
-            print(f"\n[WARN] NULL serial_number: {stats['null_serial_numbers']}")
-
-        # 빈 콘텐츠 체크 (summary와 reasoning 둘 다 없는 경우)
+        # 빈 콘텐츠 체크
         empty_content = await session.execute(
             select(func.count(LegalDocument.id)).where(
                 (LegalDocument.summary == None) &
                 (LegalDocument.reasoning == None)
             )
         )
-        stats["empty_content"] = empty_content.scalar() or 0
+        empty_count = empty_content.scalar() or 0
+        stats["legal_documents"]["empty_content"] = empty_count
+        if empty_count > 0:
+            stats["issues"].append(f"LegalDocument: {empty_count} records with empty content")
+            print(f"  [WARN] Empty content: {empty_count}")
 
-        if stats["empty_content"] > 0:
-            stats["issues"].append(
-                f"Empty content (no summary/reasoning): {stats['empty_content']} records"
-            )
-            print(f"[WARN] Empty content: {stats['empty_content']}")
+        # =========================================================
+        # 2. Law 검증
+        # =========================================================
+        print("\n[Law Table]")
 
-        # 날짜 누락 체크
-        missing_date = await session.execute(
-            select(func.count(LegalDocument.id)).where(
-                LegalDocument.decision_date == None
-            )
+        total_laws = await session.execute(
+            select(func.count(Law.id))
         )
-        stats["missing_dates"] = missing_date.scalar() or 0
-        print(f"[INFO] Missing decision_date: {stats['missing_dates']}")
+        law_count = total_laws.scalar() or 0
+        stats["laws"]["total"] = law_count
+        print(f"  Total records: {law_count:,}")
 
-        # 중복 체크
-        duplicate_result = await session.execute(
+        # law_type 별 카운트
+        law_type_result = await session.execute(
             select(
-                LegalDocument.doc_type,
-                LegalDocument.serial_number,
-                func.count(LegalDocument.id).label("cnt")
-            ).group_by(
-                LegalDocument.doc_type,
-                LegalDocument.serial_number
-            ).having(func.count(LegalDocument.id) > 1)
+                Law.law_type,
+                func.count(Law.id)
+            ).group_by(Law.law_type)
         )
 
-        duplicates = duplicate_result.fetchall()
-        if duplicates:
-            stats["duplicates"] = len(duplicates)
-            stats["issues"].append(f"Duplicate records: {len(duplicates)}")
-            print(f"\n[WARN] Duplicate records found: {len(duplicates)}")
-            for dt, sn, cnt in duplicates[:5]:
-                print(f"  - {dt}/{sn}: {cnt} copies")
+        print("  By law_type:")
+        by_law_type = {}
+        for law_type, count in law_type_result.fetchall():
+            by_law_type[law_type or "unknown"] = count
+            print(f"    - {law_type or 'unknown'}: {count:,}")
+        stats["laws"]["by_type"] = by_law_type
+
+        # =========================================================
+        # 3. LegalReference 검증
+        # =========================================================
+        print("\n[LegalReference Table]")
+
+        total_refs = await session.execute(
+            select(func.count(LegalReference.id))
+        )
+        ref_count = total_refs.scalar() or 0
+        stats["legal_references"]["total"] = ref_count
+        print(f"  Total records: {ref_count:,}")
+
+        # ref_type 별 카운트
+        ref_type_result = await session.execute(
+            select(
+                LegalReference.ref_type,
+                func.count(LegalReference.id)
+            ).group_by(LegalReference.ref_type)
+        )
+
+        print("  By ref_type:")
+        by_ref_type = {}
+        for ref_type, count in ref_type_result.fetchall():
+            by_ref_type[ref_type] = count
+            print(f"    - {ref_type}: {count:,}")
+        stats["legal_references"]["by_type"] = by_ref_type
+
+        # =========================================================
+        # 총계
+        # =========================================================
+        grand_total = doc_count + law_count + ref_count
+        stats["grand_total"] = grand_total
+        print(f"\n  GRAND TOTAL: {grand_total:,}")
 
     return stats
 
@@ -143,48 +168,75 @@ def validate_chromadb() -> dict:
     Returns:
         검증 결과 딕셔너리
     """
-    print("\n" + "="*50)
+    print("\n" + "="*60)
     print("ChromaDB Validation")
-    print("="*50)
+    print("="*60)
 
     stats = {
-        "total_embeddings": 0,
-        "by_type": {},
+        "total_chunks": 0,
+        "by_doc_type": {},
+        "by_source": {},
+        "unique_documents": 0,
         "issues": [],
     }
 
     try:
         store = VectorStore()
-        stats["total_embeddings"] = store.count()
-        print(f"Total embeddings: {stats['total_embeddings']:,}")
+        stats["total_chunks"] = store.count()
+        print(f"Total chunks: {stats['total_chunks']:,}")
 
-        # 타입별 카운트
-        print("\nBy type:")
+        # doc_type 별 카운트
+        print("\nBy doc_type:")
+        unique_doc_ids = set()
+
         for doc_type in DocType:
             try:
                 results = store.collection.get(
                     where={"doc_type": doc_type.value},
-                    include=[]
+                    include=["metadatas"]
                 )
-                count = len(results["ids"]) if results["ids"] else 0
-                stats["by_type"][doc_type.value] = count
-                print(f"  - {doc_type.value}: {count:,}")
+                chunk_count = len(results["ids"]) if results["ids"] else 0
+                stats["by_doc_type"][doc_type.value] = chunk_count
+
+                # 고유 문서 ID 수집
+                if results["metadatas"]:
+                    doc_ids = set(m.get("doc_id") for m in results["metadatas"] if m.get("doc_id"))
+                    unique_doc_ids.update(doc_ids)
+                    print(f"  - {doc_type.value}: {chunk_count:,} chunks from {len(doc_ids):,} documents")
+                else:
+                    print(f"  - {doc_type.value}: {chunk_count:,} chunks")
             except Exception as e:
                 stats["issues"].append(f"Error counting {doc_type.value}: {e}")
                 print(f"  - {doc_type.value}: [ERROR] {e}")
 
-        # 샘플 데이터 검증
-        if stats["total_embeddings"] > 0:
+        stats["unique_documents"] = len(unique_doc_ids)
+        print(f"\nUnique documents with embeddings: {stats['unique_documents']:,}")
+
+        # 위원회별 source 카운트
+        print("\nBy source (for committee):")
+        try:
+            results = store.collection.get(
+                where={"doc_type": "committee"},
+                include=["metadatas"]
+            )
+            if results["metadatas"]:
+                source_counts = {}
+                for m in results["metadatas"]:
+                    source = m.get("source", "unknown")
+                    source_counts[source] = source_counts.get(source, 0) + 1
+                stats["by_source"] = source_counts
+                for source, count in sorted(source_counts.items()):
+                    print(f"  - {source}: {count:,} chunks")
+        except Exception:
+            pass
+
+        # 임베딩 차원 검증
+        if stats["total_chunks"] > 0:
             sample = store.collection.get(limit=1, include=["embeddings"])
             if sample["embeddings"]:
                 embedding_dim = len(sample["embeddings"][0])
+                stats["embedding_dimension"] = embedding_dim
                 print(f"\nEmbedding dimension: {embedding_dim}")
-
-                # text-embedding-3-small은 1536 차원
-                if embedding_dim != 1536:
-                    stats["issues"].append(
-                        f"Unexpected embedding dimension: {embedding_dim} (expected 1536)"
-                    )
 
     except Exception as e:
         stats["issues"].append(f"ChromaDB connection error: {e}")
@@ -197,12 +249,14 @@ async def validate_consistency() -> dict:
     """
     PostgreSQL과 ChromaDB 간 일관성 검증
 
+    청크 기반 임베딩이므로 doc_id를 기준으로 비교
+
     Returns:
         검증 결과 딕셔너리
     """
-    print("\n" + "="*50)
-    print("Consistency Validation")
-    print("="*50)
+    print("\n" + "="*60)
+    print("Consistency Validation (Document Level)")
+    print("="*60)
 
     stats = {
         "pg_only": 0,      # PostgreSQL에만 있는 문서
@@ -211,56 +265,51 @@ async def validate_consistency() -> dict:
         "issues": [],
     }
 
-    # PostgreSQL IDs 수집
-    pg_ids: Set[str] = set()
+    # PostgreSQL doc IDs 수집
+    pg_doc_ids: Set[int] = set()
     async with async_session_factory() as session:
         result = await session.execute(
-            select(LegalDocument.doc_type, LegalDocument.serial_number)
+            select(LegalDocument.id)
         )
-        for doc_type, serial_number in result.fetchall():
-            pg_ids.add(f"{doc_type}_{serial_number}")
+        for (doc_id,) in result.fetchall():
+            pg_doc_ids.add(doc_id)
 
-    print(f"PostgreSQL documents: {len(pg_ids):,}")
+    print(f"PostgreSQL documents: {len(pg_doc_ids):,}")
 
-    # ChromaDB IDs 수집
+    # ChromaDB doc IDs 수집 (청크의 doc_id 메타데이터에서)
     try:
         store = VectorStore()
-        chroma_result = store.collection.get(include=[])
-        chroma_ids = set(chroma_result["ids"]) if chroma_result["ids"] else set()
-        print(f"ChromaDB embeddings: {len(chroma_ids):,}")
+        chroma_result = store.collection.get(include=["metadatas"])
+        chroma_doc_ids: Set[int] = set()
+        if chroma_result["metadatas"]:
+            for m in chroma_result["metadatas"]:
+                doc_id = m.get("doc_id")
+                if doc_id is not None:
+                    chroma_doc_ids.add(doc_id)
+        print(f"ChromaDB unique documents: {len(chroma_doc_ids):,}")
     except Exception as e:
         print(f"[ERROR] ChromaDB error: {e}")
         stats["issues"].append(f"ChromaDB error: {e}")
         return stats
 
     # 비교
-    stats["pg_only"] = len(pg_ids - chroma_ids)
-    stats["chroma_only"] = len(chroma_ids - pg_ids)
-    stats["matched"] = len(pg_ids & chroma_ids)
+    stats["pg_only"] = len(pg_doc_ids - chroma_doc_ids)
+    stats["chroma_only"] = len(chroma_doc_ids - pg_doc_ids)
+    stats["matched"] = len(pg_doc_ids & chroma_doc_ids)
 
     print(f"\nMatched: {stats['matched']:,}")
-    print(f"PostgreSQL only: {stats['pg_only']:,}")
-    print(f"ChromaDB only: {stats['chroma_only']:,}")
+    print(f"PostgreSQL only (need embedding): {stats['pg_only']:,}")
+    print(f"ChromaDB only (orphan): {stats['chroma_only']:,}")
 
     if stats["pg_only"] > 0:
         stats["issues"].append(
-            f"{stats['pg_only']} documents in PostgreSQL but not in ChromaDB"
+            f"{stats['pg_only']} documents in PostgreSQL need embeddings"
         )
-        # 샘플 출력
-        missing_in_chroma = list(pg_ids - chroma_ids)[:5]
-        print("\nSample documents missing in ChromaDB:")
-        for doc_id in missing_in_chroma:
-            print(f"  - {doc_id}")
 
     if stats["chroma_only"] > 0:
         stats["issues"].append(
-            f"{stats['chroma_only']} embeddings in ChromaDB but not in PostgreSQL"
+            f"{stats['chroma_only']} orphan embeddings in ChromaDB"
         )
-        # 샘플 출력
-        orphan_embeddings = list(chroma_ids - pg_ids)[:5]
-        print("\nSample orphan embeddings in ChromaDB:")
-        for doc_id in orphan_embeddings:
-            print(f"  - {doc_id}")
 
     return stats
 
@@ -269,43 +318,55 @@ async def fix_consistency():
     """
     PostgreSQL과 ChromaDB 간 불일치 수정
 
-    - ChromaDB에만 있는 고아 임베딩 삭제
+    - ChromaDB에만 있는 고아 청크 삭제
     """
-    print("\n" + "="*50)
+    print("\n" + "="*60)
     print("Fixing Consistency Issues")
-    print("="*50)
+    print("="*60)
 
-    # PostgreSQL IDs 수집
-    pg_ids: Set[str] = set()
+    # PostgreSQL doc IDs 수집
+    pg_doc_ids: Set[int] = set()
     async with async_session_factory() as session:
         result = await session.execute(
-            select(LegalDocument.doc_type, LegalDocument.serial_number)
+            select(LegalDocument.id)
         )
-        for doc_type, serial_number in result.fetchall():
-            pg_ids.add(f"{doc_type}_{serial_number}")
+        for (doc_id,) in result.fetchall():
+            pg_doc_ids.add(doc_id)
 
-    # ChromaDB IDs 수집
+    # ChromaDB에서 고아 청크 찾기
     store = VectorStore()
-    chroma_result = store.collection.get(include=[])
-    chroma_ids = set(chroma_result["ids"]) if chroma_result["ids"] else set()
+    chroma_result = store.collection.get(include=["metadatas"])
 
-    # 고아 임베딩 삭제
-    orphan_ids = list(chroma_ids - pg_ids)
+    orphan_chunk_ids = []
+    if chroma_result["ids"] and chroma_result["metadatas"]:
+        for chunk_id, metadata in zip(chroma_result["ids"], chroma_result["metadatas"]):
+            doc_id = metadata.get("doc_id")
+            if doc_id is not None and doc_id not in pg_doc_ids:
+                orphan_chunk_ids.append(chunk_id)
 
-    if orphan_ids:
-        print(f"[INFO] Deleting {len(orphan_ids)} orphan embeddings...")
+    if orphan_chunk_ids:
+        print(f"[INFO] Deleting {len(orphan_chunk_ids)} orphan chunks...")
         # 배치로 삭제
         batch_size = 1000
-        for i in range(0, len(orphan_ids), batch_size):
-            batch = orphan_ids[i:i + batch_size]
+        for i in range(0, len(orphan_chunk_ids), batch_size):
+            batch = orphan_chunk_ids[i:i + batch_size]
             store.delete_by_ids(batch)
-            print(f"  Deleted {min(i + batch_size, len(orphan_ids))}/{len(orphan_ids)}")
-        print("[DONE] Orphan embeddings deleted")
+            print(f"  Deleted {min(i + batch_size, len(orphan_chunk_ids))}/{len(orphan_chunk_ids)}")
+        print("[DONE] Orphan chunks deleted")
     else:
-        print("[INFO] No orphan embeddings found")
+        print("[INFO] No orphan chunks found")
 
     # PostgreSQL에만 있는 문서는 create_embeddings.py로 임베딩 생성 필요
-    missing_count = len(pg_ids - chroma_ids)
+    store = VectorStore()
+    chroma_result = store.collection.get(include=["metadatas"])
+    chroma_doc_ids: Set[int] = set()
+    if chroma_result["metadatas"]:
+        for m in chroma_result["metadatas"]:
+            doc_id = m.get("doc_id")
+            if doc_id is not None:
+                chroma_doc_ids.add(doc_id)
+
+    missing_count = len(pg_doc_ids - chroma_doc_ids)
     if missing_count > 0:
         print(f"\n[INFO] {missing_count} documents need embeddings")
         print("Run: uv run python scripts/create_embeddings.py")
@@ -331,13 +392,13 @@ async def main_async(args):
         all_stats["consistency"] = consistency_stats
         issues.extend(consistency_stats.get("issues", []))
 
-        if args.fix and consistency_stats["chroma_only"] > 0:
+        if args.fix and (consistency_stats["chroma_only"] > 0):
             await fix_consistency()
 
     # 최종 결과
-    print("\n" + "="*50)
+    print("\n" + "="*60)
     print("Validation Summary")
-    print("="*50)
+    print("="*60)
 
     if issues:
         print(f"\n[WARN] Found {len(issues)} issue(s):")
@@ -366,7 +427,7 @@ def main():
     parser.add_argument(
         "--fix",
         action="store_true",
-        help="불일치 데이터 수정 (고아 임베딩 삭제)"
+        help="불일치 데이터 수정 (고아 청크 삭제)"
     )
 
     args = parser.parse_args()

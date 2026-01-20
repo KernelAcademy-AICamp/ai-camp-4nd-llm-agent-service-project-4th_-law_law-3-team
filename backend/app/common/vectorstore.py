@@ -86,7 +86,7 @@ class VectorStore:
     def add_documents(
         self,
         ids: List[str],
-        documents: List[str],
+        documents: Optional[List[str]] = None,
         metadatas: Optional[List[dict]] = None,
         embeddings: Optional[List[List[float]]] = None,
     ) -> None:
@@ -95,16 +95,20 @@ class VectorStore:
 
         Args:
             ids: 문서 ID 목록
-            documents: 문서 텍스트 목록
+            documents: 문서 텍스트 목록 (선택 - 용량 최적화 시 None)
             metadatas: 메타데이터 목록 (필터링용)
             embeddings: 임베딩 벡터 목록 (없으면 ChromaDB 기본 임베딩 사용)
         """
-        self.collection.add(
-            ids=ids,
-            documents=documents,
-            metadatas=metadatas,
-            embeddings=embeddings,
-        )
+        kwargs = {
+            "ids": ids,
+            "metadatas": metadatas,
+            "embeddings": embeddings,
+        }
+        # documents가 제공된 경우에만 추가 (용량 최적화)
+        if documents is not None:
+            kwargs["documents"] = documents
+
+        self.collection.add(**kwargs)
 
     def search(
         self,
