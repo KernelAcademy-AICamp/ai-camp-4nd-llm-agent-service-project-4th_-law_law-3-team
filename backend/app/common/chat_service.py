@@ -1,18 +1,21 @@
 """
 RAG 기반 법률 챗봇 서비스
 
-VectorStore에서 관련 문서를 검색하고 OpenAI로 응답 생성
+VectorStore에서 관련 문서를 검색하고 LLM으로 응답 생성
+LangChain/LangGraph 호환 구조
 """
 
 from typing import List, Optional
 from pathlib import Path
 
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from openai import OpenAI
 from sqlalchemy import select
 
 from app.core.config import settings
 from app.common.vectorstore import VectorStore
 from app.common.database import sync_session_factory
+from app.common.llm import get_chat_model
 from app.models.legal_document import LegalDocument
 
 
@@ -215,16 +218,18 @@ def generate_chat_response(
 
     context = "\n".join(context_parts)
 
-    # 3. 메시지 구성
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # 3. LangChain 메시지 구성
+    messages = [SystemMessage(content=SYSTEM_PROMPT)]
 
     # 이전 대화 기록 추가
     if chat_history:
         for msg in chat_history[-10:]:  # 최근 10개만
-            messages.append({
-                "role": msg.get("role", "user"),
-                "content": msg.get("content", ""),
-            })
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "user":
+                messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                messages.append(AIMessage(content=content))
 
     # 사용자 메시지 + 컨텍스트
     user_prompt = f"""사용자 질문: {user_message}
@@ -236,19 +241,13 @@ def generate_chat_response(
 
 위 참고 자료를 바탕으로 사용자의 질문에 답변해주세요."""
 
-    messages.append({"role": "user", "content": user_prompt})
+    messages.append(HumanMessage(content=user_prompt))
 
-    # 4. OpenAI API 호출
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    # 4. LLM 호출 (LangChain ChatModel)
+    llm = get_chat_model(temperature=0.7)
+    response = llm.invoke(messages)
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",  # 비용 효율적인 모델
-        messages=messages,
-        temperature=0.7,
-        max_tokens=1000,
-    )
-
-    assistant_message = response.choices[0].message.content
+    assistant_message = response.content
 
     # 5. 결과 반환
     sources = [

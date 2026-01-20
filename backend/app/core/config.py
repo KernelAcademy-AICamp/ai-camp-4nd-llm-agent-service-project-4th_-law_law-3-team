@@ -30,7 +30,21 @@ class Settings(BaseSettings):
     # API Keys
     KAKAO_MAP_API_KEY: str = ""
     KAKAO_REST_API_KEY: str = ""
+
+    # LLM 설정
+    LLM_PROVIDER: str = "openai"  # openai, anthropic, google
+
+    # OpenAI
     OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+
+    # Anthropic (Claude)
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
+
+    # Google (Gemini)
+    GOOGLE_API_KEY: str = ""
+    GOOGLE_MODEL: str = "gemini-3-flash-preview"
 
     # Vector DB 선택 (chroma, qdrant)
     VECTOR_DB: str = "chroma"
