@@ -1,32 +1,31 @@
 import { api, endpoints } from '@/lib/api'
-
-interface StoryboardEvent {
-  date: string
-  description: string
-}
+import type {
+  ExtractTimelineResponse,
+  TimelineData,
+  ValidateTimelineResponse,
+} from '../types'
 
 export const storyboardService = {
-  generateStoryboard: async (title: string, events: StoryboardEvent[]) => {
-    const response = await api.post(`${endpoints.storyboard}/generate`, {
-      title,
-      events,
-    })
+  /**
+   * 텍스트에서 타임라인 자동 추출
+   */
+  extractTimeline: async (text: string): Promise<ExtractTimelineResponse> => {
+    const response = await api.post<ExtractTimelineResponse>(
+      `${endpoints.storyboard}/extract`,
+      { text }
+    )
     return response.data
   },
 
-  getStoryboard: async (storyboardId: string) => {
-    const response = await api.get(`${endpoints.storyboard}/${storyboardId}`)
-    return response.data
-  },
-
-  regeneratePanel: async (
-    storyboardId: string,
-    panelIndex: number,
-    newPrompt: string
-  ) => {
-    const response = await api.post(
-      `${endpoints.storyboard}/${storyboardId}/regenerate-panel`,
-      { panel_index: panelIndex, new_prompt: newPrompt }
+  /**
+   * JSON 데이터 유효성 검사
+   */
+  validateTimeline: async (
+    timeline: TimelineData
+  ): Promise<ValidateTimelineResponse> => {
+    const response = await api.post<ValidateTimelineResponse>(
+      `${endpoints.storyboard}/validate`,
+      { timeline }
     )
     return response.data
   },

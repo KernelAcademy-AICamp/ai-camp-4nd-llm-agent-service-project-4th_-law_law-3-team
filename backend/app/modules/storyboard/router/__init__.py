@@ -1,37 +1,44 @@
-"""
-스토리보드 모듈 - 타임라인 기반 스토리보드 생성
-이미지 생성 AI를 활용하여 사건 내용을 시각화
-"""
-from fastapi import APIRouter
-from typing import List
+"""스토리보드 모듈 - 사건 타임라인 시각화 API"""
+from fastapi import APIRouter, HTTPException
+
+from ..schema import (
+    ExtractTimelineRequest,
+    ExtractTimelineResponse,
+    ValidateTimelineRequest,
+)
+from ..service import extract_timeline_from_text, validate_timeline_data
 
 router = APIRouter()
 
 
-@router.post("/generate")
-async def generate_storyboard(
-    title: str,
-    events: List[dict],
-):
-    """타임라인 기반 스토리보드 생성"""
-    return {
-        "title": title,
-        "storyboard_id": "generated_id",
-        "panels": [],
-    }
+@router.post("/extract", response_model=ExtractTimelineResponse)
+async def extract_timeline(request: ExtractTimelineRequest):
+    """
+    텍스트에서 타임라인 자동 추출
+
+    OpenAI API를 사용하여 사건 내용에서 시간순 이벤트를 추출합니다.
+
+    - **text**: 사건 내용 텍스트 (최소 10자)
+    """
+    try:
+        result = await extract_timeline_from_text(request.text)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"타임라인 추출 실패: {str(e)}")
 
 
-@router.get("/{storyboard_id}")
-async def get_storyboard(storyboard_id: str):
-    """스토리보드 조회"""
-    return {"storyboard_id": storyboard_id}
+@router.post("/validate")
+async def validate_timeline(request: ValidateTimelineRequest):
+    """
+    가져온 JSON 데이터 유효성 검사
 
-
-@router.post("/{storyboard_id}/regenerate-panel")
-async def regenerate_panel(storyboard_id: str, panel_index: int, new_prompt: str):
-    """특정 패널 이미지 재생성"""
-    return {
-        "storyboard_id": storyboard_id,
-        "panel_index": panel_index,
-        "new_image_url": "",
-    }
+    클라이언트에서 파일을 로드한 후 서버에서 스키마 유효성을 검증합니다.
+    """
+    try:
+        is_valid = validate_timeline_data(request.timeline.model_dump())
+        return {
+            "valid": is_valid,
+            "message": "유효한 타임라인 데이터입니다" if is_valid else "잘못된 형식입니다",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"유효성 검사 실패: {str(e)}")
