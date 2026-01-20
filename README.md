@@ -194,7 +194,7 @@ RAG 기반 검색 및 로스쿨 학습 기능을 위한 법률 문서 데이터�
 data/law_data/
 ├── precedents_full.json       # 일반 판례 (분할: 1~5.json)
 ├── constitutional_full.json   # 헌법재판소 결정례
-├── administation_full.json    # 행정심판례
+├── administration_full.json   # 행정심판례
 └── legislation_full.json      # 법령해석례
 ```
 
