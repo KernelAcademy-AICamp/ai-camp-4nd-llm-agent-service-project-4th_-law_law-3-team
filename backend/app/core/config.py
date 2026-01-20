@@ -32,9 +32,17 @@ class Settings(BaseSettings):
     KAKAO_REST_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
 
-    # ChromaDB
+    # Vector DB 선택 (chroma, qdrant)
+    VECTOR_DB: str = "chroma"
+
+    # ChromaDB 설정
     CHROMA_PERSIST_DIR: str = "./data/chroma"
     CHROMA_COLLECTION_NAME: str = "legal_documents"
+
+    # Qdrant 설정 (VECTOR_DB=qdrant 일 때 사용)
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: str = ""  # Qdrant Cloud 사용 시
+    QDRANT_COLLECTION_NAME: str = "legal_documents"
 
     # Embedding
     EMBEDDING_MODEL: str = "text-embedding-3-small"
