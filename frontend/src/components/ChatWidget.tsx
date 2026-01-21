@@ -176,21 +176,8 @@ export default function ChatWidget() {
         setSessionData(response.data.session_data)
       }
 
-      // 응답 메시지 생성
-      let assistantContent = response.data.response
-
-      // 참고 자료가 있으면 추가 (마크다운 리스트 형식)
-      if (response.data.sources && response.data.sources.length > 0) {
-        const sourcesText = response.data.sources
-          .filter((s) => s.case_name || s.case_number)
-          .slice(0, 3)
-          .map((s) => `- ${s.case_name || '판례'} (${s.case_number})`)
-          .join('\n')
-
-        if (sourcesText) {
-          assistantContent += `\n\n**참고 판례:**\n\n${sourcesText}`
-        }
-      }
+      // 응답 메시지 생성 (참고 자료는 판례 검색 화면에서 표시)
+      const assistantContent = response.data.response
 
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),
