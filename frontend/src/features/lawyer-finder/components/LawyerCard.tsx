@@ -62,6 +62,25 @@ export function LawyerCard({ lawyer, selected, onClick }: LawyerCardProps) {
             <p className="text-xs text-gray-500 truncate mt-1">{lawyer.address}</p>
           )}
 
+          {/* 전문분야 태그 */}
+          {lawyer.specialties && lawyer.specialties.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {lawyer.specialties.slice(0, 3).map((spec) => (
+                <span
+                  key={spec}
+                  className="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded"
+                >
+                  {spec}
+                </span>
+              ))}
+              {lawyer.specialties.length > 3 && (
+                <span className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
+                  +{lawyer.specialties.length - 3}
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
             {lawyer.distance !== undefined && (
               <span className="text-blue-600 font-medium">

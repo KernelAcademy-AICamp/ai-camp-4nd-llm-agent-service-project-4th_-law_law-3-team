@@ -2,14 +2,111 @@
 import json
 from math import radians, cos, sin, asin, sqrt
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Set
 from functools import lru_cache
+
+# 전문분야 12대분류 (사용자에게는 이것만 표시)
+SPECIALTY_CATEGORIES: dict[str, dict] = {
+    "civil-family": {
+        "name": "민사·가사",
+        "icon": "👨‍👩‍👧",
+        "description": "개인 간 분쟁 / 가족 관계",
+        "specialties": ["민사법", "손해배상", "민사집행", "가사법", "이혼", "상속", "성년후견", "소년법"],
+    },
+    "criminal": {
+        "name": "형사",
+        "icon": "⚖️",
+        "description": "범죄, 수사, 재판",
+        "specialties": ["형사법", "군형법"],
+    },
+    "real-estate": {
+        "name": "부동산·건설",
+        "icon": "🏗️",
+        "description": "부동산 거래·개발·분쟁",
+        "specialties": ["부동산", "건설", "임대차관련법", "재개발·재건축", "수용 및 보상", "등기·경매"],
+    },
+    "labor": {
+        "name": "노동·산재",
+        "icon": "👷",
+        "description": "근로관계, 산업재해",
+        "specialties": ["노동법", "산재"],
+    },
+    "corporate": {
+        "name": "기업·상사",
+        "icon": "🏢",
+        "description": "기업 운영·거래·분쟁",
+        "specialties": ["회사법", "상사법", "인수합병", "영업비밀", "채권추심"],
+    },
+    "finance": {
+        "name": "금융·자본시장",
+        "icon": "💰",
+        "description": "금융 규제, 자본, 구조조정",
+        "specialties": ["금융", "증권", "보험", "도산"],
+    },
+    "tax": {
+        "name": "조세·관세",
+        "icon": "🧾",
+        "description": "세금·통관",
+        "specialties": ["조세법", "관세"],
+    },
+    "public": {
+        "name": "공정·행정·공공",
+        "icon": "🏛️",
+        "description": "국가·공공기관 상대 사건",
+        "specialties": ["공정거래", "국가계약", "행정법"],
+    },
+    "ip": {
+        "name": "지식재산(IP)",
+        "icon": "💡",
+        "description": "기술·콘텐츠 권리 보호",
+        "specialties": ["특허", "저작권"],
+    },
+    "it-media": {
+        "name": "IT·미디어·콘텐츠",
+        "icon": "📱",
+        "description": "플랫폼, 데이터, 콘텐츠 산업",
+        "specialties": ["IT", "언론·방송통신", "엔터테인먼트", "스포츠"],
+    },
+    "medical": {
+        "name": "의료·바이오·식품",
+        "icon": "🏥",
+        "description": "의료 분쟁 + 규제",
+        "specialties": ["의료", "식품·의약"],
+    },
+    "international": {
+        "name": "국제·해외",
+        "icon": "🌐",
+        "description": "국제 거래·분쟁·이동",
+        "specialties": ["국제관계법", "국제중재", "중재", "해외투자", "해상", "이주 및 비자"],
+    },
+}
+
+
+def get_specialties_by_category(category: str) -> Set[str]:
+    """카테고리 ID로 해당 카테고리의 전문분야 목록 조회"""
+    if category in SPECIALTY_CATEGORIES:
+        return set(SPECIALTY_CATEGORIES[category]["specialties"])
+    return set()
+
+
+def get_categories() -> List[dict]:
+    """12대분류 목록 반환 (프론트엔드 표시용)"""
+    return [
+        {
+            "id": cat_id,
+            "name": cat["name"],
+            "icon": cat["icon"],
+            "description": cat["description"],
+        }
+        for cat_id, cat in SPECIALTY_CATEGORIES.items()
+    ]
 
 # 데이터 파일 경로
 # __file__ = backend/app/modules/lawyer_finder/service/__init__.py
 # 6 parents up = law-3-team/ (프로젝트 루트)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
+LAWYERS_WITH_SPECIALTIES_FILE = DATA_DIR / "lawyers_with_specialties.json"
 LAWYERS_FILE = DATA_DIR / "lawyers_with_coords.json"
 FALLBACK_FILE = PROJECT_ROOT / "all_lawyers.json"
 
@@ -17,7 +114,12 @@ FALLBACK_FILE = PROJECT_ROOT / "all_lawyers.json"
 @lru_cache(maxsize=1)
 def load_lawyers_data() -> dict:
     """변호사 데이터 로드 (캐싱)"""
-    # 지오코딩된 파일 우선
+    # 전문분야 포함 파일 우선
+    if LAWYERS_WITH_SPECIALTIES_FILE.exists():
+        with open(LAWYERS_WITH_SPECIALTIES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    # 지오코딩된 파일
     if LAWYERS_FILE.exists():
         with open(LAWYERS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -28,6 +130,20 @@ def load_lawyers_data() -> dict:
             return json.load(f)
 
     return {"lawyers": [], "metadata": {}}
+
+
+def get_available_specialties() -> List[str]:
+    """사용 가능한 전문분야 목록 조회"""
+    data = load_lawyers_data()
+    lawyers = data.get("lawyers", [])
+
+    specialties_set: set[str] = set()
+    for lawyer in lawyers:
+        specs = lawyer.get("specialties", [])
+        if isinstance(specs, list):
+            specialties_set.update(specs)
+
+    return sorted(specialties_set)
 
 
 def haversine(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
@@ -59,19 +175,24 @@ def find_nearby_lawyers(
     latitude: float,
     longitude: float,
     radius_m: int = 5000,
-    limit: int = 50
+    limit: int = 50,
+    category: Optional[str] = None
 ) -> List[dict]:
     """
     반경 내 변호사 검색
 
     1단계: 바운딩 박스로 1차 필터링 (빠름)
     2단계: Haversine 공식으로 정확한 거리 계산
+    3단계: 전문분야 카테고리 필터링 (선택사항)
     """
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
 
     radius_km = radius_m / 1000
     min_lat, max_lat, min_lng, max_lng = get_bounding_box(latitude, longitude, radius_km)
+
+    # 카테고리에 해당하는 전문분야 목록
+    category_specs = get_specialties_by_category(category) if category else set()
 
     results = []
 
@@ -89,9 +210,19 @@ def find_nearby_lawyers(
 
         # 2차 필터: 정확한 거리 계산
         dist = haversine(longitude, latitude, lng, lat)
-        if dist <= radius_km:
-            lawyer_copy = {**lawyer, "id": idx, "distance": round(dist, 2)}
-            results.append(lawyer_copy)
+        if dist > radius_km:
+            continue
+
+        # 3차 필터: 카테고리 (해당 카테고리의 전문분야 중 하나라도 있으면 통과)
+        if category_specs:
+            lawyer_specs = lawyer.get("specialties", [])
+            if not isinstance(lawyer_specs, list):
+                continue
+            if not category_specs.intersection(lawyer_specs):
+                continue
+
+        lawyer_copy = {**lawyer, "id": idx, "distance": round(dist, 2)}
+        results.append(lawyer_copy)
 
     # 거리순 정렬
     results.sort(key=lambda x: x["distance"])
@@ -115,14 +246,24 @@ def search_lawyers(
     name: Optional[str] = None,
     office: Optional[str] = None,
     district: Optional[str] = None,
+    category: Optional[str] = None,
     latitude: Optional[float] = None,
     longitude: Optional[float] = None,
     radius_m: int = 5000,
     limit: int = 50
 ) -> List[dict]:
     """
-    이름/사무소/지역으로 검색 (이름/사무소는 OR 조건, 지역은 AND 조건)
-    위치 필터가 제공되면 해당 반경 내 결과만 반환
+    이름/사무소/지역/전문분야 카테고리로 검색
+
+    Args:
+        name: 이름 검색 (OR 조건)
+        office: 사무소명 검색 (OR 조건)
+        district: 지역(구/군) 검색 (AND 조건)
+        category: 전문분야 카테고리 ID (AND 조건)
+        latitude: 위치 필터링 위도
+        longitude: 위치 필터링 경도
+        radius_m: 반경 (미터)
+        limit: 최대 결과 수
 
     Raises:
         ValueError: latitude와 longitude 중 하나만 제공된 경우
@@ -147,6 +288,9 @@ def search_lawyers(
         radius_km = radius_m / 1000
         bbox = get_bounding_box(latitude, longitude, radius_km)
 
+    # 카테고리에 해당하는 전문분야 목록
+    category_specs = get_specialties_by_category(category) if category else set()
+
     results = []
 
     for idx, lawyer in enumerate(lawyers):
@@ -163,6 +307,14 @@ def search_lawyers(
         if district:
             address = lawyer.get("address") or ""
             if district not in address:
+                continue
+
+        # 전문분야 카테고리 검색 (AND 조건)
+        if category_specs:
+            lawyer_specs = lawyer.get("specialties", [])
+            if not isinstance(lawyer_specs, list):
+                continue
+            if not category_specs.intersection(lawyer_specs):
                 continue
 
         # 위치 필터링 (AND 조건)
