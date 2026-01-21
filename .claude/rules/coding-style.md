@@ -1,0 +1,352 @@
+# Coding Style Rules
+
+Claude는 모든 코드 작성 시 이 규칙들을 **항상(ALWAYS)** 따라야 합니다.
+
+## 1. 일반 원칙
+
+### 명확성 우선
+- 영리한 코드보다 **읽기 쉬운 코드** 작성
+- 복잡한 로직은 주석으로 의도 설명
+- 매직 넘버 금지 - 상수로 정의하고 의미 있는 이름 부여
+
+### 불변성(Immutability) 선호
+- 가능한 한 불변 데이터 구조 사용
+- Python: tuple, frozenset 우선 고려
+- JavaScript: const 기본 사용, let은 필요시만
+
+### 단일 책임 원칙
+- 함수는 하나의 일만 수행
+- 함수 길이: 30줄 이하 권장
+- 클래스는 명확한 단일 목적
+
+## 2. 네이밍 컨벤션
+
+### Python
+```python
+# 변수, 함수: snake_case
+user_name = "Alice"
+def calculate_loss(predictions, targets):
+    pass
+
+# 클래스: PascalCase
+class ModelTrainer:
+    pass
+
+# 상수: UPPER_SNAKE_CASE
+MAX_EPOCHS = 100
+LEARNING_RATE = 0.001
+
+# Private: _leading_underscore
+def _internal_helper():
+    pass
+```
+
+### JavaScript/TypeScript
+```typescript
+// 변수, 함수: camelCase
+const userName = "Alice";
+function calculateLoss(predictions: Tensor, targets: Tensor) {}
+
+// 클래스, 컴포넌트: PascalCase
+class ModelTrainer {}
+function UserProfile() {}
+
+// 상수: UPPER_SNAKE_CASE
+const MAX_RETRIES = 3;
+const API_BASE_URL = "https://api.example.com";
+
+// Private: #prefix (클래스 필드)
+class Example {
+  #privateField = 0;
+}
+```
+
+### 의미 있는 이름
+```python
+# ❌ Bad
+def process(d):
+    return d * 2
+
+# ✅ Good
+def double_learning_rate(learning_rate: float) -> float:
+    return learning_rate * 2
+```
+
+## 3. 파일 및 모듈 구조
+
+### Python 파일
+```python
+"""
+모듈 docstring: 파일의 목적 설명
+"""
+
+# 1. Standard library imports
+import os
+import sys
+from pathlib import Path
+
+# 2. Third-party imports
+import torch
+import numpy as np
+from langchain.agents import Agent
+
+# 3. Local imports
+from .models import CustomModel
+from .utils import load_config
+
+# 4. 상수 정의
+CONFIG_PATH = Path("config.yaml")
+DEFAULT_BATCH_SIZE = 32
+
+# 5. 클래스 및 함수 정의
+class Trainer:
+    """Trainer class docstring"""
+    pass
+
+def main():
+    """Main function"""
+    pass
+
+# 6. 실행 블록
+if __name__ == "__main__":
+    main()
+```
+
+### TypeScript/React 파일
+```typescript
+// 1. Type imports
+import type { NextPage } from 'next';
+import type { User } from '@/types';
+
+// 2. Library imports
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+
+// 3. Local imports
+import { Button } from '@/components/ui';
+import { fetchUser } from '@/lib/api';
+
+// 4. Constants
+const MAX_RETRIES = 3;
+
+// 5. Component
+export const UserProfile: React.FC<Props> = ({ userId }) => {
+  // ...
+};
+```
+
+### 파일 크기 제한
+- **Python**: 500줄 이하 권장, 800줄 초과 시 분리 고려
+- **TypeScript**: 400줄 이하 권장, 600줄 초과 시 분리 고려
+- **React 컴포넌트**: 200줄 이하 권장
+
+## 4. 주석 및 문서화
+
+### Docstring (Python)
+```python
+def train_model(
+    model: torch.nn.Module,
+    data_loader: DataLoader,
+    epochs: int = 10
+) -> dict[str, float]:
+    """
+    모델을 학습시킵니다.
+    
+    Args:
+        model: 학습할 PyTorch 모델
+        data_loader: 학습 데이터 로더
+        epochs: 학습 에포크 수 (기본값: 10)
+    
+    Returns:
+        학습 메트릭을 담은 딕셔너리
+        - loss: 최종 손실값
+        - accuracy: 최종 정확도
+    
+    Raises:
+        ValueError: epochs가 0 이하일 때
+    
+    Example:
+        >>> metrics = train_model(model, train_loader, epochs=5)
+        >>> print(metrics['accuracy'])
+        0.95
+    """
+    if epochs <= 0:
+        raise ValueError("epochs must be positive")
+    # ...
+```
+
+### JSDoc (TypeScript)
+```typescript
+/**
+ * 사용자 데이터를 가져옵니다.
+ * 
+ * @param userId - 사용자 ID
+ * @param options - 옵션 객체
+ * @returns 사용자 데이터 Promise
+ * @throws {ApiError} API 요청 실패 시
+ * 
+ * @example
+ * const user = await fetchUser('123');
+ */
+async function fetchUser(
+  userId: string,
+  options?: FetchOptions
+): Promise<User> {
+  // ...
+}
+```
+
+### 인라인 주석
+```python
+# ❌ Bad: 코드를 그대로 설명
+# x를 1 증가시킴
+x = x + 1
+
+# ✅ Good: 왜(Why) 설명
+# 배치 인덱스는 1부터 시작하므로 보정
+batch_idx = batch_idx + 1
+
+# ✅ Good: 복잡한 로직 설명
+# Attention mask를 적용하여 패딩 토큰이 loss 계산에 
+# 영향을 주지 않도록 함
+masked_loss = loss * attention_mask
+```
+
+## 5. 금지 사항
+
+### 절대 금지
+```python
+# ❌ 하드코딩된 비밀번호/API 키
+api_key = "sk-1234567890abcdef"
+
+# ❌ 디버그 코드 커밋
+print("DEBUG: user =", user)
+import pdb; pdb.set_trace()
+
+# ❌ 주석 처리된 코드 방치
+# def old_function():
+#     pass
+
+# ❌ TODO 없이 방치
+# TODO 나중에 수정
+```
+
+### 제한적 사용
+```python
+# ⚠️ 최소화: try-except 과다 사용
+try:
+    result = complex_operation()
+except Exception:  # ❌ 너무 광범위
+    pass
+
+# ✅ 구체적 예외 처리
+try:
+    result = complex_operation()
+except ValueError as e:
+    logger.error(f"Invalid value: {e}")
+    raise
+```
+
+## 6. 타입 힌팅
+
+### Python (Type Hints)
+```python
+# ✅ 항상 타입 힌트 사용
+from typing import List, Dict, Optional, Union
+
+def process_data(
+    data: List[Dict[str, float]],
+    threshold: float = 0.5
+) -> Optional[np.ndarray]:
+    """데이터 처리"""
+    if not data:
+        return None
+    # ...
+```
+
+### TypeScript
+```typescript
+// ✅ any 금지, unknown 또는 구체적 타입 사용
+// ❌ Bad
+function process(data: any) {}
+
+// ✅ Good
+function process<T extends Record<string, unknown>>(data: T) {}
+
+// ✅ Interface 정의
+interface TrainingConfig {
+  epochs: number;
+  batchSize: number;
+  learningRate?: number; // Optional
+}
+```
+
+## 7. 에러 처리
+
+### Python
+```python
+# ✅ 구체적 예외 처리
+try:
+    config = load_config(config_path)
+except FileNotFoundError:
+    logger.warning(f"Config not found at {config_path}, using defaults")
+    config = get_default_config()
+except yaml.YAMLError as e:
+    logger.error(f"Invalid YAML format: {e}")
+    raise
+
+# ✅ 커스텀 예외 정의
+class ModelLoadError(Exception):
+    """모델 로드 실패 시 발생하는 예외"""
+    pass
+```
+
+### TypeScript
+```typescript
+// ✅ Error 타입 명시
+try {
+  await fetchData();
+} catch (error) {
+  if (error instanceof ApiError) {
+    console.error('API Error:', error.message);
+  } else {
+    console.error('Unknown error:', error);
+  }
+}
+```
+
+## 8. 코드 포맷팅 도구
+
+### Python
+- **Black**: 자동 포맷팅 (line length: 88)
+- **isort**: import 정렬
+- **mypy**: 타입 체크
+```bash
+black .
+isort .
+mypy .
+```
+
+### TypeScript/JavaScript
+- **Prettier**: 자동 포맷팅
+- **ESLint**: 린팅
+```bash
+prettier --write .
+eslint --fix .
+```
+
+## 9. 코드 리뷰 체크리스트
+
+작업 완료 전 자가 점검:
+- [ ] 타입 힌트가 모든 함수에 있는가?
+- [ ] Docstring/JSDoc이 public 함수에 있는가?
+- [ ] 하드코딩된 값이 없는가?
+- [ ] 디버그 코드(print, console.log)가 없는가?
+- [ ] 매직 넘버가 상수로 정의되었는가?
+- [ ] 함수가 30줄 이하인가?
+- [ ] 변수명이 명확한가?
+- [ ] 불필요한 주석이 제거되었는가?
+
+---
+
+**중요**: 이 규칙들은 예외 없이 항상 적용됩니다. 규칙을 어길 합당한 이유가 있다면 주석으로 명시적으로 설명해야 합니다.
