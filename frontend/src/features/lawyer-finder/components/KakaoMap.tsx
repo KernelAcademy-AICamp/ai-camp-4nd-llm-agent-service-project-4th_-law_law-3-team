@@ -124,32 +124,44 @@ export function KakaoMap({
 
   // 지도 초기화
   useEffect(() => {
-    if (!containerRef.current || typeof window === 'undefined' || !window.kakao?.maps) {
-      return
-    }
+    if (!containerRef.current || typeof window === 'undefined') return
 
-    window.kakao.maps.load(() => {
-      if (!containerRef.current) return
-
-      const options: kakao.maps.MapOptions = {
-        center: new window.kakao.maps.LatLng(center.lat, center.lng),
-        level: 5,
+    const loadMap = () => {
+      // 카카오 맵 스크립트가 로드되었는지 확인
+      if (!window.kakao || !window.kakao.maps) {
+        // 아직 로드되지 않았으면 100ms 후 재시도
+        const timerId = setTimeout(loadMap, 100)
+        return () => clearTimeout(timerId)
       }
 
-      const map = new window.kakao.maps.Map(containerRef.current, options)
-      mapRef.current = map
+      window.kakao.maps.load(() => {
+        if (!containerRef.current) return
 
-      // 드래그 완료 시 중심 좌표 변경 콜백
-      window.kakao.maps.event.addListener(map, 'dragend', () => {
-        const newCenter = map.getCenter()
-        onCenterChangeRef.current?.({
-          lat: newCenter.getLat(),
-          lng: newCenter.getLng(),
+        const options: kakao.maps.MapOptions = {
+          center: new window.kakao.maps.LatLng(center.lat, center.lng),
+          level: 5,
+        }
+
+        const map = new window.kakao.maps.Map(containerRef.current, options)
+        mapRef.current = map
+
+        // 드래그 완료 시 중심 좌표 변경 콜백
+        window.kakao.maps.event.addListener(map, 'dragend', () => {
+          const newCenter = map.getCenter()
+          onCenterChangeRef.current?.({
+            lat: newCenter.getLat(),
+            lng: newCenter.getLng(),
+          })
         })
-      })
 
-      onMapReady?.(map)
-    })
+        onMapReady?.(map)
+      })
+    }
+
+    const cleanup = loadMap()
+    return () => {
+      if (typeof cleanup === 'function') cleanup()
+    }
   }, [])
 
   // 파란 펄스 마커 (userLocation 기준 - 실제 GPS 위치에서만 표시)

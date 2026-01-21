@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { Lawyer } from '../types'
+import { SPECIALTY_CATEGORIES, SPECIALTY_TO_CATEGORY } from '../constants'
 
 interface LawyerCardProps {
   lawyer: Lawyer
@@ -50,8 +51,49 @@ export function LawyerCard({ lawyer, selected, onClick }: LawyerCardProps) {
 
         {/* 정보 */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <h3 className="font-semibold text-gray-900 truncate">{lawyer.name}</h3>
+            
+            {/* 전문분야 태그 (이름 옆에 표시) */}
+            {lawyer.specialties && lawyer.specialties.length > 0 && (
+              <div className="flex gap-1">
+                {(() => {
+                  // 1. 전문분야 -> 대분류 ID 매핑 및 중복 제거
+                  const categoryIds = Array.from(new Set(
+                    lawyer.specialties
+                      .map(spec => SPECIALTY_TO_CATEGORY[spec])
+                      .filter(Boolean)
+                  ))
+
+                  // 2. 대분류 객체 찾기
+                  const categories = categoryIds
+                    .map(id => SPECIALTY_CATEGORIES.find(c => c.id === id))
+                    .filter((c): c is typeof SPECIALTY_CATEGORIES[0] => !!c)
+                    .slice(0, 3) // 최대 3개 대분류 표시 (공간 제약)
+
+                  // 3. 매핑된 대분류가 없으면 원본 표시 (Fallback)
+                  if (categories.length === 0) {
+                    return lawyer.specialties.slice(0, 2).map((spec) => (
+                      <span
+                        key={spec}
+                        className="px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 rounded border border-gray-200"
+                      >
+                        {spec}
+                      </span>
+                    ))
+                  }
+
+                  return categories.map((cat) => (
+                    <span
+                      key={cat.id}
+                      className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-100 rounded flex items-center gap-1"
+                    >
+                      {cat.name}
+                    </span>
+                  ))
+                })()}
+              </div>
+            )}
           </div>
 
           {lawyer.office_name && (
@@ -60,25 +102,6 @@ export function LawyerCard({ lawyer, selected, onClick }: LawyerCardProps) {
 
           {lawyer.address && (
             <p className="text-xs text-gray-500 truncate mt-1">{lawyer.address}</p>
-          )}
-
-          {/* 전문분야 태그 */}
-          {lawyer.specialties && lawyer.specialties.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {lawyer.specialties.slice(0, 3).map((spec) => (
-                <span
-                  key={spec}
-                  className="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded"
-                >
-                  {spec}
-                </span>
-              ))}
-              {lawyer.specialties.length > 3 && (
-                <span className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
-                  +{lawyer.specialties.length - 3}
-                </span>
-              )}
-            </div>
           )}
 
           <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
