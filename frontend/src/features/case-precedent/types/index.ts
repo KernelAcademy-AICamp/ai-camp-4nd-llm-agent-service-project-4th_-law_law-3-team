@@ -27,10 +27,15 @@ export interface PrecedentDetail {
 }
 
 export interface ChatSource {
-  case_name: string
-  case_number: string
+  case_name?: string
+  case_number?: string
   doc_type: string
   similarity: number
+  summary?: string
+  content?: string
+  // 법령용 필드
+  law_name?: string
+  law_type?: string
 }
 
 export interface AIQuestionResponse {

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { casePrecedentService } from '../services'
+import { useChat } from '@/context/ChatContext'
 import type {
   PrecedentItem,
   PrecedentDetail,
@@ -46,6 +47,8 @@ const DEFAULT_FILTERS: SearchFilters = {
 }
 
 export function useCaseSearch(): UseCaseSearchReturn {
+  const { sessionData } = useChat()
+
   // Search state
   const [searchResults, setSearchResults] = useState<PrecedentItem[]>([])
   const [totalResults, setTotalResults] = useState(0)
@@ -64,6 +67,32 @@ export function useCaseSearch(): UseCaseSearchReturn {
 
   // Filters
   const [filters, setFiltersState] = useState<SearchFilters>(DEFAULT_FILTERS)
+
+  // Handle AI Generated Case from Chat
+  useEffect(() => {
+    if (sessionData.aiGeneratedCase) {
+      const aiCase = sessionData.aiGeneratedCase as PrecedentDetail
+      setSelectedCase(aiCase)
+      // Also add to search results so it appears in the list
+      setSearchResults((prev) => {
+        // Prevent duplicates
+        if (prev.some((item) => item.id === aiCase.id)) return prev
+        return [
+          {
+            id: aiCase.id,
+            case_name: aiCase.case_name,
+            case_number: aiCase.case_number,
+            doc_type: aiCase.doc_type,
+            court: aiCase.court,
+            date: aiCase.date,
+            summary: aiCase.summary,
+            similarity: 100,
+          },
+          ...prev,
+        ]
+      })
+    }
+  }, [sessionData.aiGeneratedCase])
 
   const setFilters = useCallback((newFilters: Partial<SearchFilters>) => {
     setFiltersState((prev) => ({ ...prev, ...newFilters }))

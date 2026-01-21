@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
 import { api } from '@/lib/api'
@@ -32,6 +32,7 @@ interface MultiAgentChatResponse {
 }
 
 export default function ChatWidget() {
+  const router = useRouter()
   const pathname = usePathname()
   const { isChatOpen, toggleChat, setChatOpen } = useUI()
   const {
@@ -113,7 +114,65 @@ export default function ChatWidget() {
       )
 
       // 세션 데이터 업데이트
-      if (response.data.session_data) {
+      const newSessionData = response.data.session_data || {}
+      
+      // Helper to clean AI response for case detail view
+      const cleanAIResponse = (text: string) => {
+        // Remove common greeting patterns at the start
+        let cleaned = text
+          .replace(/^(안녕하세요|반갑습니다).*?(\n|$)/g, '')
+          .replace(/^.*?AI.*?입니다.*?(\n|$)/g, '')
+          .replace(/^무엇을 도와드릴까요.*?(\n|$)/g, '')
+          .trim()
+
+        // If the text starts with a header or bullet point after cleaning, it's good.
+        // If it still has some conversational filler, try to find the first comprehensive section.
+        // Strategy: Look for the first line that looks like a header or list item, or "요약", "판단".
+        const contentStartIndex = cleaned.search(/(^#|^\*\*|^\d+\.|^-\s|요약|판단|결론|판례)/m)
+        
+        if (contentStartIndex > 0) {
+           // If we found a clear start of content, take from there, but allow some context if it's close to start
+           // actually, let's just strip known greetings and return the rest to be safe.
+           // The Regex replacements above should cover most "Chatbotty" intros.
+        }
+        
+        return cleaned
+      }
+
+      // 판례 검색이나 법률 질문인 경우 (sources가 있거나 agent가 legal_search인 경우)
+      // 메인 화면인 판례 검색 페이지로 이동하여 결과를 보여줍니다.
+      if (
+        (response.data.sources && response.data.sources.length > 0) ||
+        response.data.agent_used === 'legal_search' ||
+        response.data.agent_used === 'case_search'
+      ) {
+        // AI 응답을 판례 상세 데이터 형식으로 변환 (기존 로직 유지)
+        const mainSource = response.data.sources?.[0]
+        
+        const aiCase = {
+          id: 'ai-generated-' + Date.now(),
+          case_name: mainSource?.case_name || 'AI 법률 분석 결과',
+          case_number: mainSource?.case_number || 'AI Analysis',
+          doc_type: mainSource?.doc_type || 'interpretation',
+          content: cleanAIResponse(response.data.response), // 인사말 제거된 정제된 내용 사용
+          summary: cleanAIResponse(response.data.response),
+          court: 'AI Legal Assistant',
+          date: new Date().toISOString().split('T')[0],
+        }
+        
+        // 세션 데이터에 추가하여 페이지 이동 후 사용할 수 있게 함
+        newSessionData.aiGeneratedCase = aiCase
+        // [NEW] 모든 참조 자료를 저장 (일반인 모드용)
+        newSessionData.aiReferences = response.data.sources || []
+        
+        setSessionData({ ...sessionData, ...newSessionData })
+        
+        // 판례 검색 페이지로 이동
+        if (pathname !== '/case-precedent') {
+          // 약간의 지연을 주어 상태 업데이트가 반영되도록 함
+          setTimeout(() => router.push('/case-precedent'), 100)
+        }
+      } else if (response.data.session_data) {
         setSessionData(response.data.session_data)
       }
 
@@ -137,7 +196,7 @@ export default function ChatWidget() {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: assistantContent,
-        actions: response.data.actions,
+        actions: response.data.actions, // 액션 버튼은 유지하되, 화면 이동이 주가 됨
         agentUsed: response.data.agent_used,
       }
       setMessages((prev) => [...prev, assistantMsg])
@@ -424,7 +483,7 @@ export default function ChatWidget() {
               }`}
             >
               {msg.role === 'assistant' ? (
-                <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit">
+                <div className={`prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit ${!isLightTheme ? 'prose-invert' : ''}`}>
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                   {msg.actions && msg.actions.length > 0 && (
                     <ChatActions
