@@ -18,21 +18,23 @@ export const lawyerFinderService = {
 
   /**
    * 주변 변호사 검색
+   * @param specialty - 특정 전문분야 (예: "이혼", "형사법") - category보다 우선 적용
+   * @param category - 전문분야 카테고리 ID (예: "civil-family")
    */
   getNearbyLawyers: async (
     latitude: number,
     longitude: number,
     radius: number = 5000,
-    limit: number = 50,
-    category?: string
+    category?: string,
+    specialty?: string
   ): Promise<NearbySearchResponse> => {
     const params = new URLSearchParams({
       latitude: latitude.toString(),
       longitude: longitude.toString(),
       radius: radius.toString(),
-      limit: limit.toString(),
     })
-    if (category) params.append('category', category)
+    if (specialty) params.append('specialty', specialty)
+    else if (category) params.append('category', category)
     const response = await api.get(`${endpoints.lawyerFinder}/nearby?${params}`)
     return response.data
   },
@@ -46,7 +48,9 @@ export const lawyerFinderService = {
   },
 
   /**
-   * 이름/사무소/지역/전문분야 카테고리로 검색 (선택적 위치 필터 포함)
+   * 이름/사무소/지역/전문분야로 검색 (선택적 위치 필터 포함)
+   * @param specialty - 특정 전문분야 (예: "이혼", "형사법") - category보다 우선 적용
+   * @param category - 전문분야 카테고리 ID (예: "civil-family")
    */
   searchLawyers: async (
     params: {
@@ -54,6 +58,7 @@ export const lawyerFinderService = {
       office?: string
       district?: string
       category?: string
+      specialty?: string
       latitude?: number
       longitude?: number
       radius?: number
@@ -64,7 +69,8 @@ export const lawyerFinderService = {
     if (params.name) searchParams.append('name', params.name)
     if (params.office) searchParams.append('office', params.office)
     if (params.district) searchParams.append('district', params.district)
-    if (params.category) searchParams.append('category', params.category)
+    if (params.specialty) searchParams.append('specialty', params.specialty)
+    else if (params.category) searchParams.append('category', params.category)
     if (params.latitude !== undefined) searchParams.append('latitude', params.latitude.toString())
     if (params.longitude !== undefined) searchParams.append('longitude', params.longitude.toString())
     if (params.radius !== undefined) searchParams.append('radius', params.radius.toString())

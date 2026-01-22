@@ -64,9 +64,15 @@ export default function ChatWidget() {
 
   // Sync view mode with page change
   useEffect(() => {
-    // 이제 모든 페이지에서 기본적으로 Split 모드를 사용합니다.
-    setChatMode('split')
-  }, [pathname, setChatMode])
+    if (isMapPage) {
+      // 지도 페이지에서는 챗봇을 작은 floating 모드로 표시
+      setChatMode('floating')
+      setChatOpen(true)
+    } else {
+      // 다른 페이지에서는 Split 모드 사용
+      setChatMode('split')
+    }
+  }, [pathname, setChatMode, setChatOpen, isMapPage])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -74,7 +80,7 @@ export default function ChatWidget() {
     }
   }, [messages, isChatOpen, chatMode, isLoading])
 
-  const handleSend = async (overrideMessage?: string) => {
+  const handleSend = async (overrideMessage?: string, overrideLocation?: { latitude: number; longitude: number } | null) => {
     const messageToSend = overrideMessage || input
     if (!messageToSend.trim() || isLoading) return
 
@@ -97,6 +103,9 @@ export default function ChatWidget() {
         content: msg.content,
       }))
 
+      // 위치 정보: override > context
+      const locationToSend = overrideLocation !== undefined ? overrideLocation : userLocation
+
       // 멀티 에이전트 API 호출
       const response = await api.post<MultiAgentChatResponse>(
         '/multi-agent/chat',
@@ -105,7 +114,7 @@ export default function ChatWidget() {
           user_role: userRole,
           history: history,
           session_data: sessionData,
-          user_location: userLocation,
+          user_location: locationToSend,
         }
       )
 
@@ -172,6 +181,47 @@ export default function ChatWidget() {
         setSessionData(response.data.session_data)
       }
 
+      // NAVIGATE 액션이 있으면 자동으로 페이지 이동
+      console.log('Response actions:', response.data.actions)
+      const navigateAction = response.data.actions?.find(
+        (action) => action.type === 'navigate' && action.url
+      )
+      console.log('Navigate action found:', navigateAction)
+
+      if (navigateAction && navigateAction.url) {
+        // 응답 메시지 먼저 표시
+        const assistantMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: response.data.response,
+          agentUsed: response.data.agent_used,
+        }
+        setMessages((prev) => [...prev, assistantMsg])
+
+        // URL 파라미터 구성 후 자동 이동
+        const params = navigateAction.params as Record<string, string | number | boolean> | undefined
+        let fullUrl = navigateAction.url
+        if (params && Object.keys(params).length > 0) {
+          const searchParams = new URLSearchParams()
+          Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+              searchParams.set(key, String(value))
+            }
+          })
+          fullUrl = `${navigateAction.url}?${searchParams.toString()}`
+        }
+
+        console.log('[ChatWidget] Navigating to:', fullUrl)
+
+        // 잠시 후 페이지 이동 (메시지가 표시된 후)
+        // window.location.href 사용하여 페이지 새로고침 (URL 파라미터 확실히 적용)
+        setTimeout(() => {
+          window.location.href = fullUrl
+        }, 500)
+
+        return // 여기서 종료
+      }
+
       // 응답 메시지 생성 (참고 자료는 판례 검색 화면에서 표시)
       const assistantContent = response.data.response
 
@@ -179,7 +229,7 @@ export default function ChatWidget() {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: assistantContent,
-        actions: response.data.actions, // 액션 버튼은 유지하되, 화면 이동이 주가 됨
+        actions: response.data.actions,
         agentUsed: response.data.agent_used,
       }
       setMessages((prev) => [...prev, assistantMsg])
@@ -248,13 +298,21 @@ export default function ChatWidget() {
   }
 
   const handleRequestLocation = async () => {
-    setIsLoading(true)
+    // 로딩 메시지 표시
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: '📍 현재 위치를 확인하고 있습니다...',
+      },
+    ])
+
     const location = await requestUserLocation()
-    setIsLoading(false)
 
     if (location) {
-      // 위치 획득 성공 - 자동으로 변호사 검색
-      handleSend('현재 위치 주변 변호사를 찾아주세요')
+      // 위치 획득 성공 - 위치를 직접 전달하여 변호사 검색
+      handleSend('현재 위치 주변 변호사를 찾아주세요', location)
     } else {
       setMessages((prev) => [
         ...prev,

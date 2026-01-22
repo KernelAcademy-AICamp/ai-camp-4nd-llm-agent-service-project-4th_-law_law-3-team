@@ -47,6 +47,7 @@ async def multi_agent_chat(request: MultiAgentChatRequest) -> MultiAgentChatResp
             label=action.label,
             action=action.action,
             url=action.url,
+            params=action.params,
         )
         for action in response.actions
     ]

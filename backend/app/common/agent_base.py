@@ -16,6 +16,7 @@ class ActionType(str, Enum):
     BUTTON = "button"
     LINK = "link"
     REQUEST_LOCATION = "request_location"
+    NAVIGATE = "navigate"  # 페이지 이동 (쿼리 파라미터 포함)
 
 
 class ChatAction(BaseModel):
@@ -24,6 +25,7 @@ class ChatAction(BaseModel):
     label: str
     action: Optional[str] = None  # button action identifier
     url: Optional[str] = None  # link URL
+    params: Optional[dict[str, Any]] = None  # navigate params (for NAVIGATE type)
 
 
 class AgentResponse(BaseModel):

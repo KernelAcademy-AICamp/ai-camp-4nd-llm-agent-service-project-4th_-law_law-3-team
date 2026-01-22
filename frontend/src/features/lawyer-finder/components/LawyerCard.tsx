@@ -24,9 +24,10 @@ interface LawyerCardProps {
   lawyer: Lawyer
   selected?: boolean
   onClick?: () => void
+  highlightCategory?: string  // 검색한 카테고리를 우선 표시
 }
 
-export function LawyerCard({ lawyer, selected, onClick }: LawyerCardProps) {
+export function LawyerCard({ lawyer, selected, onClick, highlightCategory }: LawyerCardProps) {
   const [imgError, setImgError] = useState(false)
 
   return (
@@ -81,7 +82,14 @@ export function LawyerCard({ lawyer, selected, onClick }: LawyerCardProps) {
                       .filter(Boolean)
                   ))
 
-                  // 2. 대분류 객체 찾기
+                  // 2. 검색한 카테고리를 맨 앞으로 정렬
+                  if (highlightCategory && categoryIds.includes(highlightCategory)) {
+                    const idx = categoryIds.indexOf(highlightCategory)
+                    categoryIds.splice(idx, 1)
+                    categoryIds.unshift(highlightCategory)
+                  }
+
+                  // 3. 대분류 객체 찾기
                   const categories = categoryIds
                     .map(id => SPECIALTY_CATEGORIES.find(c => c.id === id))
                     .filter((c): c is typeof SPECIALTY_CATEGORIES[0] => !!c)

@@ -20,6 +20,7 @@ interface SearchPanelProps {
   searchQuery: string  // 부모에서 관리하는 검색어
   category: string  // 선택된 전문분야 카테고리 ID
   onCategoryChange: (category: string) => void
+  specialty?: string  // 특정 전문분야 (예: "이혼")
 }
 
 const RADIUS_OPTIONS = [
@@ -45,6 +46,7 @@ export function SearchPanel({
   searchQuery,
   category,
   onCategoryChange,
+  specialty,
 }: SearchPanelProps) {
   const [inputValue, setInputValue] = useState('')
 
@@ -187,11 +189,26 @@ export function SearchPanel({
               lawyer={lawyer}
               selected={selectedLawyer?.id === lawyer.id}
               onClick={() => onLawyerSelect(lawyer)}
+              highlightCategory={category}
             />
           ))
         ) : (
           <div className="text-center text-gray-500 py-8">
-            검색 결과가 없습니다
+            <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {specialty ? (
+              <>
+                <p className="font-medium text-gray-700 mb-1">
+                  주변 {radius >= 1000 ? `${radius / 1000}km` : `${radius}m`} 내에
+                </p>
+                <p className="text-blue-600 font-semibold mb-2">"{specialty}" 전문 변호사</p>
+                <p className="text-gray-500">검색 결과가 없습니다</p>
+                <p className="text-xs text-gray-400 mt-2">반경을 넓히거나 다른 조건으로 검색해보세요</p>
+              </>
+            ) : (
+              <p>검색 결과가 없습니다</p>
+            )}
           </div>
         )}
       </div>
