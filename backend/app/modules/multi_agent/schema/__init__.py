@@ -32,6 +32,7 @@ class ChatActionResponse(BaseModel):
     label: str
     action: Optional[str] = None
     url: Optional[str] = None
+    params: Optional[dict[str, Any]] = None  # navigate params
 
 
 class MultiAgentChatResponse(BaseModel):

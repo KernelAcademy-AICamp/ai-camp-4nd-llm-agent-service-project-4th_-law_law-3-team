@@ -175,15 +175,20 @@ def find_nearby_lawyers(
     latitude: float,
     longitude: float,
     radius_m: int = 5000,
-    limit: int = 50,
-    category: Optional[str] = None
+    limit: Optional[int] = None,  # None이면 제한 없음
+    category: Optional[str] = None,
+    specialty: Optional[str] = None
 ) -> List[dict]:
     """
     반경 내 변호사 검색
 
     1단계: 바운딩 박스로 1차 필터링 (빠름)
     2단계: Haversine 공식으로 정확한 거리 계산
-    3단계: 전문분야 카테고리 필터링 (선택사항)
+    3단계: 전문분야 필터링 (specialty > category 우선순위)
+
+    Args:
+        specialty: 특정 전문분야 키워드 (예: "이혼", "형사법") - 정확히 일치하는 전문분야 필터
+        category: 전문분야 카테고리 ID (예: "civil-family") - 카테고리 내 모든 전문분야 필터
     """
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
@@ -191,8 +196,8 @@ def find_nearby_lawyers(
     radius_km = radius_m / 1000
     min_lat, max_lat, min_lng, max_lng = get_bounding_box(latitude, longitude, radius_km)
 
-    # 카테고리에 해당하는 전문분야 목록
-    category_specs = get_specialties_by_category(category) if category else set()
+    # 카테고리에 해당하는 전문분야 목록 (specialty가 없을 때만 사용)
+    category_specs = get_specialties_by_category(category) if category and not specialty else set()
 
     results = []
 
@@ -213,11 +218,17 @@ def find_nearby_lawyers(
         if dist > radius_km:
             continue
 
-        # 3차 필터: 카테고리 (해당 카테고리의 전문분야 중 하나라도 있으면 통과)
-        if category_specs:
-            lawyer_specs = lawyer.get("specialties", [])
-            if not isinstance(lawyer_specs, list):
+        # 3차 필터: 전문분야 (specialty 우선, 없으면 category)
+        lawyer_specs = lawyer.get("specialties", [])
+        if not isinstance(lawyer_specs, list):
+            lawyer_specs = []
+
+        if specialty:
+            # 정확한 전문분야 매칭 (예: "이혼"이 lawyer_specs에 있는지)
+            if specialty not in lawyer_specs:
                 continue
+        elif category_specs:
+            # 카테고리 내 전문분야 중 하나라도 있으면 통과
             if not category_specs.intersection(lawyer_specs):
                 continue
 
@@ -227,7 +238,7 @@ def find_nearby_lawyers(
     # 거리순 정렬
     results.sort(key=lambda x: x["distance"])
 
-    return results[:limit]
+    return results[:limit] if limit else results
 
 
 def get_lawyer_by_id(lawyer_id: int) -> Optional[dict]:
@@ -247,19 +258,21 @@ def search_lawyers(
     office: Optional[str] = None,
     district: Optional[str] = None,
     category: Optional[str] = None,
+    specialty: Optional[str] = None,
     latitude: Optional[float] = None,
     longitude: Optional[float] = None,
     radius_m: int = 5000,
-    limit: int = 50
+    limit: Optional[int] = None  # None이면 제한 없음
 ) -> List[dict]:
     """
-    이름/사무소/지역/전문분야 카테고리로 검색
+    이름/사무소/지역/전문분야로 검색
 
     Args:
         name: 이름 검색 (OR 조건)
         office: 사무소명 검색 (OR 조건)
         district: 지역(구/군) 검색 (AND 조건)
         category: 전문분야 카테고리 ID (AND 조건)
+        specialty: 특정 전문분야 키워드 (AND 조건, category보다 우선)
         latitude: 위치 필터링 위도
         longitude: 위치 필터링 경도
         radius_m: 반경 (미터)
@@ -288,8 +301,8 @@ def search_lawyers(
         radius_km = radius_m / 1000
         bbox = get_bounding_box(latitude, longitude, radius_km)
 
-    # 카테고리에 해당하는 전문분야 목록
-    category_specs = get_specialties_by_category(category) if category else set()
+    # 카테고리에 해당하는 전문분야 목록 (specialty가 없을 때만 사용)
+    category_specs = get_specialties_by_category(category) if category and not specialty else set()
 
     results = []
 
@@ -309,11 +322,17 @@ def search_lawyers(
             if district not in address:
                 continue
 
-        # 전문분야 카테고리 검색 (AND 조건)
-        if category_specs:
-            lawyer_specs = lawyer.get("specialties", [])
-            if not isinstance(lawyer_specs, list):
+        # 전문분야 필터링 (specialty 우선, 없으면 category)
+        lawyer_specs = lawyer.get("specialties", [])
+        if not isinstance(lawyer_specs, list):
+            lawyer_specs = []
+
+        if specialty:
+            # 정확한 전문분야 매칭
+            if specialty not in lawyer_specs:
                 continue
+        elif category_specs:
+            # 카테고리 내 전문분야 중 하나라도 있으면 통과
             if not category_specs.intersection(lawyer_specs):
                 continue
 
@@ -333,7 +352,7 @@ def search_lawyers(
 
         results.append({**lawyer, "id": idx})
 
-        if len(results) >= limit:
+        if limit and len(results) >= limit:
             break
 
     return results

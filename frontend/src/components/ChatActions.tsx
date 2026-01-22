@@ -1,14 +1,16 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
-export type ActionType = 'button' | 'link' | 'request_location'
+export type ActionType = 'button' | 'link' | 'request_location' | 'navigate'
 
 export interface ChatAction {
   type: ActionType
   label: string
   action?: string
   url?: string
+  params?: Record<string, string | number | boolean>  // navigate params
 }
 
 interface ChatActionsProps {
@@ -24,7 +26,27 @@ export default function ChatActions({
   onRequestLocation,
   isLightTheme = false,
 }: ChatActionsProps) {
+  const router = useRouter()
+
   if (!actions || actions.length === 0) return null
+
+  // NAVIGATE 액션 핸들러 - URL + params로 페이지 이동
+  const handleNavigate = (url: string, params?: Record<string, string | number | boolean>) => {
+    if (!params || Object.keys(params).length === 0) {
+      router.push(url)
+      return
+    }
+
+    const searchParams = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        searchParams.set(key, String(value))
+      }
+    })
+
+    const fullUrl = `${url}?${searchParams.toString()}`
+    router.push(fullUrl)
+  }
 
   const buttonClasses = isLightTheme
     ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-200'
@@ -42,6 +64,32 @@ export default function ChatActions({
     <div className="flex flex-wrap gap-2 mt-3">
       {actions.map((action, index) => {
         const key = `action-${index}-${action.label}`
+
+        // NAVIGATE 타입 - 쿼리 파라미터와 함께 페이지 이동
+        if (action.type === 'navigate' && action.url) {
+          return (
+            <button
+              key={key}
+              onClick={() => handleNavigate(action.url!, action.params)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${linkClasses}`}
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                />
+              </svg>
+              {action.label}
+            </button>
+          )
+        }
 
         if (action.type === 'link' && action.url) {
           // 외부 링크 또는 내부 링크

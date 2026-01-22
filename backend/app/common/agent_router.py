@@ -49,12 +49,16 @@ ROLE_AGENTS: dict[UserRole, list[AgentType]] = {
 INTENT_PATTERNS: dict[AgentType, list[str]] = {
     AgentType.LAWYER_FINDER: [
         "변호사 찾",
+        "변호사를 찾",
         "변호사 추천",
+        "변호사를 추천",
         "근처 변호사",
         "주변 변호사",
         "변호사 검색",
         "가까운 변호사",
         "내 근처",
+        "내 주변",
+        "현재 위치",
         "어디서 변호사",
     ],
     AgentType.CASE_SEARCH: [

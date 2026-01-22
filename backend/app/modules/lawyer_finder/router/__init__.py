@@ -42,8 +42,9 @@ async def get_nearby_lawyers(
     latitude: float = Query(..., ge=-90, le=90, description="위도"),
     longitude: float = Query(..., ge=-180, le=180, description="경도"),
     radius: int = Query(5000, ge=100, le=50000, description="반경 (미터)"),
-    limit: int = Query(50, ge=1, le=200, description="최대 결과 수"),
+    limit: Optional[int] = Query(None, ge=1, description="최대 결과 수 (미지정 시 전체)"),
     category: Optional[str] = Query(None, description="전문분야 카테고리 ID"),
+    specialty: Optional[str] = Query(None, description="특정 전문분야 (예: 이혼, 형사법)"),
 ):
     """
     사용자 위치 기반 주변 변호사 검색
@@ -51,10 +52,18 @@ async def get_nearby_lawyers(
     - **latitude**: 위도 (-90 ~ 90)
     - **longitude**: 경도 (-180 ~ 180)
     - **radius**: 검색 반경 (미터, 기본 5km)
-    - **limit**: 최대 결과 수 (기본 50)
+    - **limit**: 최대 결과 수 (미지정 시 전체 반환)
     - **category**: 전문분야 카테고리 ID (예: "criminal", "civil-family")
+    - **specialty**: 특정 전문분야 키워드 (예: "이혼", "형사법") - category보다 우선 적용
     """
-    lawyers = find_nearby_lawyers(latitude, longitude, radius, limit, category)
+    lawyers = find_nearby_lawyers(
+        latitude=latitude,
+        longitude=longitude,
+        radius_m=radius,
+        limit=limit,
+        category=category,
+        specialty=specialty
+    )
 
     return {
         "lawyers": lawyers,
@@ -95,32 +104,41 @@ async def search_lawyers_endpoint(
     office: Optional[str] = Query(None, description="사무소명"),
     district: Optional[str] = Query(None, description="지역 (구/군)"),
     category: Optional[str] = Query(None, description="전문분야 카테고리 ID"),
+    specialty: Optional[str] = Query(None, description="특정 전문분야 (예: 이혼, 형사법)"),
     latitude: Optional[float] = Query(None, ge=-90, le=90, description="위치 필터 - 위도"),
     longitude: Optional[float] = Query(None, ge=-180, le=180, description="위치 필터 - 경도"),
     radius: int = Query(5000, ge=100, le=50000, description="위치 필터 - 반경 (미터)"),
-    limit: int = Query(50, ge=1, le=200, description="최대 결과 수"),
+    limit: Optional[int] = Query(None, ge=1, description="최대 결과 수 (미지정 시 전체)"),
 ):
     """
-    변호사 검색 (이름/사무소/지역/전문분야 카테고리 + 선택적 위치 필터)
+    변호사 검색 (이름/사무소/지역/전문분야 + 선택적 위치 필터)
 
     - **name**: 이름에 포함된 문자열
     - **office**: 사무소명에 포함된 문자열
     - **district**: 주소에 포함된 구/군 (예: "강남구", "송파구")
     - **category**: 전문분야 카테고리 ID (예: "criminal", "civil-family")
+    - **specialty**: 특정 전문분야 키워드 (예: "이혼", "형사법") - category보다 우선 적용
     - **latitude**: 위치 필터 - 위도 (선택, longitude와 함께 사용)
     - **longitude**: 위치 필터 - 경도 (선택, latitude와 함께 사용)
     - **radius**: 위치 필터 - 반경 (미터, 기본 5km)
     """
-    if not any([name, office, district, category]):
+    if not any([name, office, district, category, specialty]):
         raise HTTPException(
             status_code=400,
-            detail="최소 하나의 검색 조건이 필요합니다 (name, office, district, category)"
+            detail="최소 하나의 검색 조건이 필요합니다 (name, office, district, category, specialty)"
         )
 
     try:
         lawyers = search_lawyers(
-            name, office, district, category,
-            latitude, longitude, radius, limit
+            name=name,
+            office=office,
+            district=district,
+            category=category,
+            specialty=specialty,
+            latitude=latitude,
+            longitude=longitude,
+            radius_m=radius,
+            limit=limit
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
