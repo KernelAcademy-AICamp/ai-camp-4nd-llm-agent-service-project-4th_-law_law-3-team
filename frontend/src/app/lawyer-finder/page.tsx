@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useUI } from '@/context/UIContext'
+import { BackButton } from '@/components/ui/BackButton'
 import { KakaoMap } from '@/features/lawyer-finder/components/KakaoMap'
 import { SearchPanel } from '@/features/lawyer-finder/components/SearchPanel'
 import { OfficeDetailPanel } from '@/features/lawyer-finder/components/OfficeDetailPanel'
@@ -23,6 +25,8 @@ export default function LawyerFinderPage() {
   const [sigungu, setSigungu] = useState('')
   const [searchQuery, setSearchQuery] = useState('')  // 검색어 (빈 문자열 = 주변 탐색 모드)
   const [category, setCategory] = useState('')  // 선택된 전문분야 카테고리 ID
+
+  const { isChatOpen, chatMode } = useUI()
 
   const {
     getCurrentPosition,
@@ -199,14 +203,21 @@ export default function LawyerFinderPage() {
   const userLocation = hasLocation ? getEffectiveLocation() : null
 
   return (
-    <div className="h-screen flex flex-col">
+    <div 
+      className={`h-screen flex flex-col transition-all duration-500 ease-in-out ${
+        isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-gray-200' : 'w-full'
+      }`}
+    >
       {/* 헤더 */}
       <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">가까운 변호사를 빠르게 찾아보세요</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            위치와 조건으로 쉽게 검색할 수 있습니다
-          </p>
+        <div className="flex items-center">
+          <BackButton />
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">가까운 변호사를 빠르게 찾아보세요</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              위치와 조건으로 쉽게 검색할 수 있습니다
+            </p>
+          </div>
         </div>
         {geoLoading && (
           <span className="text-sm text-blue-600">위치 확인 중...</span>

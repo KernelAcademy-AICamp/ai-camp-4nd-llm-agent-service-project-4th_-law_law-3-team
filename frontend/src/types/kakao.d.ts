@@ -17,6 +17,7 @@ declare namespace kakao.maps {
     getBounds(): LatLngBounds
     panTo(latlng: LatLng): void
     setMapTypeId(mapTypeId: MapTypeId): void
+    relayout(): void
   }
 
   interface MapOptions {

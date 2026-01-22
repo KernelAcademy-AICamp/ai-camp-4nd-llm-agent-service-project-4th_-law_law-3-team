@@ -164,6 +164,29 @@ export function KakaoMap({
     }
   }, [])
 
+  // 컨테이너 크기 변경 감지 및 map.relayout() 호출
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    const observer = new ResizeObserver(() => {
+      if (mapRef.current) {
+        mapRef.current.relayout()
+        // 리레이아웃 후 중심 유지
+        if (prevCenterRef.current) {
+          mapRef.current.setCenter(
+            new window.kakao.maps.LatLng(prevCenterRef.current.lat, prevCenterRef.current.lng)
+          )
+        }
+      }
+    })
+
+    observer.observe(containerRef.current)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+
   // 파란 펄스 마커 (userLocation 기준 - 실제 GPS 위치에서만 표시)
   useEffect(() => {
     if (!mapRef.current || !window.kakao?.maps) return

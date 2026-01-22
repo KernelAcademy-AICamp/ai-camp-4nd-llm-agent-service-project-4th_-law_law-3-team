@@ -34,7 +34,7 @@ interface MultiAgentChatResponse {
 export default function ChatWidget() {
   const router = useRouter()
   const pathname = usePathname()
-  const { isChatOpen, toggleChat, setChatOpen } = useUI()
+  const { isChatOpen, toggleChat, setChatOpen, chatMode, setChatMode } = useUI()
   const {
     userRole,
     setUserRole,
@@ -48,8 +48,7 @@ export default function ChatWidget() {
   // Determine if we are on the map page
   const isMapPage = pathname === '/lawyer-finder'
 
-  // Local state for view mode: 'split' or 'floating'
-  const [viewMode, setViewMode] = useState<'split' | 'floating'>('split')
+  // Global state for view mode is now handled by UIContext
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -65,18 +64,15 @@ export default function ChatWidget() {
 
   // Sync view mode with page change
   useEffect(() => {
-    if (isMapPage) {
-      setViewMode('floating')
-    } else {
-      setViewMode('split')
-    }
-  }, [isMapPage])
+    // 이제 모든 페이지에서 기본적으로 Split 모드를 사용합니다.
+    setChatMode('split')
+  }, [pathname, setChatMode])
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, isChatOpen, viewMode, isLoading])
+  }, [messages, isChatOpen, chatMode, isLoading])
 
   const handleSend = async (overrideMessage?: string) => {
     const messageToSend = overrideMessage || input
@@ -274,7 +270,7 @@ export default function ChatWidget() {
 
   // Toggle view mode manually
   const toggleViewMode = () => {
-    setViewMode((prev) => (prev === 'split' ? 'floating' : 'split'))
+    setChatMode(chatMode === 'split' ? 'floating' : 'split')
   }
 
   // Theme configuration
@@ -317,7 +313,7 @@ export default function ChatWidget() {
 
   // Layout classes based on viewMode
   const layoutClasses =
-    viewMode === 'split'
+    chatMode === 'split'
       ? 'fixed top-0 right-0 w-1/2 h-screen z-50 flex flex-col animate-in slide-in-from-right duration-500'
       : 'fixed bottom-6 right-6 w-[380px] h-[600px] z-50 rounded-2xl flex flex-col animate-in slide-in-from-bottom zoom-in duration-300'
 
@@ -345,7 +341,7 @@ export default function ChatWidget() {
     <div className={`${layoutClasses} ${themeClasses.container}`}>
       {/* Header */}
       <div
-        className={`p-4 md:p-6 flex justify-between items-center ${themeClasses.header} ${viewMode === 'floating' ? 'rounded-t-2xl' : ''}`}
+        className={`p-4 md:p-6 flex justify-between items-center ${themeClasses.header} ${chatMode === 'floating' ? 'rounded-t-2xl' : ''}`}
       >
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
@@ -399,9 +395,9 @@ export default function ChatWidget() {
             <button
               onClick={toggleViewMode}
               className={`p-2 rounded-lg transition-colors ${themeClasses.closeBtn}`}
-              title={viewMode === 'split' ? '작게 보기' : '크게 보기'}
+              title={chatMode === 'split' ? '작게 보기' : '크게 보기'}
             >
-              {viewMode === 'split' ? (
+              {chatMode === 'split' ? (
                 <svg
                   className="w-5 h-5"
                   fill="none"
@@ -513,7 +509,7 @@ export default function ChatWidget() {
 
       {/* Input */}
       <div
-        className={`p-4 md:p-6 ${themeClasses.inputArea} ${viewMode === 'floating' ? 'rounded-b-2xl' : ''}`}
+        className={`p-4 md:p-6 ${themeClasses.inputArea} ${chatMode === 'floating' ? 'rounded-b-2xl' : ''}`}
       >
         <div className="relative flex items-center gap-3">
           <input
