@@ -25,9 +25,10 @@ FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Install runtime system dependencies
+# Install runtime system dependencies (ffmpeg required for moviepy)
 RUN apt-get update && apt-get install -y \
     curl \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user

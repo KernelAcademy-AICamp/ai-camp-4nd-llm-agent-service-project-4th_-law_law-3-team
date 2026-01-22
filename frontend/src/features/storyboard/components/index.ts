@@ -1,5 +1,7 @@
 export { TextInputPanel } from './TextInputPanel'
+export { MultiInputPanel } from './MultiInputPanel'
 export { TimelineCard } from './TimelineCard'
 export { TimelineView } from './TimelineView'
 export { TimelineToolbar } from './TimelineToolbar'
 export { TimelineItemEditor } from './TimelineItemEditor'
+export { VideoGenerationModal } from './VideoGenerationModal'

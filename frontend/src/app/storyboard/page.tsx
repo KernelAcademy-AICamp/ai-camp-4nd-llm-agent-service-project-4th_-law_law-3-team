@@ -3,15 +3,18 @@
 import { useState, useCallback } from 'react'
 import { BackButton } from '@/components/ui/BackButton'
 import {
-  TextInputPanel,
+  MultiInputPanel,
   TimelineView,
   TimelineToolbar,
   TimelineItemEditor,
+  VideoGenerationModal,
 } from '@/features/storyboard/components'
 import { useTimelineState } from '@/features/storyboard/hooks'
-import type { TimelineItem } from '@/features/storyboard/types'
+import type { TimelineItem, VideoSettings } from '@/features/storyboard/types'
 
 export default function StoryboardPage() {
+  // 입력 패널 접기/펼치기 상태
+  const [isInputPanelOpen, setIsInputPanelOpen] = useState(true)
   const {
     items,
     title,
@@ -20,7 +23,20 @@ export default function StoryboardPage() {
     selectedItemId,
     isExtracting,
     extractError,
+    generatingImageIds,
+    isGeneratingBatch,
+    batchProgress,
+    itemsWithImagesCount,
+    isGeneratingVideo,
+    generatedVideoUrl,
+    showVideoModal,
+    setShowVideoModal,
     extractTimeline,
+    extractFromVoice,
+    extractFromImage,
+    generateItemImage,
+    generateAllImages,
+    generateVideo,
     setTitle,
     addItem,
     updateItem,
@@ -77,6 +93,32 @@ export default function StoryboardPage() {
     setEditingItem(null)
   }, [])
 
+  // 스토리보드 이미지 생성
+  const handleGenerateImage = useCallback(
+    (id: string) => {
+      generateItemImage(id)
+    },
+    [generateItemImage]
+  )
+
+  // 전체 스토리보드 이미지 생성
+  const handleGenerateAllImages = useCallback(() => {
+    generateAllImages()
+  }, [generateAllImages])
+
+  // 영상 생성 모달 열기
+  const handleOpenVideoModal = useCallback(() => {
+    setShowVideoModal(true)
+  }, [setShowVideoModal])
+
+  // 영상 생성
+  const handleGenerateVideo = useCallback(
+    async (imageUrls: string[], settings: VideoSettings) => {
+      await generateVideo(imageUrls, settings)
+    },
+    [generateVideo]
+  )
+
   return (
     <div className="h-screen flex flex-col bg-slate-950 overflow-hidden relative">
       {/* Background Gradients (Global Effect) */}
@@ -95,7 +137,7 @@ export default function StoryboardPage() {
                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 font-medium border border-blue-500/20">BETA</span>
               </h1>
               <p className="text-sm text-slate-400 mt-1 font-light">
-                사건의 흐름을 시각화하고 AI로 이미지를 생성합니다
+                사건의 흐름을 시각화하고 AI로 이미지와 영상을 생성합니다
               </p>
             </div>
           </div>
@@ -110,13 +152,49 @@ export default function StoryboardPage() {
 
       {/* 메인 컨텐츠 */}
       <div className="flex-1 flex overflow-hidden relative z-10">
-        {/* 왼쪽 패널: 텍스트 입력 */}
-        <TextInputPanel
-          onExtract={extractTimeline}
-          onImport={importFromJson}
-          isExtracting={isExtracting}
-          error={extractError}
-        />
+        {/* 왼쪽 패널: 멀티모달 입력 (접기/펼치기) */}
+        <div
+          className={`
+            flex-shrink-0 transition-all duration-300 ease-in-out relative
+            ${isInputPanelOpen ? 'w-96' : 'w-0'}
+          `}
+        >
+          <div className={`
+            absolute inset-0 overflow-hidden
+            ${isInputPanelOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}
+            transition-opacity duration-300
+          `}>
+            <MultiInputPanel
+              onExtractText={extractTimeline}
+              onExtractVoice={extractFromVoice}
+              onExtractImage={extractFromImage}
+              onImport={importFromJson}
+              isExtracting={isExtracting}
+              error={extractError}
+            />
+          </div>
+        </div>
+
+        {/* 패널 토글 버튼 */}
+        <button
+          type="button"
+          onClick={() => setIsInputPanelOpen(!isInputPanelOpen)}
+          className={`
+            flex-shrink-0 w-6 flex items-center justify-center
+            bg-slate-800/50 hover:bg-slate-700/50 border-r border-white/5
+            transition-colors group
+          `}
+          title={isInputPanelOpen ? '입력 패널 접기' : '입력 패널 펼치기'}
+        >
+          <svg
+            className={`w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-all duration-300 ${isInputPanelOpen ? '' : 'rotate-180'}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
 
         {/* 오른쪽 패널: 타임라인 */}
         <div className="flex-1 flex flex-col min-w-0 bg-transparent">
@@ -145,7 +223,12 @@ export default function StoryboardPage() {
                 onAddItem={handleAddItem}
                 onExport={exportToJson}
                 onReset={resetTimeline}
+                onGenerateAllImages={handleGenerateAllImages}
+                onGenerateVideo={handleOpenVideoModal}
                 hasItems={items.length > 0}
+                hasImages={itemsWithImagesCount >= 2}
+                isGeneratingBatch={isGeneratingBatch}
+                batchProgress={batchProgress}
               />
             </div>
 
@@ -157,6 +240,8 @@ export default function StoryboardPage() {
               onItemSelect={selectItem}
               onItemEdit={handleEditItem}
               onItemDelete={deleteItem}
+              onItemGenerateImage={handleGenerateImage}
+              generatingImageIds={generatingImageIds}
             />
           </div>
         </div>
@@ -171,6 +256,16 @@ export default function StoryboardPage() {
           isNew={isNewItem}
         />
       )}
+
+      {/* 영상 생성 모달 */}
+      <VideoGenerationModal
+        isOpen={showVideoModal}
+        onClose={() => setShowVideoModal(false)}
+        items={items}
+        onGenerate={handleGenerateVideo}
+        isGenerating={isGeneratingVideo}
+        videoUrl={generatedVideoUrl}
+      />
     </div>
   )
 }
