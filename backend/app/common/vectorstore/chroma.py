@@ -1,15 +1,17 @@
 """
-ChromaDB 벡터 저장소 설정
+ChromaDB 벡터 저장소 구현체
 
-법률 문서 임베딩 저장 및 유사도 검색
+법률 문서 임베딩 저장 및 유사도 검색 (ChromaDB 사용)
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from app.core.config import settings
+from app.common.vectorstore.base import VectorStoreBase, SearchResult
 
 
 def get_chroma_client() -> chromadb.ClientAPI:
@@ -59,23 +61,22 @@ def get_collection(
     )
 
 
-class VectorStore:
+class ChromaVectorStore(VectorStoreBase):
     """
-    법률 문서 벡터 저장소 클래스
+    ChromaDB 기반 벡터 저장소 구현체
 
     Usage:
-        store = VectorStore()
+        store = ChromaVectorStore()
 
         # 문서 추가
         store.add_documents(
             ids=["doc_1", "doc_2"],
-            documents=["판례 내용...", "판례 내용..."],
+            embeddings=[[0.1, 0.2, ...], [0.3, 0.4, ...]],
             metadatas=[{"type": "precedent"}, {"type": "precedent"}],
-            embeddings=[[0.1, 0.2, ...], [0.3, 0.4, ...]]
         )
 
         # 유사 문서 검색
-        results = store.search("손해배상 의료사고", n_results=5)
+        results = store.search(query_embedding=[0.1, 0.2, ...], n_results=5)
     """
 
     def __init__(self, collection_name: Optional[str] = None):
@@ -86,48 +87,38 @@ class VectorStore:
     def add_documents(
         self,
         ids: List[str],
-        documents: List[str],
-        metadatas: Optional[List[dict]] = None,
-        embeddings: Optional[List[List[float]]] = None,
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None,
+        documents: Optional[List[str]] = None,
     ) -> None:
-        """
-        문서 추가 (임베딩 포함)
+        """문서 추가 (임베딩 포함)"""
+        kwargs: Dict[str, Any] = {
+            "ids": ids,
+            "embeddings": embeddings,
+        }
 
-        Args:
-            ids: 문서 ID 목록
-            documents: 문서 텍스트 목록
-            metadatas: 메타데이터 목록 (필터링용)
-            embeddings: 임베딩 벡터 목록 (없으면 ChromaDB 기본 임베딩 사용)
-        """
-        self.collection.add(
-            ids=ids,
-            documents=documents,
-            metadatas=metadatas,
-            embeddings=embeddings,
-        )
+        if metadatas is not None:
+            kwargs["metadatas"] = metadatas
+
+        # documents가 제공된 경우에만 추가 (용량 최적화)
+        if documents is not None:
+            kwargs["documents"] = documents
+
+        self.collection.add(**kwargs)
 
     def search(
         self,
-        query_text: Optional[str] = None,
-        query_embedding: Optional[List[float]] = None,
+        query_embedding: List[float],
         n_results: int = 10,
-        where: Optional[dict] = None,
-        include: List[str] = ["documents", "metadatas", "distances"],
-    ) -> dict:
-        """
-        유사 문서 검색
+        where: Optional[Dict[str, Any]] = None,
+        include: Optional[List[str]] = None,
+    ) -> SearchResult:
+        """유사 문서 검색"""
+        if include is None:
+            include = ["metadatas", "distances"]
 
-        Args:
-            query_text: 검색 쿼리 텍스트 (임베딩 자동 생성)
-            query_embedding: 검색 쿼리 임베딩 (직접 제공 시)
-            n_results: 반환할 결과 수
-            where: 필터 조건 (예: {"doc_type": "precedent"})
-            include: 결과에 포함할 필드
-
-        Returns:
-            검색 결과 딕셔너리
-        """
-        kwargs = {
+        kwargs: Dict[str, Any] = {
+            "query_embeddings": [query_embedding],
             "n_results": n_results,
             "include": include,
         }
@@ -135,29 +126,47 @@ class VectorStore:
         if where:
             kwargs["where"] = where
 
-        if query_embedding:
-            kwargs["query_embeddings"] = [query_embedding]
-        elif query_text:
-            kwargs["query_texts"] = [query_text]
-        else:
-            raise ValueError("query_text 또는 query_embedding 필요")
+        result = self.collection.query(**kwargs)
 
-        return self.collection.query(**kwargs)
+        return SearchResult(
+            ids=result.get("ids", []),
+            distances=result.get("distances"),
+            metadatas=result.get("metadatas"),
+            documents=result.get("documents"),
+        )
 
-    def get_by_ids(self, ids: List[str]) -> dict:
+    def search_by_text(
+        self,
+        query_text: str,
+        n_results: int = 10,
+        where: Optional[Dict[str, Any]] = None,
+        include: Optional[List[str]] = None,
+    ) -> SearchResult:
+        """텍스트로 직접 검색 (ChromaDB 내장 임베딩 사용)"""
+        if include is None:
+            include = ["metadatas", "distances"]
+
+        kwargs: Dict[str, Any] = {
+            "query_texts": [query_text],
+            "n_results": n_results,
+            "include": include,
+        }
+
+        if where:
+            kwargs["where"] = where
+
+        result = self.collection.query(**kwargs)
+
+        return SearchResult(
+            ids=result.get("ids", []),
+            distances=result.get("distances"),
+            metadatas=result.get("metadatas"),
+            documents=result.get("documents"),
+        )
+
+    def get_by_ids(self, ids: List[str]) -> Dict[str, Any]:
         """ID로 문서 조회"""
         return self.collection.get(ids=ids)
-
-    def get_by_id(self, doc_id: str) -> Optional[dict]:
-        """단일 ID로 문서 조회"""
-        result = self.collection.get(ids=[doc_id])
-        if result and result.get("ids") and len(result["ids"]) > 0:
-            return {
-                "id": result["ids"][0],
-                "content": result["documents"][0] if result.get("documents") else "",
-                "metadata": result["metadatas"][0] if result.get("metadatas") else {},
-            }
-        return None
 
     def delete_by_ids(self, ids: List[str]) -> None:
         """ID로 문서 삭제"""

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
 import {
   TextInputPanel,
   TimelineView,
@@ -85,15 +86,18 @@ export default function StoryboardPage() {
       {/* 헤더 */}
       <header className="flex-shrink-0 bg-slate-900/50 backdrop-blur-xl border-b border-white/5 px-8 py-4 relative z-20">
         <div className="flex items-center justify-between max-w-[1920px] mx-auto">
-          <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-              <span className="text-3xl">🎞️</span>
-              스토리보드
-              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 font-medium border border-blue-500/20">BETA</span>
-            </h1>
-            <p className="text-sm text-slate-400 mt-1 font-light">
-              사건의 흐름을 시각화하고 AI로 이미지를 생성합니다
-            </p>
+          <div className="flex items-center gap-4">
+            <BackButton />
+            <div>
+              <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                <span className="text-3xl">🎞️</span>
+                스토리보드
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 font-medium border border-blue-500/20">BETA</span>
+              </h1>
+              <p className="text-sm text-slate-400 mt-1 font-light">
+                사건의 흐름을 시각화하고 AI로 이미지를 생성합니다
+              </p>
+            </div>
           </div>
           {summary && (
             <div className="text-right hidden md:block">
@@ -134,7 +138,7 @@ export default function StoryboardPage() {
                 )}
               </div>
 
-              {/* 툴바 (버튼들) - TimelineToolbar 컴포넌트도 다크모드 대응 필요하지만 일단 여기에 둘 수 있음 */}
+              {/* 툴바 (버튼들) */}
               <TimelineToolbar
                 editMode={editMode}
                 onToggleEditMode={toggleEditMode}

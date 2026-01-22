@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useUI } from '@/context/UIContext'
+import { BackButton } from '@/components/ui/BackButton'
 import { KakaoMap } from '@/features/lawyer-finder/components/KakaoMap'
 import { SearchPanel } from '@/features/lawyer-finder/components/SearchPanel'
 import { OfficeDetailPanel } from '@/features/lawyer-finder/components/OfficeDetailPanel'
@@ -22,6 +24,9 @@ export default function LawyerFinderPage() {
   const [searchCenter, setSearchCenter] = useState<{ lat: number; lng: number } | null>(null)
   const [sigungu, setSigungu] = useState('')
   const [searchQuery, setSearchQuery] = useState('')  // 검색어 (빈 문자열 = 주변 탐색 모드)
+  const [category, setCategory] = useState('')  // 선택된 전문분야 카테고리 ID
+
+  const { isChatOpen, chatMode } = useUI()
 
   const {
     getCurrentPosition,
@@ -54,7 +59,8 @@ export default function LawyerFinderPage() {
         location.lat,
         location.lng,
         radius,
-        100
+        100,
+        category || undefined
       )
       setLawyers(response.lawyers)
       setTotalCount(response.total_count)
@@ -66,14 +72,14 @@ export default function LawyerFinderPage() {
     } finally {
       setLoading(false)
     }
-  }, [getSearchLocation, radius, mapReady, searchQuery])
+  }, [getSearchLocation, radius, mapReady, searchQuery, category])
 
-  // 위치 또는 반경 변경 시 검색 (검색어 없을 때만)
+  // 위치, 반경, 전문분야 카테고리 변경 시 검색 (검색어 없을 때만)
   useEffect(() => {
     if (mapReady && !searchQuery) {
       fetchNearbyLawyers()
     }
-  }, [fetchNearbyLawyers, mapReady, searchQuery])
+  }, [fetchNearbyLawyers, mapReady, searchQuery, category])
 
   // 이름/사무소 검색
   const handleSearch = async (query: string) => {
@@ -87,6 +93,7 @@ export default function LawyerFinderPage() {
       const response = await lawyerFinderService.searchLawyers({
         name: query.trim(),
         office: query.trim(),
+        category: category || undefined,
         limit: 100,
       })
       setLawyers(response.lawyers)
@@ -113,6 +120,7 @@ export default function LawyerFinderPage() {
       const response = await lawyerFinderService.searchLawyers({
         name: searchQuery,
         office: searchQuery,
+        category: category || undefined,
         latitude: location.lat,
         longitude: location.lng,
         radius: radius,
@@ -169,6 +177,11 @@ export default function LawyerFinderPage() {
     }
   }, [])
 
+  // 전문분야 카테고리 변경
+  const handleCategoryChange = useCallback((newCategory: string) => {
+    setCategory(newCategory)
+  }, [])
+
   // 사무소 클릭 (지도 팝업에서)
   const handleOfficeClick = useCallback((office: Office) => {
     setSelectedOffice(office)
@@ -190,14 +203,21 @@ export default function LawyerFinderPage() {
   const userLocation = hasLocation ? getEffectiveLocation() : null
 
   return (
-    <div className="h-screen flex flex-col">
+    <div 
+      className={`h-screen flex flex-col transition-all duration-500 ease-in-out ${
+        isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-gray-200' : 'w-full'
+      }`}
+    >
       {/* 헤더 */}
       <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">가까운 변호사를 빠르게 찾아보세요</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            위치와 조건으로 쉽게 검색할 수 있습니다
-          </p>
+        <div className="flex items-center">
+          <BackButton />
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">가까운 변호사를 빠르게 찾아보세요</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              위치와 조건으로 쉽게 검색할 수 있습니다
+            </p>
+          </div>
         </div>
         {geoLoading && (
           <span className="text-sm text-blue-600">위치 확인 중...</span>
@@ -230,6 +250,8 @@ export default function LawyerFinderPage() {
             sigungu={sigungu}
             onSigunguChange={handleSigunguChange}
             searchQuery={searchQuery}
+            category={category}
+            onCategoryChange={handleCategoryChange}
           />
         )}
 

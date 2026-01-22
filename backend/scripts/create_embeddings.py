@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-법률 문서 임베딩 생성 스크립트
+법률 문서 임베딩 생성 스크립트 (청킹 지원)
 
-PostgreSQL에서 법률 문서를 읽어 임베딩을 생성하고 ChromaDB에 저장합니다.
+PostgreSQL에서 법률 문서를 읽어 청크 단위로 임베딩을 생성하고 ChromaDB에 저장합니다.
 로컬 모델(sentence-transformers) 또는 OpenAI API를 사용할 수 있습니다.
 
 사용법:
@@ -11,12 +11,19 @@ PostgreSQL에서 법률 문서를 읽어 임베딩을 생성하고 ChromaDB에 �
 
     # 특정 유형만 임베딩
     uv run python scripts/create_embeddings.py --type precedent
+    uv run python scripts/create_embeddings.py --type constitutional
+    uv run python scripts/create_embeddings.py --type administration
+    uv run python scripts/create_embeddings.py --type legislation
+    uv run python scripts/create_embeddings.py --type committee
 
     # OpenAI API 사용 (USE_LOCAL_EMBEDDING=False 또는 --use-openai)
     uv run python scripts/create_embeddings.py --use-openai
 
     # 배치 크기 조정
     uv run python scripts/create_embeddings.py --batch-size 50
+
+    # 청킹 설정 조정
+    uv run python scripts/create_embeddings.py --chunk-size 500 --chunk-overlap 50
 
     # 기존 임베딩 삭제 후 재생성
     uv run python scripts/create_embeddings.py --reset
@@ -30,7 +37,8 @@ import asyncio
 import sys
 from pathlib import Path
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Iterator
+from dataclasses import dataclass
 
 # 프로젝트 루트를 sys.path에 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -43,7 +51,111 @@ from app.common.vectorstore import VectorStore
 from app.models.legal_document import LegalDocument, DocType
 
 
-# 임베딩 모델 (로컬 또는 OpenAI)
+# ============================================================================
+# 청킹 설정
+# ============================================================================
+
+@dataclass
+class ChunkConfig:
+    """청크 설정"""
+    chunk_size: int = 500      # 문자 수
+    chunk_overlap: int = 50    # 오버랩 문자 수
+    min_chunk_size: int = 100  # 최소 청크 크기
+
+
+@dataclass
+class Chunk:
+    """문서 청크"""
+    chunk_id: str           # {source}_{doc_id}_chunk_{index}
+    doc_id: int             # PostgreSQL PK (포인터)
+    source: str             # 데이터 출처
+    doc_type: str           # 문서 유형
+    chunk_index: int        # 청크 순서
+    chunk_start: int        # 원문 내 시작 위치
+    chunk_end: int          # 원문 내 종료 위치
+    chunk_text: str         # 청크 텍스트
+    case_number: str        # 사건번호 (필터용)
+    court_name: str         # 기관명 (필터용)
+    decision_date: str      # 날짜 (필터용)
+
+
+def create_chunks(doc: LegalDocument, config: ChunkConfig) -> List[Chunk]:
+    """
+    문서를 청크로 분할
+
+    Args:
+        doc: 법률 문서
+        config: 청크 설정
+
+    Returns:
+        청크 목록
+    """
+    text = doc.embedding_text
+    if not text or len(text) < config.min_chunk_size:
+        # 텍스트가 너무 짧으면 청크 하나만 생성
+        if text:
+            return [Chunk(
+                chunk_id=f"{doc.source}_{doc.id}_chunk_0",
+                doc_id=doc.id,
+                source=doc.source,
+                doc_type=doc.doc_type,
+                chunk_index=0,
+                chunk_start=0,
+                chunk_end=len(text),
+                chunk_text=text,
+                case_number=doc.case_number or "",
+                court_name=doc.court_name or "",
+                decision_date=doc.decision_date.isoformat() if doc.decision_date else "",
+            )]
+        return []
+
+    chunks = []
+    start = 0
+    chunk_index = 0
+
+    while start < len(text):
+        # 청크 끝 위치 계산
+        end = min(start + config.chunk_size, len(text))
+
+        # 문장 경계에서 자르기 시도 (마지막 청크가 아닌 경우)
+        if end < len(text):
+            # 마침표, 느낌표, 물음표, 줄바꿈 등에서 자르기
+            for sep in ['. ', '.\n', '! ', '!\n', '? ', '?\n', '\n\n', '\n']:
+                sep_pos = text.rfind(sep, start + config.min_chunk_size, end)
+                if sep_pos > start:
+                    end = sep_pos + len(sep)
+                    break
+
+        chunk_text = text[start:end].strip()
+
+        if chunk_text and len(chunk_text) >= config.min_chunk_size:
+            chunks.append(Chunk(
+                chunk_id=f"{doc.source}_{doc.id}_chunk_{chunk_index}",
+                doc_id=doc.id,
+                source=doc.source,
+                doc_type=doc.doc_type,
+                chunk_index=chunk_index,
+                chunk_start=start,
+                chunk_end=end,
+                chunk_text=chunk_text,
+                case_number=doc.case_number or "",
+                court_name=doc.court_name or "",
+                decision_date=doc.decision_date.isoformat() if doc.decision_date else "",
+            ))
+            chunk_index += 1
+
+        # 다음 청크 시작 위치 (오버랩 적용)
+        start = end - config.chunk_overlap
+        if start >= len(text) - config.min_chunk_size:
+            break
+
+    return chunks
+
+
+# ============================================================================
+# 임베딩 모델
+# ============================================================================
+
 _local_model = None
 
 
@@ -148,6 +260,10 @@ def create_embeddings_batch(texts: List[str], use_local: bool = True) -> List[Li
         return create_embeddings_batch_openai(texts)
 
 
+# ============================================================================
+# DB 조회
+# ============================================================================
+
 async def get_documents_for_embedding(
     doc_type: Optional[DocType] = None,
     offset: int = 0,
@@ -188,8 +304,8 @@ async def get_document_count(doc_type: Optional[DocType] = None) -> int:
         return result.scalar() or 0
 
 
-def get_existing_ids(store: VectorStore, doc_type: Optional[DocType] = None) -> set:
-    """ChromaDB에 이미 존재하는 문서 ID 조회"""
+def get_existing_chunk_ids(store: VectorStore, doc_type: Optional[DocType] = None) -> set:
+    """ChromaDB에 이미 존재하는 청크 ID 조회"""
     try:
         # 메타데이터 필터링으로 조회
         if doc_type:
@@ -205,28 +321,57 @@ def get_existing_ids(store: VectorStore, doc_type: Optional[DocType] = None) -> 
         return set()
 
 
+def get_existing_doc_ids_from_chunks(store: VectorStore, doc_type: Optional[DocType] = None) -> set:
+    """이미 임베딩된 문서의 doc_id 조회"""
+    try:
+        if doc_type:
+            results = store.collection.get(
+                where={"doc_type": doc_type.value},
+                include=["metadatas"]
+            )
+        else:
+            results = store.collection.get(include=["metadatas"])
+
+        if results["metadatas"]:
+            return set(m.get("doc_id") for m in results["metadatas"] if m.get("doc_id"))
+        return set()
+    except Exception:
+        return set()
+
+
+# ============================================================================
+# 임베딩 생성
+# ============================================================================
+
 async def create_embeddings_for_type(
     doc_type: Optional[DocType] = None,
     batch_size: int = 100,
     reset: bool = False,
     use_local: bool = True,
+    chunk_config: ChunkConfig = None,
 ) -> dict:
     """
-    특정 유형의 문서 임베딩 생성
+    특정 유형의 문서 임베딩 생성 (청킹 적용)
 
     Args:
         doc_type: 문서 유형 (None이면 전체)
         batch_size: 배치 크기
         reset: True면 기존 임베딩 삭제 후 재생성
         use_local: 로컬 임베딩 모델 사용 여부
+        chunk_config: 청킹 설정
 
     Returns:
         처리 결과 통계
     """
+    if chunk_config is None:
+        chunk_config = ChunkConfig()
+
     stats = {
         "doc_type": doc_type.value if doc_type else "all",
         "total_documents": 0,
-        "processed": 0,
+        "documents_processed": 0,
+        "chunks_created": 0,
+        "chunks_stored": 0,
         "skipped": 0,
         "errors": 0,
     }
@@ -238,24 +383,25 @@ async def create_embeddings_for_type(
         if doc_type:
             # 특정 타입만 삭제
             print(f"[INFO] Deleting existing embeddings for {doc_type.value}...")
-            existing_ids = get_existing_ids(store, doc_type)
+            existing_ids = get_existing_chunk_ids(store, doc_type)
             if existing_ids:
                 store.delete_by_ids(list(existing_ids))
-                print(f"[INFO] Deleted {len(existing_ids)} existing embeddings")
-            existing_ids = set()
+                print(f"[INFO] Deleted {len(existing_ids)} existing chunks")
+            existing_doc_ids = set()
         else:
             # 전체 삭제
             print("[INFO] Resetting entire vector store...")
             store.reset()
-            existing_ids = set()
+            existing_doc_ids = set()
     else:
-        existing_ids = get_existing_ids(store, doc_type)
-        print(f"[INFO] Found {len(existing_ids)} existing embeddings")
+        existing_doc_ids = get_existing_doc_ids_from_chunks(store, doc_type)
+        print(f"[INFO] Found {len(existing_doc_ids)} documents already embedded")
 
     # 문서 수 조회
     total_count = await get_document_count(doc_type)
     stats["total_documents"] = total_count
     print(f"[INFO] Total documents to process: {total_count:,}")
+    print(f"[INFO] Chunk config: size={chunk_config.chunk_size}, overlap={chunk_config.chunk_overlap}")
 
     if total_count == 0:
         print("[WARN] No documents found")
@@ -267,7 +413,7 @@ async def create_embeddings_for_type(
 
     # 배치 처리
     offset = 0
-    db_batch_size = 1000  # DB 조회 배치
+    db_batch_size = 500  # DB 조회 배치
 
     while offset < total_count:
         # DB에서 문서 조회
@@ -276,88 +422,59 @@ async def create_embeddings_for_type(
         if not documents:
             break
 
-        # 임베딩 배치 준비
-        batch_ids = []
-        batch_texts = []
-        batch_metadatas = []
-        batch_documents_text = []
+        # 청크 배치 준비
+        batch_chunks: List[Chunk] = []
 
         for doc in documents:
-            doc_id = f"{doc.doc_type}_{doc.serial_number}"
-
-            # 이미 존재하는 문서 스킵
-            if doc_id in existing_ids:
+            # 이미 처리된 문서 스킵
+            if doc.id in existing_doc_ids:
                 stats["skipped"] += 1
                 continue
 
-            embedding_text = doc.embedding_text
-            if not embedding_text:
-                stats["skipped"] += 1
-                continue
-
-            batch_ids.append(doc_id)
-            batch_texts.append(embedding_text)
-            batch_documents_text.append(embedding_text[:1000])  # 저장용 요약
-            batch_metadatas.append({
-                "doc_type": doc.doc_type,
-                "case_number": doc.case_number or "",
-                "case_name": doc.case_name or "",
-                "decision_date": doc.decision_date.isoformat() if doc.decision_date else "",
-                "court_name": doc.court_name or "",
-                "db_id": doc.id,
-            })
-
-            # 배치 크기 도달 시 처리
-            if len(batch_ids) >= batch_size:
-                try:
-                    # 임베딩 생성
-                    embeddings = create_embeddings_batch(batch_texts, use_local)
-
-                    # ChromaDB에 저장
-                    store.add_documents(
-                        ids=batch_ids,
-                        documents=batch_documents_text,
-                        metadatas=batch_metadatas,
-                        embeddings=embeddings,
-                    )
-
-                    stats["processed"] += len(batch_ids)
-                    existing_ids.update(batch_ids)
-
-                except Exception as e:
-                    stats["errors"] += len(batch_ids)
-                    print(f"  [ERROR] Batch error: {e}")
-
-                # 배치 초기화
-                batch_ids = []
-                batch_texts = []
-                batch_metadatas = []
-                batch_documents_text = []
-
-        # 남은 배치 처리
-        if batch_ids:
+            # 문서를 청크로 분할
             try:
-                embeddings = create_embeddings_batch(batch_texts, use_local)
+                chunks = create_chunks(doc, chunk_config)
+                if not chunks:
+                    stats["skipped"] += 1
+                    continue
 
-                store.add_documents(
-                    ids=batch_ids,
-                    documents=batch_documents_text,
-                    metadatas=batch_metadatas,
-                    embeddings=embeddings,
-                )
-
-                stats["processed"] += len(batch_ids)
+                batch_chunks.extend(chunks)
+                stats["documents_processed"] += 1
+                stats["chunks_created"] += len(chunks)
 
             except Exception as e:
-                stats["errors"] += len(batch_ids)
-                print(f"  [ERROR] Final batch error: {e}")
+                stats["errors"] += 1
+                if stats["errors"] <= 5:
+                    print(f"  [ERROR] Chunking error for doc {doc.id}: {e}")
+                continue
+
+            # 배치 크기 도달 시 처리
+            if len(batch_chunks) >= batch_size:
+                try:
+                    stored = _store_chunk_batch(store, batch_chunks, use_local)
+                    stats["chunks_stored"] += stored
+                    existing_doc_ids.update(c.doc_id for c in batch_chunks)
+                except Exception as e:
+                    stats["errors"] += len(batch_chunks)
+                    print(f"  [ERROR] Batch store error: {e}")
+
+                batch_chunks = []
+
+        # 남은 배치 처리
+        if batch_chunks:
+            try:
+                stored = _store_chunk_batch(store, batch_chunks, use_local)
+                stats["chunks_stored"] += stored
+            except Exception as e:
+                stats["errors"] += len(batch_chunks)
+                print(f"  [ERROR] Final batch store error: {e}")
 
         # 진행률 출력
         progress = offset + len(documents)
         pct = progress / total_count * 100
         print(
             f"  [PROGRESS] {progress:,}/{total_count:,} ({pct:.1f}%) - "
-            f"Processed: {stats['processed']:,}, Skipped: {stats['skipped']:,}"
+            f"Docs: {stats['documents_processed']:,}, Chunks: {stats['chunks_stored']:,}"
         )
 
         offset += db_batch_size
@@ -365,10 +482,48 @@ async def create_embeddings_for_type(
     return stats
 
 
+def _store_chunk_batch(store: VectorStore, chunks: List[Chunk], use_local: bool) -> int:
+    """청크 배치를 벡터 저장소에 저장"""
+    if not chunks:
+        return 0
+
+    # 임베딩 생성
+    texts = [c.chunk_text for c in chunks]
+    embeddings = create_embeddings_batch(texts, use_local)
+
+    # ChromaDB에 저장 (documents 저장 안 함 - 용량 최적화)
+    # 검색 시 doc_id + chunk_start/chunk_end로 PostgreSQL에서 원문 조회
+    ids = [c.chunk_id for c in chunks]
+    metadatas = [
+        {
+            "doc_id": c.doc_id,
+            "source": c.source,
+            "doc_type": c.doc_type,
+            "chunk_index": c.chunk_index,
+            "chunk_start": c.chunk_start,
+            "chunk_end": c.chunk_end,
+            "case_number": c.case_number,
+            "court_name": c.court_name,
+            "decision_date": c.decision_date,
+        }
+        for c in chunks
+    ]
+
+    store.add_documents(
+        ids=ids,
+        documents=None,  # 텍스트 저장 안 함 (용량 최적화)
+        metadatas=metadatas,
+        embeddings=embeddings,
+    )
+
+    return len(chunks)
+
+
 async def create_all_embeddings(
     batch_size: int = 100,
     reset: bool = False,
     use_local: bool = True,
+    chunk_config: ChunkConfig = None,
 ) -> dict:
     """모든 문서 타입의 임베딩 생성"""
     all_stats = {}
@@ -379,7 +534,9 @@ async def create_all_embeddings(
         print(f"Creating embeddings for {doc_type.value}...")
         print('='*60)
 
-        stats = await create_embeddings_for_type(doc_type, batch_size, reset, use_local)
+        stats = await create_embeddings_for_type(
+            doc_type, batch_size, reset, use_local, chunk_config
+        )
         all_stats[doc_type.value] = stats
 
     elapsed = datetime.now() - start_time
@@ -388,38 +545,61 @@ async def create_all_embeddings(
     return all_stats
 
 
+# ============================================================================
+# 통계
+# ============================================================================
+
 def show_stats():
     """현재 임베딩 통계 출력"""
     store = VectorStore()
 
-    print("\n" + "="*50)
-    print("Vector Store Statistics")
-    print("="*50)
+    print("\n" + "="*60)
+    print("Vector Store Statistics (Chunks)")
+    print("="*60)
 
     total = store.count()
-    print(f"Total embeddings: {total:,}")
+    print(f"Total chunks: {total:,}")
 
     # 타입별 카운트
-    print("\nBy type:")
+    print("\nBy doc_type:")
     for doc_type in DocType:
         try:
             results = store.collection.get(
                 where={"doc_type": doc_type.value},
-                include=[]
+                include=["metadatas"]
             )
-            count = len(results["ids"]) if results["ids"] else 0
-            print(f"  - {doc_type.value}: {count:,}")
+            chunk_count = len(results["ids"]) if results["ids"] else 0
+            doc_ids = set(m.get("doc_id") for m in results["metadatas"] if m.get("doc_id")) if results["metadatas"] else set()
+            doc_count = len(doc_ids)
+            print(f"  - {doc_type.value}: {chunk_count:,} chunks from {doc_count:,} documents")
         except Exception:
             print(f"  - {doc_type.value}: (error)")
+
+    # 소스별 카운트
+    print("\nBy source (for committee):")
+    try:
+        results = store.collection.get(
+            where={"doc_type": "committee"},
+            include=["metadatas"]
+        )
+        if results["metadatas"]:
+            source_counts = {}
+            for m in results["metadatas"]:
+                source = m.get("source", "unknown")
+                source_counts[source] = source_counts.get(source, 0) + 1
+            for source, count in sorted(source_counts.items()):
+                print(f"  - {source}: {count:,} chunks")
+    except Exception:
+        pass
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="법률 문서 임베딩 생성"
+        description="법률 문서 임베딩 생성 (청킹 지원)"
     )
     parser.add_argument(
         "--type",
-        choices=["precedent", "constitutional", "administration", "legislation", "all"],
+        choices=["precedent", "constitutional", "administration", "legislation", "committee", "all"],
         default="all",
         help="임베딩할 문서 유형 (기본: all)"
     )
@@ -428,6 +608,18 @@ def main():
         type=int,
         default=100,
         help="배치 크기 (기본: 100)"
+    )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=500,
+        help="청크 크기 (문자 수, 기본: 500)"
+    )
+    parser.add_argument(
+        "--chunk-overlap",
+        type=int,
+        default=50,
+        help="청크 오버랩 (문자 수, 기본: 50)"
     )
     parser.add_argument(
         "--reset",
@@ -450,12 +642,19 @@ def main():
     use_local = settings.USE_LOCAL_EMBEDDING and not args.use_openai
     model_name = settings.LOCAL_EMBEDDING_MODEL if use_local else settings.EMBEDDING_MODEL
 
+    chunk_config = ChunkConfig(
+        chunk_size=args.chunk_size,
+        chunk_overlap=args.chunk_overlap,
+    )
+
     print("="*60)
-    print("Legal Document Embedding Creator")
+    print("Legal Document Embedding Creator (with Chunking)")
     print("="*60)
     print(f"Embedding model: {model_name}")
     print(f"Use local model: {use_local}")
     print(f"Batch size: {args.batch_size}")
+    print(f"Chunk size: {args.chunk_size}")
+    print(f"Chunk overlap: {args.chunk_overlap}")
     print(f"Reset mode: {args.reset}")
 
     if args.stats:
@@ -463,12 +662,14 @@ def main():
         return
 
     if args.type == "all":
-        stats = asyncio.run(create_all_embeddings(args.batch_size, args.reset, use_local))
+        stats = asyncio.run(create_all_embeddings(
+            args.batch_size, args.reset, use_local, chunk_config
+        ))
     else:
         doc_type = DocType(args.type)
-        stats = asyncio.run(
-            create_embeddings_for_type(doc_type, args.batch_size, args.reset, use_local)
-        )
+        stats = asyncio.run(create_embeddings_for_type(
+            doc_type, args.batch_size, args.reset, use_local, chunk_config
+        ))
 
     # 결과 출력
     print("\n" + "="*60)

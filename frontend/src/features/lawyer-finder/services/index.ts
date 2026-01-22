@@ -4,9 +4,18 @@ import type {
   SearchResponse,
   Lawyer,
   StatsResponse,
+  CategoriesResponse,
 } from '../types'
 
 export const lawyerFinderService = {
+  /**
+   * 전문분야 12대분류 목록 조회
+   */
+  getCategories: async (): Promise<CategoriesResponse> => {
+    const response = await api.get(`${endpoints.lawyerFinder}/categories`)
+    return response.data
+  },
+
   /**
    * 주변 변호사 검색
    */
@@ -14,7 +23,8 @@ export const lawyerFinderService = {
     latitude: number,
     longitude: number,
     radius: number = 5000,
-    limit: number = 50
+    limit: number = 50,
+    category?: string
   ): Promise<NearbySearchResponse> => {
     const params = new URLSearchParams({
       latitude: latitude.toString(),
@@ -22,6 +32,7 @@ export const lawyerFinderService = {
       radius: radius.toString(),
       limit: limit.toString(),
     })
+    if (category) params.append('category', category)
     const response = await api.get(`${endpoints.lawyerFinder}/nearby?${params}`)
     return response.data
   },
@@ -35,13 +46,14 @@ export const lawyerFinderService = {
   },
 
   /**
-   * 이름/사무소/지역으로 검색 (선택적 위치 필터 포함)
+   * 이름/사무소/지역/전문분야 카테고리로 검색 (선택적 위치 필터 포함)
    */
   searchLawyers: async (
     params: {
       name?: string
       office?: string
       district?: string
+      category?: string
       latitude?: number
       longitude?: number
       radius?: number
@@ -52,6 +64,7 @@ export const lawyerFinderService = {
     if (params.name) searchParams.append('name', params.name)
     if (params.office) searchParams.append('office', params.office)
     if (params.district) searchParams.append('district', params.district)
+    if (params.category) searchParams.append('category', params.category)
     if (params.latitude !== undefined) searchParams.append('latitude', params.latitude.toString())
     if (params.longitude !== undefined) searchParams.append('longitude', params.longitude.toString())
     if (params.radius !== undefined) searchParams.append('radius', params.radius.toString())

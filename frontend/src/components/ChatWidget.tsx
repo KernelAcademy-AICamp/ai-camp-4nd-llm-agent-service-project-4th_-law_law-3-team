@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
 import { api } from '@/lib/api'
@@ -32,8 +32,9 @@ interface MultiAgentChatResponse {
 }
 
 export default function ChatWidget() {
+  const router = useRouter()
   const pathname = usePathname()
-  const { isChatOpen, toggleChat, setChatOpen } = useUI()
+  const { isChatOpen, toggleChat, setChatOpen, chatMode, setChatMode } = useUI()
   const {
     userRole,
     setUserRole,
@@ -47,8 +48,7 @@ export default function ChatWidget() {
   // Determine if we are on the map page
   const isMapPage = pathname === '/lawyer-finder'
 
-  // Local state for view mode: 'split' or 'floating'
-  const [viewMode, setViewMode] = useState<'split' | 'floating'>('split')
+  // Global state for view mode is now handled by UIContext
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -64,18 +64,15 @@ export default function ChatWidget() {
 
   // Sync view mode with page change
   useEffect(() => {
-    if (isMapPage) {
-      setViewMode('floating')
-    } else {
-      setViewMode('split')
-    }
-  }, [isMapPage])
+    // 이제 모든 페이지에서 기본적으로 Split 모드를 사용합니다.
+    setChatMode('split')
+  }, [pathname, setChatMode])
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, isChatOpen, viewMode, isLoading])
+  }, [messages, isChatOpen, chatMode, isLoading])
 
   const handleSend = async (overrideMessage?: string) => {
     const messageToSend = overrideMessage || input
@@ -113,31 +110,76 @@ export default function ChatWidget() {
       )
 
       // 세션 데이터 업데이트
-      if (response.data.session_data) {
+      const newSessionData = response.data.session_data || {}
+      
+      // Helper to clean AI response for case detail view
+      const cleanAIResponse = (text: string) => {
+        // Remove common greeting patterns at the start
+        let cleaned = text
+          .replace(/^(안녕하세요|반갑습니다).*?(\n|$)/g, '')
+          .replace(/^.*?AI.*?입니다.*?(\n|$)/g, '')
+          .replace(/^무엇을 도와드릴까요.*?(\n|$)/g, '')
+          .trim()
+
+        // If the text starts with a header or bullet point after cleaning, it's good.
+        // If it still has some conversational filler, try to find the first comprehensive section.
+        // Strategy: Look for the first line that looks like a header or list item, or "요약", "판단".
+        const contentStartIndex = cleaned.search(/(^#|^\*\*|^\d+\.|^-\s|요약|판단|결론|판례)/m)
+        
+        if (contentStartIndex > 0) {
+           // If we found a clear start of content, take from there, but allow some context if it's close to start
+           // actually, let's just strip known greetings and return the rest to be safe.
+           // The Regex replacements above should cover most "Chatbotty" intros.
+        }
+        
+        return cleaned
+      }
+
+      // 판례 검색이나 법률 질문인 경우 (sources가 있거나 agent가 legal_search인 경우)
+      // 메인 화면인 판례 검색 페이지로 이동하여 결과를 보여줍니다.
+      if (
+        (response.data.sources && response.data.sources.length > 0) ||
+        response.data.agent_used === 'legal_search' ||
+        response.data.agent_used === 'case_search'
+      ) {
+        // AI 응답을 판례 상세 데이터 형식으로 변환 (기존 로직 유지)
+        const mainSource = response.data.sources?.[0]
+        
+        const aiCase = {
+          id: 'ai-generated-' + Date.now(),
+          case_name: mainSource?.case_name || 'AI 법률 분석 결과',
+          case_number: mainSource?.case_number || 'AI Analysis',
+          doc_type: mainSource?.doc_type || 'interpretation',
+          content: cleanAIResponse(response.data.response), // 인사말 제거된 정제된 내용 사용
+          summary: cleanAIResponse(response.data.response),
+          court: 'AI Legal Assistant',
+          date: new Date().toISOString().split('T')[0],
+        }
+        
+        // 세션 데이터에 추가하여 페이지 이동 후 사용할 수 있게 함
+        newSessionData.aiGeneratedCase = aiCase
+        // [NEW] 모든 참조 자료를 저장 (일반인 모드용)
+        newSessionData.aiReferences = response.data.sources || []
+        
+        setSessionData({ ...sessionData, ...newSessionData })
+        
+        // 판례 검색 페이지로 이동
+        if (pathname !== '/case-precedent') {
+          // 약간의 지연을 주어 상태 업데이트가 반영되도록 함
+          setTimeout(() => router.push('/case-precedent'), 100)
+        }
+      } else if (response.data.session_data) {
         setSessionData(response.data.session_data)
       }
 
-      // 응답 메시지 생성
-      let assistantContent = response.data.response
-
-      // 참고 자료가 있으면 추가 (마크다운 리스트 형식)
-      if (response.data.sources && response.data.sources.length > 0) {
-        const sourcesText = response.data.sources
-          .filter((s) => s.case_name || s.case_number)
-          .slice(0, 3)
-          .map((s) => `- ${s.case_name || '판례'} (${s.case_number})`)
-          .join('\n')
-
-        if (sourcesText) {
-          assistantContent += `\n\n**참고 판례:**\n\n${sourcesText}`
-        }
-      }
+      // 응답 메시지 생성 (참고 자료는 판례 검색 화면에서 표시)
+      const assistantContent = response.data.response
 
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: assistantContent,
-        actions: response.data.actions,
+        actions: response.data.actions, // 액션 버튼은 유지하되, 화면 이동이 주가 됨
         agentUsed: response.data.agent_used,
       }
       setMessages((prev) => [...prev, assistantMsg])
@@ -228,7 +270,7 @@ export default function ChatWidget() {
 
   // Toggle view mode manually
   const toggleViewMode = () => {
-    setViewMode((prev) => (prev === 'split' ? 'floating' : 'split'))
+    setChatMode(chatMode === 'split' ? 'floating' : 'split')
   }
 
   // Theme configuration
@@ -271,7 +313,7 @@ export default function ChatWidget() {
 
   // Layout classes based on viewMode
   const layoutClasses =
-    viewMode === 'split'
+    chatMode === 'split'
       ? 'fixed top-0 right-0 w-1/2 h-screen z-50 flex flex-col animate-in slide-in-from-right duration-500'
       : 'fixed bottom-6 right-6 w-[380px] h-[600px] z-50 rounded-2xl flex flex-col animate-in slide-in-from-bottom zoom-in duration-300'
 
@@ -299,7 +341,7 @@ export default function ChatWidget() {
     <div className={`${layoutClasses} ${themeClasses.container}`}>
       {/* Header */}
       <div
-        className={`p-4 md:p-6 flex justify-between items-center ${themeClasses.header} ${viewMode === 'floating' ? 'rounded-t-2xl' : ''}`}
+        className={`p-4 md:p-6 flex justify-between items-center ${themeClasses.header} ${chatMode === 'floating' ? 'rounded-t-2xl' : ''}`}
       >
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
@@ -353,9 +395,9 @@ export default function ChatWidget() {
             <button
               onClick={toggleViewMode}
               className={`p-2 rounded-lg transition-colors ${themeClasses.closeBtn}`}
-              title={viewMode === 'split' ? '작게 보기' : '크게 보기'}
+              title={chatMode === 'split' ? '작게 보기' : '크게 보기'}
             >
-              {viewMode === 'split' ? (
+              {chatMode === 'split' ? (
                 <svg
                   className="w-5 h-5"
                   fill="none"
@@ -424,7 +466,7 @@ export default function ChatWidget() {
               }`}
             >
               {msg.role === 'assistant' ? (
-                <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit">
+                <div className={`prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit ${!isLightTheme ? 'prose-invert' : ''}`}>
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                   {msg.actions && msg.actions.length > 0 && (
                     <ChatActions
@@ -467,7 +509,7 @@ export default function ChatWidget() {
 
       {/* Input */}
       <div
-        className={`p-4 md:p-6 ${themeClasses.inputArea} ${viewMode === 'floating' ? 'rounded-b-2xl' : ''}`}
+        className={`p-4 md:p-6 ${themeClasses.inputArea} ${chatMode === 'floating' ? 'rounded-b-2xl' : ''}`}
       >
         <div className="relative flex items-center gap-3">
           <input

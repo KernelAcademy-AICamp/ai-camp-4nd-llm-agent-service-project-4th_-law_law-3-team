@@ -30,11 +30,33 @@ class Settings(BaseSettings):
     # API Keys
     KAKAO_MAP_API_KEY: str = ""
     KAKAO_REST_API_KEY: str = ""
-    OPENAI_API_KEY: str = ""
 
-    # ChromaDB
+    # LLM 설정
+    LLM_PROVIDER: str = "openai"  # openai, anthropic, google
+
+    # OpenAI
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+
+    # Anthropic (Claude)
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
+
+    # Google (Gemini)
+    GOOGLE_API_KEY: str = ""
+    GOOGLE_MODEL: str = "gemini-3-flash-preview"
+
+    # Vector DB 선택 (chroma, qdrant)
+    VECTOR_DB: str = "chroma"
+
+    # ChromaDB 설정
     CHROMA_PERSIST_DIR: str = "./data/chroma"
     CHROMA_COLLECTION_NAME: str = "legal_documents"
+
+    # Qdrant 설정 (VECTOR_DB=qdrant 일 때 사용)
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: str = ""  # Qdrant Cloud 사용 시
+    QDRANT_COLLECTION_NAME: str = "legal_documents"
 
     # Embedding
     EMBEDDING_MODEL: str = "text-embedding-3-small"

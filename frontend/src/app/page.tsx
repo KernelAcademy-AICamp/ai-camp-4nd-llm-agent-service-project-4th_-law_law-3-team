@@ -135,28 +135,28 @@ function HomeContent() {
           </button>
         </div>
 
-        <div className={`grid gap-6 ${isChatOpen ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+        <div className={`grid gap-5 ${isChatOpen ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
           {enabledModules.map((module) => (
             <Link
               key={module.id}
               href={module.href}
-              className="group relative block p-8 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl hover:bg-white/10 hover:border-blue-500/50 transition-all duration-300 overflow-hidden"
+              className="group relative block p-6 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl hover:bg-white/10 hover:border-blue-500/50 transition-all duration-300 overflow-hidden"
             >
               {/* Subtle card glow on hover */}
               <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               
               <div className="relative z-10">
-                <div className="text-4xl mb-5 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300">
+                <div className="text-4xl mb-4 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300">
                   {module.icon}
                 </div>
-                <h2 className="text-xl font-bold text-white mb-3 group-hover:text-blue-400 transition-colors">
+                <h2 className="text-xl font-bold text-white mb-2 group-hover:text-blue-400 transition-colors">
                   {module.name}
                 </h2>
                 <p className="text-gray-400 text-sm leading-relaxed group-hover:text-gray-300 transition-colors">
                   {module.description}
                 </p>
                 
-                <div className="mt-6 flex items-center text-xs font-bold uppercase tracking-wider text-blue-500/70 group-hover:text-blue-500">
+                <div className="mt-4 flex items-center text-xs font-bold uppercase tracking-wider text-blue-500/70 group-hover:text-blue-500">
                   Explore <span className="ml-1 group-hover:translate-x-1 transition-transform">→</span>
                 </div>
               </div>

@@ -15,6 +15,7 @@ export interface Lawyer {
   latitude: number | null
   longitude: number | null
   distance?: number // 검색 시 거리 (km)
+  specialties?: string[] // 전문분야 목록
 }
 
 export interface NearbySearchResponse {
@@ -49,9 +50,28 @@ export interface StatsResponse {
   total_lawyers: number
   with_coordinates: number
   without_coordinates: number
+  with_specialties: number
   source: string | null
   crawled_at: string | null
   geocoded_at: string | null
+  specialty_crawl_date: string | null
+}
+
+export interface SpecialtiesResponse {
+  specialties: string[]
+  count: number
+}
+
+export interface Category {
+  id: string
+  name: string
+  icon: string
+  description: string
+}
+
+export interface CategoriesResponse {
+  categories: Category[]
+  count: number
 }
 
 // 사무소 정보 (지도 팝업용)

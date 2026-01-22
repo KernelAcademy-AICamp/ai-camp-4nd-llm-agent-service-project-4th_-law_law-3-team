@@ -1,5 +1,6 @@
 'use client'
 
+import ReactMarkdown from 'react-markdown'
 import type { PrecedentDetail, AIQuestionResponse } from '../types'
 import { AIChatSection } from './AIChatSection'
 
@@ -125,8 +126,8 @@ export function CaseDetailPanel({
       <div className="flex-1 overflow-y-auto p-6">
         <div className="prose prose-sm max-w-none">
           <h3 className="text-lg font-semibold text-gray-900 mb-3">판결 내용</h3>
-          <div className="bg-gray-50 rounded-lg p-4 text-gray-700 whitespace-pre-wrap leading-relaxed">
-            {case_.content}
+          <div className="bg-gray-50 rounded-lg p-4 text-gray-700 leading-relaxed">
+            <ReactMarkdown>{case_.content}</ReactMarkdown>
           </div>
         </div>
       </div>
