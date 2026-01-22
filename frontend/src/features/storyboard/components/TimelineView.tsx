@@ -11,6 +11,8 @@ interface TimelineViewProps {
   onItemSelect: (id: string) => void
   onItemEdit: (id: string) => void
   onItemDelete: (id: string) => void
+  onItemGenerateImage?: (id: string) => void
+  generatingImageIds?: Set<string>
 }
 
 export function TimelineView({
@@ -20,6 +22,8 @@ export function TimelineView({
   onItemSelect,
   onItemEdit,
   onItemDelete,
+  onItemGenerateImage,
+  generatingImageIds = new Set(),
 }: TimelineViewProps) {
   // 날짜별 그룹화
   const groupedItems = useMemo(() => {
@@ -99,9 +103,9 @@ export function TimelineView({
       <div className="max-w-4xl mx-auto space-y-16">
         {groupedItems.map((group) => (
           <div key={group.dateLabel} className="relative">
-            {/* 날짜 헤더 (스티키) */}
-            <div className="sticky top-0 z-20 mb-8 pl-24">
-              <span className="inline-flex items-center px-5 py-2 rounded-xl bg-blue-600/90 text-white text-base font-bold shadow-lg shadow-blue-900/50 backdrop-blur-md border border-blue-400/30">
+            {/* 날짜 헤더 (스티키) - 왼쪽 정렬 */}
+            <div className="sticky top-0 z-20 mb-8">
+              <span className="inline-flex items-center px-4 py-1.5 rounded-lg bg-blue-600/90 text-white text-sm font-bold shadow-lg shadow-blue-900/50 backdrop-blur-md border border-blue-400/30">
                 {group.dateLabel}
               </span>
             </div>
@@ -143,6 +147,8 @@ export function TimelineView({
                       onSelect={() => onItemSelect(item.id)}
                       onEdit={() => onItemEdit(item.id)}
                       onDelete={() => onItemDelete(item.id)}
+                      onGenerateImage={onItemGenerateImage ? () => onItemGenerateImage(item.id) : undefined}
+                      isGeneratingImage={generatingImageIds.has(item.id)}
                     />
                   </div>
                 ))}
