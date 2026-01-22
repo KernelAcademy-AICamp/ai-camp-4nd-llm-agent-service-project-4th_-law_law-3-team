@@ -4,6 +4,22 @@ import { useState } from 'react'
 import type { Lawyer } from '../types'
 import { SPECIALTY_CATEGORIES, SPECIALTY_TO_CATEGORY } from '../constants'
 
+// 카테고리별 색상 매핑
+const CATEGORY_COLORS: Record<string, string> = {
+  'civil-family': 'bg-pink-50 text-pink-700 border-pink-200',
+  'criminal': 'bg-red-50 text-red-700 border-red-200',
+  'real-estate': 'bg-amber-50 text-amber-700 border-amber-200',
+  'labor': 'bg-orange-50 text-orange-700 border-orange-200',
+  'corporate': 'bg-blue-50 text-blue-700 border-blue-200',
+  'finance': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'tax': 'bg-lime-50 text-lime-700 border-lime-200',
+  'public': 'bg-purple-50 text-purple-700 border-purple-200',
+  'ip': 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  'it-media': 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  'medical': 'bg-teal-50 text-teal-700 border-teal-200',
+  'international': 'bg-violet-50 text-violet-700 border-violet-200',
+}
+
 interface LawyerCardProps {
   lawyer: Lawyer
   selected?: boolean
@@ -86,7 +102,7 @@ export function LawyerCard({ lawyer, selected, onClick }: LawyerCardProps) {
                   return categories.map((cat) => (
                     <span
                       key={cat.id}
-                      className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-100 rounded flex items-center gap-1"
+                      className={`px-1.5 py-0.5 text-[10px] font-medium rounded border flex items-center gap-1 ${CATEGORY_COLORS[cat.id] || 'bg-gray-50 text-gray-700 border-gray-200'}`}
                     >
                       {cat.name}
                     </span>

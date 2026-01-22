@@ -21,6 +21,7 @@ class LawyerResponse(LawyerBase):
     detail_id: Optional[str] = None
     birth_year: Optional[str] = None
     distance: Optional[float] = Field(None, description="사용자 위치로부터 거리 (km)")
+    specialties: Optional[List[str]] = Field(None, description="전문분야 목록")
 
     class Config:
         from_attributes = True
