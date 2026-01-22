@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 from typing import BinaryIO
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAIError
 
 from app.core.config import settings
 
@@ -27,7 +27,7 @@ async def transcribe_audio(
     Returns:
         변환된 텍스트
     """
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
     # 파일 확장자 확인
     extension = Path(filename).suffix.lower().lstrip(".")
@@ -40,12 +40,17 @@ async def transcribe_audio(
         temp_file.write(content)
         temp_file.flush()
 
-        with open(temp_file.name, "rb") as f:
-            response = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=f,
-                language=language,
-                response_format="text",
-            )
+        try:
+            with open(temp_file.name, "rb") as f:
+                response = await client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=f,
+                    language=language,
+                    response_format="text",
+                )
+        except OpenAIError as e:
+            raise ValueError(f"음성 변환 API 오류: {str(e)}") from e
+        except Exception as e:
+            raise ValueError(f"음성 변환 중 예기치 않은 오류 발생: {str(e)}") from e
 
     return response

@@ -1,12 +1,14 @@
 """Vision 서비스 - Gemini Vision API를 사용한 이미지 분석"""
 import base64
 import json
-import tempfile
+import logging
 import uuid
 from pathlib import Path
 from typing import BinaryIO, List
 
 import google.generativeai as genai
+
+logger = logging.getLogger(__name__)
 
 from app.core.config import settings
 from ..schema import TimelineItem
@@ -75,16 +77,34 @@ async def analyze_image(
         user_prompt += f"\n\n추가 정보: {additional_context}"
 
     # Gemini Vision API 호출
-    response = model.generate_content(
-        [
-            VISION_SYSTEM_PROMPT,
-            {"mime_type": mime_type, "data": image_base64},
-            user_prompt,
-        ],
-        generation_config=genai.types.GenerationConfig(
-            temperature=0.3,
-        ),
-    )
+    try:
+        response = model.generate_content(
+            [
+                VISION_SYSTEM_PROMPT,
+                {"mime_type": mime_type, "data": image_base64},
+                user_prompt,
+            ],
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.3,
+            ),
+        )
+    except Exception as e:
+        # 로깅용 컨텍스트 정보
+        image_size_kb = len(image_data) / 1024
+        prompt_summary = user_prompt[:100] + "..." if len(user_prompt) > 100 else user_prompt
+        logger.error(
+            "Gemini Vision API 호출 실패: %s | mime_type=%s, image_size=%.1fKB, prompt=%s",
+            str(e),
+            mime_type,
+            image_size_kb,
+            prompt_summary,
+        )
+        return {
+            "success": False,
+            "error": f"이미지 분석 API 오류: {str(e)}",
+            "timeline": [],
+            "summary": None,
+        }
 
     # 응답 파싱
     content = response.text

@@ -117,8 +117,23 @@ async def extract_timeline_from_text(text: str) -> ExtractTimelineResponse:
 
     for idx, item in enumerate(raw_timeline):
         participants_detailed_raw = item.get("participants_detailed", [])
+
+        # participants_detailed 정규화: None이거나 리스트가 아니면 빈 리스트로
+        if participants_detailed_raw is None or not isinstance(participants_detailed_raw, list):
+            participants_detailed_raw = []
+
+        # 리스트 요소가 문자열이면 {"name": value} 형태로 변환
+        normalized_participants = []
+        for p in participants_detailed_raw:
+            if p is None:
+                continue
+            if isinstance(p, str):
+                normalized_participants.append({"name": p})
+            elif isinstance(p, dict):
+                normalized_participants.append(p)
+
         participants_detailed = [
-            _parse_participant(p) for p in participants_detailed_raw
+            _parse_participant(p) for p in normalized_participants
         ]
 
         participant_names = [p.name for p in participants_detailed]

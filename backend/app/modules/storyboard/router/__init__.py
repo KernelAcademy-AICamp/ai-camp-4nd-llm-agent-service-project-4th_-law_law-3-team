@@ -119,9 +119,10 @@ async def analyze_image_endpoint(
                 summary=result.get("summary"),
             )
         else:
-            return AnalyzeImageResponse(success=False, error="이미지 분석 실패")
+            error_msg = result.get("error") or result.get("message") or "이미지 분석 실패"
+            return AnalyzeImageResponse(success=False, error=error_msg)
     except ValueError as e:
-        return AnalyzeImageResponse(success=False, error=str(e))
+        return AnalyzeImageResponse(success=False, error=f"타임라인 데이터 변환 실패: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"이미지 분석 실패: {str(e)}")
 
@@ -180,6 +181,12 @@ async def generate_images_batch_endpoint(request: GenerateImagesBatchRequest):
 
     비동기로 처리되며, job_id를 통해 진행 상태를 확인할 수 있습니다.
     """
+    if not request.items:
+        raise HTTPException(
+            status_code=400,
+            detail="최소 1개 이상의 타임라인 항목이 필요합니다",
+        )
+
     try:
         # 작업 생성
         job_id = job_manager.create_job(total_steps=len(request.items))

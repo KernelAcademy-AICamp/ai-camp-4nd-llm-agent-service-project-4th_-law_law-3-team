@@ -1,7 +1,7 @@
 """스토리보드 모듈 - Pydantic 스키마"""
 from enum import Enum
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Tuple
 
 
 # 전환 효과 타입
@@ -158,11 +158,11 @@ class GenerateImagesBatchResponse(BaseModel):
 class GenerateVideoRequest(BaseModel):
     """영상 생성 요청"""
     timeline_id: str = Field(..., description="타임라인 ID")
-    image_urls: List[str] = Field(..., description="이미지 URL 목록 (최소 2개)")
+    image_urls: List[str] = Field(..., min_length=2, description="이미지 URL 목록 (최소 2개)")
     duration_per_image: float = Field(default=6.0, description="이미지당 표시 시간 (초)")
     transition: TransitionType = Field(default=TransitionType.FADE, description="전환 효과")
     transition_duration: float = Field(default=1.0, description="전환 효과 시간 (초)")
-    resolution: tuple = Field(default=(1280, 720), description="영상 해상도")
+    resolution: Tuple[int, int] = Field(default=(1280, 720), description="영상 해상도")
 
 
 class GenerateVideoResponse(BaseModel):

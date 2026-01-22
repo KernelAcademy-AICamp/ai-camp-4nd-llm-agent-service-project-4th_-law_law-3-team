@@ -68,15 +68,12 @@ def _build_image_prompt(
     elif participants:
         participants_section = f"등장인물: {', '.join(participants)}"
 
-    # 분위기 정보
-    mood_text = f"분위기: {mood}" if mood else ""
-
     prompt = f"""Create a professional storyboard illustration for the following scene.
 
 ## Scene Information
 - Title: {title}
 - Situation: {description}
-{f"- Setting: {setting_text}" if setting_text else ""}
+{f"- Setting: {setting_text}" if setting_text else ""}{f"- Mood/Atmosphere: {mood}" if mood else ""}
 
 {participants_section}
 
@@ -147,8 +144,8 @@ async def generate_image(
         # Gemini 클라이언트 초기화
         client = genai.Client(api_key=settings.GOOGLE_API_KEY)
 
-        # Gemini 2.0 Flash 이미지 생성
-        response = client.models.generate_content(
+        # Gemini 2.0 Flash 이미지 생성 (비동기 API 사용)
+        response = await client.aio.models.generate_content(
             model="gemini-2.0-flash-exp-image-generation",
             contents=prompt,
             config=types.GenerateContentConfig(

@@ -9,6 +9,7 @@ from app.core.registry import ModuleRegistry
 
 # 미디어 디렉토리 경로
 MEDIA_DIR = Path(__file__).parent.parent / "data" / "media"
+MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -30,8 +31,7 @@ registry = ModuleRegistry(app)
 registry.register_all_modules()
 
 # 미디어 정적 파일 마운트
-if MEDIA_DIR.exists():
-    app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
+app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 
 
 @app.get("/health")

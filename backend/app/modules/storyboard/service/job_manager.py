@@ -93,7 +93,10 @@ class JobManager:
             job.status = status
         if current_step is not None:
             job.current_step = current_step
-            job.progress = int((current_step / job.total_steps) * 100)
+            if job.total_steps > 0:
+                job.progress = int((current_step / job.total_steps) * 100)
+            else:
+                job.progress = 0
         if message is not None:
             job.message = message
         if result is not None:
@@ -217,7 +220,7 @@ async def run_batch_image_generation(
     for idx, item in enumerate(items):
         await job_manager.update_progress(
             job_id,
-            current_step=idx,
+            current_step=idx + 1,
             message=f"스토리보드 이미지 생성 중... ({idx + 1}/{len(items)})",
         )
 
