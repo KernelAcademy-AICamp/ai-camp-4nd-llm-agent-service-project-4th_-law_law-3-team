@@ -31,6 +31,13 @@ interface MultiAgentChatResponse {
   session_data: Record<string, unknown>
 }
 
+/**
+ * Chat interface component for AI legal assistance with multi-agent support, session handling, location-aware queries, and view-mode switching.
+ *
+ * Renders a floating or split chat UI that manages conversation state, sends user messages (optionally with location) to the multi-agent API, updates session data (including AI-generated case entries and references), handles navigation actions returned by the AI, and exposes controls for role selection, view-mode toggling, and location requests.
+ *
+ * @returns The ChatWidget React element.
+ */
 export default function ChatWidget() {
   const router = useRouter()
   const pathname = usePathname()

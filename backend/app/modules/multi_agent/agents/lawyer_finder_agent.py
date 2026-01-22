@@ -231,7 +231,14 @@ CATEGORY_NAMES: dict[str, str] = {
 
 
 def extract_district(message: str) -> tuple[str | None, dict[str, float] | None]:
-    """메시지에서 지역명과 좌표 추출"""
+    """
+    Extract a district name and its coordinates from a user message.
+    
+    Matches known district keys against the message using longest-name-first priority. If a match is found, returns a normalized district name (appends "구" for Seoul districts when appropriate; preserves major city/region names) and the coordinate dict from DISTRICT_COORDS. If no district is found, returns (None, None).
+    
+    Returns:
+        tuple[str | None, dict[str, float] | None]: (district_name, coords) where `district_name` is a normalized name or `None`, and `coords` is a dict with latitude/longitude from DISTRICT_COORDS or `None`.
+    """
     # 긴 이름부터 매칭 (강남구 vs 강남)
     sorted_districts = sorted(DISTRICT_COORDS.keys(), key=len, reverse=True)
     for district in sorted_districts:
@@ -249,13 +256,15 @@ def extract_district(message: str) -> tuple[str | None, dict[str, float] | None]
 
 def extract_specialty(message: str) -> tuple[str | None, str | None, str | None]:
     """
-    메시지에서 전문분야 추출
-
+    Extract a legal specialty and its category from a user's message.
+    
+    Matches specific specialty keywords first (longer keywords prioritized) and falls back to category-level keywords if no precise specialty is found.
+    
     Returns:
         (specialty, category_id, category_name)
-        - specialty: 정확한 전문분야명 (DB와 매칭되는 값, 예: "이혼")
-        - category_id: 카테고리 ID (예: "civil-family")
-        - category_name: 카테고리 한글명 (예: "민사·가사")
+        - specialty (str | None): Exact specialty name that matches DB values (e.g., "이혼"), or None if only a category matched.
+        - category_id (str | None): Category identifier (e.g., "civil-family") when a specialty or category keyword is found, otherwise None.
+        - category_name (str | None): Human-readable Korean category name corresponding to category_id, or None if no match was found.
     """
     # 1. 정확한 전문분야 키워드 먼저 확인
     # 긴 키워드부터 매칭 (예: "국제중재" vs "중재")
@@ -276,7 +285,15 @@ def extract_specialty(message: str) -> tuple[str | None, str | None, str | None]
 
 
 def extract_category(message: str) -> tuple[str | None, str | None]:
-    """메시지에서 전문분야 카테고리 추출 (하위 호환성)"""
+    """
+    Extract a category identifier and its human-readable name from the given message.
+    
+    Parameters:
+        message (str): User-provided text to analyze for category keywords.
+    
+    Returns:
+        tuple[str | None, str | None]: (category_id, category_name) where each element is the matched category identifier and display name, or `None` if no category was found.
+    """
     _, category_id, category_name = extract_specialty(message)
     return category_id, category_name
 
@@ -286,10 +303,22 @@ class LawyerFinderAgent(BaseAgent):
 
     @property
     def name(self) -> str:
+        """
+        Agent identifier for the lawyer finder agent.
+        
+        Returns:
+            str: The fixed agent name "lawyer_finder".
+        """
         return "lawyer_finder"
 
     @property
     def description(self) -> str:
+        """
+        Provide the agent's short descriptive label for UI display.
+        
+        Returns:
+            description (str): The agent description string "위치 기반 변호사 추천 - 지도에서 변호사 찾기".
+        """
         return "위치 기반 변호사 추천 - 지도에서 변호사 찾기"
 
     async def process(
@@ -299,7 +328,31 @@ class LawyerFinderAgent(BaseAgent):
         session_data: dict[str, Any] | None = None,
         user_location: dict[str, float] | None = None,
     ) -> AgentResponse:
-        """변호사 검색 처리 - 변호사 찾기 페이지로 이동"""
+        """
+        Handle a lawyer search request and navigate the user to the map-based lawyer finder.
+        
+        The function extracts district and specialty information from the incoming message, restores any pending
+        category/specialty from session data, and determines the search location from district coordinates or the
+        provided user_location. If no location is available, it prompts the user to share their location and returns
+        an AgentResponse that requests location while preserving pending search criteria in session_data. If a
+        location is available, it performs a tiered search by category (3 km radius, then 10 km radius, then a global
+        category-wide search), constructs navigation parameters for the map view, and returns an AgentResponse that
+        navigates to "/lawyer-finder" with appropriate filters and session_data updated with the last search context.
+        
+        Parameters:
+            message (str): The user's input message to parse for district and specialty keywords.
+            history (list[dict[str, str]] | None): Optional conversation history; not required for search logic.
+            session_data (dict[str, Any] | None): Session state used to restore pending_category or pending_specialty
+                when awaiting location, and updated in the returned AgentResponse (keys like awaiting_location,
+                pending_category, pending_specialty, last_search_location, last_category, search_mode, etc.).
+            user_location (dict[str, float] | None): Optional user-provided location with keys
+                "latitude" and "longitude" (float).
+        
+        Returns:
+            AgentResponse: Response containing a message, zero or more ChatAction entries (either a REQUEST_LOCATION
+            action when prompting for location, or a NAVIGATE action to "/lawyer-finder" plus a reset BUTTON), and
+            updated session_data reflecting the agent's state and last search results.
+        """
         session_data = session_data or {}
 
         # 1. 메시지에서 지역명 추출
@@ -494,7 +547,12 @@ class LawyerFinderAgent(BaseAgent):
         )
 
     def can_handle(self, message: str) -> bool:
-        """변호사 찾기 관련 키워드 확인"""
+        """
+        Determine whether the input message requests finding or recommending a lawyer.
+        
+        Returns:
+            `true` if the message contains any lawyer-finding or recommendation keywords, `false` otherwise.
+        """
         keywords = [
             "변호사 찾", "변호사를 찾", "변호사 추천", "변호사를 추천",
             "근처 변호사", "주변 변호사", "변호사 소개", "변호사를 소개",

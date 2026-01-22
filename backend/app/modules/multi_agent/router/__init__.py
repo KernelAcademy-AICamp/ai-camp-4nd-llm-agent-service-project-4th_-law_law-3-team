@@ -19,9 +19,12 @@ router = APIRouter()
 @router.post("/chat", response_model=MultiAgentChatResponse)
 async def multi_agent_chat(request: MultiAgentChatRequest) -> MultiAgentChatResponse:
     """
-    멀티 에이전트 챗 API
-
-    사용자 메시지를 분석하여 적절한 에이전트로 라우팅
+    Route a user message to the appropriate agent and return the agent's response along with metadata.
+    
+    Converts optional request.history into a list of {"role", "content"} entries, delegates processing to the orchestrator, and maps returned actions (including action-level `params`) into ChatActionResponse objects.
+    
+    Returns:
+        MultiAgentChatResponse: Contains the agent's response message, the identifier of the agent used, source references, a list of actions (with their params), and the updated session_data.
     """
     orchestrator = get_orchestrator()
 

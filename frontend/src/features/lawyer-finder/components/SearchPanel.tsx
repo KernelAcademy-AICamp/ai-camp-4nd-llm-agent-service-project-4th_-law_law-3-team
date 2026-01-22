@@ -31,6 +31,29 @@ const RADIUS_OPTIONS = [
   { value: 10000, label: '10km' },
 ]
 
+/**
+ * Render the sidebar search and filter panel for browsing and selecting lawyers.
+ *
+ * Displays region and specialty selectors, search radius buttons, a text search input,
+ * result header with count and reset, and a scrollable list of lawyer cards or an empty state.
+ *
+ * @param lawyers - Array of lawyer records to display in the list
+ * @param loading - When true, show loading states instead of results
+ * @param selectedLawyer - Currently selected lawyer or `null`
+ * @param onLawyerSelect - Callback invoked with a lawyer when a list item is selected
+ * @param onRadiusChange - Callback invoked with the selected radius (meters)
+ * @param onSearch - Callback invoked with a search query string
+ * @param onSearchReset - Callback invoked to clear the current search
+ * @param radius - Currently selected search radius (in meters)
+ * @param totalCount - Total number of matching lawyers
+ * @param sigungu - Currently selected Seoul district filter value
+ * @param onSigunguChange - Callback invoked with a district value when changed
+ * @param searchQuery - Current search string from parent state (displayed in header)
+ * @param category - Currently selected specialty category ID
+ * @param onCategoryChange - Callback invoked with a category ID when changed
+ * @param specialty - Optional specialty name used to customize the empty-result message
+ * @returns The SearchPanel React element
+ */
 export function SearchPanel({
   lawyers,
   loading,

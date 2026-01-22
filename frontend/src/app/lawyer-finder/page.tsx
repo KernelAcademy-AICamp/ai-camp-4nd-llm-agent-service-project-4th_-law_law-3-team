@@ -12,7 +12,11 @@ import { lawyerFinderService } from '@/features/lawyer-finder/services'
 import { DISTRICT_COORDS } from '@/features/lawyer-finder/constants'
 import type { Lawyer, Office } from '@/features/lawyer-finder/types'
 
-// Suspense boundary를 위한 wrapper
+/**
+ * Wraps the LawyerFinderPage in a Suspense boundary that displays a loading fallback.
+ *
+ * @returns A React element that renders `LawyerFinderPage` inside `Suspense`, using `LawyerFinderLoading` as the fallback.
+ */
 export default function LawyerFinderPageWrapper() {
   return (
     <Suspense fallback={<LawyerFinderLoading />}>
@@ -21,6 +25,11 @@ export default function LawyerFinderPageWrapper() {
   )
 }
 
+/**
+ * Loading placeholder UI for the Lawyer Finder page.
+ *
+ * @returns A JSX element that displays a centered spinner and the message "변호사 찾기 페이지 로딩 중...".
+ */
 function LawyerFinderLoading() {
   return (
     <div className="h-screen flex items-center justify-center bg-gray-50">
@@ -32,6 +41,14 @@ function LawyerFinderLoading() {
   )
 }
 
+/**
+ * Render the Lawyer Finder page UI, including the search panel, map, office detail panel, and header.
+ *
+ * Manages location, search state, filters (category/specialty/sigungu), radius, result list, selection state,
+ * and coordinates interactions between the search controls, map, and office detail view.
+ *
+ * @returns The JSX element for the Lawyer Finder page.
+ */
 function LawyerFinderPage() {
   const [lawyers, setLawyers] = useState<Lawyer[]>([])
   const [selectedLawyer, setSelectedLawyer] = useState<Lawyer | null>(null)

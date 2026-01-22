@@ -180,15 +180,20 @@ def find_nearby_lawyers(
     specialty: Optional[str] = None
 ) -> List[dict]:
     """
-    반경 내 변호사 검색
-
-    1단계: 바운딩 박스로 1차 필터링 (빠름)
-    2단계: Haversine 공식으로 정확한 거리 계산
-    3단계: 전문분야 필터링 (specialty > category 우선순위)
-
-    Args:
-        specialty: 특정 전문분야 키워드 (예: "이혼", "형사법") - 정확히 일치하는 전문분야 필터
-        category: 전문분야 카테고리 ID (예: "civil-family") - 카테고리 내 모든 전문분야 필터
+    Find lawyers within a radius of a geographic point.
+    
+    Performs an initial bounding-box filter, precise distance filtering using the Haversine formula, and specialty/category filtering (exact `specialty` match takes priority over `category`). Results are sorted by distance.
+    
+    Parameters:
+        latitude (float): Query point latitude.
+        longitude (float): Query point longitude.
+        radius_m (int): Search radius in meters.
+        limit (Optional[int]): Maximum number of results to return; if None, return all matches.
+        category (Optional[str]): Category ID whose specialties are used for filtering when `specialty` is not provided.
+        specialty (Optional[str]): Exact specialty name to filter lawyers by.
+    
+    Returns:
+        List[dict]: Matching lawyer records with an added `id` (index in the loaded dataset) and `distance` (kilometers, rounded to 2 decimals), sorted by ascending distance.
     """
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
@@ -242,7 +247,12 @@ def find_nearby_lawyers(
 
 
 def get_lawyer_by_id(lawyer_id: int) -> Optional[dict]:
-    """ID로 변호사 조회"""
+    """
+    Retrieve a lawyer record by its index ID.
+    
+    Returns:
+        dict: The lawyer's data with an added `id` field set to `lawyer_id`, or `None` if no lawyer exists with that ID.
+    """
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
 
@@ -265,21 +275,24 @@ def search_lawyers(
     limit: Optional[int] = None  # None이면 제한 없음
 ) -> List[dict]:
     """
-    이름/사무소/지역/전문분야로 검색
-
-    Args:
-        name: 이름 검색 (OR 조건)
-        office: 사무소명 검색 (OR 조건)
-        district: 지역(구/군) 검색 (AND 조건)
-        category: 전문분야 카테고리 ID (AND 조건)
-        specialty: 특정 전문분야 키워드 (AND 조건, category보다 우선)
-        latitude: 위치 필터링 위도
-        longitude: 위치 필터링 경도
-        radius_m: 반경 (미터)
-        limit: 최대 결과 수
-
+    Search for lawyers by name, office, district, category or specialty, with optional location filtering.
+    
+    Parameters:
+        name (Optional[str]): Substring to match against lawyer name (OR with `office`).
+        office (Optional[str]): Substring to match against office name (OR with `name`).
+        district (Optional[str]): Substring to require inside the lawyer's address (AND with other filters).
+        category (Optional[str]): Category ID whose specialties are used as a fallback filter when `specialty` is not provided.
+        specialty (Optional[str]): Exact specialty keyword to require (takes precedence over `category`).
+        latitude (Optional[float]): Latitude for distance-based filtering; must be provided together with `longitude`.
+        longitude (Optional[float]): Longitude for distance-based filtering; must be provided together with `latitude`.
+        radius_m (int): Search radius in meters when location filtering is used.
+        limit (Optional[int]): Maximum number of results to return; `None` means no limit.
+    
+    Returns:
+        List[dict]: List of matching lawyer records. Each returned dict is the original lawyer record with an added `id` key containing the lawyer's index in the loaded data.
+    
     Raises:
-        ValueError: latitude와 longitude 중 하나만 제공된 경우
+        ValueError: If exactly one of `latitude` or `longitude` is provided.
     """
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])

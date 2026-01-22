@@ -20,6 +20,17 @@ interface ChatActionsProps {
   isLightTheme?: boolean
 }
 
+/**
+ * Render interactive action controls for a chat message.
+ *
+ * Renders buttons, links, a navigate button (which navigates to a URL with optional query params), and a location request button based on the provided actions array; returns null when `actions` is empty or not provided.
+ *
+ * @param actions - Array of chat action descriptors determining which controls are rendered and their behavior
+ * @param onAction - Callback invoked with the action identifier when a standard button action is activated
+ * @param onRequestLocation - Callback invoked when a `request_location` action is activated
+ * @param isLightTheme - If true, use light-theme styling for action controls
+ * @returns A React element containing the rendered action controls, or `null` if there are no actions
+ */
 export default function ChatActions({
   actions,
   onAction,

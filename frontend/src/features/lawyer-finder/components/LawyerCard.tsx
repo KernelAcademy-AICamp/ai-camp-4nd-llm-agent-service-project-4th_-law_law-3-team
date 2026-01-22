@@ -27,6 +27,17 @@ interface LawyerCardProps {
   highlightCategory?: string  // 검색한 카테고리를 우선 표시
 }
 
+/**
+ * Renders a selectable lawyer card showing photo, name, specialties (with optional highlighted category), office, address, distance, and phone.
+ *
+ * The card is keyboard-accessible and visually indicates selection. Specialties are mapped to major categories and deduplicated; if a `highlightCategory` is provided and present, it is shown first. If no category mapping exists, up to two original specialties are shown as fallback.
+ *
+ * @param lawyer - The lawyer data to display
+ * @param selected - If true, applies selected visual styling to the card
+ * @param onClick - Callback invoked when the card is activated (click or Enter/Space)
+ * @param highlightCategory - Optional category ID to prioritize in the displayed specialty chips
+ * @returns The rendered lawyer card element
+ */
 export function LawyerCard({ lawyer, selected, onClick, highlightCategory }: LawyerCardProps) {
   const [imgError, setImgError] = useState(false)
 

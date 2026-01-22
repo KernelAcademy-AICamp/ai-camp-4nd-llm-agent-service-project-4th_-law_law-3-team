@@ -47,14 +47,22 @@ async def get_nearby_lawyers(
     specialty: Optional[str] = Query(None, description="특정 전문분야 (예: 이혼, 형사법)"),
 ):
     """
-    사용자 위치 기반 주변 변호사 검색
-
-    - **latitude**: 위도 (-90 ~ 90)
-    - **longitude**: 경도 (-180 ~ 180)
-    - **radius**: 검색 반경 (미터, 기본 5km)
-    - **limit**: 최대 결과 수 (미지정 시 전체 반환)
-    - **category**: 전문분야 카테고리 ID (예: "criminal", "civil-family")
-    - **specialty**: 특정 전문분야 키워드 (예: "이혼", "형사법") - category보다 우선 적용
+    Search for lawyers near a geographic point using the provided location and filters.
+    
+    Parameters:
+        latitude (float): Latitude of the search center in degrees (-90 to 90).
+        longitude (float): Longitude of the search center in degrees (-180 to 180).
+        radius (int): Search radius in meters.
+        limit (Optional[int]): Maximum number of results to return; when None, return all matching results.
+        category (Optional[str]): Specialty category ID to filter results.
+        specialty (Optional[str]): Specific specialty keyword to filter results; when provided, it takes precedence over `category`.
+    
+    Returns:
+        dict: A response object containing:
+            - "lawyers" (list): List of matching lawyer records.
+            - "total_count" (int): Number of lawyers in the "lawyers" list.
+            - "center" (dict): Center coordinates with keys "lat" and "lng".
+            - "radius" (int): The search radius in meters.
     """
     lawyers = find_nearby_lawyers(
         latitude=latitude,
@@ -111,16 +119,27 @@ async def search_lawyers_endpoint(
     limit: Optional[int] = Query(None, ge=1, description="최대 결과 수 (미지정 시 전체)"),
 ):
     """
-    변호사 검색 (이름/사무소/지역/전문분야 + 선택적 위치 필터)
-
-    - **name**: 이름에 포함된 문자열
-    - **office**: 사무소명에 포함된 문자열
-    - **district**: 주소에 포함된 구/군 (예: "강남구", "송파구")
-    - **category**: 전문분야 카테고리 ID (예: "criminal", "civil-family")
-    - **specialty**: 특정 전문분야 키워드 (예: "이혼", "형사법") - category보다 우선 적용
-    - **latitude**: 위치 필터 - 위도 (선택, longitude와 함께 사용)
-    - **longitude**: 위치 필터 - 경도 (선택, latitude와 함께 사용)
-    - **radius**: 위치 필터 - 반경 (미터, 기본 5km)
+    Searches lawyers by name, office, district, category, or specialty with optional location filtering.
+    
+    Parameters:
+        name (Optional[str]): Substring to match in lawyer names.
+        office (Optional[str]): Substring to match in office names.
+        district (Optional[str]): District (e.g., "Gangnam-gu") to filter by address.
+        category (Optional[str]): Specialty category ID.
+        specialty (Optional[str]): Specific specialty keyword (e.g., "divorce", "criminal"); if provided, it takes precedence over `category`.
+        latitude (Optional[float]): Latitude for location filtering; used together with `longitude`.
+        longitude (Optional[float]): Longitude for location filtering; used together with `latitude`.
+        radius (int): Search radius in meters (default 5000).
+        limit (Optional[int]): Maximum number of results to return; if None, returns all matching results.
+    
+    Returns:
+        dict: {
+            "lawyers": list of matching lawyer records,
+            "total_count": int number of returned lawyers
+        }
+    
+    Raises:
+        HTTPException: If no search criteria are provided (HTTP 400) or if input validation fails and `search_lawyers` raises a ValueError (converted to HTTP 400).
     """
     if not any([name, office, district, category, specialty]):
         raise HTTPException(
