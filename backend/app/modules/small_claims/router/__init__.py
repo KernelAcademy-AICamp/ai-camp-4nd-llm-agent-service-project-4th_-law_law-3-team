@@ -400,6 +400,8 @@ async def generate_document(request: DocumentGenerateRequest):
             max_tokens=800,
         )
 
+        if not response.choices:
+            raise HTTPException(status_code=503, detail="AI 응답이 없습니다")
         generated_body = response.choices[0].message.content
 
         # 템플릿 섹션에 생성된 본문 추가

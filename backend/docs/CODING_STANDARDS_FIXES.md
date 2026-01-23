@@ -275,15 +275,207 @@ def get_local_model() -> "SentenceTransformer":
 
 ---
 
+## 버그 수정 (2차)
+
+> 작성일: 2026-01-23
+
+### 7. Path Traversal 보안 취약점 수정 (High)
+
+**파일:** `app/modules/storyboard/service/video_generation.py`
+
+**문제:** 문자열 prefix 비교로 경로 검증 시 우회 가능
+
+**Before:**
+```python
+if not str(source_path).startswith(str(media_dir_resolved)):
+    return False
+```
+
+**After:**
+```python
+try:
+    source_path.relative_to(media_dir_resolved)
+except ValueError:
+    logger.warning(f"경로 순회 시도 감지: {url}")
+    return False
+```
+
+---
+
+### 8. IndexError 방지 - API 응답 검증
+
+**문제:** `response.choices[0]` 접근 시 빈 리스트면 IndexError 발생
+
+**수정된 파일:**
+- `app/modules/small_claims/router/__init__.py`
+- `app/modules/case_precedent/router/__init__.py`
+- `app/modules/storyboard/service/__init__.py`
+
+**Before:**
+```python
+generated_body = response.choices[0].message.content
+```
+
+**After:**
+```python
+if not response.choices:
+    raise HTTPException(status_code=503, detail="AI 응답이 없습니다")
+generated_body = response.choices[0].message.content
+```
+
+---
+
+### 9. IndexError 방지 - JSON 파싱
+
+**파일:** `app/modules/storyboard/service/vision.py`
+
+**문제:** split 결과가 예상보다 적을 때 IndexError
+
+**Before:**
+```python
+if "```json" in content:
+    content = content.split("```json")[1].split("```")[0]
+```
+
+**After:**
+```python
+if "```json" in content:
+    parts = content.split("```json")
+    if len(parts) > 1:
+        inner_parts = parts[1].split("```")
+        content = inner_parts[0] if inner_parts else parts[1]
+```
+
+---
+
+### 10. 예외 무시 → 로깅 추가
+
+**수정된 파일:**
+- `app/modules/storyboard/service/job_manager.py`
+- `app/modules/storyboard/service/video_generation.py`
+- `app/modules/multi_agent/agents/small_claims_agent.py`
+
+**Before:**
+```python
+except Exception:
+    failed.append(item["id"])
+```
+
+**After:**
+```python
+except Exception as e:
+    logger.error(f"이미지 생성 실패 (item_id={item['id']}): {e}", exc_info=True)
+    failed.append(item["id"])
+```
+
+---
+
+### 11. Race Condition 수정
+
+**파일:** `app/modules/storyboard/service/job_manager.py`
+
+**문제:** dict 조회와 제거 사이에 다른 코루틴이 수정할 수 있음
+
+**Before:**
+```python
+finally:
+    if job_id in self._subscribers:
+        self._subscribers[job_id].remove(queue)
+```
+
+**After:**
+```python
+finally:
+    try:
+        subscribers = self._subscribers.get(job_id)
+        if subscribers and queue in subscribers:
+            subscribers.remove(queue)
+    except (KeyError, ValueError):
+        pass  # 이미 제거됨
+```
+
+---
+
+### 12. JSON 파일 로드 에러 처리
+
+**파일:** `app/modules/lawyer_finder/service/__init__.py`
+
+**문제:** 파일이 손상되었을 때 JSONDecodeError 미처리
+
+**Before:**
+```python
+if LAWYERS_FILE.exists():
+    with open(LAWYERS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+```
+
+**After:**
+```python
+for file_path in files_to_try:
+    if file_path.exists():
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON 파싱 오류 ({file_path}): {e}")
+            continue
+        except UnicodeDecodeError as e:
+            logger.error(f"인코딩 오류 ({file_path}): {e}")
+            continue
+```
+
+---
+
+### 13. VectorStore IndexError 방지
+
+**파일:** `app/common/vectorstore/base.py`
+
+**문제:** documents/metadatas가 존재하지만 빈 리스트일 때 IndexError
+
+**Before:**
+```python
+"content": result["documents"][0] if result.get("documents") else "",
+```
+
+**After:**
+```python
+documents = result.get("documents", [])
+"content": documents[0] if documents else "",
+```
+
+---
+
+## 버그 수정 요약
+
+| 버그 유형 | 심각도 | 수정 파일 수 |
+|----------|--------|-------------|
+| Path Traversal | High | 1 |
+| IndexError (API 응답) | High | 3 |
+| IndexError (JSON 파싱) | Medium | 1 |
+| 예외 무시 (로깅 없음) | Medium | 3 |
+| Race Condition | Medium | 1 |
+| JSON 파일 로드 | Medium | 1 |
+| VectorStore IndexError | Medium | 1 |
+
+---
+
 ## 검증
 
 ```bash
-# 문법 검사 통과
-python3 -m py_compile app/modules/small_claims/router/__init__.py \
+# 문법 검사 통과 (모든 수정 파일)
+python3 -m py_compile \
+  app/modules/small_claims/router/__init__.py \
   app/common/chat_service.py \
   app/modules/storyboard/router/__init__.py \
   app/modules/storyboard/service/image_generation.py \
+  app/modules/storyboard/service/video_generation.py \
+  app/modules/storyboard/service/vision.py \
+  app/modules/storyboard/service/__init__.py \
+  app/modules/storyboard/service/job_manager.py \
   app/modules/lawyer_finder/router/__init__.py \
-  app/modules/case_precedent/router/__init__.py
+  app/modules/lawyer_finder/service/__init__.py \
+  app/modules/case_precedent/router/__init__.py \
+  app/modules/multi_agent/agents/small_claims_agent.py \
+  app/common/vectorstore/base.py
 # ✅ 모든 파일 통과
 ```

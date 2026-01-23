@@ -115,9 +115,11 @@ class VectorStoreBase(ABC):
         """단일 ID로 문서 조회"""
         result = self.get_by_ids([doc_id])
         if result and result.get("ids") and len(result["ids"]) > 0:
+            documents = result.get("documents", [])
+            metadatas = result.get("metadatas", [])
             return {
                 "id": result["ids"][0],
-                "content": result["documents"][0] if result.get("documents") else "",
-                "metadata": result["metadatas"][0] if result.get("metadatas") else {},
+                "content": documents[0] if documents else "",
+                "metadata": metadatas[0] if metadatas else {},
             }
         return None

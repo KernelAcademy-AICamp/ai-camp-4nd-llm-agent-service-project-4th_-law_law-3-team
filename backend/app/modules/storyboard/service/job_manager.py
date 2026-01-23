@@ -1,11 +1,14 @@
 """비동기 작업 관리자 - SSE 기반 진행 상태 관리"""
 import asyncio
+import logging
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import AsyncGenerator, Callable, Optional, Any
+from typing import Any, AsyncGenerator, Callable, Optional
 
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class JobStatus(str, Enum):
@@ -168,8 +171,13 @@ class JobManager:
                 if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
                     break
         finally:
-            if job_id in self._subscribers:
-                self._subscribers[job_id].remove(queue)
+            # Race condition 방지: dict에서 안전하게 제거
+            try:
+                subscribers = self._subscribers.get(job_id)
+                if subscribers and queue in subscribers:
+                    subscribers.remove(queue)
+            except (KeyError, ValueError):
+                pass  # 이미 제거됨
 
     async def _notify_subscribers(self, job_id: str) -> None:
         """구독자들에게 업데이트 알림"""
@@ -240,7 +248,8 @@ async def run_batch_image_generation(
                 })
             else:
                 failed.append(item["id"])
-        except Exception:
+        except Exception as e:
+            logger.error(f"이미지 생성 실패 (item_id={item['id']}): {e}", exc_info=True)
             failed.append(item["id"])
 
     final_result = {

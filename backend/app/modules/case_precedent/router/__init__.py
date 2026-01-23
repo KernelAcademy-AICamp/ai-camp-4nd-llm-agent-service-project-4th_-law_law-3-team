@@ -306,6 +306,8 @@ async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest):
             max_tokens=1000,
         )
 
+        if not response.choices:
+            raise HTTPException(status_code=503, detail="AI 응답이 없습니다")
         answer = response.choices[0].message.content
 
         return AIQuestionResponse(

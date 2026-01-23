@@ -103,6 +103,8 @@ async def extract_timeline_from_text(text: str) -> ExtractTimelineResponse:
         response_format={"type": "json_object"},
     )
 
+    if not response.choices:
+        return ExtractTimelineResponse(success=False, timeline=[], summary=None)
     content = response.choices[0].message.content
     if not content:
         return ExtractTimelineResponse(success=False, timeline=[], summary=None)

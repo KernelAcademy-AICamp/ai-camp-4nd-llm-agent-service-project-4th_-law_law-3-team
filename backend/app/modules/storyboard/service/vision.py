@@ -113,9 +113,14 @@ async def analyze_image(
 
     # JSON 추출 (markdown 코드 블록 처리)
     if "```json" in content:
-        content = content.split("```json")[1].split("```")[0]
+        parts = content.split("```json")
+        if len(parts) > 1:
+            inner_parts = parts[1].split("```")
+            content = inner_parts[0] if inner_parts else parts[1]
     elif "```" in content:
-        content = content.split("```")[1].split("```")[0]
+        parts = content.split("```")
+        if len(parts) > 1:
+            content = parts[1]
 
     try:
         data = json.loads(content.strip())

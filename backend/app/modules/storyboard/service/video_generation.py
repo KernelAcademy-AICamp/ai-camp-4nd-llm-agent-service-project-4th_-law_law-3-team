@@ -115,8 +115,12 @@ def _download_image(url: str, local_path: Path) -> bool:
             source_path = (MEDIA_DIR / relative_path).resolve()
             media_dir_resolved = MEDIA_DIR.resolve()
 
-            # source_path가 MEDIA_DIR 내부에 있는지 확인
-            if not str(source_path).startswith(str(media_dir_resolved)):
+            # source_path가 MEDIA_DIR 내부에 있는지 확인 (Path.relative_to 사용)
+            try:
+                source_path.relative_to(media_dir_resolved)
+            except ValueError:
+                # source_path가 media_dir 외부에 있음 (경로 순회 시도)
+                logger.warning(f"경로 순회 시도 감지: {url}")
                 return False
 
             if source_path.exists() and source_path.is_file():
@@ -136,7 +140,14 @@ def _download_image(url: str, local_path: Path) -> bool:
                             f.write(chunk)
             return True
         return False
-    except Exception:
+    except requests.RequestException as e:
+        logger.error(f"이미지 다운로드 실패 (url={url}): {e}")
+        return False
+    except OSError as e:
+        logger.error(f"파일 작업 실패 (url={url}): {e}")
+        return False
+    except Exception as e:
+        logger.error(f"예기치 않은 오류 (url={url}): {e}", exc_info=True)
         return False
 
 

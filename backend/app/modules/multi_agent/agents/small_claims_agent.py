@@ -4,11 +4,14 @@
 단계별 소액소송 가이드 및 서류 작성 지원
 """
 
+import logging
 import re
 from typing import Any
 
 from app.common.agent_base import ActionType, AgentResponse, BaseAgent, ChatAction
 from app.common.chat_service import search_relevant_documents
+
+logger = logging.getLogger(__name__)
 
 
 class SmallClaimsStep:
@@ -179,8 +182,8 @@ class SmallClaimsAgent(BaseAgent):
             search_query = f"{dispute_type or ''} 소액소송 손해배상"
             try:
                 related_docs = search_relevant_documents(search_query, n_results=3)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"관련 문서 검색 실패: {e}")
 
         # 단계별 처리
         if current_step == SmallClaimsStep.INIT:

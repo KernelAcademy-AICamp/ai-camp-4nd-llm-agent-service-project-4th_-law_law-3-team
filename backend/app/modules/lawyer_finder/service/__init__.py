@@ -1,9 +1,12 @@
 """변호사 찾기 모듈 - 서비스 레이어"""
 import json
-from math import radians, cos, sin, asin, sqrt
-from pathlib import Path
-from typing import List, Optional, Tuple, Set
+import logging
 from functools import lru_cache
+from math import asin, cos, radians, sin, sqrt
+from pathlib import Path
+from typing import List, Optional, Set, Tuple
+
+logger = logging.getLogger(__name__)
 
 # 전문분야 12대분류 (사용자에게는 이것만 표시)
 SPECIALTY_CATEGORIES: dict[str, dict] = {
@@ -114,21 +117,25 @@ FALLBACK_FILE = PROJECT_ROOT / "all_lawyers.json"
 @lru_cache(maxsize=1)
 def load_lawyers_data() -> dict:
     """변호사 데이터 로드 (캐싱)"""
-    # 전문분야 포함 파일 우선
-    if LAWYERS_WITH_SPECIALTIES_FILE.exists():
-        with open(LAWYERS_WITH_SPECIALTIES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+    files_to_try = [
+        LAWYERS_WITH_SPECIALTIES_FILE,
+        LAWYERS_FILE,
+        FALLBACK_FILE,
+    ]
 
-    # 지오코딩된 파일
-    if LAWYERS_FILE.exists():
-        with open(LAWYERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+    for file_path in files_to_try:
+        if file_path.exists():
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON 파싱 오류 ({file_path}): {e}")
+                continue
+            except UnicodeDecodeError as e:
+                logger.error(f"인코딩 오류 ({file_path}): {e}")
+                continue
 
-    # 폴백: 원본 파일
-    if FALLBACK_FILE.exists():
-        with open(FALLBACK_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-
+    logger.warning("변호사 데이터 파일을 찾을 수 없습니다")
     return {"lawyers": [], "metadata": {}}
 
 
