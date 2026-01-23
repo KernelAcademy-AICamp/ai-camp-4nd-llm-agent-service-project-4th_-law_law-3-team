@@ -2,12 +2,15 @@
 판례 추천 모듈 - 업무 사례 기반 관련 판례 제공
 RAG 기반으로 사용자 상황에 맞는 판례 검색 및 변호사 추천
 """
+import logging
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional, List
 
 from app.common.chat_service import generate_chat_response, search_relevant_documents
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -118,7 +121,8 @@ async def chat(request: ChatRequest):
             sources=[ChatSource(**s) for s in result["sources"]],
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"챗봇 응답 생성 실패: {str(e)}")
+        logger.error(f"챗봇 응답 생성 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="챗봇 응답 생성 중 오류가 발생했습니다")
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -149,7 +153,8 @@ async def search(request: SearchRequest):
 
         return SearchResponse(query=request.query, results=search_results)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+        logger.error(f"검색 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="검색 중 오류가 발생했습니다")
 
 
 @router.post("/analyze")
@@ -207,7 +212,8 @@ async def search_precedents(
             precedents=precedents,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"판례 검색 실패: {str(e)}")
+        logger.error(f"판례 검색 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="판례 검색 중 오류가 발생했습니다")
 
 
 @router.get("/precedents/{precedent_id}", response_model=PrecedentDetailResponse)
@@ -241,7 +247,8 @@ async def get_precedent_detail(precedent_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"판례 조회 실패: {str(e)}")
+        logger.error(f"판례 조회 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="판례 조회 중 오류가 발생했습니다")
 
 
 @router.post("/precedents/{precedent_id}/ask", response_model=AIQuestionResponse)
@@ -315,4 +322,5 @@ async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"질문 처리 실패: {str(e)}")
+        logger.error(f"질문 처리 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="질문 처리 중 오류가 발생했습니다")

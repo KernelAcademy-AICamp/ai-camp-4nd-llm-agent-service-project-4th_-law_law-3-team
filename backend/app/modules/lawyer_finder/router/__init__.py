@@ -2,8 +2,12 @@
 변호사 찾기 모듈 - API 라우터
 위치 기반 변호사 검색, 클러스터링, 상세 조회
 """
-from fastapi import APIRouter, Query, HTTPException
+import logging
 from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 
 from ..schema import (
     LawyerResponse,

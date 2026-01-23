@@ -1,4 +1,5 @@
-"""이미지 생성 서비스 - Google Gemini 2.0 Flash 사용 (나노바나나 프로)"""
+"""이미지 생성 서비스 - Google Gemini 2.0 Flash 사용"""
+import logging
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -9,6 +10,8 @@ from PIL import Image
 
 from app.core.config import settings
 from ..schema import Participant, ParticipantRole
+
+logger = logging.getLogger(__name__)
 
 # 미디어 디렉토리 경로
 MEDIA_DIR = Path(__file__).parent.parent.parent.parent.parent / "data" / "media"
@@ -182,6 +185,7 @@ async def generate_image(
         }
 
     except Exception as e:
+        logger.error(f"이미지 생성 오류 (item_id={item_id}): {e}", exc_info=True)
         return {
             "success": False,
             "error": str(e),

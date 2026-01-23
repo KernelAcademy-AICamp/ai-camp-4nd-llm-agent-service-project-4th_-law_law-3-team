@@ -3,12 +3,17 @@
 중고거래 사기, 떼인 알바비, 층간소음 등 소액 사건 처리 지원
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from pydantic import BaseModel
-from typing import List, Optional
+import logging
 from datetime import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from app.common.chat_service import search_relevant_documents
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -365,7 +370,6 @@ async def generate_document(request: DocumentGenerateRequest):
     """
     try:
         from openai import OpenAI
-        from app.core.config import settings
 
         case_info = request.case_info
         document_type = request.document_type
@@ -384,7 +388,7 @@ async def generate_document(request: DocumentGenerateRequest):
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=settings.OPENAI_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -445,7 +449,8 @@ async def generate_document(request: DocumentGenerateRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"서류 생성 실패: {str(e)}")
+        logger.error(f"서류 생성 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="서류 생성 중 오류가 발생했습니다")
 
 
 @router.get("/related-cases/{dispute_type}", response_model=RelatedCasesResponse)
@@ -505,4 +510,5 @@ async def get_related_cases(dispute_type: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"관련 판례 조회 실패: {str(e)}")
+        logger.error(f"관련 판례 조회 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="관련 판례 조회 중 오류가 발생했습니다")

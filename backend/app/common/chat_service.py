@@ -5,40 +5,41 @@ VectorStore에서 관련 문서를 검색하고 LLM으로 응답 생성
 LangChain/LangGraph 호환 구조
 """
 
+import logging
 import re
-from typing import List, Optional, Set
+from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING, List, Optional, Set
 
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from openai import OpenAI
-from sqlalchemy import select, or_
+from sqlalchemy import or_, select
 
-from app.core.config import settings
-from app.common.vectorstore import VectorStore
 from app.common.database import sync_session_factory
 from app.common.llm import get_chat_model
-from app.models.legal_document import LegalDocument
+from app.common.vectorstore import VectorStore
+from app.core.config import settings
 from app.models.law import Law
+from app.models.legal_document import LegalDocument
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
+
+logger = logging.getLogger(__name__)
 
 
-# 로컬 임베딩 모델 (lazy loading)
-_local_model = None
+@lru_cache(maxsize=1)
+def get_local_model() -> "SentenceTransformer":
+    """sentence-transformers 모델 로드 (캐싱)"""
+    from sentence_transformers import SentenceTransformer
 
+    cache_dir = Path(__file__).parent.parent.parent / "data" / "models"
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
-def get_local_model():
-    """sentence-transformers 모델 로드"""
-    global _local_model
-    if _local_model is None:
-        from sentence_transformers import SentenceTransformer
-
-        cache_dir = Path(__file__).parent.parent.parent / "data" / "models"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-
-        _local_model = SentenceTransformer(
-            settings.LOCAL_EMBEDDING_MODEL,
-            cache_folder=str(cache_dir)
-        )
-    return _local_model
+    return SentenceTransformer(
+        settings.LOCAL_EMBEDDING_MODEL,
+        cache_folder=str(cache_dir)
+    )
 
 
 def create_query_embedding(query: str) -> List[float]:

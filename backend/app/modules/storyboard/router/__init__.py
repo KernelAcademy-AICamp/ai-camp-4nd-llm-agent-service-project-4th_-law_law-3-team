@@ -1,11 +1,14 @@
 """스토리보드 모듈 - 사건 타임라인 시각화 API"""
 import asyncio
 import json
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
+
+logger = logging.getLogger(__name__)
 
 from ..schema import (
     AnalyzeImageResponse,
@@ -49,7 +52,8 @@ async def extract_timeline(request: ExtractTimelineRequest):
         result = await extract_timeline_from_text(request.text)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"타임라인 추출 실패: {str(e)}")
+        logger.error(f"타임라인 추출 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="타임라인 추출 중 오류가 발생했습니다")
 
 
 @router.post("/validate")
@@ -66,7 +70,8 @@ async def validate_timeline(request: ValidateTimelineRequest):
             "message": "유효한 타임라인 데이터입니다" if is_valid else "잘못된 형식입니다",
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"유효성 검사 실패: {str(e)}")
+        logger.warning(f"유효성 검사 실패: {e}")
+        raise HTTPException(status_code=400, detail="유효성 검사에 실패했습니다")
 
 
 @router.post("/transcribe", response_model=TranscribeResponse)
@@ -89,7 +94,8 @@ async def transcribe_audio_endpoint(
     except ValueError as e:
         return TranscribeResponse(success=False, error=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"음성 변환 실패: {str(e)}")
+        logger.error(f"음성 변환 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="음성 변환 중 오류가 발생했습니다")
 
 
 @router.post("/analyze-image", response_model=AnalyzeImageResponse)
@@ -122,9 +128,11 @@ async def analyze_image_endpoint(
             error_msg = result.get("error") or result.get("message") or "이미지 분석 실패"
             return AnalyzeImageResponse(success=False, error=error_msg)
     except ValueError as e:
-        return AnalyzeImageResponse(success=False, error=f"타임라인 데이터 변환 실패: {str(e)}")
+        logger.warning(f"타임라인 데이터 변환 실패: {e}")
+        return AnalyzeImageResponse(success=False, error="타임라인 데이터 변환에 실패했습니다")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"이미지 분석 실패: {str(e)}")
+        logger.error(f"이미지 분석 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="이미지 분석 중 오류가 발생했습니다")
 
 
 @router.post("/generate-image", response_model=GenerateImageResponse)
@@ -171,7 +179,8 @@ async def generate_image_endpoint(request: GenerateImageRequest):
                 error="이미지 생성 실패, 플레이스홀더 이미지 사용",
             )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"이미지 생성 실패: {str(e)}")
+        logger.error(f"이미지 생성 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="이미지 생성 중 오류가 발생했습니다")
 
 
 @router.post("/generate-images-batch", response_model=GenerateImagesBatchResponse)
@@ -203,7 +212,8 @@ async def generate_images_batch_endpoint(request: GenerateImagesBatchRequest):
 
         return GenerateImagesBatchResponse(success=True, job_id=job_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"일괄 생성 시작 실패: {str(e)}")
+        logger.error(f"일괄 생성 시작 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="일괄 이미지 생성을 시작할 수 없습니다")
 
 
 @router.get("/jobs/{job_id}/status")
@@ -286,4 +296,5 @@ async def generate_video_endpoint(request: GenerateVideoRequest):
                 error=result.get("error", "영상 생성 실패"),
             )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"영상 생성 실패: {str(e)}")
+        logger.error(f"영상 생성 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="영상 생성 중 오류가 발생했습니다")
