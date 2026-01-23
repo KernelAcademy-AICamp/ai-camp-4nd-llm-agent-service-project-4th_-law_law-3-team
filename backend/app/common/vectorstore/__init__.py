@@ -4,6 +4,7 @@
 환경 변수 VECTOR_DB에 따라 적절한 벡터 DB 구현체를 선택합니다.
 - chroma (기본값): ChromaDB 사용
 - qdrant: Qdrant 사용
+- lancedb: LanceDB 사용 (디스크 기반, 메모리 효율적)
 
 Usage:
     from app.common.vectorstore import get_vector_store, VectorStore
@@ -29,14 +30,17 @@ def get_vector_store(collection_name: Optional[str] = None) -> VectorStoreBase:
         collection_name: 컬렉션 이름 (기본값: settings에서)
 
     Returns:
-        VectorStoreBase 구현체 (ChromaVectorStore 또는 QdrantVectorStore)
+        VectorStoreBase 구현체 (ChromaVectorStore, QdrantVectorStore, LanceDBStore)
 
     환경 변수:
-        VECTOR_DB: 사용할 벡터 DB (chroma, qdrant)
+        VECTOR_DB: 사용할 벡터 DB (chroma, qdrant, lancedb)
     """
     vector_db = getattr(settings, "VECTOR_DB", "chroma").lower()
 
-    if vector_db == "qdrant":
+    if vector_db == "lancedb":
+        from app.common.vectorstore.lancedb import LanceDBStore
+        return LanceDBStore(collection_name=collection_name)
+    elif vector_db == "qdrant":
         from app.common.vectorstore.qdrant import QdrantVectorStore
         return QdrantVectorStore(collection_name=collection_name)
     else:

@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str = ""  # Qdrant Cloud 사용 시
     QDRANT_COLLECTION_NAME: str = "legal_documents"
 
+    # LanceDB 설정 (VECTOR_DB=lancedb 일 때 사용)
+    LANCEDB_URI: str = "./data/lancedb"
+    LANCEDB_TABLE_NAME: str = "legal_chunks"
+
     # Embedding
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_BATCH_SIZE: int = 100
