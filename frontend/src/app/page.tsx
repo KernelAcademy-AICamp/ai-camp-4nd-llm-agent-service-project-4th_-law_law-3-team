@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, Suspense } from 'react'
+import { useEffect, Suspense, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getEnabledModules } from '@/lib/modules'
@@ -12,7 +12,7 @@ function HomeContent() {
   const role = searchParams.get('role') as 'lawyer' | 'user' | null
   
   const { isChatOpen, setChatOpen } = useUI()
-  const enabledModules = getEnabledModules(role || undefined)
+  const enabledModules = useMemo(() => getEnabledModules(role || undefined), [role])
 
   // Manage chat state based on role
   useEffect(() => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
@@ -62,14 +62,20 @@ export default function ChatWidget() {
   const [isLoading, setIsLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Sync view mode with page change
+  // 페이지 변경 시에만 초기 모드 설정 (첫 진입 시에만)
+  const prevPathnameRef = useRef<string | null>(null)
+
   useEffect(() => {
+    // 같은 페이지에서는 모드 변경 안 함 (사용자가 토글한 상태 유지)
+    if (prevPathnameRef.current === pathname) return
+    prevPathnameRef.current = pathname
+
     if (isMapPage) {
-      // 지도 페이지에서는 챗봇을 작은 floating 모드로 표시
+      // 지도 페이지 첫 진입 시 floating 모드로 시작
       setChatMode('floating')
       setChatOpen(true)
     } else {
-      // 다른 페이지에서는 Split 모드 사용
+      // 다른 페이지 진입 시 Split 모드 사용
       setChatMode('split')
     }
   }, [pathname, setChatMode, setChatOpen, isMapPage])
@@ -174,19 +180,16 @@ export default function ChatWidget() {
         
         // 판례 검색 페이지로 이동
         if (pathname !== '/case-precedent') {
-          // 약간의 지연을 주어 상태 업데이트가 반영되도록 함
-          setTimeout(() => router.push('/case-precedent'), 100)
+          router.push('/case-precedent')
         }
       } else if (response.data.session_data) {
         setSessionData(response.data.session_data)
       }
 
       // NAVIGATE 액션이 있으면 자동으로 페이지 이동
-      console.log('Response actions:', response.data.actions)
       const navigateAction = response.data.actions?.find(
         (action) => action.type === 'navigate' && action.url
       )
-      console.log('Navigate action found:', navigateAction)
 
       if (navigateAction && navigateAction.url) {
         // 응답 메시지 먼저 표시
@@ -211,13 +214,8 @@ export default function ChatWidget() {
           fullUrl = `${navigateAction.url}?${searchParams.toString()}`
         }
 
-        console.log('[ChatWidget] Navigating to:', fullUrl)
-
-        // 잠시 후 페이지 이동 (메시지가 표시된 후)
-        // window.location.href 사용하여 페이지 새로고침 (URL 파라미터 확실히 적용)
-        setTimeout(() => {
-          window.location.href = fullUrl
-        }, 500)
+        // Next.js router를 사용하여 페이지 이동 (SPA 네비게이션)
+        router.push(fullUrl)
 
         return // 여기서 종료
       }

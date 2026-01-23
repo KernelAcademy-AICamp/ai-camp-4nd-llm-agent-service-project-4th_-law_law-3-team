@@ -108,13 +108,21 @@ export function useTimelineState() {
 
   // 단일 스토리보드 이미지 생성
   const generateItemImage = useCallback(async (itemId: string) => {
-    const item = items.find((i) => i.id === itemId)
-    if (!item) return
-
     setGeneratingImageIds((prev) => new Set(prev).add(itemId))
 
     try {
-      const response = await storyboardService.generateImage(item)
+      // functional update로 최신 items 상태 참조
+      let targetItem: TimelineItem | undefined
+      setItems((currentItems) => {
+        targetItem = currentItems.find((i) => i.id === itemId)
+        return currentItems
+      })
+
+      if (!targetItem) {
+        return
+      }
+
+      const response = await storyboardService.generateImage(targetItem)
       if (response.success && response.image_url) {
         setItems((prev) =>
           prev.map((i) =>
@@ -135,20 +143,27 @@ export function useTimelineState() {
         return newSet
       })
     }
-  }, [items])
+  }, [])
 
   // 일괄 스토리보드 이미지 생성 (순차 처리 - 안정적)
   const generateAllImages = useCallback(async () => {
-    if (items.length === 0) return
+    // functional update로 최신 items 가져오기
+    let currentItems: TimelineItem[] = []
+    setItems((prev) => {
+      currentItems = prev
+      return prev
+    })
+
+    if (currentItems.length === 0) return
 
     setIsGeneratingBatch(true)
-    setBatchProgress({ current: 0, total: items.length })
+    setBatchProgress({ current: 0, total: currentItems.length })
 
     try {
       // 순차적으로 이미지 생성 (한 번에 하나씩)
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i]
-        setBatchProgress({ current: i, total: items.length })
+      for (let i = 0; i < currentItems.length; i++) {
+        const item = currentItems[i]
+        setBatchProgress({ current: i, total: currentItems.length })
 
         try {
           const response = await storyboardService.generateImage(item)
@@ -167,14 +182,14 @@ export function useTimelineState() {
         }
       }
 
-      setBatchProgress({ current: items.length, total: items.length })
+      setBatchProgress({ current: currentItems.length, total: currentItems.length })
     } catch (error) {
       console.error('Generate all images error:', error)
     } finally {
       setIsGeneratingBatch(false)
       setBatchProgress(undefined)
     }
-  }, [items])
+  }, [])
 
   // 영상 생성
   const generateVideo = useCallback(async (imageUrls: string[], settings: VideoSettings) => {

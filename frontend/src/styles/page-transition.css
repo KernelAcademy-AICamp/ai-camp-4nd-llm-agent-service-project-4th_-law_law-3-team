@@ -1,0 +1,35 @@
+.page-transition-wrapper {
+  width: 100%;
+  height: 100%;
+  perspective: 1500px;
+}
+
+.page-transition-content {
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  background: transparent;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  transform-origin: left center;
+  animation: pageSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pageSlideIn {
+  from {
+    opacity: 0;
+    transform: rotateY(-10deg) translateX(20px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: rotateY(0) translateX(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition-content {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import type { PrecedentItem } from '../types'
 
 interface CaseCardProps {
@@ -8,7 +9,7 @@ interface CaseCardProps {
   onClick: () => void
 }
 
-export function CaseCard({ case_, selected, onClick }: CaseCardProps) {
+function CaseCardComponent({ case_, selected, onClick }: CaseCardProps) {
   const getDocTypeLabel = (docType: string) => {
     const labels: Record<string, string> = {
       precedent: '판례',
@@ -74,3 +75,5 @@ export function CaseCard({ case_, selected, onClick }: CaseCardProps) {
     </button>
   )
 }
+
+export const CaseCard = memo(CaseCardComponent)

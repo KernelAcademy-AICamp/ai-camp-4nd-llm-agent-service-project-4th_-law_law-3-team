@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { smallClaimsService } from '../services'
 import type {
   WizardStep,
@@ -104,37 +104,26 @@ export function useWizardState(): UseWizardStateReturn {
     }
   }, [currentStep, disputeType, caseInfo, checkedEvidence])
 
-  // Load evidence checklist when dispute type changes
+  // Load evidence checklist and related cases in parallel when dispute type changes
   useEffect(() => {
     if (disputeType) {
       setIsLoadingEvidence(true)
-      smallClaimsService
-        .getEvidenceChecklist(disputeType)
-        .then((response) => {
-          setEvidenceItems(response.items)
+      setIsLoadingRelatedCases(true)
+
+      // 병렬로 두 API 호출 실행
+      Promise.all([
+        smallClaimsService.getEvidenceChecklist(disputeType),
+        smallClaimsService.getRelatedCases(disputeType),
+      ])
+        .then(([evidenceResponse, casesResponse]) => {
+          setEvidenceItems(evidenceResponse.items)
+          setRelatedCases(casesResponse.cases)
         })
         .catch((error) => {
-          console.error('Failed to load evidence checklist:', error)
+          console.error('Failed to load data:', error)
         })
         .finally(() => {
           setIsLoadingEvidence(false)
-        })
-    }
-  }, [disputeType])
-
-  // Load related cases when dispute type changes
-  useEffect(() => {
-    if (disputeType) {
-      setIsLoadingRelatedCases(true)
-      smallClaimsService
-        .getRelatedCases(disputeType)
-        .then((response) => {
-          setRelatedCases(response.cases)
-        })
-        .catch((error) => {
-          console.error('Failed to load related cases:', error)
-        })
-        .finally(() => {
           setIsLoadingRelatedCases(false)
         })
     }
@@ -144,9 +133,15 @@ export function useWizardState(): UseWizardStateReturn {
     setCurrentStep(step)
   }, [])
 
-  const currentStepIndex = STEP_ORDER.indexOf(currentStep)
-  const canGoNext = currentStepIndex < STEP_ORDER.length - 1
-  const canGoPrevious = currentStepIndex > 0
+  // useMemo로 파생 값 최적화
+  const { currentStepIndex, canGoNext, canGoPrevious } = useMemo(() => {
+    const index = STEP_ORDER.indexOf(currentStep)
+    return {
+      currentStepIndex: index,
+      canGoNext: index < STEP_ORDER.length - 1,
+      canGoPrevious: index > 0,
+    }
+  }, [currentStep])
 
   const goToNextStep = useCallback(() => {
     if (canGoNext) {

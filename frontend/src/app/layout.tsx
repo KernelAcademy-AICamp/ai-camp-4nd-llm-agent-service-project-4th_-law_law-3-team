@@ -1,9 +1,12 @@
 import type { Metadata } from 'next'
-import Script from 'next/script'
+import dynamic from 'next/dynamic'
 import { Inter } from 'next/font/google'
 import '../styles/globals.css'
 import { Providers } from './providers'
-import ChatWidget from '@/components/ChatWidget'
+
+const ChatWidget = dynamic(() => import('@/components/ChatWidget'), {
+  ssr: false,
+})
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -17,17 +20,9 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  const kakaoMapKey = process.env.NEXT_PUBLIC_KAKAO_MAP_API_KEY
-
   return (
     <html lang="ko">
       <body className={inter.className}>
-        {kakaoMapKey && (
-          <Script
-            src={`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${kakaoMapKey}&libraries=clusterer,services&autoload=false`}
-            strategy="beforeInteractive"
-          />
-        )}
         <Providers>
           {children}
           <ChatWidget />

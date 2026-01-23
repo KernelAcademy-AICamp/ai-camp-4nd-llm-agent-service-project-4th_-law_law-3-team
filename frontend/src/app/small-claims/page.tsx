@@ -1,16 +1,41 @@
 'use client'
 
-import {
-  ProgressBar,
-  DisputeTypeStep,
-  CaseInfoStep,
-  EvidenceStep,
-  DocumentStep,
-  RelatedCases,
-} from '@/features/small-claims/components'
+import { Suspense } from 'react'
+import dynamic from 'next/dynamic'
+import { ProgressBar } from '@/features/small-claims/components/ProgressBar'
+import { DisputeTypeStep } from '@/features/small-claims/components/DisputeTypeStep'
 import { useWizardState } from '@/features/small-claims/hooks/useWizardState'
 import { DISPUTE_TYPE_OPTIONS } from '@/features/small-claims/types'
 import { BackButton } from '@/components/ui/BackButton'
+
+const CaseInfoStep = dynamic(
+  () => import('@/features/small-claims/components/CaseInfoStep').then((m) => m.CaseInfoStep),
+  { ssr: false }
+)
+
+const EvidenceStep = dynamic(
+  () => import('@/features/small-claims/components/EvidenceStep').then((m) => m.EvidenceStep),
+  { ssr: false }
+)
+
+const DocumentStep = dynamic(
+  () => import('@/features/small-claims/components/DocumentStep').then((m) => m.DocumentStep),
+  { ssr: false }
+)
+
+const RelatedCases = dynamic(
+  () => import('@/features/small-claims/components/RelatedCases').then((m) => m.RelatedCases),
+  { ssr: false }
+)
+
+function StepSkeleton() {
+  return (
+    <div className="max-w-2xl mx-auto">
+      <div className="h-8 w-48 bg-navy-100 rounded animate-pulse mb-4" />
+      <div className="h-32 bg-navy-100 rounded-lg animate-pulse" />
+    </div>
+  )
+}
 
 export default function SmallClaimsPage() {
   const {
@@ -125,15 +150,21 @@ export default function SmallClaimsPage() {
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Wizard Content */}
-        <div className="flex-1 overflow-y-auto p-8">{renderStep()}</div>
+        <div className="flex-1 overflow-y-auto p-8">
+          <Suspense fallback={<StepSkeleton />}>
+            {renderStep()}
+          </Suspense>
+        </div>
 
         {/* Related Cases Sidebar - Show after selecting dispute type */}
         {disputeType && currentStep !== 'dispute_type' && (
-          <RelatedCases
-            cases={relatedCases}
-            isLoading={isLoadingRelatedCases}
-            disputeType={selectedDisputeOption?.name || null}
-          />
+          <Suspense fallback={<div className="w-80 bg-white border-l border-navy-100 animate-pulse" />}>
+            <RelatedCases
+              cases={relatedCases}
+              isLoading={isLoadingRelatedCases}
+              disputeType={selectedDisputeOption?.name || null}
+            />
+          </Suspense>
         )}
       </div>
     </div>

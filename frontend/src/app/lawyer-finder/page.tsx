@@ -1,16 +1,34 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
+import dynamic from 'next/dynamic'
+import Script from 'next/script'
 import { useSearchParams } from 'next/navigation'
 import { useUI } from '@/context/UIContext'
 import { BackButton } from '@/components/ui/BackButton'
-import { KakaoMap } from '@/features/lawyer-finder/components/KakaoMap'
 import { SearchPanel } from '@/features/lawyer-finder/components/SearchPanel'
 import { OfficeDetailPanel } from '@/features/lawyer-finder/components/OfficeDetailPanel'
 import { useGeolocation } from '@/features/lawyer-finder/hooks/useGeolocation'
 import { lawyerFinderService } from '@/features/lawyer-finder/services'
 import { DISTRICT_COORDS } from '@/features/lawyer-finder/constants'
 import type { Lawyer, Office } from '@/features/lawyer-finder/types'
+
+const KakaoMap = dynamic(
+  () => import('@/features/lawyer-finder/components/KakaoMap').then((m) => m.MemoizedKakaoMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full flex items-center justify-center bg-navy-50">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-navy-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-sm text-navy-500">지도 로딩 중...</p>
+        </div>
+      </div>
+    ),
+  }
+)
+
+const KAKAO_MAP_API_KEY = process.env.NEXT_PUBLIC_KAKAO_MAP_API_KEY
 
 // Suspense boundary를 위한 wrapper
 export default function LawyerFinderPageWrapper() {
@@ -69,13 +87,7 @@ function LawyerFinderPage() {
 
   // URL 쿼리 파라미터로 검색 (챗봇에서 이동 시)
   useEffect(() => {
-    console.log('[URL Search] useEffect triggered, mapReady:', mapReady)
-    console.log('[URL Search] searchParams:', searchParams.toString())
-
-    if (!mapReady) {
-      console.log('[URL Search] mapReady is false, skipping')
-      return
-    }
+    if (!mapReady) return
 
     const lat = searchParams.get('lat')
     const lng = searchParams.get('lng')
@@ -85,26 +97,20 @@ function LawyerFinderPage() {
     const radiusParam = searchParams.get('radius')
     const searchAllParam = searchParams.get('searchAll')
 
-    console.log('[URL Search] params:', { lat, lng, categoryParam, specialtyParam, sigunguParam, radiusParam, searchAllParam })
-
     // 파라미터가 없으면 스킵
     if (!lat && !lng && !categoryParam && !specialtyParam && !sigunguParam && !searchAllParam) {
-      console.log('[URL Search] No params, skipping')
       return
     }
 
     // 파라미터 조합으로 고유 키 생성 (같은 파라미터면 중복 검색 방지)
     const paramsKey = `${lat}-${lng}-${categoryParam}-${specialtyParam}-${sigunguParam}-${radiusParam}-${searchAllParam}`
-    console.log('[URL Search] paramsKey:', paramsKey, 'lastKey:', lastSearchParamsKey.current)
 
     if (lastSearchParamsKey.current === paramsKey) {
-      console.log('[URL Search] Same params, skipping')
       return
     }
     lastSearchParamsKey.current = paramsKey
     initialSearchDone.current = true
     urlSearchInProgress.current = true
-    console.log('[URL Search] Starting search...')
 
     // 검색에 사용할 값들 (파라미터에서 직접 파싱)
     const searchRadius = radiusParam ? parseInt(radiusParam, 10) : 3000
@@ -138,20 +144,16 @@ function LawyerFinderPage() {
 
     if (searchAllParam === 'true' && categoryParam) {
       // 전체 검색 모드 (위치 없이 카테고리로만 검색)
-      console.log('[URL Search] Calling searchLawyers API with category:', categoryParam)
       lawyerFinderService.searchLawyers({
         category: categoryParam,
       }).then((response) => {
-        console.log('[URL Search] searchLawyers result:', response.lawyers.length, 'lawyers')
         setLawyers(response.lawyers)
         setTotalCount(response.total_count)
-      }).catch((err) => {
-        console.error('[URL Search] Search all failed:', err)
+      }).catch(() => {
         setError('검색에 실패했습니다')
       }).finally(finishSearch)
     } else if (searchLat && searchLng) {
       // 위치 기반 검색 (파라미터 값 직접 사용)
-      console.log('[URL Search] Calling getNearbyLawyers API:', { searchLat, searchLng, searchRadius, categoryParam })
       lawyerFinderService.getNearbyLawyers(
         searchLat,
         searchLng,
@@ -159,15 +161,12 @@ function LawyerFinderPage() {
         categoryParam || undefined,
         specialtyParam || undefined
       ).then((response) => {
-        console.log('[URL Search] getNearbyLawyers result:', response.lawyers.length, 'lawyers')
         setLawyers(response.lawyers)
         setTotalCount(response.total_count)
-      }).catch((err) => {
-        console.error('[URL Search] getNearbyLawyers failed:', err)
+      }).catch(() => {
         setError('변호사 정보를 불러오는데 실패했습니다')
       }).finally(finishSearch)
     } else {
-      console.log('[URL Search] No search conditions met')
       finishSearch()
     }
   }, [searchParams, mapReady])
@@ -179,15 +178,9 @@ function LawyerFinderPage() {
 
   // 주변 변호사 검색
   const fetchNearbyLawyers = useCallback(async () => {
-    console.log('[fetchNearbyLawyers] Called', { mapReady, searchQuery, category, specialty })
-
-    if (!mapReady || searchQuery) {
-      console.log('[fetchNearbyLawyers] Skipping - mapReady:', mapReady, 'searchQuery:', searchQuery)
-      return
-    }
+    if (!mapReady || searchQuery) return
 
     const location = getSearchLocation()
-    console.log('[fetchNearbyLawyers] Location:', location, 'radius:', radius)
 
     setLoading(true)
     setError(null)
@@ -200,11 +193,9 @@ function LawyerFinderPage() {
         category || undefined,
         specialty || undefined
       )
-      console.log('[fetchNearbyLawyers] Result:', response.lawyers.length, 'lawyers')
       setLawyers(response.lawyers)
       setTotalCount(response.total_count)
-    } catch (err) {
-      console.error('[fetchNearbyLawyers] Failed:', err)
+    } catch {
       setError('변호사 정보를 불러오는데 실패했습니다')
       setLawyers([])
       setTotalCount(0)
@@ -215,28 +206,14 @@ function LawyerFinderPage() {
 
   // 위치, 반경, 전문분야 변경 시 검색 (검색어 없을 때만)
   useEffect(() => {
-    console.log('[Auto Search] useEffect triggered', {
-      urlSearchInProgress: urlSearchInProgress.current,
-      initialSearchDone: initialSearchDone.current,
-      mapReady,
-      searchQuery,
-      category,
-      specialty
-    })
-
     // URL 파라미터 검색 중이거나 완료 직후에는 스킵
-    if (urlSearchInProgress.current) {
-      console.log('[Auto Search] URL search in progress, skipping')
-      return
-    }
+    if (urlSearchInProgress.current) return
     // URL 파라미터로 이미 검색했으면 스킵 (첫 검색만)
     if (initialSearchDone.current) {
-      console.log('[Auto Search] Initial search done, resetting flag and skipping')
       initialSearchDone.current = false  // 다음 변경부터는 검색 가능
       return
     }
     if (mapReady && !searchQuery) {
-      console.log('[Auto Search] Calling fetchNearbyLawyers')
       fetchNearbyLawyers()
     }
   }, [fetchNearbyLawyers, mapReady, searchQuery, category, specialty])
@@ -364,11 +341,18 @@ function LawyerFinderPage() {
   const userLocation = hasLocation ? getEffectiveLocation() : null
 
   return (
-    <div 
-      className={`h-screen flex flex-col transition-all duration-500 ease-in-out ${
-        isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-gray-200' : 'w-full'
-      }`}
-    >
+    <>
+      {KAKAO_MAP_API_KEY && (
+        <Script
+          src={`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_MAP_API_KEY}&libraries=clusterer,services&autoload=false`}
+          strategy="lazyOnload"
+        />
+      )}
+      <div
+        className={`h-screen flex flex-col transition-all duration-500 ease-in-out ${
+          isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-gray-200' : 'w-full'
+        }`}
+      >
       {/* 헤더 */}
       <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
         <div className="flex items-center">
@@ -460,5 +444,6 @@ function LawyerFinderPage() {
         </div>
       </div>
     </div>
+    </>
   )
 }

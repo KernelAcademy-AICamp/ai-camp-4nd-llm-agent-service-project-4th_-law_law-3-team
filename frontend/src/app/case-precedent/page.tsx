@@ -1,10 +1,39 @@
 'use client'
 
+import { Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import { useChat } from '@/context/ChatContext'
 import { useUI } from '@/context/UIContext'
-import { LawyerView } from '@/features/case-precedent/components/LawyerView'
-import { UserView } from '@/features/case-precedent/components/UserView'
 import { BackButton } from '@/components/ui/BackButton'
+
+const LawyerView = dynamic(
+  () => import('@/features/case-precedent/components/LawyerView').then((m) => m.LawyerView),
+  { ssr: false }
+)
+
+const UserView = dynamic(
+  () => import('@/features/case-precedent/components/UserView').then((m) => m.UserView),
+  { ssr: false }
+)
+
+function ViewSkeleton() {
+  return (
+    <div className="flex h-full">
+      <div className="w-96 bg-white border-r border-navy-100 p-4">
+        <div className="h-10 bg-navy-100 rounded-lg animate-pulse mb-4" />
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-24 bg-navy-50 rounded-lg animate-pulse" />
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 p-6">
+        <div className="h-8 w-48 bg-navy-100 rounded animate-pulse mb-4" />
+        <div className="h-64 bg-navy-50 rounded-lg animate-pulse" />
+      </div>
+    </div>
+  )
+}
 
 export default function CasePrecedentPage() {
   const { userRole } = useChat()
@@ -34,7 +63,9 @@ export default function CasePrecedentPage() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden">
-        {userRole === 'lawyer' ? <LawyerView /> : <UserView />}
+        <Suspense fallback={<ViewSkeleton />}>
+          {userRole === 'lawyer' ? <LawyerView /> : <UserView />}
+        </Suspense>
       </div>
     </div>
   )

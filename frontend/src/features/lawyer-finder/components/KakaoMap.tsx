@@ -1,13 +1,19 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo, memo } from 'react'
 import type { Lawyer, Office } from '../types'
 
 // HTML 이스케이프 함수 (XSS 방지)
+const HTML_ESCAPE_MAP: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+}
+
 function escapeHtml(text: string): string {
-  const div = document.createElement('div')
-  div.textContent = text
-  return div.innerHTML
+  return text.replace(/[&<>"']/g, (char) => HTML_ESCAPE_MAP[char])
 }
 
 // 변호사를 사무소별로 그룹화하는 함수
@@ -283,7 +289,7 @@ export function KakaoMap({
     overlaysRef.current.forEach((overlay) => overlay.setMap(null))
     overlaysRef.current = []
 
-    // 사무소별로 그룹화
+    // 사무소별로 그룹화 (useMemo로 최적화할 수 없어 useEffect 내에서 직접 계산)
     const offices = groupLawyersByOffice(lawyers)
 
     if (offices.length === 0) return
@@ -505,3 +511,6 @@ export function KakaoMap({
     </div>
   )
 }
+
+// React.memo로 불필요한 리렌더링 방지
+export const MemoizedKakaoMap = memo(KakaoMap)
