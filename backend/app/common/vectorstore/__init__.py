@@ -65,10 +65,41 @@ class VectorStore(VectorStoreBase):
         return get_vector_store(collection_name)
 
 
+# LanceDB v2 스키마 export
+from app.common.vectorstore.schema_v2 import (
+    LEGAL_CHUNKS_SCHEMA,
+    TABLE_NAME,
+    VECTOR_DIM,
+    COMMON_COLUMNS,
+    LAW_COLUMNS,
+    PRECEDENT_COLUMNS,
+    ALL_COLUMNS,
+    LegalChunk,
+    create_law_chunk,
+    create_precedent_chunk,
+    get_law_columns,
+    get_precedent_columns,
+)
+
+
 # 직접 import할 수 있도록 export
 __all__ = [
+    # Base
     "VectorStoreBase",
     "SearchResult",
     "VectorStore",
     "get_vector_store",
+    # LanceDB v2 Schema
+    "LEGAL_CHUNKS_SCHEMA",
+    "TABLE_NAME",
+    "VECTOR_DIM",
+    "COMMON_COLUMNS",
+    "LAW_COLUMNS",
+    "PRECEDENT_COLUMNS",
+    "ALL_COLUMNS",
+    "LegalChunk",
+    "create_law_chunk",
+    "create_precedent_chunk",
+    "get_law_columns",
+    "get_precedent_columns",
 ]
