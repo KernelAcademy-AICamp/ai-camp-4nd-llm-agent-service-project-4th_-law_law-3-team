@@ -4,12 +4,12 @@ import logging
 from functools import lru_cache
 from math import asin, cos, radians, sin, sqrt
 from pathlib import Path
-from typing import List, Optional, Set, Tuple
+from typing import Any, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
 # 전문분야 12대분류 (사용자에게는 이것만 표시)
-SPECIALTY_CATEGORIES: dict[str, dict] = {
+SPECIALTY_CATEGORIES: dict[str, dict[str, Any]] = {
     "civil-family": {
         "name": "민사·가사",
         "icon": "👨‍👩‍👧",
@@ -92,7 +92,7 @@ def get_specialties_by_category(category: str) -> Set[str]:
     return set()
 
 
-def get_categories() -> List[dict]:
+def get_categories() -> List[dict[str, Any]]:
     """12대분류 목록 반환 (프론트엔드 표시용)"""
     return [
         {
@@ -115,7 +115,7 @@ FALLBACK_FILE = PROJECT_ROOT / "all_lawyers.json"
 
 
 @lru_cache(maxsize=1)
-def load_lawyers_data() -> dict:
+def load_lawyers_data() -> dict[str, Any]:
     """변호사 데이터 로드 (캐싱)"""
     files_to_try = [
         LAWYERS_WITH_SPECIALTIES_FILE,
@@ -127,7 +127,8 @@ def load_lawyers_data() -> dict:
         if file_path.exists():
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    result: dict[str, Any] = json.load(f)
+                    return result
             except json.JSONDecodeError as e:
                 logger.error(f"JSON 파싱 오류 ({file_path}): {e}")
                 continue
@@ -185,7 +186,7 @@ def find_nearby_lawyers(
     limit: Optional[int] = None,  # None이면 제한 없음
     category: Optional[str] = None,
     specialty: Optional[str] = None
-) -> List[dict]:
+) -> List[dict[str, Any]]:
     """
     반경 내 변호사 검색
 
@@ -248,7 +249,7 @@ def find_nearby_lawyers(
     return results[:limit] if limit else results
 
 
-def get_lawyer_by_id(lawyer_id: int) -> Optional[dict]:
+def get_lawyer_by_id(lawyer_id: int) -> Optional[dict[str, Any]]:
     """ID로 변호사 조회"""
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
@@ -270,7 +271,7 @@ def search_lawyers(
     longitude: Optional[float] = None,
     radius_m: int = 5000,
     limit: Optional[int] = None  # None이면 제한 없음
-) -> List[dict]:
+) -> List[dict[str, Any]]:
     """
     이름/사무소/지역/전문분야로 검색
 
@@ -304,7 +305,7 @@ def search_lawyers(
 
     # 위치 필터링용 바운딩 박스
     bbox = None
-    if has_latitude and has_longitude:
+    if has_latitude and has_longitude and latitude is not None and longitude is not None:
         radius_km = radius_m / 1000
         bbox = get_bounding_box(latitude, longitude, radius_km)
 
@@ -352,10 +353,11 @@ def search_lawyers(
             min_lat, max_lat, min_lng, max_lng = bbox
             if not (min_lat <= lat <= max_lat and min_lng <= lng <= max_lng):
                 continue
-            # 정확한 거리 계산
-            dist = haversine(longitude, latitude, lng, lat)
-            if dist > (radius_m / 1000):
-                continue
+            # 정확한 거리 계산 (bbox가 있으면 latitude, longitude는 None이 아님)
+            if latitude is not None and longitude is not None:
+                dist = haversine(longitude, latitude, lng, lat)
+                if dist > (radius_m / 1000):
+                    continue
 
         results.append({**lawyer, "id": idx})
 
@@ -371,7 +373,7 @@ def get_clusters(
     min_lng: float,
     max_lng: float,
     grid_size: float = 0.01  # 약 1km 그리드
-) -> List[dict]:
+) -> List[dict[str, Any]]:
     """
     뷰포트 내 변호사를 그리드로 클러스터링
     """

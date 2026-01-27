@@ -1,7 +1,7 @@
+from typing import List
 from urllib.parse import urlparse, urlunparse
 
 from pydantic_settings import BaseSettings
-from typing import List
 
 
 class Settings(BaseSettings):

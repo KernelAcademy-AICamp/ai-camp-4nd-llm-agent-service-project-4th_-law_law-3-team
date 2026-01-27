@@ -5,6 +5,7 @@ SQLAlchemy 2.0 async 패턴 사용
 """
 
 from typing import AsyncGenerator
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import (
     AsyncSession,

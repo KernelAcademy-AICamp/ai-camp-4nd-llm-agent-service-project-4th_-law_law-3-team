@@ -27,13 +27,13 @@ from typing import Set
 # 프로젝트 루트를 sys.path에 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from app.common.database import async_session_factory
 from app.common.vectorstore import VectorStore
-from app.models.legal_document import LegalDocument, DocType
 from app.models.law import Law
-from app.models.legal_reference import LegalReference, RefType
+from app.models.legal_document import DocType, LegalDocument
+from app.models.legal_reference import LegalReference
 
 
 async def validate_postgresql() -> dict:
@@ -87,8 +87,8 @@ async def validate_postgresql() -> dict:
         # 빈 콘텐츠 체크
         empty_content = await session.execute(
             select(func.count(LegalDocument.id)).where(
-                (LegalDocument.summary == None) &
-                (LegalDocument.reasoning == None)
+                (LegalDocument.summary.is_(None)) &
+                (LegalDocument.reasoning.is_(None))
             )
         )
         empty_count = empty_content.scalar() or 0

@@ -3,7 +3,7 @@
 RAG 기반으로 사용자 상황에 맞는 판례 검색 및 변호사 추천
 """
 import logging
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -98,7 +98,7 @@ class AIQuestionResponse(BaseModel):
 
 # API 엔드포인트
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest) -> ChatResponse:
     """
     RAG 기반 법률 챗봇
 
@@ -126,7 +126,7 @@ async def chat(request: ChatRequest):
 
 
 @router.post("/search", response_model=SearchResponse)
-async def search(request: SearchRequest):
+async def search(request: SearchRequest) -> SearchResponse:
     """
     법률 문서 유사도 검색
 
@@ -158,7 +158,7 @@ async def search(request: SearchRequest):
 
 
 @router.post("/analyze")
-async def analyze_case(description: str):
+async def analyze_case(description: str) -> dict[str, Any]:
     """사용자 상황 분석 및 관련 판례 검색"""
     return {
         "analysis": "사용자 상황 분석 결과",
@@ -174,7 +174,7 @@ async def search_precedents(
     doc_type: Optional[str] = Query(None, description="문서 유형 필터 (precedent, constitutional)"),
     court: Optional[str] = Query(None, description="법원 필터"),
     limit: int = Query(20, ge=1, le=100, description="결과 수"),
-):
+) -> PrecedentListResponse:
     """
     판례 키워드 검색
 
@@ -217,16 +217,16 @@ async def search_precedents(
 
 
 @router.get("/precedents/{precedent_id}", response_model=PrecedentDetailResponse)
-async def get_precedent_detail(precedent_id: str):
+async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
     """
     판례 상세 정보 조회
 
     특정 판례의 전체 내용을 조회합니다.
     """
     try:
-        from app.common.vectorstore import VectorStore
+        from app.common.vectorstore import get_vector_store
 
-        store = VectorStore()
+        store = get_vector_store()
         result = store.get_by_id(precedent_id)
 
         if not result:
@@ -252,19 +252,20 @@ async def get_precedent_detail(precedent_id: str):
 
 
 @router.post("/precedents/{precedent_id}/ask", response_model=AIQuestionResponse)
-async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest):
+async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest) -> AIQuestionResponse:
     """
     특정 판례에 대해 AI에게 질문
 
     선택한 판례의 컨텍스트를 기반으로 질문에 답변합니다.
     """
     try:
-        from app.common.vectorstore import VectorStore
         from openai import OpenAI
+
+        from app.common.vectorstore import get_vector_store
         from app.core.config import settings
 
         # 판례 내용 조회
-        store = VectorStore()
+        store = get_vector_store()
         precedent = store.get_by_id(precedent_id)
 
         if not precedent:

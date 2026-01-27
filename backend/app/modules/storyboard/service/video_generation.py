@@ -7,11 +7,15 @@ import socket
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal
 from urllib.parse import urlparse
 
-from moviepy import ImageClip, concatenate_videoclips, vfx
 import requests
+from moviepy import (  # type: ignore[import-untyped]
+    ImageClip,
+    concatenate_videoclips,
+    vfx,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +91,7 @@ def _validate_url_for_ssrf(url: str) -> bool:
         # DNS 확인하여 실제 IP 검증
         addr_infos = socket.getaddrinfo(hostname, parsed.port or 443, proto=socket.IPPROTO_TCP)
         for addr_info in addr_infos:
-            ip_str = addr_info[4][0]
+            ip_str = str(addr_info[4][0])
             if _is_private_ip(ip_str):
                 return False
 
@@ -198,7 +202,7 @@ def _generate_video_sync(
     transition_duration: float,
     resolution: tuple[int, int],
     fps: int,
-) -> dict:
+) -> dict[str, Any]:
     """
     영상 생성 동기 함수 (스레드에서 실행)
 
@@ -313,7 +317,7 @@ async def generate_video(
     transition_duration: float = DEFAULT_TRANSITION_DURATION,
     resolution: tuple[int, int] = DEFAULT_RESOLUTION,
     fps: int = DEFAULT_FPS,
-) -> dict:
+) -> dict[str, Any]:
     """
     이미지들을 결합하여 영상 생성
 

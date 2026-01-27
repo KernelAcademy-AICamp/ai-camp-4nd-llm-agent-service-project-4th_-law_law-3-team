@@ -9,15 +9,15 @@ import logging
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Set
+from typing import TYPE_CHECKING, Any, List, Optional, Set
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from openai import OpenAI
 from sqlalchemy import or_, select
 
 from app.common.database import sync_session_factory
 from app.common.llm import get_chat_model
-from app.common.vectorstore import VectorStore
+from app.common.vectorstore import get_vector_store
 from app.core.config import settings
 from app.models.law import Law
 from app.models.legal_document import LegalDocument
@@ -95,7 +95,7 @@ def extract_law_names(reference_articles: str) -> Set[str]:
     return law_names
 
 
-def fetch_laws_by_names(law_names: Set[str], limit: int = 5) -> List[dict]:
+def fetch_laws_by_names(law_names: Set[str], limit: int = 5) -> List[dict[str, Any]]:
     """
     법령명으로 laws 테이블에서 법령 조회
 
@@ -160,7 +160,7 @@ def fetch_reference_articles_from_docs(doc_ids: List[int]) -> str:
     return " ".join(articles)
 
 
-def _fetch_document_texts(doc_ids: List[int], chunk_positions: dict) -> tuple[dict, dict]:
+def _fetch_document_texts(doc_ids: List[int], chunk_positions: dict[int, list[tuple[int, int]]]) -> tuple[dict[str, str], dict[int, dict[str, str]]]:
     """
     PostgreSQL에서 문서 원문을 가져와 청크 텍스트 추출
 
@@ -180,7 +180,7 @@ def _fetch_document_texts(doc_ids: List[int], chunk_positions: dict) -> tuple[di
         result = session.execute(
             select(LegalDocument).where(LegalDocument.id.in_(doc_ids))
         )
-        docs = {doc.id: doc for doc in result.scalars().all()}
+        docs: dict[int, LegalDocument] = {int(doc.id): doc for doc in result.scalars().all()}
 
     chunk_texts = {}
     doc_info = {}
@@ -195,10 +195,10 @@ def _fetch_document_texts(doc_ids: List[int], chunk_positions: dict) -> tuple[di
 
             # 문서 정보 저장
             doc_info[doc_id] = {
-                "case_name": doc.case_name or "",
-                "case_number": doc.case_number or "",
-                "court_name": doc.court_name or "",
-                "doc_type": doc.doc_type or "",
+                "case_name": str(doc.case_name or ""),
+                "case_number": str(doc.case_number or ""),
+                "court_name": str(doc.court_name or ""),
+                "doc_type": str(doc.doc_type or ""),
             }
 
     return chunk_texts, doc_info
@@ -208,7 +208,7 @@ def search_relevant_documents(
     query: str,
     n_results: int = 5,
     doc_type: Optional[str] = None,
-) -> List[dict]:
+) -> List[dict[str, Any]]:
     """
     관련 법률 문서 검색
 
@@ -220,7 +220,7 @@ def search_relevant_documents(
     Returns:
         관련 문서 목록
     """
-    store = VectorStore()
+    store = get_vector_store()
 
     # 쿼리 임베딩 생성
     query_embedding = create_query_embedding(query)
@@ -241,16 +241,17 @@ def search_relevant_documents(
         return []
 
     # doc_id와 청크 위치 수집
-    doc_ids = set()
-    chunk_positions = {}  # {doc_id: [(start, end), ...]}
+    doc_ids: set[int] = set()
+    chunk_positions: dict[int, list[tuple[int, int]]] = {}  # {doc_id: [(start, end), ...]}
 
     for i, chunk_id in enumerate(results["ids"][0]):
         metadata = results["metadatas"][0][i] if results.get("metadatas") else {}
-        doc_id = metadata.get("doc_id")
+        doc_id_str = metadata.get("doc_id")
         chunk_start = metadata.get("chunk_start", 0)
         chunk_end = metadata.get("chunk_end", 0)
 
-        if doc_id:
+        if doc_id_str:
+            doc_id = int(doc_id_str) if isinstance(doc_id_str, str) else doc_id_str
             doc_ids.add(doc_id)
             if doc_id not in chunk_positions:
                 chunk_positions[doc_id] = []
@@ -308,9 +309,9 @@ SYSTEM_PROMPT = """당신은 한국 법률 전문 AI 어시스턴트입니다.
 
 def generate_chat_response(
     user_message: str,
-    chat_history: Optional[List[dict]] = None,
+    chat_history: Optional[List[dict[str, Any]]] = None,
     n_context_docs: int = 5,
-) -> dict:
+) -> dict[str, Any]:
     """
     RAG 기반 챗봇 응답 생성
 
@@ -368,7 +369,7 @@ def generate_chat_response(
     context = "\n".join(context_parts)
 
     # 3. LangChain 메시지 구성
-    messages = [SystemMessage(content=SYSTEM_PROMPT)]
+    messages: list[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
 
     # 이전 대화 기록 추가
     if chat_history:

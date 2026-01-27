@@ -6,7 +6,7 @@ ChromaDB, Qdrant 등 다양한 벡터 DB를 지원하기 위한 공통 인터페
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 
 @dataclass

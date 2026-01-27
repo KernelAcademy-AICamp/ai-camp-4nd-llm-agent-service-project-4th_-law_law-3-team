@@ -1,6 +1,7 @@
 """변호사 찾기 모듈 - Pydantic 스키마"""
+from typing import Any, List, Optional
+
 from pydantic import BaseModel, Field
-from typing import Optional, List
 
 
 class LawyerBase(BaseModel):
@@ -39,7 +40,7 @@ class NearbySearchResponse(BaseModel):
     """주변 검색 응답"""
     lawyers: List[LawyerResponse]
     total_count: int
-    center: dict  # {"lat": ..., "lng": ...}
+    center: dict[str, Any]  # {"lat": ..., "lng": ...}
     radius: int
 
 

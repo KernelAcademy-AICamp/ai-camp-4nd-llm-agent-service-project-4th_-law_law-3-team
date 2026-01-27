@@ -5,7 +5,7 @@
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 
 class AgentType(str, Enum):
@@ -113,7 +113,7 @@ INTENT_PATTERNS: dict[AgentType, list[str]] = {
 def detect_intent(
     message: str,
     user_role: UserRole = UserRole.USER,
-    session_data: Optional[dict] = None,
+    session_data: Optional[dict[str, Any]] = None,
 ) -> AgentType:
     """
     메시지에서 Intent 감지하여 적절한 에이전트 타입 반환

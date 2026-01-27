@@ -10,15 +10,15 @@
     python scripts/geocode_lawyers.py --api-key YOUR_API_KEY
 """
 
+import argparse
 import asyncio
 import json
 import os
 import sys
-import argparse
 from pathlib import Path
 from typing import Optional
+
 import httpx
-from collections import defaultdict
 
 # 프로젝트 경로
 BACKEND_ROOT = Path(__file__).parent.parent  # backend/
@@ -77,7 +77,7 @@ async def geocode_address(
                     "address_type": doc.get("address_type"),
                 }
         elif response.status_code == 401:
-            print(f"[ERROR] API 키가 유효하지 않습니다.")
+            print("[ERROR] API 키가 유효하지 않습니다.")
             sys.exit(1)
 
     except Exception as e:

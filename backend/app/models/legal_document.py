@@ -4,18 +4,18 @@
 판례, 헌재결정례, 행정심판례, 법령해석례, 위원회 결정문 통합 테이블
 """
 
-from datetime import datetime, date
-from typing import Optional
+from datetime import date, datetime
 from enum import Enum
+from typing import Any, Optional
 
 from sqlalchemy import (
     Column,
-    Integer,
-    String,
-    Text,
     Date,
     DateTime,
     Index,
+    Integer,
+    String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -48,7 +48,7 @@ COMMITTEE_SOURCES = {
 }
 
 
-class LegalDocument(Base):
+class LegalDocument(Base):  # type: ignore[misc]
     """
     법률 문서 통합 테이블
 
@@ -206,7 +206,7 @@ class LegalDocument(Base):
         return "\n".join(parts)
 
     @classmethod
-    def from_precedent(cls, data: dict, source: str = "precedents") -> "LegalDocument":
+    def from_precedent(cls, data: dict[str, Any], source: str = "precedents") -> "LegalDocument":
         """판례 데이터에서 인스턴스 생성"""
         return cls(
             doc_type=DocType.PRECEDENT.value,
@@ -227,7 +227,7 @@ class LegalDocument(Base):
         )
 
     @classmethod
-    def from_constitutional(cls, data: dict, source: str = "constitutional") -> "LegalDocument":
+    def from_constitutional(cls, data: dict[str, Any], source: str = "constitutional") -> "LegalDocument":
         """헌재결정례 데이터에서 인스턴스 생성"""
         # 참조조문 + 심판대상조문 결합
         ref_articles = "\n".join(filter(None, [
@@ -252,7 +252,7 @@ class LegalDocument(Base):
         )
 
     @classmethod
-    def from_administration(cls, data: dict, source: str = "administration") -> "LegalDocument":
+    def from_administration(cls, data: dict[str, Any], source: str = "administration") -> "LegalDocument":
         """행정심판례 데이터에서 인스턴스 생성"""
         return cls(
             doc_type=DocType.ADMINISTRATION.value,
@@ -270,7 +270,7 @@ class LegalDocument(Base):
         )
 
     @classmethod
-    def from_legislation(cls, data: dict, source: str = "legislation") -> "LegalDocument":
+    def from_legislation(cls, data: dict[str, Any], source: str = "legislation") -> "LegalDocument":
         """법령해석례 데이터에서 인스턴스 생성"""
         # 회답 + 이유 결합
         reasoning = "\n\n".join(filter(None, [
@@ -292,7 +292,7 @@ class LegalDocument(Base):
         )
 
     @classmethod
-    def from_committee(cls, data: dict, source: str) -> "LegalDocument":
+    def from_committee(cls, data: dict[str, Any], source: str) -> "LegalDocument":
         """위원회 결정문 데이터에서 인스턴스 생성
 
         Args:

@@ -310,7 +310,7 @@ class LawyerFinderAgent(BaseAgent):
 
         # 세션에서 pending 값 복원 (위치 요청 후 위치 공유 시)
         if not category_id and session_data.get("pending_category"):
-            category_id = session_data.get("pending_category")
+            category_id = str(session_data.get("pending_category"))
             category_name = CATEGORY_NAMES.get(category_id)
         if not specialty and session_data.get("pending_specialty"):
             specialty = session_data.get("pending_specialty")
@@ -368,6 +368,9 @@ class LawyerFinderAgent(BaseAgent):
             )
 
         # 5. 3단계 반경 확장 검색 (항상 category_id로 검색)
+        # 위 조건문에서 latitude, longitude가 둘 다 None인 경우 return했으므로 여기선 둘 다 float
+        assert latitude is not None and longitude is not None
+
         # 1단계: 3km
         search_results = find_nearby_lawyers(
             latitude=latitude,

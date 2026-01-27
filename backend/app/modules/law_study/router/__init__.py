@@ -2,8 +2,9 @@
 로스쿨 학습 모듈 - 로스쿨 학생 학습 지원 기능
 판례 학습, 퀴즈, 요약 등 제공
 """
+from typing import Any, Optional
+
 from fastapi import APIRouter
-from typing import Optional
 
 router = APIRouter()
 
@@ -13,7 +14,7 @@ async def get_study_cases(
     subject: Optional[str] = None,
     difficulty: Optional[str] = None,
     limit: int = 20,
-):
+) -> dict[str, Any]:
     """학습용 판례 목록 조회"""
     return {
         "subject": subject,
@@ -23,7 +24,7 @@ async def get_study_cases(
 
 
 @router.get("/cases/{case_id}/summary")
-async def get_case_summary(case_id: str):
+async def get_case_summary(case_id: str) -> dict[str, Any]:
     """판례 요약 조회"""
     return {
         "case_id": case_id,
@@ -33,7 +34,7 @@ async def get_case_summary(case_id: str):
 
 
 @router.post("/quiz/generate")
-async def generate_quiz(subject: str, count: int = 10):
+async def generate_quiz(subject: str, count: int = 10) -> dict[str, Any]:
     """주제별 퀴즈 생성"""
     return {
         "subject": subject,
@@ -42,7 +43,7 @@ async def generate_quiz(subject: str, count: int = 10):
 
 
 @router.post("/quiz/submit")
-async def submit_quiz(quiz_id: str, answers: dict):
+async def submit_quiz(quiz_id: str, answers: dict[str, Any]) -> dict[str, Any]:
     """퀴즈 제출 및 채점"""
     return {
         "quiz_id": quiz_id,

@@ -27,7 +27,7 @@ class JobProgress(BaseModel):
     current_step: int
     total_steps: int
     message: str
-    result: Optional[dict] = None
+    result: Optional[dict[str, Any]] = None
     error: Optional[str] = None
     created_at: str
     updated_at: str
@@ -38,7 +38,7 @@ class JobManager:
 
     def __init__(self) -> None:
         self._jobs: dict[str, JobProgress] = {}
-        self._subscribers: dict[str, list[asyncio.Queue]] = {}
+        self._subscribers: dict[str, list[asyncio.Queue[JobProgress]]] = {}
 
     def create_job(self, total_steps: int = 1) -> str:
         """
@@ -73,7 +73,7 @@ class JobManager:
         status: Optional[JobStatus] = None,
         current_step: Optional[int] = None,
         message: Optional[str] = None,
-        result: Optional[dict] = None,
+        result: Optional[dict[str, Any]] = None,
         error: Optional[str] = None,
     ) -> None:
         """
@@ -115,7 +115,7 @@ class JobManager:
     async def complete_job(
         self,
         job_id: str,
-        result: Optional[dict] = None,
+        result: Optional[dict[str, Any]] = None,
     ) -> None:
         """작업 완료 처리"""
         await self.update_progress(
@@ -156,7 +156,7 @@ class JobManager:
         if job_id not in self._jobs:
             return
 
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue[JobProgress] = asyncio.Queue()
         self._subscribers[job_id].append(queue)
 
         try:
@@ -202,9 +202,9 @@ job_manager = JobManager()
 
 async def run_batch_image_generation(
     job_id: str,
-    items: list[dict],
-    generate_fn: Callable,
-) -> dict:
+    items: list[dict[str, Any]],
+    generate_fn: Callable[..., Any],
+) -> dict[str, Any]:
     """
     일괄 스토리보드 이미지 생성 작업 실행
 
@@ -216,7 +216,7 @@ async def run_batch_image_generation(
     Returns:
         생성 결과
     """
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     failed: list[str] = []
 
     await job_manager.update_progress(

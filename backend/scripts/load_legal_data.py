@@ -33,21 +33,20 @@ import argparse
 import asyncio
 import json
 import sys
-from pathlib import Path
 from datetime import datetime
-from typing import Generator, Optional, Any
+from pathlib import Path
+from typing import Generator
 
 # 프로젝트 루트를 sys.path에 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import select, delete, func
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.database import async_session_factory
-from app.models.legal_document import LegalDocument, DocType, COMMITTEE_SOURCES
 from app.models.law import Law
+from app.models.legal_document import COMMITTEE_SOURCES, DocType, LegalDocument
 from app.models.legal_reference import LegalReference, RefType
-
 
 # 데이터 파일 경로
 PROJECT_ROOT = Path(__file__).parent.parent.parent

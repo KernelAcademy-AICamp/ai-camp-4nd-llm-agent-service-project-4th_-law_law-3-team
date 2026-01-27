@@ -35,21 +35,20 @@ PostgreSQL에서 법률 문서를 읽어 청크 단위로 임베딩을 생성하
 import argparse
 import asyncio
 import sys
-from pathlib import Path
-from datetime import datetime
-from typing import List, Optional, Iterator
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional
 
 # 프로젝트 루트를 sys.path에 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
-from app.core.config import settings
 from app.common.database import async_session_factory
 from app.common.vectorstore import VectorStore
-from app.models.legal_document import LegalDocument, DocType
-
+from app.core.config import settings
+from app.models.legal_document import DocType, LegalDocument
 
 # ============================================================================
 # 청킹 설정

@@ -7,10 +7,10 @@ Qdrant 벡터 저장소 구현체
     uv add qdrant-client
 """
 
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
+from app.common.vectorstore.base import SearchResult, VectorStoreBase
 from app.core.config import settings
-from app.common.vectorstore.base import VectorStoreBase, SearchResult
 
 
 class QdrantVectorStore(VectorStoreBase):
@@ -40,8 +40,13 @@ class QdrantVectorStore(VectorStoreBase):
 
     def __init__(self, collection_name: Optional[str] = None):
         try:
-            from qdrant_client import QdrantClient
-            from qdrant_client.models import Distance, VectorParams
+            from qdrant_client import (  # type: ignore[import-not-found]
+                QdrantClient,  # noqa: F401
+            )
+            from qdrant_client.models import (  # type: ignore[import-not-found]
+                Distance,  # noqa: F401
+                VectorParams,  # noqa: F401
+            )
         except ImportError:
             raise ImportError(
                 "qdrant-client 패키지가 필요합니다. "
@@ -129,7 +134,7 @@ class QdrantVectorStore(VectorStoreBase):
         include: Optional[List[str]] = None,
     ) -> SearchResult:
         """유사 문서 검색"""
-        from qdrant_client.models import Filter, FieldCondition, MatchValue
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
 
         # 필터 조건 변환
         query_filter = None
@@ -191,7 +196,7 @@ class QdrantVectorStore(VectorStoreBase):
     def count(self) -> int:
         """컬렉션 문서 수"""
         collection_info = self.client.get_collection(self.collection_name)
-        return collection_info.points_count
+        return int(collection_info.points_count)
 
     def reset(self) -> None:
         """컬렉션 초기화 (주의: 모든 데이터 삭제)"""
