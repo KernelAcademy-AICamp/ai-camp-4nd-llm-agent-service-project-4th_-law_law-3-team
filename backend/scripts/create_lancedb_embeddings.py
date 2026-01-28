@@ -2,25 +2,38 @@
 """
 LanceDB 임베딩 생성 스크립트 (v2 스키마)
 
-PostgreSQL에서 판례/법령 데이터를 읽어 LanceDB에 저장합니다.
-스키마 v2 (단일 테이블 + NULL) 방식을 사용합니다.
+PostgreSQL 새 테이블(law_documents, precedent_documents)에서 데이터를 읽어
+LanceDB에 저장합니다. 스키마 v2 (단일 테이블 + NULL) 방식을 사용합니다.
+
+사전 요구사항:
+    # PostgreSQL에 데이터 로드 (먼저 실행 필요)
+    uv run python scripts/load_lancedb_data.py --type all
 
 사용법:
-    # 판례 임베딩 생성
+    # 판례 임베딩 생성 (PostgreSQL precedent_documents 테이블에서)
     uv run python scripts/create_lancedb_embeddings.py --type precedent
 
-    # 법령 임베딩 생성 (JSON 파일에서)
-    uv run python scripts/create_lancedb_embeddings.py --type law --source ../data/law_cleaned.json
+    # 법령 임베딩 생성 (PostgreSQL law_documents 테이블에서)
+    uv run python scripts/create_lancedb_embeddings.py --type law
 
     # 전체 재생성
-    uv run python scripts/create_lancedb_embeddings.py --type precedent --reset
+    uv run python scripts/create_lancedb_embeddings.py --type all --reset
 
     # 통계 확인
     uv run python scripts/create_lancedb_embeddings.py --stats
+
+    # 배치 크기 수동 지정 (자동 감지 대신)
+    uv run python scripts/create_lancedb_embeddings.py --type all --batch-size 30
+
+NOTE:
+    - ruling, claim, reasoning은 LanceDB에 저장하지 않음 (메모리 효율화)
+    - 검색 후 PostgreSQL에서 원본 조회하여 해당 필드 접근
+    - MPS(Mac), CUDA, CPU 자동 감지 및 배치 크기 최적화
 """
 
 import argparse
 import asyncio
+import gc
 import json
 import re
 import sys
@@ -28,6 +41,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
+
+import torch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -37,7 +52,159 @@ from app.core.config import settings
 from app.common.database import async_session_factory
 from app.common.vectorstore.lancedb import LanceDBStore
 from app.common.vectorstore.schema_v2 import VECTOR_DIM
-from app.models.legal_document import LegalDocument, DocType
+from app.models.law_document import LawDocument
+from app.models.precedent_document import PrecedentDocument
+
+
+# ============================================================================
+# 디바이스 감지 및 최적화
+# ============================================================================
+
+@dataclass
+class DeviceInfo:
+    """디바이스 정보"""
+    device: str  # "cuda", "mps", "cpu"
+    name: str
+    vram_gb: float
+    is_laptop: bool = False
+    compute_capability: Optional[tuple] = None
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.device}, {self.vram_gb:.1f}GB)"
+
+
+@dataclass
+class OptimalConfig:
+    """환경별 최적 설정"""
+    batch_size: int
+    num_workers: int
+    gc_interval: int = 10  # gc.collect() 호출 간격 (배치 수)
+
+
+def get_device() -> str:
+    """사용 가능한 최적 디바이스 반환"""
+    if torch.cuda.is_available():
+        return "cuda"
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+def get_device_info() -> DeviceInfo:
+    """디바이스 상세 정보 조회"""
+    device = get_device()
+
+    if device == "cuda":
+        props = torch.cuda.get_device_properties(0)
+        name = props.name
+        vram_gb = props.total_memory / (1024**3)
+        compute_capability = (props.major, props.minor)
+
+        is_laptop = any(
+            kw in name.lower()
+            for kw in ["laptop", "mobile", "max-q", "notebook"]
+        )
+
+        return DeviceInfo(
+            device=device,
+            name=name,
+            vram_gb=vram_gb,
+            is_laptop=is_laptop,
+            compute_capability=compute_capability,
+        )
+
+    elif device == "mps":
+        try:
+            import psutil
+            total_ram = psutil.virtual_memory().total / (1024**3)
+        except ImportError:
+            total_ram = 16.0
+
+        usable_memory = total_ram * 0.75
+
+        return DeviceInfo(
+            device=device,
+            name="Apple Silicon (MPS)",
+            vram_gb=usable_memory,
+            is_laptop=True,
+        )
+
+    else:
+        try:
+            import psutil
+            total_ram = psutil.virtual_memory().total / (1024**3)
+        except ImportError:
+            total_ram = 8.0
+
+        return DeviceInfo(
+            device=device,
+            name="CPU",
+            vram_gb=total_ram,
+        )
+
+
+def get_optimal_config(device_info: DeviceInfo = None) -> OptimalConfig:
+    """디바이스에 따른 최적 설정 반환"""
+    if device_info is None:
+        device_info = get_device_info()
+
+    device = device_info.device
+    vram = device_info.vram_gb
+
+    if device == "cuda":
+        if vram >= 20:  # RTX 3090/4090
+            return OptimalConfig(batch_size=128, num_workers=4, gc_interval=25)
+        elif vram >= 14:  # RTX 4080, 3080 Ti
+            return OptimalConfig(batch_size=100, num_workers=4, gc_interval=20)
+        elif vram >= 8:  # RTX 3070, 4060
+            return OptimalConfig(batch_size=70, num_workers=2, gc_interval=15)
+        else:
+            return OptimalConfig(batch_size=50, num_workers=2, gc_interval=10)
+
+    elif device == "mps":
+        # Mac - MPS는 보수적으로 설정
+        if vram >= 12:  # M3 16GB
+            return OptimalConfig(batch_size=40, num_workers=0, gc_interval=8)
+        else:  # M1/M2 8GB
+            return OptimalConfig(batch_size=25, num_workers=0, gc_interval=5)
+
+    else:  # CPU
+        return OptimalConfig(batch_size=20, num_workers=2, gc_interval=5)
+
+
+def print_device_info() -> tuple[DeviceInfo, OptimalConfig]:
+    """디바이스 정보 및 최적 설정 출력"""
+    device_info = get_device_info()
+    config = get_optimal_config(device_info)
+
+    print("=" * 60)
+    print("Device Information")
+    print("=" * 60)
+    print(f"  Device: {device_info.device.upper()}")
+    print(f"  Name: {device_info.name}")
+    print(f"  Memory: {device_info.vram_gb:.1f} GB")
+    if device_info.is_laptop:
+        print(f"  Type: Laptop/Mobile")
+    if device_info.compute_capability:
+        cc = device_info.compute_capability
+        print(f"  Compute Capability: {cc[0]}.{cc[1]}")
+
+    print("\nOptimal Settings:")
+    print(f"  batch_size: {config.batch_size}")
+    print(f"  gc_interval: {config.gc_interval} batches")
+    print("=" * 60)
+
+    return device_info, config
+
+
+def clear_gpu_memory():
+    """GPU 메모리 정리"""
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        # MPS는 명시적 캐시 정리 없음, gc만 호출
+        pass
 
 
 # ============================================================================
@@ -108,7 +275,6 @@ def estimate_tokens(text: str) -> int:
     """토큰 수 추정 (한글 기준 약 0.5~0.7자/토큰)"""
     if not text:
         return 0
-    # 한글은 약 1.5자당 1토큰, 영문/숫자는 약 4자당 1토큰으로 추정
     korean_chars = len(re.findall(r"[가-힣]", text))
     other_chars = len(text) - korean_chars
     return int(korean_chars / 1.5 + other_chars / 4)
@@ -121,11 +287,9 @@ def split_by_paragraphs(article_text: str) -> List[str]:
         return [article_text]
 
     result = []
-    # 첫 부분 (항 번호 이전 텍스트)
     if parts[0].strip():
         result.append(parts[0].strip())
 
-    # 항 번호와 내용 결합
     for i in range(1, len(parts), 2):
         if i + 1 < len(parts):
             paragraph = parts[i] + parts[i + 1]
@@ -150,12 +314,9 @@ def chunk_law_content(
     if not content:
         return []
 
-    # 조문 단위로 분리 (\n\n 기준)
     articles = content.split("\n\n")
     chunks = []
     chunk_index = 0
-
-    # 조문 번호 추출 패턴
     article_no_pattern = re.compile(r"^(제\d+조(?:의\d+)?)")
 
     for article in articles:
@@ -163,51 +324,41 @@ def chunk_law_content(
         if not article:
             continue
 
-        # 조문 번호 추출
         match = article_no_pattern.match(article)
         article_no = match.group(1) if match else None
-
         tokens = estimate_tokens(article)
 
         if tokens <= config.max_tokens:
-            # 토큰 수 충분히 작으면 그대로 사용
             if tokens >= config.min_tokens:
                 chunks.append((chunk_index, article, article_no))
                 chunk_index += 1
             elif chunks:
-                # 너무 작으면 이전 청크와 병합
                 prev_idx, prev_text, prev_article_no = chunks[-1]
                 chunks[-1] = (prev_idx, prev_text + "\n\n" + article, prev_article_no)
             else:
                 chunks.append((chunk_index, article, article_no))
                 chunk_index += 1
         else:
-            # 토큰 초과 시 항 단위로 분리
             paragraphs = split_by_paragraphs(article)
             current_chunk = ""
             current_article_no = article_no
 
             for para in paragraphs:
-                para_tokens = estimate_tokens(para)
-
                 if not current_chunk:
                     current_chunk = para
                 elif estimate_tokens(current_chunk + "\n" + para) <= config.max_tokens:
                     current_chunk += "\n" + para
                 else:
-                    # 현재 청크 저장
                     if estimate_tokens(current_chunk) >= config.min_tokens:
                         chunks.append((chunk_index, current_chunk, current_article_no))
                         chunk_index += 1
                     current_chunk = para
 
-            # 마지막 청크 저장
             if current_chunk:
                 if estimate_tokens(current_chunk) >= config.min_tokens:
                     chunks.append((chunk_index, current_chunk, current_article_no))
                     chunk_index += 1
                 elif chunks:
-                    # 너무 작으면 이전 청크와 병합
                     prev_idx, prev_text, prev_article_no = chunks[-1]
                     chunks[-1] = (prev_idx, prev_text + "\n" + current_chunk, prev_article_no)
 
@@ -220,23 +371,33 @@ def chunk_law_content(
 
 KURE_MODEL_NAME = "nlpai-lab/KURE-v1"
 _local_model = None
+_current_device = None
 
 
-def get_local_model():
+def get_local_model(device: str = None):
     """KURE-v1 모델 로드 (1024 차원)"""
-    global _local_model
-    if _local_model is None:
+    global _local_model, _current_device
+
+    if device is None:
+        device = get_device()
+
+    if _local_model is None or _current_device != device:
         from sentence_transformers import SentenceTransformer
 
         cache_dir = Path(__file__).parent.parent.parent / "data" / "models"
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"[INFO] Loading KURE model: {KURE_MODEL_NAME}")
+        print(f"[INFO] Device: {device.upper()}")
+
         _local_model = SentenceTransformer(
             KURE_MODEL_NAME,
             cache_folder=str(cache_dir),
             trust_remote_code=True,
+            device=device,
         )
+        _current_device = device
+
         dim = _local_model.get_sentence_embedding_dimension()
         print(f"[INFO] Model loaded. Dimension: {dim}")
 
@@ -246,36 +407,44 @@ def get_local_model():
     return _local_model
 
 
-def create_embeddings(texts: List[str]) -> List[List[float]]:
+def create_embeddings(texts: List[str], device: str = None) -> List[List[float]]:
     """임베딩 생성 (KURE-v1)"""
-    model = get_local_model()
-    # KURE는 한국어에 최적화되어 있어 긴 텍스트도 잘 처리
+    model = get_local_model(device)
     processed = [t.strip()[:4000] if t else "(내용 없음)" for t in texts]
     embeddings = model.encode(processed, show_progress_bar=False)
     return [emb.tolist() for emb in embeddings]
 
 
+def clear_model_cache():
+    """모델 캐시 정리 (메모리 해제)"""
+    global _local_model, _current_device
+
+    if _local_model is not None:
+        del _local_model
+        _local_model = None
+        _current_device = None
+        clear_gpu_memory()
+        print("[INFO] Model cache cleared")
+
+
 # ============================================================================
-# 판례 임베딩
+# 판례 임베딩 (PrecedentDocument 테이블 사용)
 # ============================================================================
 
 async def get_precedent_count() -> int:
-    """판례 문서 수"""
+    """판례 문서 수 (precedent_documents 테이블)"""
     async with async_session_factory() as session:
-        query = select(func.count(LegalDocument.id)).where(
-            LegalDocument.doc_type == DocType.PRECEDENT.value
-        )
+        query = select(func.count(PrecedentDocument.id))
         result = await session.execute(query)
         return result.scalar() or 0
 
 
-async def get_precedents(offset: int, limit: int) -> List[LegalDocument]:
-    """판례 문서 조회"""
+async def get_precedents(offset: int, limit: int) -> List[PrecedentDocument]:
+    """판례 문서 조회 (precedent_documents 테이블)"""
     async with async_session_factory() as session:
         query = (
-            select(LegalDocument)
-            .where(LegalDocument.doc_type == DocType.PRECEDENT.value)
-            .order_by(LegalDocument.id)
+            select(PrecedentDocument)
+            .order_by(PrecedentDocument.id)
             .offset(offset)
             .limit(limit)
         )
@@ -283,7 +452,7 @@ async def get_precedents(offset: int, limit: int) -> List[LegalDocument]:
         return list(result.scalars().all())
 
 
-def build_precedent_embedding_text(doc: LegalDocument) -> str:
+def build_precedent_embedding_text(doc: PrecedentDocument) -> str:
     """판례 임베딩용 텍스트 생성 (판시사항 + 판결요지)"""
     parts = []
 
@@ -301,13 +470,30 @@ def build_precedent_embedding_text(doc: LegalDocument) -> str:
 
 async def create_precedent_embeddings(
     store: LanceDBStore,
-    batch_size: int = 100,
+    batch_size: int = None,
     chunk_config: ChunkConfig = None,
     reset: bool = False,
+    device_info: DeviceInfo = None,
+    gc_interval: int = None,
 ) -> dict:
-    """판례 임베딩 생성"""
+    """
+    판례 임베딩 생성 (precedent_documents 테이블에서 읽음)
+
+    NOTE: ruling, claim, reasoning은 LanceDB에 저장하지 않음 (메모리 효율화)
+          검색 후 PostgreSQL precedent_documents 테이블에서 조회하여 접근
+    """
     if chunk_config is None:
         chunk_config = ChunkConfig()
+
+    # 디바이스 및 최적 설정
+    if device_info is None:
+        device_info = get_device_info()
+    optimal = get_optimal_config(device_info)
+
+    if batch_size is None:
+        batch_size = optimal.batch_size
+    if gc_interval is None:
+        gc_interval = optimal.gc_interval
 
     stats = {
         "total_docs": 0,
@@ -315,15 +501,17 @@ async def create_precedent_embeddings(
         "total_chunks": 0,
         "skipped": 0,
         "errors": 0,
+        "device": str(device_info),
     }
+
+    print(f"[INFO] Device: {device_info}")
+    print(f"[INFO] Batch size: {batch_size}, GC interval: {gc_interval}")
 
     if reset:
         print("[INFO] Resetting precedent data...")
-        # data_type='판례'인 것만 삭제 (전체 테이블 삭제 아님)
         try:
             existing = store.count_by_type("판례")
             if existing > 0:
-                # LanceDB는 조건부 삭제 지원
                 store._table.delete("data_type = '판례'")
                 print(f"[INFO] Deleted {existing} existing precedent chunks")
         except Exception:
@@ -341,17 +529,19 @@ async def create_precedent_embeddings(
 
     total_count = await get_precedent_count()
     stats["total_docs"] = total_count
-    print(f"[INFO] Total precedents: {total_count:,}")
+    print(f"[INFO] Total precedents in precedent_documents: {total_count:,}")
 
     if total_count == 0:
+        print("[WARN] No data in precedent_documents table. Run load_lancedb_data.py first.")
         return stats
 
     # 모델 사전 로드
-    get_local_model()
+    get_local_model(device_info.device)
 
     # 배치 처리
     offset = 0
     db_batch_size = 500
+    batch_count = 0
 
     # 배치 버퍼
     batch_data = {
@@ -367,9 +557,6 @@ async def create_precedent_embeddings(
         "case_types": [],
         "reference_provisions_list": [],
         "reference_cases_list": [],
-        "rulings": [],
-        "claims": [],
-        "reasonings": [],
     }
 
     while offset < total_count:
@@ -378,20 +565,17 @@ async def create_precedent_embeddings(
             break
 
         for doc in docs:
-            source_id = str(doc.id)
+            source_id = doc.serial_number
 
-            # 이미 처리된 문서 스킵
             if source_id in existing_source_ids:
                 stats["skipped"] += 1
                 continue
 
-            # 임베딩 텍스트 생성
             text = build_precedent_embedding_text(doc)
             if not text or len(text) < chunk_config.min_chunk_size:
                 stats["skipped"] += 1
                 continue
 
-            # 청킹
             chunks = chunk_text(text, chunk_config)
             if not chunks:
                 stats["skipped"] += 1
@@ -400,14 +584,7 @@ async def create_precedent_embeddings(
             total_chunks = len(chunks)
             stats["processed_docs"] += 1
 
-            # raw_data에서 추가 필드 추출
-            raw = doc.raw_data or {}
-            ruling = raw.get("주문", "")
-            claim = doc.claim or ""
-            reasoning_text = raw.get("이유", "")
-
             for chunk_idx, chunk_content in chunks:
-                # prefix 추가
                 prefixed_content = f"[판례] {chunk_content}"
 
                 batch_data["source_ids"].append(source_id)
@@ -421,22 +598,18 @@ async def create_precedent_embeddings(
                 batch_data["total_chunks_list"].append(total_chunks)
                 batch_data["case_numbers"].append(doc.case_number or "")
                 batch_data["case_types"].append(doc.case_type or "")
-                batch_data["reference_provisions_list"].append(doc.reference_articles or "")
+                batch_data["reference_provisions_list"].append(doc.reference_provisions or "")
                 batch_data["reference_cases_list"].append(doc.reference_cases or "")
-                batch_data["rulings"].append(ruling)
-                batch_data["claims"].append(claim)
-                batch_data["reasonings"].append(reasoning_text)
 
             # 배치 크기 도달 시 저장
             if len(batch_data["source_ids"]) >= batch_size:
+                batch_count += 1
                 try:
-                    # 임베딩 생성
-                    batch_data["embeddings"] = create_embeddings(batch_data["contents"])
-
-                    # LanceDB에 저장
+                    batch_data["embeddings"] = create_embeddings(
+                        batch_data["contents"], device_info.device
+                    )
                     store.add_precedent_documents(**batch_data)
                     stats["total_chunks"] += len(batch_data["source_ids"])
-
                 except Exception as e:
                     stats["errors"] += len(batch_data["source_ids"])
                     print(f"  [ERROR] Batch error: {e}")
@@ -444,6 +617,10 @@ async def create_precedent_embeddings(
                 # 버퍼 초기화
                 for key in batch_data:
                     batch_data[key] = []
+
+                # 메모리 정리
+                if batch_count % gc_interval == 0:
+                    clear_gpu_memory()
 
         # 진행률 출력
         progress = min(offset + db_batch_size, total_count)
@@ -458,43 +635,72 @@ async def create_precedent_embeddings(
     # 남은 배치 처리
     if batch_data["source_ids"]:
         try:
-            batch_data["embeddings"] = create_embeddings(batch_data["contents"])
+            batch_data["embeddings"] = create_embeddings(
+                batch_data["contents"], device_info.device
+            )
             store.add_precedent_documents(**batch_data)
             stats["total_chunks"] += len(batch_data["source_ids"])
         except Exception as e:
             stats["errors"] += len(batch_data["source_ids"])
             print(f"  [ERROR] Final batch error: {e}")
 
+    # 최종 메모리 정리
+    clear_gpu_memory()
+
     return stats
 
 
 # ============================================================================
-# 법령 임베딩
+# 법령 임베딩 (LawDocument 테이블 사용)
 # ============================================================================
 
-def load_law_data(source_path: str) -> Dict[str, Any]:
-    """법령 JSON 파일 로드"""
-    path = Path(source_path)
-    if not path.exists():
-        raise FileNotFoundError(f"법령 파일을 찾을 수 없습니다: {source_path}")
-
-    print(f"[INFO] Loading law data from: {source_path}")
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    return data
+async def get_law_count() -> int:
+    """법령 문서 수 (law_documents 테이블)"""
+    async with async_session_factory() as session:
+        query = select(func.count(LawDocument.id))
+        result = await session.execute(query)
+        return result.scalar() or 0
 
 
-def create_law_embeddings(
+async def get_laws(offset: int, limit: int) -> List[LawDocument]:
+    """법령 문서 조회 (law_documents 테이블)"""
+    async with async_session_factory() as session:
+        query = (
+            select(LawDocument)
+            .order_by(LawDocument.id)
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(query)
+        return list(result.scalars().all())
+
+
+async def create_law_embeddings(
     store: LanceDBStore,
-    source_path: str,
-    batch_size: int = 100,
+    batch_size: int = None,
     chunk_config: LawChunkConfig = None,
     reset: bool = False,
+    device_info: DeviceInfo = None,
+    gc_interval: int = None,
 ) -> dict:
-    """법령 임베딩 생성"""
+    """
+    법령 임베딩 생성 (law_documents 테이블에서 읽음)
+
+    사전 요구사항:
+        uv run python scripts/load_lancedb_data.py --type law
+    """
     if chunk_config is None:
         chunk_config = LawChunkConfig()
+
+    # 디바이스 및 최적 설정
+    if device_info is None:
+        device_info = get_device_info()
+    optimal = get_optimal_config(device_info)
+
+    if batch_size is None:
+        batch_size = optimal.batch_size
+    if gc_interval is None:
+        gc_interval = optimal.gc_interval
 
     stats = {
         "total_docs": 0,
@@ -502,16 +708,11 @@ def create_law_embeddings(
         "total_chunks": 0,
         "skipped": 0,
         "errors": 0,
+        "device": str(device_info),
     }
 
-    # 법령 데이터 로드
-    data = load_law_data(source_path)
-    items = data.get("items", [])
-    stats["total_docs"] = len(items)
-    print(f"[INFO] Total laws: {len(items):,}")
-
-    if not items:
-        return stats
+    print(f"[INFO] Device: {device_info}")
+    print(f"[INFO] Batch size: {batch_size}, GC interval: {gc_interval}")
 
     if reset:
         print("[INFO] Resetting law data...")
@@ -533,8 +734,21 @@ def create_law_embeddings(
         except Exception:
             pass
 
+    total_count = await get_law_count()
+    stats["total_docs"] = total_count
+    print(f"[INFO] Total laws in law_documents: {total_count:,}")
+
+    if total_count == 0:
+        print("[WARN] No data in law_documents table. Run load_lancedb_data.py first.")
+        return stats
+
     # 모델 사전 로드
-    get_local_model()
+    get_local_model(device_info.device)
+
+    # 배치 처리
+    offset = 0
+    db_batch_size = 500
+    batch_count = 0
 
     # 배치 버퍼
     batch_data = {
@@ -552,91 +766,96 @@ def create_law_embeddings(
         "article_nos": [],
     }
 
-    for idx, item in enumerate(items):
-        source_id = item.get("law_id", "")
+    while offset < total_count:
+        docs = await get_laws(offset, db_batch_size)
+        if not docs:
+            break
 
-        # 이미 처리된 문서 스킵
-        if source_id in existing_source_ids:
-            stats["skipped"] += 1
-            continue
+        for doc in docs:
+            source_id = doc.law_id
 
-        # 법령 내용 추출
-        content = item.get("content", "")
-        if not content:
-            stats["skipped"] += 1
-            continue
+            if source_id in existing_source_ids:
+                stats["skipped"] += 1
+                continue
 
-        # 청킹
-        chunks = chunk_law_content(content, chunk_config)
-        if not chunks:
-            stats["skipped"] += 1
-            continue
+            content = doc.content or ""
+            if not content:
+                stats["skipped"] += 1
+                continue
 
-        total_chunks = len(chunks)
-        stats["processed_docs"] += 1
+            chunks = chunk_law_content(content, chunk_config)
+            if not chunks:
+                stats["skipped"] += 1
+                continue
 
-        # 메타데이터 추출
-        law_name = item.get("law_name", "")
-        enforcement_date = item.get("enforcement_date", "")
-        ministry = item.get("ministry", "")
-        promulgation_date = item.get("promulgation_date", "")
-        promulgation_no = item.get("promulgation_no", "")
-        law_type = item.get("law_type", "")
+            total_chunks = len(chunks)
+            stats["processed_docs"] += 1
 
-        for chunk_idx, chunk_content, article_no in chunks:
-            # prefix 추가: [법령] 조문번호 형태
-            if article_no:
-                prefixed_content = f"[법령] {article_no} {chunk_content}"
-            else:
-                prefixed_content = f"[법령] {chunk_content}"
+            for chunk_idx, chunk_content, article_no in chunks:
+                if article_no:
+                    prefixed_content = f"[법령] {article_no} {chunk_content}"
+                else:
+                    prefixed_content = f"[법령] {chunk_content}"
 
-            batch_data["source_ids"].append(source_id)
-            batch_data["chunk_indices"].append(chunk_idx)
-            batch_data["titles"].append(law_name)
-            batch_data["contents"].append(prefixed_content)
-            batch_data["enforcement_dates"].append(enforcement_date)
-            batch_data["departments"].append(ministry)
-            batch_data["total_chunks_list"].append(total_chunks)
-            batch_data["promulgation_dates"].append(promulgation_date)
-            batch_data["promulgation_nos"].append(promulgation_no)
-            batch_data["law_types"].append(law_type)
-            batch_data["article_nos"].append(article_no or "")
+                batch_data["source_ids"].append(source_id)
+                batch_data["chunk_indices"].append(chunk_idx)
+                batch_data["titles"].append(doc.law_name or "")
+                batch_data["contents"].append(prefixed_content)
+                batch_data["enforcement_dates"].append(
+                    doc.enforcement_date.isoformat() if doc.enforcement_date else ""
+                )
+                batch_data["departments"].append(doc.ministry or "")
+                batch_data["total_chunks_list"].append(total_chunks)
+                batch_data["promulgation_dates"].append(doc.promulgation_date or "")
+                batch_data["promulgation_nos"].append(doc.promulgation_no or "")
+                batch_data["law_types"].append(doc.law_type or "")
+                batch_data["article_nos"].append(article_no or "")
 
-        # 배치 크기 도달 시 저장
-        if len(batch_data["source_ids"]) >= batch_size:
-            try:
-                # 임베딩 생성
-                batch_data["embeddings"] = create_embeddings(batch_data["contents"])
+            # 배치 크기 도달 시 저장
+            if len(batch_data["source_ids"]) >= batch_size:
+                batch_count += 1
+                try:
+                    batch_data["embeddings"] = create_embeddings(
+                        batch_data["contents"], device_info.device
+                    )
+                    store.add_law_documents(**batch_data)
+                    stats["total_chunks"] += len(batch_data["source_ids"])
+                except Exception as e:
+                    stats["errors"] += len(batch_data["source_ids"])
+                    print(f"  [ERROR] Batch error: {e}")
 
-                # LanceDB에 저장
-                store.add_law_documents(**batch_data)
-                stats["total_chunks"] += len(batch_data["source_ids"])
+                # 버퍼 초기화
+                for key in batch_data:
+                    batch_data[key] = []
 
-            except Exception as e:
-                stats["errors"] += len(batch_data["source_ids"])
-                print(f"  [ERROR] Batch error: {e}")
+                # 메모리 정리
+                if batch_count % gc_interval == 0:
+                    clear_gpu_memory()
 
-            # 버퍼 초기화
-            for key in batch_data:
-                batch_data[key] = []
+        # 진행률 출력
+        progress = min(offset + db_batch_size, total_count)
+        pct = progress / total_count * 100
+        print(
+            f"  [PROGRESS] {progress:,}/{total_count:,} ({pct:.1f}%) - "
+            f"Docs: {stats['processed_docs']:,}, Chunks: {stats['total_chunks']:,}"
+        )
 
-        # 진행률 출력 (500건마다)
-        if (idx + 1) % 500 == 0 or idx == len(items) - 1:
-            pct = (idx + 1) / len(items) * 100
-            print(
-                f"  [PROGRESS] {idx + 1:,}/{len(items):,} ({pct:.1f}%) - "
-                f"Docs: {stats['processed_docs']:,}, Chunks: {stats['total_chunks']:,}"
-            )
+        offset += db_batch_size
 
     # 남은 배치 처리
     if batch_data["source_ids"]:
         try:
-            batch_data["embeddings"] = create_embeddings(batch_data["contents"])
+            batch_data["embeddings"] = create_embeddings(
+                batch_data["contents"], device_info.device
+            )
             store.add_law_documents(**batch_data)
             stats["total_chunks"] += len(batch_data["source_ids"])
         except Exception as e:
             stats["errors"] += len(batch_data["source_ids"])
             print(f"  [ERROR] Final batch error: {e}")
+
+    # 최종 메모리 정리
+    clear_gpu_memory()
 
     return stats
 
@@ -674,20 +893,14 @@ def main():
     parser.add_argument(
         "--type",
         choices=["precedent", "law", "all"],
-        default="precedent",
-        help="임베딩할 문서 유형 (기본: precedent)"
-    )
-    parser.add_argument(
-        "--source",
-        type=str,
-        default=None,
-        help="법령 JSON 파일 경로 (--type law 사용 시 필수)"
+        default="all",
+        help="임베딩할 문서 유형 (기본: all)"
     )
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=100,
-        help="배치 크기 (기본: 100)"
+        default=None,
+        help="배치 크기 (기본: 디바이스에 따라 자동 설정)"
     )
     parser.add_argument(
         "--chunk-size",
@@ -731,11 +944,19 @@ def main():
     print("=" * 60)
     print(f"Model: {KURE_MODEL_NAME}")
     print(f"Vector dimension: {VECTOR_DIM}")
-    print(f"Batch size: {args.batch_size}")
+    print(f"Data source: PostgreSQL (law_documents, precedent_documents)")
 
     if args.stats:
         show_stats()
         return
+
+    # 디바이스 정보 출력
+    device_info, optimal_config = print_device_info()
+
+    batch_size = args.batch_size or optimal_config.batch_size
+    gc_interval = optimal_config.gc_interval
+
+    print(f"\nUsing batch_size: {batch_size}")
 
     store = LanceDBStore()
     start_time = datetime.now()
@@ -745,7 +966,7 @@ def main():
         print(f"Precedent chunk size: {args.chunk_size}")
         print(f"Precedent chunk overlap: {args.chunk_overlap}")
         print("\n" + "=" * 60)
-        print("Creating embeddings for 판례...")
+        print("Creating embeddings for 판례 (from precedent_documents)...")
         print("=" * 60)
 
         chunk_config = ChunkConfig(
@@ -755,22 +976,18 @@ def main():
 
         stats = asyncio.run(create_precedent_embeddings(
             store=store,
-            batch_size=args.batch_size,
+            batch_size=batch_size,
             chunk_config=chunk_config,
             reset=args.reset,
+            device_info=device_info,
+            gc_interval=gc_interval,
         ))
 
     elif args.type == "law":
-        if not args.source:
-            print("\n[ERROR] --type law 사용 시 --source 옵션이 필수입니다.")
-            print("[INFO] 예: --type law --source ../data/law_cleaned.json")
-            sys.exit(1)
-
         print(f"Law max tokens: {args.max_tokens}")
         print(f"Law min tokens: {args.min_tokens}")
-        print(f"Source: {args.source}")
         print("\n" + "=" * 60)
-        print("Creating embeddings for 법령...")
+        print("Creating embeddings for 법령 (from law_documents)...")
         print("=" * 60)
 
         law_chunk_config = LawChunkConfig(
@@ -778,18 +995,19 @@ def main():
             min_tokens=args.min_tokens,
         )
 
-        stats = create_law_embeddings(
+        stats = asyncio.run(create_law_embeddings(
             store=store,
-            source_path=args.source,
-            batch_size=args.batch_size,
+            batch_size=batch_size,
             chunk_config=law_chunk_config,
             reset=args.reset,
-        )
+            device_info=device_info,
+            gc_interval=gc_interval,
+        ))
 
     else:
         # all - 판례와 법령 모두 처리
         print("\n" + "=" * 60)
-        print("Creating embeddings for 판례...")
+        print("Creating embeddings for 판례 (from precedent_documents)...")
         print("=" * 60)
 
         chunk_config = ChunkConfig(
@@ -799,31 +1017,30 @@ def main():
 
         precedent_stats = asyncio.run(create_precedent_embeddings(
             store=store,
-            batch_size=args.batch_size,
+            batch_size=batch_size,
             chunk_config=chunk_config,
             reset=args.reset,
+            device_info=device_info,
+            gc_interval=gc_interval,
         ))
 
-        law_stats = {}
-        if args.source:
-            print("\n" + "=" * 60)
-            print("Creating embeddings for 법령...")
-            print("=" * 60)
+        print("\n" + "=" * 60)
+        print("Creating embeddings for 법령 (from law_documents)...")
+        print("=" * 60)
 
-            law_chunk_config = LawChunkConfig(
-                max_tokens=args.max_tokens,
-                min_tokens=args.min_tokens,
-            )
+        law_chunk_config = LawChunkConfig(
+            max_tokens=args.max_tokens,
+            min_tokens=args.min_tokens,
+        )
 
-            law_stats = create_law_embeddings(
-                store=store,
-                source_path=args.source,
-                batch_size=args.batch_size,
-                chunk_config=law_chunk_config,
-                reset=args.reset,
-            )
-        else:
-            print("\n[INFO] 법령 임베딩은 --source 옵션으로 파일 경로를 지정해야 합니다.")
+        law_stats = asyncio.run(create_law_embeddings(
+            store=store,
+            batch_size=batch_size,
+            chunk_config=law_chunk_config,
+            reset=args.reset,
+            device_info=device_info,
+            gc_interval=gc_interval,
+        ))
 
         stats = {
             "precedent": precedent_stats,
@@ -837,9 +1054,11 @@ def main():
     print("Results")
     print("=" * 60)
 
-    import json
     print(json.dumps(stats, indent=2, ensure_ascii=False))
     print(f"\nElapsed time: {elapsed}")
+
+    # 모델 캐시 정리
+    clear_model_cache()
 
     # 최종 통계
     show_stats()

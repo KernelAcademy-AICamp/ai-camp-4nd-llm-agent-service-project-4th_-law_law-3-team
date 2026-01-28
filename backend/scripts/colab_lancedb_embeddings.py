@@ -267,15 +267,14 @@ LEGAL_CHUNKS_SCHEMA = pa.schema([
     pa.field("article_no", pa.utf8()),
 
     # 판례 전용 (법령은 NULL)
+    # NOTE: ruling, claim, reasoning은 LanceDB에 저장하지 않음 (메모리 효율화)
+    # 검색 후 원본 JSON 또는 PostgreSQL에서 조회
     pa.field("case_number", pa.utf8()),
     pa.field("case_type", pa.utf8()),
     pa.field("judgment_type", pa.utf8()),
     pa.field("judgment_status", pa.utf8()),
     pa.field("reference_provisions", pa.utf8()),
     pa.field("reference_cases", pa.utf8()),
-    pa.field("ruling", pa.utf8()),
-    pa.field("claim", pa.utf8()),
-    pa.field("reasoning", pa.utf8()),
 ])
 
 
@@ -315,9 +314,6 @@ def create_law_chunk(
         "judgment_status": None,
         "reference_provisions": None,
         "reference_cases": None,
-        "ruling": None,
-        "claim": None,
-        "reasoning": None,
     }
 
 
@@ -336,11 +332,12 @@ def create_precedent_chunk(
     judgment_status: Optional[str] = None,
     reference_provisions: Optional[str] = None,
     reference_cases: Optional[str] = None,
-    ruling: Optional[str] = None,
-    claim: Optional[str] = None,
-    reasoning: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """판례 청크 레코드 생성"""
+    """
+    판례 청크 레코드 생성
+
+    NOTE: ruling, claim, reasoning은 LanceDB에 저장하지 않음 (메모리 효율화)
+    """
     return {
         "id": f"{source_id}_{chunk_index}",
         "source_id": source_id,
@@ -362,9 +359,6 @@ def create_precedent_chunk(
         "judgment_status": judgment_status,
         "reference_provisions": reference_provisions,
         "reference_cases": reference_cases,
-        "ruling": ruling,
-        "claim": claim,
-        "reasoning": reasoning,
     }
 
 
@@ -452,11 +446,12 @@ class LanceDBStore:
         case_types: List[str] = None,
         reference_provisions_list: List[str] = None,
         reference_cases_list: List[str] = None,
-        rulings: List[str] = None,
-        claims: List[str] = None,
-        reasonings: List[str] = None,
     ) -> None:
-        """판례 문서 배치 추가"""
+        """
+        판례 문서 배치 추가
+
+        NOTE: ruling, claim, reasoning은 LanceDB에 저장하지 않음 (메모리 효율화)
+        """
         if not source_ids:
             return
 
@@ -477,9 +472,6 @@ class LanceDBStore:
                 case_type=case_types[i] if case_types else None,
                 reference_provisions=reference_provisions_list[i] if reference_provisions_list else None,
                 reference_cases=reference_cases_list[i] if reference_cases_list else None,
-                ruling=rulings[i] if rulings else None,
-                claim=claims[i] if claims else None,
-                reasoning=reasonings[i] if reasonings else None,
             )
             data.append(chunk)
 
@@ -617,13 +609,26 @@ class PrecedentIterableDataset(IterableDataset):
     def __iter__(self) -> Iterator[Dict[str, Any]]:
         """판례를 읽어 청크 단위로 yield"""
         use_streaming = IJSON_AVAILABLE
+        f = None
 
         if use_streaming:
+            # 파일 시작 문자로 배열/객체 판별
+            with open(self.source_path, "rb") as check_f:
+                first_char = check_f.read(1).decode("utf-8").strip()
+                # BOM이나 공백 건너뛰기
+                while first_char in ("\ufeff", " ", "\n", "\r", "\t", ""):
+                    first_char = check_f.read(1).decode("utf-8")
+
             f = open(self.source_path, "rb")
-            items = ijson.items(f, "items.item")
+            if first_char == "[":
+                # 배열 형태: [{...}, {...}]
+                items = ijson.items(f, "item")
+            else:
+                # 객체 형태: {"items": [...]} 또는 {"precedents": [...]}
+                items = ijson.items(f, "items.item")
         else:
-            with open(self.source_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            with open(self.source_path, "r", encoding="utf-8") as json_f:
+                data = json.load(json_f)
             if isinstance(data, list):
                 items = data
             else:
@@ -659,16 +664,13 @@ class PrecedentIterableDataset(IterableDataset):
 
             total_chunks = len(chunks)
 
-            # 메타데이터
+            # 메타데이터 (ruling, claim, reasoning 제외)
             decision_date = item.get("선고일자", item.get("decision_date", ""))
             court_name = item.get("법원명", item.get("court_name", ""))
             case_number = item.get("사건번호", item.get("case_number", ""))
             case_type = item.get("사건종류명", item.get("case_type", ""))
             ref_provisions = item.get("참조조문", item.get("reference_provisions", ""))
             ref_cases = item.get("참조판례", item.get("reference_cases", ""))
-            ruling = item.get("주문", item.get("ruling", ""))
-            claim = item.get("청구취지", item.get("claim", ""))
-            reasoning = item.get("이유", item.get("reasoning", ""))
 
             for chunk_idx, chunk_content in chunks:
                 yield {
@@ -683,9 +685,6 @@ class PrecedentIterableDataset(IterableDataset):
                     "case_type": case_type,
                     "reference_provisions": ref_provisions,
                     "reference_cases": ref_cases,
-                    "ruling": ruling,
-                    "claim": claim,
-                    "reasoning": reasoning,
                 }
 
         if use_streaming:
@@ -707,10 +706,28 @@ class LawIterableDataset(IterableDataset):
 
     def __iter__(self) -> Iterator[Dict[str, Any]]:
         """법령을 읽어 청크 단위로 yield"""
-        with open(self.source_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        use_streaming = IJSON_AVAILABLE
+        f = None
 
-        items = data.get("items", [])
+        if use_streaming:
+            # 파일 시작 문자로 배열/객체 판별
+            with open(self.source_path, "rb") as check_f:
+                first_char = check_f.read(1).decode("utf-8").strip()
+                while first_char in ("\ufeff", " ", "\n", "\r", "\t", ""):
+                    first_char = check_f.read(1).decode("utf-8")
+
+            f = open(self.source_path, "rb")
+            if first_char == "[":
+                items = ijson.items(f, "item")
+            else:
+                items = ijson.items(f, "items.item")
+        else:
+            with open(self.source_path, "r", encoding="utf-8") as json_f:
+                data = json.load(json_f)
+            if isinstance(data, list):
+                items = data
+            else:
+                items = data.get("items", [])
 
         for item in items:
             source_id = item.get("law_id", "")
@@ -753,6 +770,9 @@ class LawIterableDataset(IterableDataset):
                     "law_type": law_type,
                     "article_no": article_no or "",
                 }
+
+        if use_streaming and f is not None:
+            f.close()
 
 
 def collate_chunks(batch: List[Dict[str, Any]]) -> Dict[str, List[Any]]:
@@ -1183,7 +1203,7 @@ def create_precedent_embeddings(
             # 임베딩 생성
             embeddings = create_embeddings(batch["content"], device_info.device)
 
-            # LanceDB에 저장
+            # LanceDB에 저장 (ruling, claim, reasoning 제외)
             store.add_precedent_documents(
                 source_ids=batch["source_id"],
                 chunk_indices=batch["chunk_index"],
@@ -1197,9 +1217,6 @@ def create_precedent_embeddings(
                 case_types=batch["case_type"],
                 reference_provisions_list=batch["reference_provisions"],
                 reference_cases_list=batch["reference_cases"],
-                rulings=batch["ruling"],
-                claims=batch["claim"],
-                reasonings=batch["reasoning"],
             )
 
             # 통계 업데이트

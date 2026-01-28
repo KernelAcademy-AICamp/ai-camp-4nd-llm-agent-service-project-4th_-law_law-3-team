@@ -178,15 +178,14 @@ class LanceDBStore(VectorStoreBase):
         judgment_statuses: Optional[List[str]] = None,
         reference_provisions_list: Optional[List[str]] = None,
         reference_cases_list: Optional[List[str]] = None,
-        rulings: Optional[List[str]] = None,
-        claims: Optional[List[str]] = None,
-        reasonings: Optional[List[str]] = None,
     ) -> None:
         """
         판례 문서 배치 추가
 
+        NOTE: ruling, claim, reasoning은 PostgreSQL precedent_documents 테이블에서 조회
+
         Args:
-            source_ids: 원본 문서 ID 목록
+            source_ids: 원본 문서 ID 목록 (PostgreSQL serial_number)
             chunk_indices: 청크 인덱스 목록
             embeddings: 임베딩 벡터 목록
             titles: 사건명 목록
@@ -200,9 +199,6 @@ class LanceDBStore(VectorStoreBase):
             judgment_statuses: 판결 상태 목록
             reference_provisions_list: 참조 조문 목록
             reference_cases_list: 참조 판례 목록
-            rulings: 주문 목록
-            claims: 청구취지 목록
-            reasonings: 이유 목록
         """
         if not source_ids:
             return
@@ -226,9 +222,6 @@ class LanceDBStore(VectorStoreBase):
                 judgment_status=judgment_statuses[i] if judgment_statuses else None,
                 reference_provisions=reference_provisions_list[i] if reference_provisions_list else None,
                 reference_cases=reference_cases_list[i] if reference_cases_list else None,
-                ruling=rulings[i] if rulings else None,
-                claim=claims[i] if claims else None,
-                reasoning=reasonings[i] if reasonings else None,
             )
             data.append(chunk)
 
@@ -486,8 +479,18 @@ class LanceDBStore(VectorStoreBase):
             return 0
 
         escaped_type = self._escape_sql(data_type)
-        df = self._table.search().where(f"data_type = '{escaped_type}'").limit(1000000).to_pandas()
-        return len(df)
+
+        # v2 스키마 (data_type) 시도, 실패 시 v1 스키마 (doc_type) 폴백
+        try:
+            df = self._table.search().where(f"data_type = '{escaped_type}'").limit(1000000).to_pandas()
+            return len(df)
+        except RuntimeError:
+            # v1 스키마 폴백
+            try:
+                df = self._table.search().where(f"doc_type = '{escaped_type}'").limit(1000000).to_pandas()
+                return len(df)
+            except RuntimeError:
+                return 0
 
     def reset(self) -> None:
         """테이블 초기화 (모든 데이터 삭제)"""
@@ -540,6 +543,7 @@ class LanceDBStore(VectorStoreBase):
                     "article_no": row.get("article_no"),
                 })
             elif row.get("data_type") == "판례":
+                # NOTE: ruling, claim, reasoning은 PostgreSQL precedent_documents 테이블에서 조회
                 meta.update({
                     "case_number": row.get("case_number"),
                     "case_type": row.get("case_type"),
@@ -547,9 +551,6 @@ class LanceDBStore(VectorStoreBase):
                     "judgment_status": row.get("judgment_status"),
                     "reference_provisions": row.get("reference_provisions"),
                     "reference_cases": row.get("reference_cases"),
-                    "ruling": row.get("ruling"),
-                    "claim": row.get("claim"),
-                    "reasoning": row.get("reasoning"),
                 })
 
             metadatas.append(meta)

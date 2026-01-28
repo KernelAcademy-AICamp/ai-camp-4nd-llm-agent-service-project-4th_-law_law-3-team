@@ -1,19 +1,24 @@
 """
-LanceDB 스키마 v2 - 단일 테이블 + NULL 허용
+LanceDB 스키마 v2 - 단일 테이블 + NULL 허용 (메모리 최적화)
 
 설계 원칙:
 - 모든 필드를 개별 컬럼으로 정의
 - 해당하지 않는 필드는 NULL
 - data_type으로 문서 유형 구분
+- ruling, claim, reasoning은 PostgreSQL에 저장하여 메모리 효율화
 
 문서 타입:
 - data_type = "법령": 법률, 시행령, 시행규칙 등
 - data_type = "판례": 대법원, 고등법원, 지방법원 판결
 
-컬럼 그룹:
-- 공통: 모든 문서 타입에서 사용
-- 법령 전용: data_type='법령'일 때 사용 (판례는 NULL)
-- 판례 전용: data_type='판례'일 때 사용 (법령은 NULL)
+컬럼 그룹 (총 20개):
+- 공통: 10개 (id, source_id, data_type, title, content, vector, date, source_name, chunk_index, total_chunks)
+- 법령 전용: 4개 (promulgation_date, promulgation_no, law_type, article_no)
+- 판례 전용: 6개 (case_number, case_type, judgment_type, judgment_status, reference_provisions, reference_cases)
+
+검색 흐름:
+1. LanceDB 벡터 검색 → source_id 추출
+2. PostgreSQL에서 원본 조회 (ruling, claim, reasoning 등)
 """
 
 import pyarrow as pa
@@ -53,15 +58,14 @@ LEGAL_CHUNKS_SCHEMA = pa.schema([
     pa.field("article_no", pa.utf8()),          # 조문 번호 (예: "제750조")
 
     # ========== 판례 전용 (법령은 NULL) ==========
+    # NOTE: ruling, claim, reasoning은 PostgreSQL precedent_documents 테이블에서 조회
+    # LanceDB에는 검색용 메타데이터만 저장하여 메모리 효율화
     pa.field("case_number", pa.utf8()),         # 사건번호 (예: "84나3990")
     pa.field("case_type", pa.utf8()),           # 사건 유형 (민사/형사/행정)
     pa.field("judgment_type", pa.utf8()),       # 판결 법원부 (예: "제11민사부판결")
     pa.field("judgment_status", pa.utf8()),     # 판결 상태 (확정/미확정)
     pa.field("reference_provisions", pa.utf8()),# 참조 조문 (예: "민법 제750조, 제756조")
     pa.field("reference_cases", pa.utf8()),     # 참조 판례
-    pa.field("ruling", pa.utf8()),              # 주문
-    pa.field("claim", pa.utf8()),               # 청구취지
-    pa.field("reasoning", pa.utf8()),           # 이유
 ])
 
 
@@ -80,8 +84,7 @@ LAW_COLUMNS = [
 
 PRECEDENT_COLUMNS = [
     "case_number", "case_type", "judgment_type",
-    "judgment_status", "reference_provisions", "reference_cases",
-    "ruling", "claim", "reasoning"
+    "judgment_status", "reference_provisions", "reference_cases"
 ]
 
 ALL_COLUMNS = COMMON_COLUMNS + LAW_COLUMNS + PRECEDENT_COLUMNS
@@ -113,15 +116,13 @@ class LegalChunk(BaseModel):
     article_no: Optional[str] = None        # 조문 번호
 
     # === 판례 전용 (법령은 None) ===
+    # NOTE: ruling, claim, reasoning은 PostgreSQL precedent_documents 테이블에서 조회
     case_number: Optional[str] = None       # 사건번호
     case_type: Optional[str] = None         # 사건 유형
     judgment_type: Optional[str] = None     # 판결 법원부
     judgment_status: Optional[str] = None   # 판결 상태
     reference_provisions: Optional[str] = None  # 참조 조문
     reference_cases: Optional[str] = None   # 참조 판례
-    ruling: Optional[str] = None            # 주문
-    claim: Optional[str] = None             # 청구취지
-    reasoning: Optional[str] = None         # 이유
 
     def to_dict(self) -> dict:
         """LanceDB 삽입용 딕셔너리 변환"""
@@ -133,8 +134,7 @@ class LegalChunk(BaseModel):
             # 판례 필드는 None이어야 함
             precedent_fields = [
                 self.case_number, self.case_type, self.judgment_type,
-                self.judgment_status, self.reference_provisions, self.reference_cases,
-                self.ruling, self.claim, self.reasoning
+                self.judgment_status, self.reference_provisions, self.reference_cases
             ]
             if any(f is not None for f in precedent_fields):
                 raise ValueError("법령 데이터에 판례 필드가 설정되어 있습니다.")
@@ -213,9 +213,6 @@ def create_law_chunk(
         "judgment_status": None,
         "reference_provisions": None,
         "reference_cases": None,
-        "ruling": None,
-        "claim": None,
-        "reasoning": None,
     }
 
 
@@ -234,15 +231,15 @@ def create_precedent_chunk(
     judgment_status: str = None,
     reference_provisions: str = None,
     reference_cases: str = None,
-    ruling: str = None,
-    claim: str = None,
-    reasoning: str = None,
 ) -> dict:
     """
     판례 청크 생성
 
+    NOTE: ruling, claim, reasoning은 PostgreSQL precedent_documents 테이블에서 조회
+          LanceDB에는 검색용 메타데이터만 저장하여 메모리 효율화
+
     Args:
-        source_id: 원본 문서 ID
+        source_id: 원본 문서 ID (PostgreSQL precedent_documents.serial_number)
         chunk_index: 청크 인덱스 (0부터 시작)
         title: 사건명
         content: 청크 텍스트 (prefix 포함 권장)
@@ -256,9 +253,6 @@ def create_precedent_chunk(
         judgment_status: 판결 상태 (확정/미확정)
         reference_provisions: 참조 조문
         reference_cases: 참조 판례
-        ruling: 주문
-        claim: 청구취지
-        reasoning: 이유
 
     Returns:
         LanceDB 삽입용 딕셔너리
@@ -287,9 +281,6 @@ def create_precedent_chunk(
         "judgment_status": judgment_status,
         "reference_provisions": reference_provisions,
         "reference_cases": reference_cases,
-        "ruling": ruling,
-        "claim": claim,
-        "reasoning": reasoning,
     }
 
 
