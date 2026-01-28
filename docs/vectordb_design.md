@@ -707,3 +707,38 @@ print_memory_status()
 | 품질 검증 | ✅ 완료 | EmbeddingQualityChecker |
 | PyTorch 최적화 | ✅ 완료 | clear_memory, set_seed 등 |
 | 검색 API 통합 | 🔄 진행중 | VectorStoreBase 인터페이스 |
+
+---
+
+## 16. TODO / Known Issues
+
+### 판례 메타데이터 누락 필드
+
+`PrecedentEmbeddingProcessor.extract_metadata()`에서 일부 필드가 추출되지 않음.
+
+| 필드 | JSON 원본 | 상태 | 비고 |
+|------|-----------|------|------|
+| `judgment_type` | 판결유형 | ❌ 누락 | 스키마에 정의됨, 추출 코드 없음 |
+| `judgment_status` | - | ❌ 없음 | 스키마에 정의됨, JSON에 해당 필드 없음 |
+
+**수정 필요:**
+```python
+# runpod_lancedb_embeddings.py - PrecedentEmbeddingProcessor.extract_metadata()
+def extract_metadata(self, item: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        ...
+        "judgment_type": item.get("판결유형", ""),  # 추가 필요
+    }
+```
+
+### 판례 JSON 필드 중 미사용 필드
+
+| 필드 | 용도 | 저장 여부 |
+|------|------|----------|
+| 선고 | "선고" 고정값 | 불필요 |
+| 법원종류코드 | 코드값 | 법원명으로 대체 |
+| 사건종류코드 | 코드값 | 사건종류명으로 대체 |
+| 판례내용 | 전문 텍스트 | PostgreSQL 저장 권장 |
+| 주문 | 판결 주문 | PostgreSQL 저장 권장 |
+| 청구취지 | 청구 내용 | PostgreSQL 저장 권장 |
+| 이유 | 판결 이유 | PostgreSQL 저장 권장 |
