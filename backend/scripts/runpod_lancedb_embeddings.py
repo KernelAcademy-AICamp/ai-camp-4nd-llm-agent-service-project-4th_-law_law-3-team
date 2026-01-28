@@ -282,6 +282,15 @@ def print_device_info():
 # ============================================================================
 # LanceDB 스키마 정의 (v2)
 # ============================================================================
+#
+# ⚠️ 중요: 이 스키마는 백엔드의 schema_v2.py와 반드시 동기화되어야 합니다!
+# 위치: backend/app/common/vectorstore/schema_v2.py
+#
+# 스키마 변경 시 체크리스트:
+# 1. 백엔드 schema_v2.py 수정
+# 2. 이 파일의 LEGAL_CHUNKS_SCHEMA 수정
+# 3. runpod_split_embeddings.py의 스키마도 수정
+# ============================================================================
 
 VECTOR_DIM = CONFIG["VECTOR_DIM"]
 
@@ -651,7 +660,7 @@ def split_precedents(
     output_dir: str = ".",
 ) -> List[str]:
     """
-    판례 JSON을 작은 파일들로 분할
+    판례 JSON을 작은 파일들로 분할 (스트리밍 방식 - 메모리 효율적)
 
     Args:
         source_path: 원본 JSON 파일 경로
@@ -661,7 +670,75 @@ def split_precedents(
     Returns:
         생성된 파일명 리스트
     """
-    print(f"[INFO] Loading {source_path}...")
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # ijson 사용 가능 여부 확인
+    if not IJSON_AVAILABLE:
+        print("[WARN] ijson not available. Using full load (higher memory usage).")
+        print("       Install with: pip install ijson")
+        return _split_precedents_full_load(source_path, chunk_size, output_path)
+
+    print(f"[INFO] Splitting {source_path} using streaming (memory-safe)...")
+
+    # JSON 형식 감지
+    json_format = detect_json_format(source_path)
+    print(f"[INFO] JSON format: {json_format}")
+
+    part_files = []
+    current_chunk = []
+    part_num = 1
+    total_count = 0
+
+    with open(source_path, "rb") as f:
+        # JSON 구조에 따라 파서 설정
+        if json_format == "array":
+            parser = ijson.items(f, "item")
+        else:
+            # {"items": [...]} 또는 {"precedents": [...]} 구조
+            parser = ijson.items(f, "items.item")
+
+        for item in tqdm(parser, desc="Splitting"):
+            current_chunk.append(item)
+            total_count += 1
+
+            if len(current_chunk) >= chunk_size:
+                filename = f"precedents_part_{part_num:03d}.json"
+                filepath = output_path / filename
+
+                with open(filepath, "w", encoding="utf-8") as out:
+                    json.dump(current_chunk, out, ensure_ascii=False)
+
+                part_files.append(str(filepath))
+                print(f"  - {filename}: {len(current_chunk):,} items")
+
+                current_chunk = []
+                part_num += 1
+                gc.collect()
+
+    # 남은 데이터 저장
+    if current_chunk:
+        filename = f"precedents_part_{part_num:03d}.json"
+        filepath = output_path / filename
+
+        with open(filepath, "w", encoding="utf-8") as out:
+            json.dump(current_chunk, out, ensure_ascii=False)
+
+        part_files.append(str(filepath))
+        print(f"  - {filename}: {len(current_chunk):,} items")
+
+    gc.collect()
+    print(f"\n[INFO] Split complete! {len(part_files)} files, {total_count:,} items total.")
+    return part_files
+
+
+def _split_precedents_full_load(
+    source_path: str,
+    chunk_size: int,
+    output_path: Path,
+) -> List[str]:
+    """ijson 없을 때 폴백: 전체 로드 방식 (메모리 주의)"""
+    print(f"[INFO] Loading {source_path} (full load)...")
 
     with open(source_path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -676,9 +753,6 @@ def split_precedents(
 
     print(f"[INFO] Total items: {total:,}")
     print(f"[INFO] Splitting into {num_parts} parts ({chunk_size} items each)")
-
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
 
     part_files = []
     for i in range(num_parts):
@@ -695,7 +769,6 @@ def split_precedents(
         part_files.append(str(filepath))
         print(f"  - {filename}: {len(part_data):,} items")
 
-    # 메모리 해제
     del data
     del items
     gc.collect()
@@ -710,7 +783,7 @@ def split_laws(
     output_dir: str = ".",
 ) -> List[str]:
     """
-    법령 JSON을 작은 파일들로 분할
+    법령 JSON을 작은 파일들로 분할 (스트리밍 방식 - 메모리 효율적)
 
     Args:
         source_path: 원본 JSON 파일 경로
@@ -720,7 +793,73 @@ def split_laws(
     Returns:
         생성된 파일명 리스트
     """
-    print(f"[INFO] Loading {source_path}...")
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # ijson 사용 가능 여부 확인
+    if not IJSON_AVAILABLE:
+        print("[WARN] ijson not available. Using full load (higher memory usage).")
+        return _split_laws_full_load(source_path, chunk_size, output_path)
+
+    print(f"[INFO] Splitting {source_path} using streaming (memory-safe)...")
+
+    # JSON 형식 감지
+    json_format = detect_json_format(source_path)
+    print(f"[INFO] JSON format: {json_format}")
+
+    part_files = []
+    current_chunk = []
+    part_num = 1
+    total_count = 0
+
+    with open(source_path, "rb") as f:
+        # JSON 구조에 따라 파서 설정
+        if json_format == "array":
+            parser = ijson.items(f, "item")
+        else:
+            parser = ijson.items(f, "items.item")
+
+        for item in tqdm(parser, desc="Splitting"):
+            current_chunk.append(item)
+            total_count += 1
+
+            if len(current_chunk) >= chunk_size:
+                filename = f"laws_part_{part_num:03d}.json"
+                filepath = output_path / filename
+
+                with open(filepath, "w", encoding="utf-8") as out:
+                    json.dump(current_chunk, out, ensure_ascii=False)
+
+                part_files.append(str(filepath))
+                print(f"  - {filename}: {len(current_chunk):,} items")
+
+                current_chunk = []
+                part_num += 1
+                gc.collect()
+
+    # 남은 데이터 저장
+    if current_chunk:
+        filename = f"laws_part_{part_num:03d}.json"
+        filepath = output_path / filename
+
+        with open(filepath, "w", encoding="utf-8") as out:
+            json.dump(current_chunk, out, ensure_ascii=False)
+
+        part_files.append(str(filepath))
+        print(f"  - {filename}: {len(current_chunk):,} items")
+
+    gc.collect()
+    print(f"\n[INFO] Split complete! {len(part_files)} files, {total_count:,} items total.")
+    return part_files
+
+
+def _split_laws_full_load(
+    source_path: str,
+    chunk_size: int,
+    output_path: Path,
+) -> List[str]:
+    """ijson 없을 때 폴백: 전체 로드 방식 (메모리 주의)"""
+    print(f"[INFO] Loading {source_path} (full load)...")
 
     with open(source_path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -735,9 +874,6 @@ def split_laws(
 
     print(f"[INFO] Total items: {total:,}")
     print(f"[INFO] Splitting into {num_parts} parts ({chunk_size} items each)")
-
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
 
     part_files = []
     for i in range(num_parts):
