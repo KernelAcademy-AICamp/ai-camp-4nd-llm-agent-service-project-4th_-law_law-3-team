@@ -23,6 +23,17 @@ export interface RegionStatResponse {
   data: RegionStat[]
 }
 
+export interface DensityStat {
+  region: string
+  count: number
+  population: number
+  density: number  // 인구 10만명당 변호사 수
+}
+
+export interface DensityStatResponse {
+  data: DensityStat[]
+}
+
 export interface SpecialtyDetail {
   name: string
   count: number

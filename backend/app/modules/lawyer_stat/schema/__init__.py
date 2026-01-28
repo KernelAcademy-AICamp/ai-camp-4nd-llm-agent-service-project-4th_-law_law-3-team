@@ -32,6 +32,21 @@ class RegionStatResponse(BaseModel):
     data: list[RegionStat]
 
 
+class DensityStat(BaseModel):
+    """지역별 변호사 밀도"""
+
+    region: str
+    count: int
+    population: int
+    density: float  # 인구 10만명당 변호사 수
+
+
+class DensityStatResponse(BaseModel):
+    """지역별 밀도 통계 응답"""
+
+    data: list[DensityStat]
+
+
 class SpecialtyDetail(BaseModel):
     """세부 전문분야 카운트"""
 
@@ -69,3 +84,9 @@ class CrossAnalysisResponse(BaseModel):
     data: list[CrossAnalysisCell]
     regions: list[str]
     categories: list[str]
+
+
+class CrossAnalysisRequest(BaseModel):
+    """교차 분석 요청 (선택된 지역 목록)"""
+
+    regions: list[str]

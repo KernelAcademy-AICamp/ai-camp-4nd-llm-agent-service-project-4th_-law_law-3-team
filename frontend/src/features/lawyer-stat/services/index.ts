@@ -5,6 +5,7 @@
 import { api, endpoints } from '@/lib/api'
 import type {
   CrossAnalysisResponse,
+  DensityStatResponse,
   OverviewResponse,
   RegionStatResponse,
   SpecialtyStatResponse,
@@ -20,6 +21,11 @@ export async function fetchRegionStats(): Promise<RegionStatResponse> {
   return response.data
 }
 
+export async function fetchDensityStats(): Promise<DensityStatResponse> {
+  const response = await api.get<DensityStatResponse>(`${endpoints.lawyerStat}/density-by-region`)
+  return response.data
+}
+
 export async function fetchSpecialtyStats(): Promise<SpecialtyStatResponse> {
   const response = await api.get<SpecialtyStatResponse>(`${endpoints.lawyerStat}/by-specialty`)
   return response.data
@@ -27,5 +33,27 @@ export async function fetchSpecialtyStats(): Promise<SpecialtyStatResponse> {
 
 export async function fetchCrossAnalysis(): Promise<CrossAnalysisResponse> {
   const response = await api.get<CrossAnalysisResponse>(`${endpoints.lawyerStat}/cross-analysis`)
+  return response.data
+}
+
+export async function fetchRegionSpecialties(region: string): Promise<SpecialtyStatResponse> {
+  const response = await api.get<SpecialtyStatResponse>(
+    `${endpoints.lawyerStat}/region/${encodeURIComponent(region)}/specialties`
+  )
+  return response.data
+}
+
+export async function fetchCrossAnalysisByProvince(province: string): Promise<CrossAnalysisResponse> {
+  const response = await api.get<CrossAnalysisResponse>(
+    `${endpoints.lawyerStat}/cross-analysis/${encodeURIComponent(province)}`
+  )
+  return response.data
+}
+
+export async function fetchCrossAnalysisByRegions(regions: string[]): Promise<CrossAnalysisResponse> {
+  const response = await api.post<CrossAnalysisResponse>(
+    `${endpoints.lawyerStat}/cross-analysis/regions`,
+    { regions }
+  )
   return response.data
 }

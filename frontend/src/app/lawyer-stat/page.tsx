@@ -4,17 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import { CrossAnalysisHeatmap } from '@/features/lawyer-stat/components/CrossAnalysisHeatmap'
-import { KPICards } from '@/features/lawyer-stat/components/KPICards'
 import { RegionDetailList } from '@/features/lawyer-stat/components/RegionDetailList'
 import { RegionGeoMap } from '@/features/lawyer-stat/components/RegionGeoMap'
 import { SpecialtyBarChart } from '@/features/lawyer-stat/components/SpecialtyBarChart'
 import { StickyTabNav, type TabType } from '@/features/lawyer-stat/components/StickyTabNav'
 import {
-  fetchCrossAnalysis,
+  fetchDensityStats,
   fetchOverview,
   fetchRegionStats,
   fetchSpecialtyStats,
 } from '@/features/lawyer-stat/services'
+
+export type ViewMode = 'count' | 'density'
 
 function LoadingSpinner() {
   return (
@@ -64,10 +65,12 @@ const PROVINCES = [
 
 export default function LawyerStatPage() {
   const [activeTab, setActiveTab] = useState<TabType>('region')
+  const [viewMode, setViewMode] = useState<ViewMode>('count')
   const [selectedProvince, setSelectedProvince] = useState<string | null>(null)
+  const [highlightedRegion, setHighlightedRegion] = useState<string | null>(null)
+  const [mapSelectedRegion, setMapSelectedRegion] = useState<string | null>(null)
 
   const regionSectionRef = useRef<HTMLDivElement>(null)
-  const specialtySectionRef = useRef<HTMLDivElement>(null)
   const crossSectionRef = useRef<HTMLDivElement>(null)
 
   const overviewQuery = useQuery({
@@ -80,27 +83,27 @@ export default function LawyerStatPage() {
     queryFn: fetchRegionStats,
   })
 
+  const densityQuery = useQuery({
+    queryKey: ['lawyer-stat', 'density'],
+    queryFn: fetchDensityStats,
+  })
+
   const specialtyQuery = useQuery({
     queryKey: ['lawyer-stat', 'specialty'],
     queryFn: fetchSpecialtyStats,
   })
 
-  const crossAnalysisQuery = useQuery({
-    queryKey: ['lawyer-stat', 'cross-analysis'],
-    queryFn: fetchCrossAnalysis,
-  })
-
   const isLoading =
     overviewQuery.isLoading ||
     regionQuery.isLoading ||
-    specialtyQuery.isLoading ||
-    crossAnalysisQuery.isLoading
+    densityQuery.isLoading ||
+    specialtyQuery.isLoading
 
   const hasError =
     overviewQuery.isError ||
     regionQuery.isError ||
-    specialtyQuery.isError ||
-    crossAnalysisQuery.isError
+    densityQuery.isError ||
+    specialtyQuery.isError
 
   const topRegion = useMemo(() => {
     if (!regionQuery.data?.data || regionQuery.data.data.length === 0) return null
@@ -115,15 +118,15 @@ export default function LawyerStatPage() {
   }, [specialtyQuery.data])
 
   const filteredRegionData = useMemo(() => {
-    if (!regionQuery.data?.data) return []
-    if (!selectedProvince) return regionQuery.data.data
-    return regionQuery.data.data.filter((r) => r.region.startsWith(selectedProvince))
-  }, [regionQuery.data, selectedProvince])
+    const sourceData = viewMode === 'count' ? regionQuery.data?.data : densityQuery.data?.data
+    if (!sourceData) return []
+    if (!selectedProvince) return sourceData
+    return sourceData.filter((r) => r.region.startsWith(selectedProvince))
+  }, [regionQuery.data, densityQuery.data, selectedProvince, viewMode])
 
   const scrollToSection = useCallback((tab: TabType) => {
     const refs: Record<TabType, React.RefObject<HTMLDivElement | null>> = {
       region: regionSectionRef,
-      specialty: specialtySectionRef,
       cross: crossSectionRef,
     }
     refs[tab].current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -146,7 +149,6 @@ export default function LawyerStatPage() {
         if (entry.isIntersecting) {
           const id = entry.target.id
           if (id === 'region-section') setActiveTab('region')
-          else if (id === 'specialty-section') setActiveTab('specialty')
           else if (id === 'cross-section') setActiveTab('cross')
         }
       })
@@ -154,7 +156,6 @@ export default function LawyerStatPage() {
 
     const sections = [
       regionSectionRef.current,
-      specialtySectionRef.current,
       crossSectionRef.current,
     ]
 
@@ -184,7 +185,10 @@ export default function LawyerStatPage() {
               홈으로
             </Link>
             <div className="h-6 w-px bg-gray-200" />
-            <h1 className="text-2xl font-bold text-gray-900">변호사 통계 대시보드</h1>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">변호사 시장 분석</h1>
+              <p className="text-sm text-gray-500 mt-1">지역·전문분야·인구 대비 변호사 분포를 분석합니다.</p>
+            </div>
           </div>
         </div>
       </header>
@@ -202,13 +206,6 @@ export default function LawyerStatPage() {
 
         {!isLoading && !hasError && (
           <div className="space-y-6">
-            {/* KPI Cards */}
-            <KPICards
-              totalLawyers={overviewQuery.data?.total_lawyers ?? 0}
-              topRegion={topRegion}
-              topSpecialty={topSpecialty}
-            />
-
             {/* Sticky Tab Navigation */}
             <StickyTabNav activeTab={activeTab} onTabChange={handleTabChange} />
 
@@ -218,46 +215,91 @@ export default function LawyerStatPage() {
               ref={regionSectionRef}
               className="scroll-mt-16 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
             >
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900">지역별 변호사 현황</h2>
-                <select
-                  value={selectedProvince ?? '전체'}
-                  onChange={(e) =>
-                    setSelectedProvince(e.target.value === '전체' ? null : e.target.value)
-                  }
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  {PROVINCES.map((province) => (
-                    <option key={province} value={province}>
-                      {province}
-                    </option>
-                  ))}
-                </select>
+                {/* 변호사 수 / 인구 대비 밀도 토글 */}
+                <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('count')}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      viewMode === 'count'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    변호사 수
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('density')}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      viewMode === 'density'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    인구 대비 밀도
+                  </button>
+                </div>
+              </div>
+
+              {/* 지역 탭 버튼 */}
+              <div className="mb-4 flex gap-1.5 overflow-x-auto pb-2">
+                {PROVINCES.map((province) => (
+                  <button
+                    key={province}
+                    type="button"
+                    onClick={() => setSelectedProvince(province === '전체' ? null : province)}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                      (province === '전체' && !selectedProvince) || province === selectedProvince
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {province}
+                  </button>
+                ))}
               </div>
 
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
                 <div className="lg:col-span-8">
-                  <RegionGeoMap data={filteredRegionData} selectedProvince={selectedProvince} />
+                  <RegionGeoMap
+                    data={filteredRegionData}
+                    viewMode={viewMode}
+                    selectedProvince={selectedProvince}
+                    highlightedRegion={highlightedRegion}
+                    onRegionClick={(region) => {
+                      // 지도에서 클릭 시 해당 지역 세부 화면으로 전환
+                      const province = region.split(' ')[0]
+                      setSelectedProvince(province)
+                      setHighlightedRegion(region)
+                      setMapSelectedRegion(region)
+                    }}
+                  />
                 </div>
                 <div className="lg:col-span-4">
-                  {regionQuery.data && (
+                  {(viewMode === 'count' ? regionQuery.data : densityQuery.data) && (
                     <RegionDetailList
-                      regions={regionQuery.data.data}
+                      regions={viewMode === 'count' ? regionQuery.data!.data : densityQuery.data!.data}
+                      viewMode={viewMode}
                       selectedProvince={selectedProvince}
+                      mapSelectedRegion={mapSelectedRegion}
+                      onRegionClick={(region) => {
+                        if (region) {
+                          const province = region.split(' ')[0]
+                          setSelectedProvince(province)
+                          setHighlightedRegion(region)
+                          setMapSelectedRegion(null)  // 리스트에서 선택 시 초기화
+                        } else {
+                          setHighlightedRegion(null)
+                          setMapSelectedRegion(null)
+                        }
+                      }}
                     />
                   )}
                 </div>
               </div>
-            </section>
-
-            {/* Specialty Section */}
-            <section
-              id="specialty-section"
-              ref={specialtySectionRef}
-              className="scroll-mt-16 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
-            >
-              <h2 className="mb-4 text-lg font-semibold text-gray-900">전문분야별 변호사 분포</h2>
-              {specialtyQuery.data && <SpecialtyBarChart data={specialtyQuery.data.data} />}
             </section>
 
             {/* Cross Analysis Section */}
@@ -266,9 +308,16 @@ export default function LawyerStatPage() {
               ref={crossSectionRef}
               className="scroll-mt-16"
             >
-              {crossAnalysisQuery.data && (
-                <CrossAnalysisHeatmap data={crossAnalysisQuery.data} />
-              )}
+              <CrossAnalysisHeatmap />
+            </section>
+
+            {/* Specialty Bottom Card (탭 네비게이션과 무관) */}
+            <section className="rounded-xl border border-gray-200 bg-gray-50 p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-lg">📊</span>
+                <h2 className="text-base font-semibold text-gray-800">전문분야별 변호사 분포</h2>
+              </div>
+              {specialtyQuery.data && <SpecialtyBarChart data={specialtyQuery.data.data} />}
             </section>
           </div>
         )}

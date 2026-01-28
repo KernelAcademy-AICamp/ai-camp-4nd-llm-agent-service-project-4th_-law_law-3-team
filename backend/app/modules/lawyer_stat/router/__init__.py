@@ -3,7 +3,10 @@
 from fastapi import APIRouter
 
 from app.modules.lawyer_stat.schema import (
+    CrossAnalysisRequest,
     CrossAnalysisResponse,
+    DensityStat,
+    DensityStatResponse,
     OverviewResponse,
     RegionStat,
     RegionStatResponse,
@@ -14,7 +17,11 @@ from app.modules.lawyer_stat.service import (
     calculate_by_region,
     calculate_by_specialty,
     calculate_cross_analysis,
+    calculate_cross_analysis_by_province,
+    calculate_cross_analysis_by_regions,
+    calculate_density_by_region,
     calculate_overview,
+    calculate_specialty_by_region,
 )
 
 router = APIRouter()
@@ -34,6 +41,13 @@ async def get_by_region() -> RegionStatResponse:
     return RegionStatResponse(data=[RegionStat(**item) for item in data])
 
 
+@router.get("/density-by-region", response_model=DensityStatResponse)
+async def get_density_by_region() -> DensityStatResponse:
+    """지역별 인구 대비 변호사 밀도 조회."""
+    data = calculate_density_by_region()
+    return DensityStatResponse(data=[DensityStat(**item) for item in data])
+
+
 @router.get("/by-specialty", response_model=SpecialtyStatResponse)
 async def get_by_specialty() -> SpecialtyStatResponse:
     """전문분야(12대분류)별 변호사 수 조회."""
@@ -45,4 +59,27 @@ async def get_by_specialty() -> SpecialtyStatResponse:
 async def get_cross_analysis() -> CrossAnalysisResponse:
     """지역 × 전문분야 교차 분석 조회."""
     data = calculate_cross_analysis()
+    return CrossAnalysisResponse(**data)
+
+
+@router.get("/region/{region}/specialties", response_model=SpecialtyStatResponse)
+async def get_region_specialties(region: str) -> SpecialtyStatResponse:
+    """특정 지역의 전문분야별 변호사 수 조회."""
+    data = calculate_specialty_by_region(region)
+    return SpecialtyStatResponse(data=[SpecialtyStat(**item) for item in data])
+
+
+@router.get("/cross-analysis/{province}", response_model=CrossAnalysisResponse)
+async def get_cross_analysis_by_province(province: str) -> CrossAnalysisResponse:
+    """특정 시/도 내 지역 × 전문분야 교차 분석 조회."""
+    data = calculate_cross_analysis_by_province(province)
+    return CrossAnalysisResponse(**data)
+
+
+@router.post("/cross-analysis/regions", response_model=CrossAnalysisResponse)
+async def get_cross_analysis_by_regions(
+    request: CrossAnalysisRequest,
+) -> CrossAnalysisResponse:
+    """선택된 지역 목록에 대한 교차 분석 조회."""
+    data = calculate_cross_analysis_by_regions(request.regions)
     return CrossAnalysisResponse(**data)
