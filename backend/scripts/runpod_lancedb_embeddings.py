@@ -65,8 +65,9 @@ import os
 import re
 from pathlib import Path
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Iterator
-from dataclasses import dataclass
+from typing import List, Optional, Dict, Any, Iterator, Union
+from dataclasses import dataclass, field
+from abc import ABC, abstractmethod
 
 import pyarrow as pa
 from tqdm import tqdm
@@ -651,6 +652,471 @@ def print_memory_status():
 
 
 # ============================================================================
+# 통합 임베딩 프로세서 (스트리밍 방식)
+# ============================================================================
+
+@dataclass
+class EmbeddingStats:
+    """임베딩 처리 통계"""
+    total_docs: int = 0
+    processed_docs: int = 0
+    total_chunks: int = 0
+    skipped: int = 0
+    errors: int = 0
+    device: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "total_docs": self.total_docs,
+            "processed_docs": self.processed_docs,
+            "total_chunks": self.total_chunks,
+            "skipped": self.skipped,
+            "errors": self.errors,
+            "device": self.device,
+        }
+
+
+class StreamingEmbeddingProcessor(ABC):
+    """
+    스트리밍 방식 임베딩 프로세서 (베이스 클래스)
+
+    특징:
+    - 개수 세기 스킵으로 즉시 시작
+    - tqdm에서 처리 속도(it/s)만 표시 (진행률 % 미표시)
+    - 스트리밍으로 메모리 효율적 처리
+    """
+
+    def __init__(self, data_type: str):
+        self.data_type = data_type
+        self.device_info = get_device_info()
+        self.optimal_config = get_optimal_config(self.device_info)
+        self.store = LanceDBStore()
+        self.stats = EmbeddingStats(device=str(self.device_info))
+
+    @abstractmethod
+    def get_chunk_config(self) -> Any:
+        """청킹 설정 반환"""
+        pass
+
+    @abstractmethod
+    def extract_source_id(self, item: dict, idx: int) -> str:
+        """아이템에서 소스 ID 추출"""
+        pass
+
+    @abstractmethod
+    def extract_text_for_embedding(self, item: dict) -> str:
+        """임베딩할 텍스트 추출"""
+        pass
+
+    @abstractmethod
+    def chunk_text(self, text: str, config: Any) -> List[tuple]:
+        """텍스트를 청크로 분할"""
+        pass
+
+    @abstractmethod
+    def extract_metadata(self, item: dict) -> dict:
+        """메타데이터 추출"""
+        pass
+
+    @abstractmethod
+    def create_batch_data(self) -> dict:
+        """빈 배치 데이터 구조 생성"""
+        pass
+
+    @abstractmethod
+    def add_to_batch(
+        self,
+        batch_data: dict,
+        source_id: str,
+        chunk_idx: int,
+        chunk_content: str,
+        total_chunks: int,
+        metadata: dict,
+    ) -> None:
+        """배치에 데이터 추가"""
+        pass
+
+    @abstractmethod
+    def save_batch(self, batch_data: dict, embeddings: List[List[float]]) -> int:
+        """배치 저장, 저장된 개수 반환"""
+        pass
+
+    def load_streaming(self, source_path: str) -> tuple:
+        """
+        스트리밍 로드 (개수 세기 스킵)
+
+        Returns:
+            (file_handle, iterator) 또는 (None, list)
+        """
+        if not IJSON_AVAILABLE:
+            print("[INFO] ijson not available, using full load")
+            return None, load_json_full(source_path)
+
+        json_format = detect_json_format(source_path)
+        print(f"[INFO] JSON format: {json_format}, using streaming (low memory)")
+        print("[INFO] Skipping count (immediate start for large files)")
+        print("[INFO] Progress bar will show speed (it/s) instead of percentage")
+
+        result = load_json_streaming(source_path)
+        if result:
+            return result  # (file_handle, iterator)
+
+        print("[WARN] Streaming failed, falling back to full load")
+        return None, load_json_full(source_path)
+
+    def run(
+        self,
+        source_path: str,
+        reset: bool = False,
+        batch_size: int = None,
+    ) -> dict:
+        """
+        임베딩 실행
+
+        Args:
+            source_path: JSON 파일 경로
+            reset: 기존 데이터 삭제 후 시작
+            batch_size: 배치 크기 (None=자동)
+
+        Returns:
+            처리 통계 딕셔너리
+        """
+        print("=" * 60)
+        print(f"{self.data_type} 임베딩 시작")
+        print("=" * 60)
+
+        batch_size = batch_size or self.optimal_config.batch_size
+
+        print(f"  Device: {self.device_info}")
+        print(f"  Batch size: {batch_size}")
+        print(f"  GC interval: every batch")
+        print(f"  Source: {source_path}")
+        print(f"  Reset: {reset}")
+
+        chunk_config = self.get_chunk_config()
+
+        print(f"\n[INFO] Loading {self.data_type} data from: {source_path}")
+
+        # 리셋 처리
+        if reset:
+            deleted = self.store.delete_by_type(self.data_type)
+            print(f"[INFO] Deleted {deleted} existing {self.data_type} chunks")
+
+        # 기존 소스 ID 조회 (증분 처리용)
+        existing_source_ids = (
+            self.store.get_existing_source_ids(self.data_type) if not reset else set()
+        )
+        if existing_source_ids:
+            print(f"[INFO] Found {len(existing_source_ids)} {self.data_type} already embedded")
+            self.stats.skipped = len(existing_source_ids)
+
+        # 스트리밍 로드
+        file_handle, items = self.load_streaming(source_path)
+
+        # 모델 로드
+        print("[INFO] Loading embedding model (this may take a while on first run)...")
+        get_embedding_model(self.device_info.device)
+        print("[INFO] Model loaded successfully!")
+
+        # 배치 처리
+        batch_data = self.create_batch_data()
+        start_time = datetime.now()
+        batch_count = 0
+        first_item_logged = False
+
+        # tqdm: total=None으로 개수 미표시, 속도(it/s)만 표시
+        for idx, item in enumerate(tqdm(items, desc=f"{self.data_type} 처리", total=None)):
+            if not first_item_logged:
+                print(f"\n>>> 첫 번째 {self.data_type} 데이터 로드 성공! 임베딩 진행 중...")
+                first_item_logged = True
+
+            source_id = self.extract_source_id(item, idx)
+
+            # 이미 처리된 항목 스킵
+            if source_id in existing_source_ids:
+                continue
+
+            # 텍스트 추출
+            text = self.extract_text_for_embedding(item)
+            if not text:
+                self.stats.skipped += 1
+                continue
+
+            # 청킹
+            chunks = self.chunk_text(text, chunk_config)
+            if not chunks:
+                self.stats.skipped += 1
+                continue
+
+            total_chunks = len(chunks)
+            self.stats.processed_docs += 1
+
+            # 메타데이터 추출
+            metadata = self.extract_metadata(item)
+
+            # 배치에 추가
+            for chunk_idx, chunk_content in chunks:
+                self.add_to_batch(
+                    batch_data, source_id, chunk_idx, chunk_content, total_chunks, metadata
+                )
+
+            # 배치 처리
+            if len(batch_data["contents"]) >= batch_size:
+                try:
+                    embeddings = create_embeddings(
+                        batch_data["contents"], self.device_info.device
+                    )
+                    saved = self.save_batch(batch_data, embeddings)
+                    self.stats.total_chunks += saved
+
+                    del embeddings
+                except Exception as e:
+                    print(f"[ERROR] Batch failed: {e}")
+                    self.stats.errors += 1
+
+                # 배치 초기화
+                batch_data = self.create_batch_data()
+                batch_count += 1
+
+                # GC
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+                # 주기적 압축 및 메모리 상태
+                if batch_count % 50 == 0:
+                    self.store.compact()
+                    print_memory_status()
+
+        # 남은 배치 처리
+        if batch_data["contents"]:
+            try:
+                embeddings = create_embeddings(
+                    batch_data["contents"], self.device_info.device
+                )
+                saved = self.save_batch(batch_data, embeddings)
+                self.stats.total_chunks += saved
+                del embeddings
+            except Exception as e:
+                print(f"[ERROR] Final batch failed: {e}")
+                self.stats.errors += 1
+
+        # 파일 핸들 정리
+        if file_handle:
+            file_handle.close()
+
+        # 최종 정리
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        self.store.compact()
+
+        # 결과 출력
+        elapsed = (datetime.now() - start_time).total_seconds()
+        print("\n" + "=" * 60)
+        print(f"{self.data_type} 임베딩 완료")
+        print("=" * 60)
+        print(f"  처리 문서: {self.stats.processed_docs:,}")
+        print(f"  생성 청크: {self.stats.total_chunks:,}")
+        print(f"  스킵: {self.stats.skipped:,}")
+        print(f"  에러: {self.stats.errors}")
+        print(f"  소요 시간: {elapsed:.1f}초")
+        if self.stats.total_chunks > 0:
+            print(f"  처리 속도: {self.stats.total_chunks / elapsed:.1f} chunks/sec")
+
+        return self.stats.to_dict()
+
+
+class LawEmbeddingProcessor(StreamingEmbeddingProcessor):
+    """법령 임베딩 프로세서"""
+
+    def __init__(self):
+        super().__init__("법령")
+
+    def get_chunk_config(self) -> "LawChunkConfig":
+        return LawChunkConfig()
+
+    def extract_source_id(self, item: dict, idx: int) -> str:
+        return item.get("law_id", "")
+
+    def extract_text_for_embedding(self, item: dict) -> str:
+        return item.get("content", "")
+
+    def chunk_text(self, text: str, config: "LawChunkConfig") -> List[tuple]:
+        return chunk_law_content(text, config)
+
+    def extract_metadata(self, item: dict) -> dict:
+        return {
+            "title": item.get("law_name", ""),
+            "enforcement_date": item.get("enforcement_date", ""),
+            "department": item.get("department", ""),
+            "promulgation_date": item.get("promulgation_date", ""),
+            "promulgation_no": item.get("promulgation_no", ""),
+            "law_type": item.get("law_type", ""),
+        }
+
+    def create_batch_data(self) -> dict:
+        return {
+            "source_ids": [],
+            "chunk_indices": [],
+            "contents": [],
+            "titles": [],
+            "enforcement_dates": [],
+            "departments": [],
+            "total_chunks_list": [],
+            "promulgation_dates": [],
+            "promulgation_nos": [],
+            "law_types": [],
+            "article_nos": [],
+        }
+
+    def add_to_batch(
+        self,
+        batch_data: dict,
+        source_id: str,
+        chunk_idx: int,
+        chunk_content: str,
+        total_chunks: int,
+        metadata: dict,
+    ) -> None:
+        # chunk_content가 tuple인 경우 (chunk_idx, content, article_no) 형태
+        if isinstance(chunk_content, str):
+            content = chunk_content
+            article_no = ""
+        else:
+            content = chunk_content
+            article_no = ""
+
+        batch_data["source_ids"].append(source_id)
+        batch_data["chunk_indices"].append(chunk_idx)
+        batch_data["contents"].append(content)
+        batch_data["titles"].append(metadata["title"])
+        batch_data["enforcement_dates"].append(metadata["enforcement_date"])
+        batch_data["departments"].append(metadata["department"])
+        batch_data["total_chunks_list"].append(total_chunks)
+        batch_data["promulgation_dates"].append(metadata["promulgation_date"])
+        batch_data["promulgation_nos"].append(metadata["promulgation_no"])
+        batch_data["law_types"].append(metadata["law_type"])
+        batch_data["article_nos"].append(article_no)
+
+    def save_batch(self, batch_data: dict, embeddings: List[List[float]]) -> int:
+        self.store.add_law_documents(
+            source_ids=batch_data["source_ids"],
+            chunk_indices=batch_data["chunk_indices"],
+            embeddings=embeddings,
+            titles=batch_data["titles"],
+            contents=batch_data["contents"],
+            enforcement_dates=batch_data["enforcement_dates"],
+            departments=batch_data["departments"],
+            total_chunks_list=batch_data["total_chunks_list"],
+            promulgation_dates=batch_data["promulgation_dates"],
+            promulgation_nos=batch_data["promulgation_nos"],
+            law_types=batch_data["law_types"],
+            article_nos=batch_data["article_nos"],
+        )
+        return len(batch_data["source_ids"])
+
+
+class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor):
+    """판례 임베딩 프로세서"""
+
+    def __init__(self):
+        super().__init__("판례")
+
+    def get_chunk_config(self) -> "PrecedentChunkConfig":
+        return PrecedentChunkConfig()
+
+    def extract_source_id(self, item: dict, idx: int) -> str:
+        return str(item.get("판례정보일련번호", item.get("id", idx)))
+
+    def extract_text_for_embedding(self, item: dict) -> str:
+        parts = []
+        case_name = item.get("사건명", item.get("case_name", ""))
+        if case_name:
+            parts.append(f"[{case_name}]")
+
+        summary = item.get("판시사항", item.get("summary", ""))
+        if summary:
+            parts.append(summary)
+
+        judgment_summary = item.get("판결요지", item.get("judgment_summary", ""))
+        if judgment_summary:
+            parts.append(judgment_summary)
+
+        return "\n".join(parts)
+
+    def chunk_text(self, text: str, config: "PrecedentChunkConfig") -> List[tuple]:
+        if not text or len(text) < config.min_chunk_size:
+            return [(0, text)] if text else []
+        return chunk_precedent_text(text, config)
+
+    def extract_metadata(self, item: dict) -> dict:
+        return {
+            "case_name": item.get("사건명", item.get("case_name", "")),
+            "case_number": item.get("사건번호", item.get("case_number", "")),
+            "decision_date": item.get("선고일자", item.get("decision_date", "")),
+            "court_name": item.get("법원명", item.get("court_name", "")),
+            "case_type": item.get("사건종류명", item.get("case_type", "")),
+            "reference_provisions": item.get("참조조문", item.get("reference_provisions", "")),
+            "reference_cases": item.get("참조판례", item.get("reference_cases", "")),
+        }
+
+    def create_batch_data(self) -> dict:
+        return {
+            "source_ids": [],
+            "chunk_indices": [],
+            "contents": [],
+            "titles": [],
+            "decision_dates": [],
+            "court_names": [],
+            "total_chunks_list": [],
+            "case_numbers": [],
+            "case_types": [],
+            "reference_provisions_list": [],
+            "reference_cases_list": [],
+        }
+
+    def add_to_batch(
+        self,
+        batch_data: dict,
+        source_id: str,
+        chunk_idx: int,
+        chunk_content: str,
+        total_chunks: int,
+        metadata: dict,
+    ) -> None:
+        batch_data["source_ids"].append(source_id)
+        batch_data["chunk_indices"].append(chunk_idx)
+        batch_data["contents"].append(chunk_content)
+        batch_data["titles"].append(metadata["case_name"])
+        batch_data["decision_dates"].append(metadata["decision_date"])
+        batch_data["court_names"].append(metadata["court_name"])
+        batch_data["total_chunks_list"].append(total_chunks)
+        batch_data["case_numbers"].append(metadata["case_number"])
+        batch_data["case_types"].append(metadata["case_type"])
+        batch_data["reference_provisions_list"].append(metadata["reference_provisions"])
+        batch_data["reference_cases_list"].append(metadata["reference_cases"])
+
+    def save_batch(self, batch_data: dict, embeddings: List[List[float]]) -> int:
+        self.store.add_precedent_documents(
+            source_ids=batch_data["source_ids"],
+            chunk_indices=batch_data["chunk_indices"],
+            embeddings=embeddings,
+            titles=batch_data["titles"],
+            contents=batch_data["contents"],
+            decision_dates=batch_data["decision_dates"],
+            court_names=batch_data["court_names"],
+            total_chunks_list=batch_data["total_chunks_list"],
+            case_numbers=batch_data["case_numbers"],
+            case_types=batch_data["case_types"],
+            reference_provisions_list=batch_data["reference_provisions_list"],
+            reference_cases_list=batch_data["reference_cases_list"],
+        )
+        return len(batch_data["source_ids"])
+
+
+# ============================================================================
 # 데이터 분할
 # ============================================================================
 
@@ -971,7 +1437,16 @@ def chunk_precedent_text(text: str, config: PrecedentChunkConfig) -> List[tuple]
             chunks.append((chunk_index, chunk_content))
             chunk_index += 1
 
-        start = end - config.chunk_overlap
+        # 다음 시작 위치 계산
+        new_start = end - config.chunk_overlap
+
+        # 무한 루프 방지: start가 진행하지 않으면 종료
+        if new_start <= start:
+            break
+
+        start = new_start
+
+        # 남은 텍스트가 min_chunk_size보다 작으면 종료
         if start >= len(text) - config.min_chunk_size:
             break
 
@@ -1088,200 +1563,23 @@ def run_law_embedding(
     auto_config: bool = True,
 ) -> dict:
     """
-    법령 임베딩 실행
+    법령 임베딩 실행 (StreamingEmbeddingProcessor 사용)
 
     Args:
         source_path: JSON 파일 경로
         reset: 기존 데이터 삭제 후 시작
         batch_size: 배치 크기 (None=자동)
-        auto_config: 디바이스에 따라 자동 설정
+        auto_config: 디바이스에 따라 자동 설정 (하위 호환용, 무시됨)
 
     Returns:
         처리 통계 딕셔너리
     """
-    print("=" * 60)
-    print("법령 임베딩 시작")
-    print("=" * 60)
+    processor = LawEmbeddingProcessor()
+    stats = processor.run(source_path, reset=reset, batch_size=batch_size)
 
-    device_info = get_device_info()
-    optimal = get_optimal_config(device_info)
-
-    if auto_config:
-        batch_size = batch_size or optimal.batch_size
-    else:
-        batch_size = batch_size or CONFIG["BATCH_SIZE"]
-
-    # 메모리 관리: 매 배치마다 gc 실행
-    gc_interval = 1
-
-    print(f"  Device: {device_info}")
-    print(f"  Batch size: {batch_size}")
-    print(f"  GC interval: every batch")
-    print(f"  Source: {source_path}")
-    print(f"  Reset: {reset}")
-
-    chunk_config = LawChunkConfig()
+    # 통계 출력
     store = LanceDBStore()
-
-    stats = {
-        "total_docs": 0,
-        "processed_docs": 0,
-        "total_chunks": 0,
-        "skipped": 0,
-        "errors": 0,
-        "device": str(device_info),
-    }
-
-    # 데이터 로드
-    print(f"\n[INFO] Loading law data from: {source_path}")
-
-    file_handle = None
-    items = None
-
-    if IJSON_AVAILABLE:
-        json_format = detect_json_format(source_path)
-        print(f"[INFO] JSON format: {json_format}, using streaming")
-
-        # 스트리밍 로드 시도
-        result = load_json_streaming(source_path)
-        if result:
-            file_handle, items_iter = result
-            # 스트리밍은 iterator이므로 리스트로 변환 (법령은 보통 작아서 괜찮음)
-            # 법령 데이터가 매우 크면 run_law_embedding_part 사용 권장
-            items = list(items_iter)
-            file_handle.close()
-            file_handle = None
-        else:
-            print("[WARN] Streaming failed, falling back to full load")
-            items = load_json_full(source_path)
-    else:
-        print("[INFO] Using full JSON load")
-        items = load_json_full(source_path)
-
-    stats["total_docs"] = len(items)
-    print(f"[INFO] Total laws: {len(items):,}")
-
-    if not items:
-        return stats
-
-    if reset:
-        deleted = store.delete_by_type("법령")
-        print(f"[INFO] Deleted {deleted} existing law chunks")
-
-    existing_source_ids = store.get_existing_source_ids("법령") if not reset else set()
-    if existing_source_ids:
-        print(f"[INFO] Found {len(existing_source_ids)} laws already embedded")
-        stats["skipped"] = len(existing_source_ids)
-
-    # 모델 로드
-    get_embedding_model(device_info.device)
-
-    # 배치 처리
-    batch_data = {
-        "source_ids": [], "chunk_indices": [], "embeddings": [],
-        "titles": [], "contents": [], "enforcement_dates": [],
-        "departments": [], "total_chunks_list": [], "promulgation_dates": [],
-        "promulgation_nos": [], "law_types": [], "article_nos": [],
-    }
-
-    start_time = datetime.now()
-    batch_count = 0
-
-    for idx, item in enumerate(tqdm(items, desc="법령 처리")):
-        source_id = item.get("law_id", "")
-
-        if source_id in existing_source_ids:
-            continue
-
-        content = item.get("content", "")
-        if not content:
-            stats["skipped"] += 1
-            continue
-
-        chunks = chunk_law_content(content, chunk_config)
-        if not chunks:
-            stats["skipped"] += 1
-            continue
-
-        total_chunks = len(chunks)
-        stats["processed_docs"] += 1
-
-        for chunk_idx, chunk_content, article_no in chunks:
-            if article_no:
-                prefixed_content = f"[법령] {article_no} {chunk_content}"
-            else:
-                prefixed_content = f"[법령] {chunk_content}"
-
-            batch_data["source_ids"].append(source_id)
-            batch_data["chunk_indices"].append(chunk_idx)
-            batch_data["titles"].append(item.get("law_name", ""))
-            batch_data["contents"].append(prefixed_content)
-            batch_data["enforcement_dates"].append(item.get("enforcement_date", ""))
-            batch_data["departments"].append(item.get("ministry", ""))
-            batch_data["total_chunks_list"].append(total_chunks)
-            batch_data["promulgation_dates"].append(item.get("promulgation_date", ""))
-            batch_data["promulgation_nos"].append(item.get("promulgation_no", ""))
-            batch_data["law_types"].append(item.get("law_type", ""))
-            batch_data["article_nos"].append(article_no or "")
-
-        # 배치 저장
-        if len(batch_data["source_ids"]) >= batch_size:
-            batch_count += 1
-            try:
-                embeddings = create_embeddings(
-                    batch_data["contents"], device_info.device
-                )
-                batch_data["embeddings"] = embeddings
-                store.add_law_documents(**batch_data)
-                stats["total_chunks"] += len(batch_data["source_ids"])
-
-                # 임베딩 메모리 즉시 해제
-                del embeddings
-            except Exception as e:
-                stats["errors"] += len(batch_data["source_ids"])
-                print(f"  [ERROR] Batch error: {e}")
-
-            # 배치 데이터 명시적 해제
-            for key in batch_data:
-                batch_data[key].clear()
-                batch_data[key] = []
-
-            # 매 배치마다 메모리 정리
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-    # 남은 배치 처리
-    if batch_data["source_ids"]:
-        try:
-            embeddings = create_embeddings(
-                batch_data["contents"], device_info.device
-            )
-            batch_data["embeddings"] = embeddings
-            store.add_law_documents(**batch_data)
-            stats["total_chunks"] += len(batch_data["source_ids"])
-            del embeddings
-        except Exception as e:
-            stats["errors"] += len(batch_data["source_ids"])
-            print(f"  [ERROR] Final batch error: {e}")
-
-    # 최종 메모리 정리
-    del batch_data
-    del items  # 법령 데이터 해제
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-    # LanceDB 테이블 압축
-    store.compact()
-
-    elapsed = datetime.now() - start_time
-    print(f"\n완료! 소요시간: {elapsed}")
-    print(json.dumps(stats, indent=2, ensure_ascii=False))
-
     show_stats(store)
-
-    # store 객체도 해제
     del store
     gc.collect()
 
@@ -1299,235 +1597,23 @@ def run_precedent_embedding(
     auto_config: bool = True,
 ) -> dict:
     """
-    판례 임베딩 실행
+    판례 임베딩 실행 (StreamingEmbeddingProcessor 사용)
 
     Args:
         source_path: JSON 파일 경로
         reset: 기존 데이터 삭제 후 시작
         batch_size: 배치 크기 (None=자동)
-        auto_config: 디바이스에 따라 자동 설정
+        auto_config: 디바이스에 따라 자동 설정 (하위 호환용, 무시됨)
 
     Returns:
         처리 통계 딕셔너리
     """
-    print("=" * 60)
-    print("판례 임베딩 시작")
-    print("=" * 60)
+    processor = PrecedentEmbeddingProcessor()
+    stats = processor.run(source_path, reset=reset, batch_size=batch_size)
 
-    device_info = get_device_info()
-    optimal = get_optimal_config(device_info)
-
-    if auto_config:
-        batch_size = batch_size or optimal.batch_size
-    else:
-        batch_size = batch_size or CONFIG["BATCH_SIZE"]
-
-    # 메모리 관리: 매 배치마다 gc 실행
-    gc_interval = 1
-
-    print(f"  Device: {device_info}")
-    print(f"  Batch size: {batch_size}")
-    print(f"  GC interval: every batch")
-    print(f"  Source: {source_path}")
-    print(f"  Reset: {reset}")
-
-    chunk_config = PrecedentChunkConfig()
+    # 통계 출력
     store = LanceDBStore()
-
-    stats = {
-        "total_docs": 0,
-        "processed_docs": 0,
-        "total_chunks": 0,
-        "skipped": 0,
-        "errors": 0,
-        "device": str(device_info),
-    }
-
-    print(f"\n[INFO] Loading precedent data from: {source_path}")
-
-    if reset:
-        deleted = store.delete_by_type("판례")
-        print(f"[INFO] Deleted {deleted} existing precedent chunks")
-
-    existing_source_ids = store.get_existing_source_ids("판례") if not reset else set()
-    if existing_source_ids:
-        print(f"[INFO] Found {len(existing_source_ids)} precedents already embedded")
-        stats["skipped"] = len(existing_source_ids)
-
-    # 스트리밍 또는 전체 로드
-    use_streaming = IJSON_AVAILABLE
-    file_handle = None
-
-    if use_streaming:
-        json_format = detect_json_format(source_path)
-        print(f"[INFO] JSON format: {json_format}, using streaming (low memory)")
-
-        # 전체 개수 파악 (스트리밍으로)
-        print("[INFO] Counting total items...")
-        total_count = 0
-        result = load_json_streaming(source_path)
-        if result:
-            f_count, items_count = result
-            for _ in items_count:
-                total_count += 1
-            f_count.close()
-        stats["total_docs"] = total_count
-        print(f"[INFO] Total precedents: {total_count:,}")
-
-        # 실제 처리용 스트리밍
-        result = load_json_streaming(source_path)
-        if result:
-            file_handle, items = result
-        else:
-            items = load_json_full(source_path)
-    else:
-        print("[INFO] Using full JSON load")
-        items = load_json_full(source_path)
-        stats["total_docs"] = len(items)
-        print(f"[INFO] Total precedents: {len(items):,}")
-
-    if stats["total_docs"] == 0:
-        return stats
-
-    # 모델 로드
-    get_embedding_model(device_info.device)
-
-    # 배치 처리
-    batch_data = {
-        "source_ids": [], "chunk_indices": [], "embeddings": [],
-        "titles": [], "contents": [], "decision_dates": [],
-        "court_names": [], "total_chunks_list": [], "case_numbers": [],
-        "case_types": [], "reference_provisions_list": [], "reference_cases_list": [],
-    }
-
-    start_time = datetime.now()
-    batch_count = 0
-    processed_count = 0
-
-    for idx, item in enumerate(tqdm(items, desc="판례 처리", total=stats["total_docs"])):
-        source_id = str(item.get("판례정보일련번호", item.get("id", idx)))
-
-        if source_id in existing_source_ids:
-            continue
-
-        # 임베딩 텍스트: 판시사항 + 판결요지
-        parts = []
-        case_name = item.get("사건명", item.get("case_name", ""))
-        if case_name:
-            parts.append(f"[{case_name}]")
-
-        summary = item.get("판시사항", item.get("summary", ""))
-        if summary:
-            parts.append(summary)
-
-        judgment_summary = item.get("판결요지", item.get("judgment_summary", ""))
-        if judgment_summary:
-            parts.append(judgment_summary)
-
-        text = "\n".join(parts)
-        if not text or len(text) < chunk_config.min_chunk_size:
-            stats["skipped"] += 1
-            continue
-
-        chunks = chunk_precedent_text(text, chunk_config)
-        if not chunks:
-            stats["skipped"] += 1
-            continue
-
-        total_chunks = len(chunks)
-        stats["processed_docs"] += 1
-
-        for chunk_idx, chunk_content in chunks:
-            batch_data["source_ids"].append(source_id)
-            batch_data["chunk_indices"].append(chunk_idx)
-            batch_data["titles"].append(case_name)
-            batch_data["contents"].append(f"[판례] {chunk_content}")
-            batch_data["decision_dates"].append(
-                item.get("선고일자", item.get("decision_date", ""))
-            )
-            batch_data["court_names"].append(
-                item.get("법원명", item.get("court_name", ""))
-            )
-            batch_data["total_chunks_list"].append(total_chunks)
-            batch_data["case_numbers"].append(
-                item.get("사건번호", item.get("case_number", ""))
-            )
-            batch_data["case_types"].append(
-                item.get("사건종류명", item.get("case_type", ""))
-            )
-            batch_data["reference_provisions_list"].append(
-                item.get("참조조문", item.get("reference_provisions", ""))
-            )
-            batch_data["reference_cases_list"].append(
-                item.get("참조판례", item.get("reference_cases", ""))
-            )
-
-        # 배치 저장
-        if len(batch_data["source_ids"]) >= batch_size:
-            batch_count += 1
-            try:
-                embeddings = create_embeddings(
-                    batch_data["contents"], device_info.device
-                )
-                batch_data["embeddings"] = embeddings
-                store.add_precedent_documents(**batch_data)
-                stats["total_chunks"] += len(batch_data["source_ids"])
-
-                # 임베딩 메모리 즉시 해제
-                del embeddings
-            except Exception as e:
-                stats["errors"] += len(batch_data["source_ids"])
-                print(f"  [ERROR] Batch error: {e}")
-
-            # 배치 데이터 명시적 해제
-            for key in batch_data:
-                batch_data[key].clear()
-                batch_data[key] = []
-
-            # 매 배치마다 메모리 정리
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-            # 50 배치마다 LanceDB 압축 (메모리 최적화)
-            if batch_count % 50 == 0:
-                store.compact()
-                print_memory_status()
-
-    # 남은 배치 처리
-    if batch_data["source_ids"]:
-        try:
-            embeddings = create_embeddings(
-                batch_data["contents"], device_info.device
-            )
-            batch_data["embeddings"] = embeddings
-            store.add_precedent_documents(**batch_data)
-            stats["total_chunks"] += len(batch_data["source_ids"])
-            del embeddings
-        except Exception as e:
-            stats["errors"] += len(batch_data["source_ids"])
-            print(f"  [ERROR] Final batch error: {e}")
-
-    # 파일 핸들 닫기
-    if file_handle is not None:
-        file_handle.close()
-
-    # 최종 메모리 정리
-    del batch_data
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-    # LanceDB 테이블 압축
-    store.compact()
-
-    elapsed = datetime.now() - start_time
-    print(f"\n완료! 소요시간: {elapsed}")
-    print(json.dumps(stats, indent=2, ensure_ascii=False))
-
     show_stats(store)
-
-    # store 객체도 해제
     del store
     gc.collect()
 

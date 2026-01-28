@@ -64,3 +64,67 @@ settings.ENABLED_MODULES  # 빈 리스트면 모든 모듈 활성화
 - Pydantic v2 문법 사용 (`model_validator`, `field_validator`)
 - 타입 힌트 필수 (mypy strict 모드)
 - ruff 린터 규칙: E, F, I, N, W
+
+## Vector DB (LanceDB)
+
+### 임베딩 스크립트
+
+```bash
+# PyTorch CUDA 설치 (환경에 맞게 선택)
+uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+
+# 임베딩 생성 (--no-sync 필수: torch 버전 유지)
+uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type precedent
+uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type law
+uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all --reset
+
+# 통계 확인
+uv run --no-sync python scripts/runpod_lancedb_embeddings.py --stats
+```
+
+### 저장 위치
+
+```
+backend/
+├── lancedb_data/           # LanceDB 데이터
+│   └── legal_chunks.lance/ # 법령 + 판례 통합 테이블
+└── scripts/
+    ├── runpod_lancedb_embeddings.py  # 메인 임베딩 스크립트
+    └── CLAUDE.md                      # 스크립트 상세 가이드
+```
+
+### 핵심 클래스
+
+```python
+# 통합 임베딩 프로세서
+from scripts.runpod_lancedb_embeddings import (
+    StreamingEmbeddingProcessor,  # 추상 베이스
+    LawEmbeddingProcessor,        # 법령 임베딩
+    PrecedentEmbeddingProcessor,  # 판례 임베딩
+)
+
+# 사용 예시
+processor = PrecedentEmbeddingProcessor()
+stats = processor.run("data.json", reset=True, batch_size=100)
+```
+
+### 검색 예시
+
+```python
+import lancedb
+from scripts.runpod_lancedb_embeddings import get_embedding_model
+
+model = get_embedding_model('cuda')
+query_vector = model.encode('손해배상 책임')
+
+db = lancedb.connect('./lancedb_data')
+table = db.open_table('legal_chunks')
+
+results = table.search(query_vector).metric('cosine').limit(10).to_pandas()
+```
+
+### 주의사항
+
+1. **torch는 pyproject.toml에 없음** - 환경별로 수동 설치
+2. **--no-sync 필수** - `uv run --no-sync`로 실행
+3. **GPU 자동 감지** - VRAM에 따라 batch_size 자동 설정

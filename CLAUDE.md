@@ -79,3 +79,36 @@ Backend 모듈명 `snake_case` → API 경로 `/api/kebab-case`
 - `frontend/src/lib/modules.ts` - 프론트엔드 모듈 정의
 - `frontend/src/lib/api.ts` - API 클라이언트 및 endpoints
 - `scripts/add_module.py` - 모듈 생성 스크립트
+
+## Vector DB (LanceDB)
+
+법령/판례 임베딩 데이터를 LanceDB에 저장합니다.
+
+### 임베딩 스크립트
+```bash
+cd backend
+
+# PyTorch CUDA 설치 (GPU 사용 시)
+uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+
+# 임베딩 생성 (--no-sync 필수)
+uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all --reset
+
+# 통계 확인
+uv run --no-sync python scripts/runpod_lancedb_embeddings.py --stats
+```
+
+### 저장 위치
+- `backend/lancedb_data/` - LanceDB 데이터
+- 테이블: `legal_chunks` (법령 + 판례 통합)
+
+### 데이터 현황
+| 타입 | 원본 건수 | 임베딩 청크 |
+|------|-----------|-------------|
+| 판례 | 65,107건 | 134,846개 |
+| 법령 | 5,841건 | 118,922개 |
+
+### 관련 문서
+- `docs/vectordb_design.md` - 벡터 DB 설계
+- `backend/scripts/CLAUDE.md` - 임베딩 스크립트 가이드
+- `docs/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그

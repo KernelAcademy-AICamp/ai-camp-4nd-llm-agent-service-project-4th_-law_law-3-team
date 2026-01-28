@@ -240,10 +240,15 @@ backend/
 - [x] 데이터 로드 스크립트 (`load_lancedb_data.py`) - JSON → PostgreSQL
 - [x] 임베딩 스크립트 (`create_lancedb_embeddings.py`) - PostgreSQL → LanceDB
 - [x] ruling, claim, reasoning 제거 (메모리 효율화)
+- [x] **판례 데이터 전체 임베딩** (65,107건 → 134,846 청크)
+- [x] **법령 데이터 전체 임베딩** (5,841건 → 118,922 청크)
+- [x] **통합 임베딩 프로세서 클래스** (`StreamingEmbeddingProcessor`)
+- [x] **청킹 무한루프 버그 수정** (2026-01-29)
 
 ### 진행 예정
-- [ ] 판례 데이터 전체 임베딩
-- [ ] 검색 API 연동 (LanceDB → PostgreSQL 원본 조회)
+- [ ] 검색 API 연동 (LanceDB → 프론트엔드)
+- [ ] 하이브리드 검색 (벡터 + 키워드) 구현
+- [ ] 검색 결과 캐싱
 
 ---
 
@@ -419,9 +424,96 @@ show_stats()
 | GPU | batch_size | chunk_size (파일) |
 |-----|------------|-------------------|
 | RTX 3090 (24GB) | 64~128 | 5000 |
+| RTX 5060 Ti (16GB) | 100 | 5000 |
 | RTX 4080 (16GB) | 64 | 5000 |
 | RTX 3070 (8GB) | 32 | 3000 |
 | T4 (16GB) | 64 | 5000 |
+
+### 자동 감지 설정 (get_optimal_config)
+
+스크립트가 GPU VRAM을 감지하여 자동으로 최적 설정을 적용합니다:
+
+| GPU VRAM | batch_size | num_workers | gc_interval |
+|----------|------------|-------------|-------------|
+| 20GB+ | 128 | 4 | 25 |
+| 14GB+ | 100 | 4 | 20 |
+| 8GB+ | 70 | 2 | 15 |
+| 8GB 미만 | 50 | 2 | 10 |
+
+---
+
+## 10.5. 통합 임베딩 프로세서 (v2)
+
+### 클래스 구조
+
+2026-01-29 리팩토링으로 법령/판례 임베딩 로직이 통합되었습니다.
+
+```python
+# 추상 베이스 클래스
+class StreamingEmbeddingProcessor(ABC):
+    """스트리밍 방식 임베딩 프로세서"""
+
+    def __init__(self, data_type: str):
+        self.data_type = data_type  # "법령" | "판례"
+        self.device_info = get_device_info()
+        self.optimal_config = get_optimal_config(self.device_info)
+        self.store = LanceDBStore()
+
+    def load_streaming(self, source_path: str) -> tuple:
+        """개수 세기 스킵, 즉시 시작"""
+
+    def run(self, source_path: str, reset: bool, batch_size: int) -> dict:
+        """통합 실행 로직"""
+
+    # 추상 메서드 (서브클래스에서 구현)
+    @abstractmethod
+    def get_chunk_config(self) -> Any: ...
+    @abstractmethod
+    def extract_source_id(self, item: dict, idx: int) -> str: ...
+    @abstractmethod
+    def extract_text_for_embedding(self, item: dict) -> str: ...
+    @abstractmethod
+    def chunk_text(self, text: str, config: Any) -> List[tuple]: ...
+    @abstractmethod
+    def extract_metadata(self, item: dict) -> dict: ...
+    @abstractmethod
+    def create_batch_data(self) -> dict: ...
+    @abstractmethod
+    def add_to_batch(self, batch_data, source_id, chunk_idx, ...): ...
+    @abstractmethod
+    def save_batch(self, batch_data, embeddings) -> int: ...
+
+# 구현 클래스
+class LawEmbeddingProcessor(StreamingEmbeddingProcessor):
+    """법령 임베딩 프로세서"""
+
+class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor):
+    """판례 임베딩 프로세서"""
+```
+
+### 통일된 동작
+
+- **개수 세기 스킵**: 대용량 파일에서 즉시 시작
+- **tqdm**: 속도(it/s)만 표시 (진행률 % 미표시)
+- **스트리밍**: ijson으로 메모리 효율적 처리
+- **GC**: 매 배치마다 가비지 컬렉션
+- **압축**: 50배치마다 LanceDB compact
+
+### 사용 예시
+
+```python
+# 새 클래스 직접 사용
+processor = PrecedentEmbeddingProcessor()
+stats = processor.run(
+    source_path="precedents.json",
+    reset=True,
+    batch_size=100
+)
+
+# 기존 함수 (래퍼) 사용 - 하위 호환
+stats = run_precedent_embedding("precedents.json", reset=True, batch_size=100)
+stats = run_law_embedding("laws.json", reset=True, batch_size=100)
+```
 
 ---
 

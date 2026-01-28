@@ -481,13 +481,14 @@ def get_model(device: str = None):
         from sentence_transformers import SentenceTransformer
 
         print(f"[INFO] Loading {CONFIG['EMBEDDING_MODEL']}...")
+        print("[INFO] This may take a while on first run (downloading model)...")
         _model = SentenceTransformer(
             CONFIG["EMBEDDING_MODEL"],
             trust_remote_code=True,
             device=device,
         )
         _device = device
-        print(f"[INFO] Model loaded on {device.upper()}")
+        print(f"[INFO] Model loaded successfully on {device.upper()}!")
 
     return _model
 
@@ -597,8 +598,14 @@ def process_precedent_part(
     # 배치 처리
     batch = []
     start_time = datetime.now()
+    first_item_logged = False
 
     for item in tqdm(items, desc="Embedding"):
+        # 첫 번째 데이터 로드 성공 확인 로그
+        if not first_item_logged:
+            print("\n>>> 첫 번째 데이터 로드 성공! 임베딩 진행 중...")
+            first_item_logged = True
+
         source_id = str(item.get("판례정보일련번호", item.get("id", "")))
 
         # 텍스트 추출
@@ -831,8 +838,14 @@ def process_law_part(source_path: str, batch_size: int = None, reset: bool = Fal
 
     batch = []
     start_time = datetime.now()
+    first_item_logged = False
 
     for item in tqdm(items, desc="Law Embedding"):
+        # 첫 번째 데이터 로드 성공 확인 로그
+        if not first_item_logged:
+            print("\n>>> 첫 번째 법령 데이터 로드 성공! 임베딩 진행 중...")
+            first_item_logged = True
+
         source_id = item.get("law_id", "")
         content = item.get("content", "")
 
