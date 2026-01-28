@@ -59,6 +59,9 @@ npm-debug.log*
 data/
 all_lawyers.json
 
+# LanceDB
+lancedb_data/
+
 # Docker
 .env.docker
 docker-compose.override.yml
