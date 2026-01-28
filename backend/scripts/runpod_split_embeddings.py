@@ -631,7 +631,7 @@ def process_precedent_part(
 
         for chunk_idx, chunk_content in chunks:
             batch.append({
-                "id": f"{source_id}_{chunk_idx}",
+                "id": f"prec_{source_id}_{chunk_idx}",  # 접두사로 ID 충돌 방지
                 "source_id": source_id,
                 "data_type": "판례",
                 "title": case_name,
@@ -852,7 +852,7 @@ def process_law_part(source_path: str, batch_size: int = None, reset: bool = Fal
             prefix = f"[법령] {article_no} " if article_no else "[법령] "
 
             batch.append({
-                "id": f"{source_id}_{chunk_idx}",
+                "id": f"law_{source_id}_{chunk_idx}",  # 접두사로 ID 충돌 방지
                 "source_id": source_id,
                 "data_type": "법령",
                 "title": item.get("law_name", ""),

@@ -339,7 +339,7 @@ def create_law_chunk(
 ) -> Dict[str, Any]:
     """법령 청크 레코드 생성"""
     return {
-        "id": f"{source_id}_{chunk_index}",
+        "id": f"law_{source_id}_{chunk_index}",  # 접두사로 ID 충돌 방지
         "source_id": source_id,
         "data_type": "법령",
         "title": title,
@@ -380,7 +380,7 @@ def create_precedent_chunk(
 ) -> Dict[str, Any]:
     """판례 청크 레코드 생성"""
     return {
-        "id": f"{source_id}_{chunk_index}",
+        "id": f"prec_{source_id}_{chunk_index}",  # 접두사로 ID 충돌 방지
         "source_id": source_id,
         "data_type": "판례",
         "title": title,
@@ -1135,14 +1135,29 @@ def run_law_embedding(
     # 데이터 로드
     print(f"\n[INFO] Loading law data from: {source_path}")
 
+    file_handle = None
+    items = None
+
     if IJSON_AVAILABLE:
         json_format = detect_json_format(source_path)
         print(f"[INFO] JSON format: {json_format}, using streaming")
+
+        # 스트리밍 로드 시도
+        result = load_json_streaming(source_path)
+        if result:
+            file_handle, items_iter = result
+            # 스트리밍은 iterator이므로 리스트로 변환 (법령은 보통 작아서 괜찮음)
+            # 법령 데이터가 매우 크면 run_law_embedding_part 사용 권장
+            items = list(items_iter)
+            file_handle.close()
+            file_handle = None
+        else:
+            print("[WARN] Streaming failed, falling back to full load")
+            items = load_json_full(source_path)
     else:
         print("[INFO] Using full JSON load")
+        items = load_json_full(source_path)
 
-    # 전체 개수 파악
-    items = load_json_full(source_path)
     stats["total_docs"] = len(items)
     print(f"[INFO] Total laws: {len(items):,}")
 
