@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable */
 /**
  * 카카오맵 SDK 타입 정의
  */

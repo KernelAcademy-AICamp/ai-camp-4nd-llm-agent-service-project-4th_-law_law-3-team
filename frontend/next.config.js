@@ -12,6 +12,10 @@ const nextConfig = {
         destination: 'http://localhost:8000/api/lawyer-finder/:path*',
       },
       {
+        source: '/api/lawyer-stat/:path*',
+        destination: 'http://localhost:8000/api/lawyer-stat/:path*',
+      },
+      {
         source: '/api/case-precedent/:path*',
         destination: 'http://localhost:8000/api/case-precedent/:path*',
       },

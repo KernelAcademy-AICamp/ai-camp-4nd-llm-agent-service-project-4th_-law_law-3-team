@@ -62,8 +62,8 @@ export function UserView() {
             챗봇에게 질문해보세요!
           </h2>
           <p className="text-gray-500 leading-relaxed">
-            "사기죄 성립 요건이 뭐야?"<br />
-            "야간 주거침입 시 정당방위는?"
+            &quot;사기죄 성립 요건이 뭐야?&quot;<br />
+            &quot;야간 주거침입 시 정당방위는?&quot;
             <br /><br />
             오른쪽 챗봇에게 법률 문제를 물어보면,<br />
             참고한 <strong>판례와 법령 상세 정보</strong>가 이곳에 표시됩니다.

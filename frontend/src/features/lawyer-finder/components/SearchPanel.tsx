@@ -155,7 +155,7 @@ export function SearchPanel({
         ) : (
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-2 text-gray-600">
-              {searchQuery && <span className="text-blue-600 font-semibold">"{searchQuery}"</span>}
+              {searchQuery && <span className="text-blue-600 font-semibold">&quot;{searchQuery}&quot;</span>}
               <span>검색 결과</span>
               <span className="text-gray-400">|</span>
               <span className="text-gray-900 font-medium">{totalCount}명</span>
@@ -202,7 +202,7 @@ export function SearchPanel({
                 <p className="font-medium text-gray-700 mb-1">
                   주변 {radius >= 1000 ? `${radius / 1000}km` : `${radius}m`} 내에
                 </p>
-                <p className="text-blue-600 font-semibold mb-2">"{specialty}" 전문 변호사</p>
+                <p className="text-blue-600 font-semibold mb-2">&quot;{specialty}&quot; 전문 변호사</p>
                 <p className="text-gray-500">검색 결과가 없습니다</p>
                 <p className="text-xs text-gray-400 mt-2">반경을 넓히거나 다른 조건으로 검색해보세요</p>
               </>

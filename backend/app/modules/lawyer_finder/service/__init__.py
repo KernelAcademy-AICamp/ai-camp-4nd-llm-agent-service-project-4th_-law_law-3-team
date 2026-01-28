@@ -128,6 +128,7 @@ def load_lawyers_data() -> dict[str, Any]:
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     result: dict[str, Any] = json.load(f)
+                    logger.info(f"Loaded lawyers data from: {file_path}")
                     return result
             except json.JSONDecodeError as e:
                 logger.error(f"JSON 파싱 오류 ({file_path}): {e}")

@@ -12,6 +12,7 @@ export const api = axios.create({
 // API 모듈별 엔드포인트
 export const endpoints = {
   lawyerFinder: '/lawyer-finder',
+  lawyerStat: '/lawyer-stat',
   casePrecedent: '/case-precedent',
   reviewPrice: '/review-price',
   storyboard: '/storyboard',
