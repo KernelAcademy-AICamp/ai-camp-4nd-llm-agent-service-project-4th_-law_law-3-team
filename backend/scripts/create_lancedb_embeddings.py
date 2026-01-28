@@ -10,7 +10,7 @@ PostgreSQL에서 판례/법령 데이터를 읽어 LanceDB에 저장합니다.
     uv run python scripts/create_lancedb_embeddings.py --type precedent
 
     # 법령 임베딩 생성 (JSON 파일에서)
-    uv run python scripts/create_lancedb_embeddings.py --type law --source ./data/laws.json
+    uv run python scripts/create_lancedb_embeddings.py --type law --source ../data/law_cleaned.json
 
     # 전체 재생성
     uv run python scripts/create_lancedb_embeddings.py --type precedent --reset
@@ -21,10 +21,12 @@ PostgreSQL에서 판례/법령 데이터를 읽어 LanceDB에 저장합니다.
 
 import argparse
 import asyncio
+import json
+import re
 import sys
 from pathlib import Path
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -52,7 +54,7 @@ class ChunkConfig:
 
 def chunk_text(text: str, config: ChunkConfig) -> List[tuple[int, str]]:
     """
-    텍스트를 청크로 분할
+    텍스트를 청크로 분할 (판례용)
 
     Returns:
         [(chunk_index, chunk_text), ...]
@@ -75,14 +77,139 @@ def chunk_text(text: str, config: ChunkConfig) -> List[tuple[int, str]]:
                     end = sep_pos + len(sep)
                     break
 
-        chunk_text = text[start:end].strip()
-        if chunk_text and len(chunk_text) >= config.min_chunk_size:
-            chunks.append((chunk_index, chunk_text))
+        chunk_text_content = text[start:end].strip()
+        if chunk_text_content and len(chunk_text_content) >= config.min_chunk_size:
+            chunks.append((chunk_index, chunk_text_content))
             chunk_index += 1
 
         start = end - config.chunk_overlap
         if start >= len(text) - config.min_chunk_size:
             break
+
+    return chunks
+
+
+# ============================================================================
+# 법령 청킹 (조문 단위 → 항 단위)
+# ============================================================================
+
+@dataclass
+class LawChunkConfig:
+    """법령 청크 설정 (토큰 기반)"""
+    max_tokens: int = 800
+    min_tokens: int = 100
+
+
+# 항 번호 패턴 (①②③④⑤⑥⑦⑧⑨⑩ 등)
+PARAGRAPH_PATTERN = re.compile(r"([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])")
+
+
+def estimate_tokens(text: str) -> int:
+    """토큰 수 추정 (한글 기준 약 0.5~0.7자/토큰)"""
+    if not text:
+        return 0
+    # 한글은 약 1.5자당 1토큰, 영문/숫자는 약 4자당 1토큰으로 추정
+    korean_chars = len(re.findall(r"[가-힣]", text))
+    other_chars = len(text) - korean_chars
+    return int(korean_chars / 1.5 + other_chars / 4)
+
+
+def split_by_paragraphs(article_text: str) -> List[str]:
+    """조문을 항(①②③) 단위로 분리"""
+    parts = PARAGRAPH_PATTERN.split(article_text)
+    if len(parts) <= 1:
+        return [article_text]
+
+    result = []
+    # 첫 부분 (항 번호 이전 텍스트)
+    if parts[0].strip():
+        result.append(parts[0].strip())
+
+    # 항 번호와 내용 결합
+    for i in range(1, len(parts), 2):
+        if i + 1 < len(parts):
+            paragraph = parts[i] + parts[i + 1]
+            if paragraph.strip():
+                result.append(paragraph.strip())
+        elif parts[i].strip():
+            result.append(parts[i].strip())
+
+    return result
+
+
+def chunk_law_content(
+    content: str,
+    config: LawChunkConfig,
+) -> List[tuple[int, str, Optional[str]]]:
+    """
+    법령 내용을 청크로 분할
+
+    Returns:
+        [(chunk_index, chunk_text, article_no), ...]
+    """
+    if not content:
+        return []
+
+    # 조문 단위로 분리 (\n\n 기준)
+    articles = content.split("\n\n")
+    chunks = []
+    chunk_index = 0
+
+    # 조문 번호 추출 패턴
+    article_no_pattern = re.compile(r"^(제\d+조(?:의\d+)?)")
+
+    for article in articles:
+        article = article.strip()
+        if not article:
+            continue
+
+        # 조문 번호 추출
+        match = article_no_pattern.match(article)
+        article_no = match.group(1) if match else None
+
+        tokens = estimate_tokens(article)
+
+        if tokens <= config.max_tokens:
+            # 토큰 수 충분히 작으면 그대로 사용
+            if tokens >= config.min_tokens:
+                chunks.append((chunk_index, article, article_no))
+                chunk_index += 1
+            elif chunks:
+                # 너무 작으면 이전 청크와 병합
+                prev_idx, prev_text, prev_article_no = chunks[-1]
+                chunks[-1] = (prev_idx, prev_text + "\n\n" + article, prev_article_no)
+            else:
+                chunks.append((chunk_index, article, article_no))
+                chunk_index += 1
+        else:
+            # 토큰 초과 시 항 단위로 분리
+            paragraphs = split_by_paragraphs(article)
+            current_chunk = ""
+            current_article_no = article_no
+
+            for para in paragraphs:
+                para_tokens = estimate_tokens(para)
+
+                if not current_chunk:
+                    current_chunk = para
+                elif estimate_tokens(current_chunk + "\n" + para) <= config.max_tokens:
+                    current_chunk += "\n" + para
+                else:
+                    # 현재 청크 저장
+                    if estimate_tokens(current_chunk) >= config.min_tokens:
+                        chunks.append((chunk_index, current_chunk, current_article_no))
+                        chunk_index += 1
+                    current_chunk = para
+
+            # 마지막 청크 저장
+            if current_chunk:
+                if estimate_tokens(current_chunk) >= config.min_tokens:
+                    chunks.append((chunk_index, current_chunk, current_article_no))
+                    chunk_index += 1
+                elif chunks:
+                    # 너무 작으면 이전 청크와 병합
+                    prev_idx, prev_text, prev_article_no = chunks[-1]
+                    chunks[-1] = (prev_idx, prev_text + "\n" + current_chunk, prev_article_no)
 
     return chunks
 
@@ -240,6 +367,9 @@ async def create_precedent_embeddings(
         "case_types": [],
         "reference_provisions_list": [],
         "reference_cases_list": [],
+        "rulings": [],
+        "claims": [],
+        "reasonings": [],
     }
 
     while offset < total_count:
@@ -270,6 +400,12 @@ async def create_precedent_embeddings(
             total_chunks = len(chunks)
             stats["processed_docs"] += 1
 
+            # raw_data에서 추가 필드 추출
+            raw = doc.raw_data or {}
+            ruling = raw.get("주문", "")
+            claim = doc.claim or ""
+            reasoning_text = raw.get("이유", "")
+
             for chunk_idx, chunk_content in chunks:
                 # prefix 추가
                 prefixed_content = f"[판례] {chunk_content}"
@@ -287,6 +423,9 @@ async def create_precedent_embeddings(
                 batch_data["case_types"].append(doc.case_type or "")
                 batch_data["reference_provisions_list"].append(doc.reference_articles or "")
                 batch_data["reference_cases_list"].append(doc.reference_cases or "")
+                batch_data["rulings"].append(ruling)
+                batch_data["claims"].append(claim)
+                batch_data["reasonings"].append(reasoning_text)
 
             # 배치 크기 도달 시 저장
             if len(batch_data["source_ids"]) >= batch_size:
@@ -321,6 +460,179 @@ async def create_precedent_embeddings(
         try:
             batch_data["embeddings"] = create_embeddings(batch_data["contents"])
             store.add_precedent_documents(**batch_data)
+            stats["total_chunks"] += len(batch_data["source_ids"])
+        except Exception as e:
+            stats["errors"] += len(batch_data["source_ids"])
+            print(f"  [ERROR] Final batch error: {e}")
+
+    return stats
+
+
+# ============================================================================
+# 법령 임베딩
+# ============================================================================
+
+def load_law_data(source_path: str) -> Dict[str, Any]:
+    """법령 JSON 파일 로드"""
+    path = Path(source_path)
+    if not path.exists():
+        raise FileNotFoundError(f"법령 파일을 찾을 수 없습니다: {source_path}")
+
+    print(f"[INFO] Loading law data from: {source_path}")
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    return data
+
+
+def create_law_embeddings(
+    store: LanceDBStore,
+    source_path: str,
+    batch_size: int = 100,
+    chunk_config: LawChunkConfig = None,
+    reset: bool = False,
+) -> dict:
+    """법령 임베딩 생성"""
+    if chunk_config is None:
+        chunk_config = LawChunkConfig()
+
+    stats = {
+        "total_docs": 0,
+        "processed_docs": 0,
+        "total_chunks": 0,
+        "skipped": 0,
+        "errors": 0,
+    }
+
+    # 법령 데이터 로드
+    data = load_law_data(source_path)
+    items = data.get("items", [])
+    stats["total_docs"] = len(items)
+    print(f"[INFO] Total laws: {len(items):,}")
+
+    if not items:
+        return stats
+
+    if reset:
+        print("[INFO] Resetting law data...")
+        try:
+            existing = store.count_by_type("법령")
+            if existing > 0:
+                store._table.delete("data_type = '법령'")
+                print(f"[INFO] Deleted {existing} existing law chunks")
+        except Exception:
+            pass
+
+    # 이미 저장된 source_id 조회
+    existing_source_ids = set()
+    if not reset and store._table is not None:
+        try:
+            df = store._table.search().where("data_type = '법령'").limit(1000000).to_pandas()
+            existing_source_ids = set(df["source_id"].unique())
+            print(f"[INFO] Found {len(existing_source_ids)} laws already embedded")
+        except Exception:
+            pass
+
+    # 모델 사전 로드
+    get_local_model()
+
+    # 배치 버퍼
+    batch_data = {
+        "source_ids": [],
+        "chunk_indices": [],
+        "embeddings": [],
+        "titles": [],
+        "contents": [],
+        "enforcement_dates": [],
+        "departments": [],
+        "total_chunks_list": [],
+        "promulgation_dates": [],
+        "promulgation_nos": [],
+        "law_types": [],
+        "article_nos": [],
+    }
+
+    for idx, item in enumerate(items):
+        source_id = item.get("law_id", "")
+
+        # 이미 처리된 문서 스킵
+        if source_id in existing_source_ids:
+            stats["skipped"] += 1
+            continue
+
+        # 법령 내용 추출
+        content = item.get("content", "")
+        if not content:
+            stats["skipped"] += 1
+            continue
+
+        # 청킹
+        chunks = chunk_law_content(content, chunk_config)
+        if not chunks:
+            stats["skipped"] += 1
+            continue
+
+        total_chunks = len(chunks)
+        stats["processed_docs"] += 1
+
+        # 메타데이터 추출
+        law_name = item.get("law_name", "")
+        enforcement_date = item.get("enforcement_date", "")
+        ministry = item.get("ministry", "")
+        promulgation_date = item.get("promulgation_date", "")
+        promulgation_no = item.get("promulgation_no", "")
+        law_type = item.get("law_type", "")
+
+        for chunk_idx, chunk_content, article_no in chunks:
+            # prefix 추가: [법령] 조문번호 형태
+            if article_no:
+                prefixed_content = f"[법령] {article_no} {chunk_content}"
+            else:
+                prefixed_content = f"[법령] {chunk_content}"
+
+            batch_data["source_ids"].append(source_id)
+            batch_data["chunk_indices"].append(chunk_idx)
+            batch_data["titles"].append(law_name)
+            batch_data["contents"].append(prefixed_content)
+            batch_data["enforcement_dates"].append(enforcement_date)
+            batch_data["departments"].append(ministry)
+            batch_data["total_chunks_list"].append(total_chunks)
+            batch_data["promulgation_dates"].append(promulgation_date)
+            batch_data["promulgation_nos"].append(promulgation_no)
+            batch_data["law_types"].append(law_type)
+            batch_data["article_nos"].append(article_no or "")
+
+        # 배치 크기 도달 시 저장
+        if len(batch_data["source_ids"]) >= batch_size:
+            try:
+                # 임베딩 생성
+                batch_data["embeddings"] = create_embeddings(batch_data["contents"])
+
+                # LanceDB에 저장
+                store.add_law_documents(**batch_data)
+                stats["total_chunks"] += len(batch_data["source_ids"])
+
+            except Exception as e:
+                stats["errors"] += len(batch_data["source_ids"])
+                print(f"  [ERROR] Batch error: {e}")
+
+            # 버퍼 초기화
+            for key in batch_data:
+                batch_data[key] = []
+
+        # 진행률 출력 (500건마다)
+        if (idx + 1) % 500 == 0 or idx == len(items) - 1:
+            pct = (idx + 1) / len(items) * 100
+            print(
+                f"  [PROGRESS] {idx + 1:,}/{len(items):,} ({pct:.1f}%) - "
+                f"Docs: {stats['processed_docs']:,}, Chunks: {stats['total_chunks']:,}"
+            )
+
+    # 남은 배치 처리
+    if batch_data["source_ids"]:
+        try:
+            batch_data["embeddings"] = create_embeddings(batch_data["contents"])
+            store.add_law_documents(**batch_data)
             stats["total_chunks"] += len(batch_data["source_ids"])
         except Exception as e:
             stats["errors"] += len(batch_data["source_ids"])
@@ -366,6 +678,12 @@ def main():
         help="임베딩할 문서 유형 (기본: precedent)"
     )
     parser.add_argument(
+        "--source",
+        type=str,
+        default=None,
+        help="법령 JSON 파일 경로 (--type law 사용 시 필수)"
+    )
+    parser.add_argument(
         "--batch-size",
         type=int,
         default=100,
@@ -375,13 +693,25 @@ def main():
         "--chunk-size",
         type=int,
         default=1250,
-        help="청크 크기 (기본: 1250)"
+        help="판례 청크 크기 (기본: 1250자)"
     )
     parser.add_argument(
         "--chunk-overlap",
         type=int,
         default=125,
-        help="청크 오버랩 (기본: 125, 10%%)"
+        help="판례 청크 오버랩 (기본: 125, 10%%)"
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=800,
+        help="법령 청크 최대 토큰 (기본: 800)"
+    )
+    parser.add_argument(
+        "--min-tokens",
+        type=int,
+        default=100,
+        help="법령 청크 최소 토큰 (기본: 100)"
     )
     parser.add_argument(
         "--reset",
@@ -402,25 +732,26 @@ def main():
     print(f"Model: {KURE_MODEL_NAME}")
     print(f"Vector dimension: {VECTOR_DIM}")
     print(f"Batch size: {args.batch_size}")
-    print(f"Chunk size: {args.chunk_size}")
-    print(f"Chunk overlap: {args.chunk_overlap}")
 
     if args.stats:
         show_stats()
         return
 
-    chunk_config = ChunkConfig(
-        chunk_size=args.chunk_size,
-        chunk_overlap=args.chunk_overlap,
-    )
-
     store = LanceDBStore()
     start_time = datetime.now()
+    stats = {}
 
     if args.type == "precedent":
+        print(f"Precedent chunk size: {args.chunk_size}")
+        print(f"Precedent chunk overlap: {args.chunk_overlap}")
         print("\n" + "=" * 60)
         print("Creating embeddings for 판례...")
         print("=" * 60)
+
+        chunk_config = ChunkConfig(
+            chunk_size=args.chunk_size,
+            chunk_overlap=args.chunk_overlap,
+        )
 
         stats = asyncio.run(create_precedent_embeddings(
             store=store,
@@ -430,22 +761,74 @@ def main():
         ))
 
     elif args.type == "law":
-        print("\n[INFO] 법령 임베딩은 별도 데이터 소스가 필요합니다.")
-        print("[INFO] --source 옵션으로 법령 JSON 파일 경로를 지정하세요.")
-        stats = {}
+        if not args.source:
+            print("\n[ERROR] --type law 사용 시 --source 옵션이 필수입니다.")
+            print("[INFO] 예: --type law --source ../data/law_cleaned.json")
+            sys.exit(1)
+
+        print(f"Law max tokens: {args.max_tokens}")
+        print(f"Law min tokens: {args.min_tokens}")
+        print(f"Source: {args.source}")
+        print("\n" + "=" * 60)
+        print("Creating embeddings for 법령...")
+        print("=" * 60)
+
+        law_chunk_config = LawChunkConfig(
+            max_tokens=args.max_tokens,
+            min_tokens=args.min_tokens,
+        )
+
+        stats = create_law_embeddings(
+            store=store,
+            source_path=args.source,
+            batch_size=args.batch_size,
+            chunk_config=law_chunk_config,
+            reset=args.reset,
+        )
 
     else:
-        # all
+        # all - 판례와 법령 모두 처리
         print("\n" + "=" * 60)
         print("Creating embeddings for 판례...")
         print("=" * 60)
 
-        stats = asyncio.run(create_precedent_embeddings(
+        chunk_config = ChunkConfig(
+            chunk_size=args.chunk_size,
+            chunk_overlap=args.chunk_overlap,
+        )
+
+        precedent_stats = asyncio.run(create_precedent_embeddings(
             store=store,
             batch_size=args.batch_size,
             chunk_config=chunk_config,
             reset=args.reset,
         ))
+
+        law_stats = {}
+        if args.source:
+            print("\n" + "=" * 60)
+            print("Creating embeddings for 법령...")
+            print("=" * 60)
+
+            law_chunk_config = LawChunkConfig(
+                max_tokens=args.max_tokens,
+                min_tokens=args.min_tokens,
+            )
+
+            law_stats = create_law_embeddings(
+                store=store,
+                source_path=args.source,
+                batch_size=args.batch_size,
+                chunk_config=law_chunk_config,
+                reset=args.reset,
+            )
+        else:
+            print("\n[INFO] 법령 임베딩은 --source 옵션으로 파일 경로를 지정해야 합니다.")
+
+        stats = {
+            "precedent": precedent_stats,
+            "law": law_stats,
+        }
 
     elapsed = datetime.now() - start_time
 

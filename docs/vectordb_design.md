@@ -43,6 +43,9 @@ LEGAL_CHUNKS_SCHEMA = pa.schema([
     pa.field("judgment_status", pa.utf8()),     # 판결 상태 (확정/미확정)
     pa.field("reference_provisions", pa.utf8()),# 참조 조문 (예: "민법 제750조, 제756조")
     pa.field("reference_cases", pa.utf8()),     # 참조 판례
+    pa.field("ruling", pa.utf8()),              # 주문
+    pa.field("claim", pa.utf8()),               # 청구취지
+    pa.field("reasoning", pa.utf8()),           # 이유
 ])
 ```
 
@@ -59,7 +62,8 @@ LAW_COLUMNS = [
 
 PRECEDENT_COLUMNS = [
     "case_number", "case_type", "judgment_type",
-    "judgment_status", "reference_provisions", "reference_cases"
+    "judgment_status", "reference_provisions", "reference_cases",
+    "ruling", "claim", "reasoning"
 ]
 ```
 
@@ -88,6 +92,9 @@ PRECEDENT_COLUMNS = [
 | `judgment_status` | NULL | `판결상태` |
 | `reference_provisions` | NULL | `참조조문` |
 | `reference_cases` | NULL | `참조판례` |
+| `ruling` | NULL | `주문` |
+| `claim` | NULL | `청구취지` |
+| `reasoning` | NULL | `이유` |
 
 ---
 
@@ -169,9 +176,9 @@ backend/
 - [x] 스키마 정의 (`schema_v2.py`) - 단일 테이블 + NULL 방식
 - [x] LanceDBStore 구현 (`lancedb.py`) - v2 스키마 기반
 - [x] 임베딩 스크립트 (`create_lancedb_embeddings.py`) - KURE 모델 사용
+- [x] 법령 데이터 처리 및 임베딩 (조문→항 단위 청킹)
 
 ### 진행 예정
-- [ ] 법령 데이터 처리 및 임베딩
 - [ ] 판례 데이터 전체 임베딩
 - [ ] 검색 API 연동
 
@@ -194,16 +201,27 @@ LANCEDB_TABLE_NAME=legal_chunks
 # 판례 임베딩 생성
 uv run python scripts/create_lancedb_embeddings.py --type precedent
 
+# 법령 임베딩 생성
+uv run python scripts/create_lancedb_embeddings.py --type law --source ../data/law_cleaned.json
+
+# 전체 (판례 + 법령)
+uv run python scripts/create_lancedb_embeddings.py --type all --source ../data/law_cleaned.json
+
 # 전체 재생성 (기존 데이터 삭제)
 uv run python scripts/create_lancedb_embeddings.py --type precedent --reset
+uv run python scripts/create_lancedb_embeddings.py --type law --source ../data/law_cleaned.json --reset
 
 # 통계 확인
 uv run python scripts/create_lancedb_embeddings.py --stats
 
-# 옵션
+# 옵션 (판례)
 --batch-size 100      # 배치 크기 (GPU 메모리에 따라 조정)
---chunk-size 1250     # 청크 크기 (기본값)
---chunk-overlap 125   # 오버랩 (기본값 10%)
+--chunk-size 1250     # 판례 청크 크기 (기본값)
+--chunk-overlap 125   # 판례 오버랩 (기본값 10%)
+
+# 옵션 (법령)
+--max-tokens 800      # 법령 청크 최대 토큰 (기본값)
+--min-tokens 100      # 법령 청크 최소 토큰 (기본값)
 ```
 
 ---

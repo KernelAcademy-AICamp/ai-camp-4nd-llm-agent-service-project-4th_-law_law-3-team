@@ -59,6 +59,9 @@ LEGAL_CHUNKS_SCHEMA = pa.schema([
     pa.field("judgment_status", pa.utf8()),     # 판결 상태 (확정/미확정)
     pa.field("reference_provisions", pa.utf8()),# 참조 조문 (예: "민법 제750조, 제756조")
     pa.field("reference_cases", pa.utf8()),     # 참조 판례
+    pa.field("ruling", pa.utf8()),              # 주문
+    pa.field("claim", pa.utf8()),               # 청구취지
+    pa.field("reasoning", pa.utf8()),           # 이유
 ])
 
 
@@ -77,7 +80,8 @@ LAW_COLUMNS = [
 
 PRECEDENT_COLUMNS = [
     "case_number", "case_type", "judgment_type",
-    "judgment_status", "reference_provisions", "reference_cases"
+    "judgment_status", "reference_provisions", "reference_cases",
+    "ruling", "claim", "reasoning"
 ]
 
 ALL_COLUMNS = COMMON_COLUMNS + LAW_COLUMNS + PRECEDENT_COLUMNS
@@ -115,6 +119,9 @@ class LegalChunk(BaseModel):
     judgment_status: Optional[str] = None   # 판결 상태
     reference_provisions: Optional[str] = None  # 참조 조문
     reference_cases: Optional[str] = None   # 참조 판례
+    ruling: Optional[str] = None            # 주문
+    claim: Optional[str] = None             # 청구취지
+    reasoning: Optional[str] = None         # 이유
 
     def to_dict(self) -> dict:
         """LanceDB 삽입용 딕셔너리 변환"""
@@ -126,7 +133,8 @@ class LegalChunk(BaseModel):
             # 판례 필드는 None이어야 함
             precedent_fields = [
                 self.case_number, self.case_type, self.judgment_type,
-                self.judgment_status, self.reference_provisions, self.reference_cases
+                self.judgment_status, self.reference_provisions, self.reference_cases,
+                self.ruling, self.claim, self.reasoning
             ]
             if any(f is not None for f in precedent_fields):
                 raise ValueError("법령 데이터에 판례 필드가 설정되어 있습니다.")
@@ -205,6 +213,9 @@ def create_law_chunk(
         "judgment_status": None,
         "reference_provisions": None,
         "reference_cases": None,
+        "ruling": None,
+        "claim": None,
+        "reasoning": None,
     }
 
 
@@ -223,6 +234,9 @@ def create_precedent_chunk(
     judgment_status: str = None,
     reference_provisions: str = None,
     reference_cases: str = None,
+    ruling: str = None,
+    claim: str = None,
+    reasoning: str = None,
 ) -> dict:
     """
     판례 청크 생성
@@ -242,6 +256,9 @@ def create_precedent_chunk(
         judgment_status: 판결 상태 (확정/미확정)
         reference_provisions: 참조 조문
         reference_cases: 참조 판례
+        ruling: 주문
+        claim: 청구취지
+        reasoning: 이유
 
     Returns:
         LanceDB 삽입용 딕셔너리
@@ -270,6 +287,9 @@ def create_precedent_chunk(
         "judgment_status": judgment_status,
         "reference_provisions": reference_provisions,
         "reference_cases": reference_cases,
+        "ruling": ruling,
+        "claim": claim,
+        "reasoning": reasoning,
     }
 
 
