@@ -571,3 +571,139 @@ total = store.count()
 law_count = store.count_by_type("법령")
 precedent_count = store.count_by_type("판례")
 ```
+
+---
+
+## 12. 임베딩 캐싱 (Embedding Pipeline)
+
+동일 텍스트 재임베딩 방지를 위한 해시 기반 디스크 캐시.
+
+### 사용법
+
+```python
+from scripts.runpod_lancedb_embeddings import EmbeddingCache, create_embeddings
+
+# 캐시 초기화
+cache = EmbeddingCache("./embedding_cache")
+
+# 캐시 조회 후 없으면 계산
+embedding = cache.get_or_compute("법률 텍스트", create_embeddings)
+
+# 캐시 통계
+stats = cache.get_stats()
+# {'hits': 150, 'misses': 50, 'hit_rate': '75.0%', 'memory_cache_size': 200}
+
+# 캐시 정리
+cache.clear_memory_cache()  # 메모리만
+cache.clear_all()           # 전체 (디스크 포함)
+```
+
+### 캐시 구조
+
+```
+embedding_cache/
+├── a1/                    # 해시 앞 2글자로 분산
+│   ├── a1b2c3d4...json
+│   └── a1e5f6g7...json
+├── b2/
+│   └── b2c3d4e5...json
+└── ...
+```
+
+---
+
+## 13. 임베딩 품질 검증
+
+유사/비유사 문서 쌍으로 임베딩 품질 평가.
+
+### 사용법
+
+```python
+from scripts.runpod_lancedb_embeddings import EmbeddingQualityChecker
+
+checker = EmbeddingQualityChecker()
+
+# 빠른 테스트 (법률 도메인 기본 쌍)
+report = checker.quick_test()
+# Similar pairs avg:    0.8542
+# Dissimilar pairs avg: 0.3215
+# Separation:           0.5327
+# Quality:              GOOD
+
+# 커스텀 테스트
+similar_pairs = [
+    ("손해배상 청구권", "손해배상 청구"),
+    ("민법 제750조", "민법상 불법행위"),
+]
+dissimilar_pairs = [
+    ("민법 제750조", "형법 제250조"),
+    ("손해배상 청구", "회사 설립 절차"),
+]
+report = checker.evaluate(similar_pairs, dissimilar_pairs)
+
+# 두 텍스트 유사도 직접 계산
+sim = checker.compute_similarity("텍스트1", "텍스트2")
+```
+
+### 품질 기준
+
+| Separation | Quality | 의미 |
+|------------|---------|------|
+| > 0.2 | GOOD | 유사/비유사 명확히 구분 |
+| 0.1 ~ 0.2 | FAIR | 구분 가능하나 개선 필요 |
+| < 0.1 | POOR | 구분 어려움, 모델/청킹 점검 필요 |
+
+---
+
+## 14. PyTorch 최적화 패턴
+
+스크립트에 적용된 최적화 패턴 요약.
+
+### 적용된 패턴
+
+| 패턴 | 함수/클래스 | 설명 |
+|------|------------|------|
+| 디바이스 자동 선택 | `get_device_info()` | CUDA > MPS > CPU 우선순위 |
+| 멀티 GPU 지원 | `get_optimal_cuda_device()` | VRAM 최대 GPU 선택 |
+| 메모리 정리 | `clear_memory()` | GC + CUDA cache 통합 |
+| 재현성 | `set_seed()` | 랜덤 시드 고정 |
+| VRAM 기반 설정 | `get_optimal_config()` | 배치 크기 자동 조정 |
+
+### 유틸리티 함수
+
+```python
+from scripts.runpod_lancedb_embeddings import (
+    clear_memory,       # GC + CUDA cache 정리
+    set_seed,           # 랜덤 시드 고정
+    print_memory_status,# 메모리 상태 출력
+    get_optimal_cuda_device,  # 멀티 GPU 시 최적 디바이스
+)
+
+# 재현성 확보
+set_seed(42, deterministic=False)
+
+# 메모리 정리
+clear_memory()
+
+# 현재 메모리 상태
+print_memory_status()
+# [Memory] RAM: 8.2GB / 32.0GB (25.6%)
+# [Memory] GPU: 2.1GB allocated, 4.0GB reserved, 3.5GB max
+```
+
+---
+
+## 15. 구현 완료 현황
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| 단일 테이블 스키마 | ✅ 완료 | 20개 컬럼 |
+| JSON → PostgreSQL 로드 | ✅ 완료 | load_lancedb_data.py |
+| PostgreSQL → LanceDB 임베딩 | ✅ 완료 | create_lancedb_embeddings.py |
+| RunPod 스크립트 | ✅ 완료 | runpod_lancedb_embeddings.py |
+| 분할 처리 (대용량) | ✅ 완료 | split_precedents, split_laws |
+| 통합 프로세서 클래스 | ✅ 완료 | StreamingEmbeddingProcessor |
+| 임베딩 캐싱 | ✅ 완료 | EmbeddingCache |
+| 품질 검증 | ✅ 완료 | EmbeddingQualityChecker |
+| PyTorch 최적화 | ✅ 완료 | clear_memory, set_seed 등 |
+| 검색 API 통합 | 🔄 진행중 | VectorStoreBase 인터페이스 |

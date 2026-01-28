@@ -101,11 +101,33 @@ from scripts.runpod_lancedb_embeddings import (
     StreamingEmbeddingProcessor,  # 추상 베이스
     LawEmbeddingProcessor,        # 법령 임베딩
     PrecedentEmbeddingProcessor,  # 판례 임베딩
+    EmbeddingCache,               # 임베딩 캐싱
+    EmbeddingQualityChecker,      # 품질 검증
 )
 
 # 사용 예시
 processor = PrecedentEmbeddingProcessor()
 stats = processor.run("data.json", reset=True, batch_size=100)
+```
+
+### 임베딩 캐싱
+
+```python
+from scripts.runpod_lancedb_embeddings import EmbeddingCache, create_embeddings
+
+cache = EmbeddingCache("./embedding_cache")
+embedding = cache.get_or_compute("텍스트", create_embeddings)
+print(cache.get_stats())  # {'hits': 10, 'misses': 5, 'hit_rate': '66.7%'}
+```
+
+### 품질 검증
+
+```python
+from scripts.runpod_lancedb_embeddings import EmbeddingQualityChecker
+
+checker = EmbeddingQualityChecker()
+report = checker.quick_test()  # 법률 도메인 기본 테스트
+# Quality: GOOD (separation > 0.2)
 ```
 
 ### 검색 예시

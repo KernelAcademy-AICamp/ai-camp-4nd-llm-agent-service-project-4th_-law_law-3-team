@@ -65,9 +65,12 @@ import os
 import re
 from pathlib import Path
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Iterator, Union
+from typing import List, Optional, Dict, Any, Iterator, Union, TypeVar, Generic
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
+
+# 청크 설정 타입 변수
+ChunkConfigT = TypeVar("ChunkConfigT", bound="BaseChunkConfig")
 
 import pyarrow as pa
 from tqdm import tqdm
@@ -107,6 +110,13 @@ CONFIG = {
     # 법령 청킹 설정 (토큰 기반)
     "LAW_MAX_TOKENS": 800,
     "LAW_MIN_TOKENS": 100,
+
+    # 텍스트 처리 제한
+    "MAX_TEXT_LENGTH": 4000,
+    "DEFAULT_EMPTY_TEXT": "(내용 없음)",
+
+    # 쿼리 제한
+    "MAX_QUERY_LIMIT": 1_000_000,
 }
 
 
@@ -145,12 +155,26 @@ def get_device() -> str:
     return "cpu"
 
 
+def get_optimal_cuda_device() -> int:
+    """VRAM이 가장 큰 CUDA 디바이스 ID 반환 (멀티 GPU 환경)"""
+    if not torch.cuda.is_available():
+        return 0
+    device_count = torch.cuda.device_count()
+    if device_count == 1:
+        return 0
+    return max(
+        range(device_count),
+        key=lambda i: torch.cuda.get_device_properties(i).total_memory
+    )
+
+
 def get_device_info() -> DeviceInfo:
     """디바이스 상세 정보 조회"""
     device = get_device()
 
     if device == "cuda":
-        props = torch.cuda.get_device_properties(0)
+        device_id = get_optimal_cuda_device()
+        props = torch.cuda.get_device_properties(device_id)
         name = props.name
         vram_gb = props.total_memory / (1024**3)
         compute_capability = (props.major, props.minor)
@@ -198,7 +222,7 @@ def get_device_info() -> DeviceInfo:
         )
 
 
-def get_optimal_config(device_info: DeviceInfo = None) -> OptimalConfig:
+def get_optimal_config(device_info: Optional[DeviceInfo] = None) -> OptimalConfig:
     """디바이스에 따른 최적 설정 반환"""
     if device_info is None:
         device_info = get_device_info()
@@ -411,7 +435,7 @@ def create_precedent_chunk(
 class LanceDBStore:
     """LanceDB 벡터 저장소"""
 
-    def __init__(self, db_path: str = None, table_name: str = None):
+    def __init__(self, db_path: Optional[str] = None, table_name: Optional[str] = None):
         import lancedb
 
         db_path = db_path or CONFIG["LANCEDB_URI"]
@@ -484,10 +508,10 @@ class LanceDBStore:
         decision_dates: List[str],
         court_names: List[str],
         total_chunks_list: List[int],
-        case_numbers: List[str] = None,
-        case_types: List[str] = None,
-        reference_provisions_list: List[str] = None,
-        reference_cases_list: List[str] = None,
+        case_numbers: Optional[List[str]] = None,
+        case_types: Optional[List[str]] = None,
+        reference_provisions_list: Optional[List[str]] = None,
+        reference_cases_list: Optional[List[str]] = None,
     ) -> None:
         """판례 문서 배치 추가"""
         if not source_ids:
@@ -525,10 +549,11 @@ class LanceDBStore:
         if self._table is None:
             return 0
         try:
-            # pandas 없이 PyArrow로 직접 카운트
-            result = self._table.search().where(f"data_type = '{data_type}'").limit(1000000).to_arrow()
+            max_limit = CONFIG["MAX_QUERY_LIMIT"]
+            result = self._table.search().where(f"data_type = '{data_type}'").limit(max_limit).to_arrow()
             return result.num_rows
-        except Exception:
+        except (ValueError, KeyError, AttributeError) as e:
+            print(f"[WARN] count_by_type failed: {e}")
             return 0
 
     def get_existing_source_ids(self, data_type: str) -> set:
@@ -536,11 +561,12 @@ class LanceDBStore:
         if self._table is None:
             return set()
         try:
-            # pandas 없이 PyArrow로 직접 조회
-            result = self._table.search().where(f"data_type = '{data_type}'").select(["source_id"]).limit(1000000).to_arrow()
+            max_limit = CONFIG["MAX_QUERY_LIMIT"]
+            result = self._table.search().where(f"data_type = '{data_type}'").select(["source_id"]).limit(max_limit).to_arrow()
             source_ids = result.column("source_id").to_pylist()
             return set(source_ids)
-        except Exception:
+        except (ValueError, KeyError, AttributeError) as e:
+            print(f"[WARN] get_existing_source_ids failed: {e}")
             return set()
 
     def delete_by_type(self, data_type: str) -> int:
@@ -606,10 +632,12 @@ def get_embedding_model(device: str = None):
     return _local_model
 
 
-def create_embeddings(texts: List[str], device: str = None) -> List[List[float]]:
+def create_embeddings(texts: List[str], device: Optional[str] = None) -> List[List[float]]:
     """임베딩 생성"""
     model = get_embedding_model(device)
-    processed = [t.strip()[:4000] if t else "(내용 없음)" for t in texts]
+    max_len = CONFIG["MAX_TEXT_LENGTH"]
+    default_text = CONFIG["DEFAULT_EMPTY_TEXT"]
+    processed = [t.strip()[:max_len] if t else default_text for t in texts]
     embeddings = model.encode(processed, show_progress_bar=False)
     result = [emb.tolist() for emb in embeddings]
 
@@ -628,15 +656,11 @@ def clear_model_cache():
         del _local_model
         _local_model = None
         _current_device = None
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        gc.collect()
+        clear_memory()
         print("[INFO] Model cache cleared")
 
 
-def print_memory_status():
+def print_memory_status() -> None:
     """현재 메모리 사용량 출력"""
     try:
         import psutil
@@ -646,9 +670,266 @@ def print_memory_status():
         if torch.cuda.is_available():
             allocated = torch.cuda.memory_allocated() / 1024**3
             reserved = torch.cuda.memory_reserved() / 1024**3
-            print(f"[Memory] GPU: {allocated:.1f}GB allocated, {reserved:.1f}GB reserved")
+            max_allocated = torch.cuda.max_memory_allocated() / 1024**3
+            print(f"[Memory] GPU: {allocated:.1f}GB allocated, {reserved:.1f}GB reserved, {max_allocated:.1f}GB max")
     except ImportError:
         print("[Memory] psutil not installed")
+
+
+def clear_memory() -> None:
+    """메모리 정리 유틸리티 (PyTorch Optimization 패턴)"""
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def set_seed(seed: int = 42, deterministic: bool = False) -> None:
+    """
+    모든 랜덤 시드 고정 (재현성 확보)
+
+    Args:
+        seed: 시드 값
+        deterministic: 결정론적 모드 활성화 (성능 저하 있음)
+    """
+    import random
+    import numpy as np
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        if hasattr(torch, 'use_deterministic_algorithms'):
+            torch.use_deterministic_algorithms(True, warn_only=True)
+
+
+# ============================================================================
+# 임베딩 캐싱 (Embedding Pipeline 패턴)
+# ============================================================================
+
+class EmbeddingCache:
+    """
+    해시 기반 임베딩 캐시
+
+    동일 텍스트 재임베딩 방지를 위한 디스크 캐시.
+    텍스트 해시를 키로 사용하여 임베딩을 저장/조회.
+    """
+
+    def __init__(self, cache_dir: str = "./embedding_cache", model_name: Optional[str] = None):
+        """
+        Args:
+            cache_dir: 캐시 저장 디렉토리
+            model_name: 모델명 (캐시 키에 포함)
+        """
+        import hashlib
+
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.model_name = model_name or CONFIG["EMBEDDING_MODEL"]
+        self._hashlib = hashlib
+        self._memory_cache: Dict[str, List[float]] = {}
+        self._hits = 0
+        self._misses = 0
+
+    def _get_hash(self, text: str) -> str:
+        """텍스트 해시 생성"""
+        key = f"{self.model_name}:{text}"
+        return self._hashlib.md5(key.encode()).hexdigest()
+
+    def _get_cache_path(self, text_hash: str) -> Path:
+        """캐시 파일 경로"""
+        # 해시 앞 2글자로 서브디렉토리 생성 (파일 분산)
+        subdir = self.cache_dir / text_hash[:2]
+        subdir.mkdir(exist_ok=True)
+        return subdir / f"{text_hash}.json"
+
+    def get(self, text: str) -> Optional[List[float]]:
+        """캐시에서 임베딩 조회"""
+        text_hash = self._get_hash(text)
+
+        # 메모리 캐시 확인
+        if text_hash in self._memory_cache:
+            self._hits += 1
+            return self._memory_cache[text_hash]
+
+        # 디스크 캐시 확인
+        cache_path = self._get_cache_path(text_hash)
+        if cache_path.exists():
+            try:
+                with open(cache_path, "r") as f:
+                    embedding = json.load(f)
+                self._memory_cache[text_hash] = embedding
+                self._hits += 1
+                return embedding
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        self._misses += 1
+        return None
+
+    def set(self, text: str, embedding: List[float]) -> None:
+        """임베딩 캐시에 저장"""
+        text_hash = self._get_hash(text)
+
+        # 메모리 캐시 저장
+        self._memory_cache[text_hash] = embedding
+
+        # 디스크 캐시 저장
+        cache_path = self._get_cache_path(text_hash)
+        try:
+            with open(cache_path, "w") as f:
+                json.dump(embedding, f)
+        except IOError as e:
+            print(f"[WARN] Cache write failed: {e}")
+
+    def get_or_compute(
+        self,
+        text: str,
+        compute_fn: callable,
+        device: Optional[str] = None
+    ) -> List[float]:
+        """캐시 조회 후 없으면 계산"""
+        cached = self.get(text)
+        if cached is not None:
+            return cached
+
+        embedding = compute_fn([text], device)[0]
+        self.set(text, embedding)
+        return embedding
+
+    def get_stats(self) -> Dict[str, int]:
+        """캐시 통계"""
+        total = self._hits + self._misses
+        hit_rate = (self._hits / total * 100) if total > 0 else 0
+        return {
+            "hits": self._hits,
+            "misses": self._misses,
+            "total": total,
+            "hit_rate": f"{hit_rate:.1f}%",
+            "memory_cache_size": len(self._memory_cache),
+        }
+
+    def clear_memory_cache(self) -> None:
+        """메모리 캐시만 정리"""
+        self._memory_cache.clear()
+
+    def clear_all(self) -> None:
+        """모든 캐시 삭제"""
+        import shutil
+        self._memory_cache.clear()
+        if self.cache_dir.exists():
+            shutil.rmtree(self.cache_dir)
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._hits = 0
+        self._misses = 0
+        print("[INFO] All cache cleared")
+
+
+# ============================================================================
+# 임베딩 품질 검증 (Embedding Pipeline 패턴)
+# ============================================================================
+
+class EmbeddingQualityChecker:
+    """
+    임베딩 품질 검증 유틸리티
+
+    유사/비유사 문서 쌍의 코사인 유사도를 측정하여
+    임베딩 품질을 평가.
+    """
+
+    def __init__(self, device: Optional[str] = None):
+        self.device = device or get_device()
+
+    def compute_similarity(self, text1: str, text2: str) -> float:
+        """두 텍스트의 코사인 유사도 계산"""
+        embeddings = create_embeddings([text1, text2], self.device)
+        emb1 = torch.tensor(embeddings[0])
+        emb2 = torch.tensor(embeddings[1])
+
+        # 코사인 유사도
+        similarity = torch.nn.functional.cosine_similarity(
+            emb1.unsqueeze(0), emb2.unsqueeze(0)
+        ).item()
+
+        return similarity
+
+    def evaluate(
+        self,
+        similar_pairs: List[tuple],
+        dissimilar_pairs: List[tuple],
+    ) -> Dict[str, float]:
+        """
+        유사/비유사 쌍으로 임베딩 품질 평가
+
+        Args:
+            similar_pairs: 유사해야 하는 텍스트 쌍 리스트 [(text1, text2), ...]
+            dissimilar_pairs: 비유사해야 하는 텍스트 쌍 리스트
+
+        Returns:
+            평가 결과 딕셔너리
+        """
+        similar_scores = []
+        dissimilar_scores = []
+
+        print("[INFO] Evaluating similar pairs...")
+        for text1, text2 in tqdm(similar_pairs, desc="Similar"):
+            score = self.compute_similarity(text1, text2)
+            similar_scores.append(score)
+
+        print("[INFO] Evaluating dissimilar pairs...")
+        for text1, text2 in tqdm(dissimilar_pairs, desc="Dissimilar"):
+            score = self.compute_similarity(text1, text2)
+            dissimilar_scores.append(score)
+
+        similar_avg = sum(similar_scores) / len(similar_scores) if similar_scores else 0
+        dissimilar_avg = sum(dissimilar_scores) / len(dissimilar_scores) if dissimilar_scores else 0
+        separation = similar_avg - dissimilar_avg
+
+        report = {
+            "similar_avg": similar_avg,
+            "similar_min": min(similar_scores) if similar_scores else 0,
+            "similar_max": max(similar_scores) if similar_scores else 0,
+            "dissimilar_avg": dissimilar_avg,
+            "dissimilar_min": min(dissimilar_scores) if dissimilar_scores else 0,
+            "dissimilar_max": max(dissimilar_scores) if dissimilar_scores else 0,
+            "separation": separation,
+            "quality": "good" if separation > 0.2 else "fair" if separation > 0.1 else "poor",
+        }
+
+        print("\n" + "=" * 50)
+        print("Embedding Quality Report")
+        print("=" * 50)
+        print(f"  Similar pairs avg:    {similar_avg:.4f}")
+        print(f"  Dissimilar pairs avg: {dissimilar_avg:.4f}")
+        print(f"  Separation:           {separation:.4f}")
+        print(f"  Quality:              {report['quality'].upper()}")
+        print("=" * 50)
+
+        return report
+
+    def quick_test(self) -> Dict[str, float]:
+        """법률 도메인 기본 테스트"""
+        similar_pairs = [
+            ("손해배상 청구권", "손해배상 청구"),
+            ("민법 제750조 불법행위", "민법상 불법행위 책임"),
+            ("임대차 계약 해지", "임대차계약의 해지"),
+            ("형사소송법 제309조", "형사소송법 309조"),
+        ]
+
+        dissimilar_pairs = [
+            ("민법 제750조 불법행위", "형법 제250조 살인죄"),
+            ("손해배상 청구권", "회사 설립 절차"),
+            ("임대차 계약", "특허권 침해"),
+            ("형사소송법", "민사집행법"),
+        ]
+
+        return self.evaluate(similar_pairs, dissimilar_pairs)
 
 
 # ============================================================================
@@ -676,7 +957,7 @@ class EmbeddingStats:
         }
 
 
-class StreamingEmbeddingProcessor(ABC):
+class StreamingEmbeddingProcessor(ABC, Generic[ChunkConfigT]):
     """
     스트리밍 방식 임베딩 프로세서 (베이스 클래스)
 
@@ -684,6 +965,9 @@ class StreamingEmbeddingProcessor(ABC):
     - 개수 세기 스킵으로 즉시 시작
     - tqdm에서 처리 속도(it/s)만 표시 (진행률 % 미표시)
     - 스트리밍으로 메모리 효율적 처리
+
+    Type Parameters:
+        ChunkConfigT: 청킹 설정 타입 (PrecedentChunkConfig 또는 LawChunkConfig)
     """
 
     def __init__(self, data_type: str):
@@ -694,50 +978,50 @@ class StreamingEmbeddingProcessor(ABC):
         self.stats = EmbeddingStats(device=str(self.device_info))
 
     @abstractmethod
-    def get_chunk_config(self) -> Any:
+    def get_chunk_config(self) -> ChunkConfigT:
         """청킹 설정 반환"""
         pass
 
     @abstractmethod
-    def extract_source_id(self, item: dict, idx: int) -> str:
+    def extract_source_id(self, item: Dict[str, Any], idx: int) -> str:
         """아이템에서 소스 ID 추출"""
         pass
 
     @abstractmethod
-    def extract_text_for_embedding(self, item: dict) -> str:
+    def extract_text_for_embedding(self, item: Dict[str, Any]) -> str:
         """임베딩할 텍스트 추출"""
         pass
 
     @abstractmethod
-    def chunk_text(self, text: str, config: Any) -> List[tuple]:
+    def chunk_text(self, text: str, config: ChunkConfigT) -> List[tuple]:
         """텍스트를 청크로 분할"""
         pass
 
     @abstractmethod
-    def extract_metadata(self, item: dict) -> dict:
+    def extract_metadata(self, item: Dict[str, Any]) -> Dict[str, str]:
         """메타데이터 추출"""
         pass
 
     @abstractmethod
-    def create_batch_data(self) -> dict:
+    def create_batch_data(self) -> Dict[str, List]:
         """빈 배치 데이터 구조 생성"""
         pass
 
     @abstractmethod
     def add_to_batch(
         self,
-        batch_data: dict,
+        batch_data: Dict[str, List],
         source_id: str,
         chunk_idx: int,
         chunk_content: str,
         total_chunks: int,
-        metadata: dict,
+        metadata: Dict[str, str],
     ) -> None:
         """배치에 데이터 추가"""
         pass
 
     @abstractmethod
-    def save_batch(self, batch_data: dict, embeddings: List[List[float]]) -> int:
+    def save_batch(self, batch_data: Dict[str, List], embeddings: List[List[float]]) -> int:
         """배치 저장, 저장된 개수 반환"""
         pass
 
@@ -768,8 +1052,8 @@ class StreamingEmbeddingProcessor(ABC):
         self,
         source_path: str,
         reset: bool = False,
-        batch_size: int = None,
-    ) -> dict:
+        batch_size: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         임베딩 실행
 
@@ -870,18 +1154,16 @@ class StreamingEmbeddingProcessor(ABC):
                     self.stats.total_chunks += saved
 
                     del embeddings
-                except Exception as e:
-                    print(f"[ERROR] Batch failed: {e}")
+                except (RuntimeError, ValueError, MemoryError) as e:
+                    print(f"[ERROR] Batch failed: {type(e).__name__}: {e}")
                     self.stats.errors += 1
 
                 # 배치 초기화
                 batch_data = self.create_batch_data()
                 batch_count += 1
 
-                # GC
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                # 메모리 정리
+                clear_memory()
 
                 # 주기적 압축 및 메모리 상태
                 if batch_count % 50 == 0:
@@ -897,8 +1179,8 @@ class StreamingEmbeddingProcessor(ABC):
                 saved = self.save_batch(batch_data, embeddings)
                 self.stats.total_chunks += saved
                 del embeddings
-            except Exception as e:
-                print(f"[ERROR] Final batch failed: {e}")
+            except (RuntimeError, ValueError, MemoryError) as e:
+                print(f"[ERROR] Final batch failed: {type(e).__name__}: {e}")
                 self.stats.errors += 1
 
         # 파일 핸들 정리
@@ -906,10 +1188,7 @@ class StreamingEmbeddingProcessor(ABC):
             file_handle.close()
 
         # 최종 정리
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
+        clear_memory()
         self.store.compact()
 
         # 결과 출력
@@ -927,26 +1206,146 @@ class StreamingEmbeddingProcessor(ABC):
 
         return self.stats.to_dict()
 
+    def run_part(
+        self,
+        source_path: str,
+        reset: bool = False,
+        batch_size: int = 64,
+    ) -> Dict[str, Any]:
+        """
+        분할된 JSON 파일 하나를 처리 (전체 로드 방식)
 
-class LawEmbeddingProcessor(StreamingEmbeddingProcessor):
+        Args:
+            source_path: 분할된 JSON 파일 경로
+            reset: 기존 데이터 삭제 (첫 파일에만 True)
+            batch_size: 배치 크기 (기본: 64, 메모리 절약)
+
+        Returns:
+            처리 통계 딕셔너리
+        """
+        print("=" * 60)
+        print(f"{self.data_type} 임베딩 (분할 파일): {source_path}")
+        print("=" * 60)
+
+        print(f"  Device: {self.device_info}")
+        print(f"  Batch size: {batch_size}")
+        print(f"  Reset: {reset}")
+
+        # 데이터 로드
+        with open(source_path, "r", encoding="utf-8") as f:
+            items = json.load(f)
+
+        print(f"[INFO] Items: {len(items):,}")
+        print_memory_status()
+
+        chunk_config = self.get_chunk_config()
+
+        if reset:
+            deleted = self.store.delete_by_type(self.data_type)
+            print(f"[INFO] Deleted {deleted} existing {self.data_type} chunks")
+
+        # 통계 초기화
+        self.stats = EmbeddingStats(device=str(self.device_info))
+        self.stats.total_docs = len(items)
+
+        # 모델 로드
+        get_embedding_model(self.device_info.device)
+
+        # 배치 데이터
+        batch_data = self.create_batch_data()
+        start_time = datetime.now()
+
+        for item in tqdm(items, desc=f"{self.data_type} 처리"):
+            source_id = self.extract_source_id(item, 0)
+
+            # 텍스트 추출
+            text = self.extract_text_for_embedding(item)
+            if not text:
+                self.stats.skipped += 1
+                continue
+
+            # 청킹
+            chunks = self.chunk_text(text, chunk_config)
+            if not chunks:
+                self.stats.skipped += 1
+                continue
+
+            total_chunks = len(chunks)
+            self.stats.processed_docs += 1
+
+            # 메타데이터 추출
+            metadata = self.extract_metadata(item)
+
+            # 배치에 추가
+            for chunk_idx, chunk_content in chunks:
+                self.add_to_batch(
+                    batch_data, source_id, chunk_idx, chunk_content, total_chunks, metadata
+                )
+
+            # 배치 저장
+            if len(batch_data["contents"]) >= batch_size:
+                try:
+                    embeddings = create_embeddings(
+                        batch_data["contents"], self.device_info.device
+                    )
+                    saved = self.save_batch(batch_data, embeddings)
+                    self.stats.total_chunks += saved
+                    del embeddings
+                except (RuntimeError, ValueError, MemoryError) as e:
+                    self.stats.errors += len(batch_data["contents"])
+                    print(f"  [ERROR] Batch error: {type(e).__name__}: {e}")
+
+                # 배치 데이터 클리어
+                batch_data = self.create_batch_data()
+                clear_memory()
+
+        # 남은 배치 처리
+        if batch_data["contents"]:
+            try:
+                embeddings = create_embeddings(
+                    batch_data["contents"], self.device_info.device
+                )
+                saved = self.save_batch(batch_data, embeddings)
+                self.stats.total_chunks += saved
+                del embeddings
+            except (RuntimeError, ValueError, MemoryError) as e:
+                self.stats.errors += len(batch_data["contents"])
+                print(f"  [ERROR] Final batch error: {type(e).__name__}: {e}")
+
+        # 정리
+        del items
+        self.store.compact()
+        clear_memory()
+
+        elapsed = datetime.now() - start_time
+        print(f"\n완료! 소요시간: {elapsed}")
+        print(f"  Processed: {self.stats.processed_docs:,}")
+        print(f"  Chunks: {self.stats.total_chunks:,}")
+        print(f"  Skipped: {self.stats.skipped:,}")
+        print_memory_status()
+
+        return self.stats.to_dict()
+
+
+class LawEmbeddingProcessor(StreamingEmbeddingProcessor[LawChunkConfig]):
     """법령 임베딩 프로세서"""
 
     def __init__(self):
         super().__init__("법령")
 
-    def get_chunk_config(self) -> "LawChunkConfig":
+    def get_chunk_config(self) -> LawChunkConfig:
         return LawChunkConfig()
 
-    def extract_source_id(self, item: dict, idx: int) -> str:
+    def extract_source_id(self, item: Dict[str, Any], idx: int) -> str:
         return item.get("law_id", "")
 
-    def extract_text_for_embedding(self, item: dict) -> str:
+    def extract_text_for_embedding(self, item: Dict[str, Any]) -> str:
         return item.get("content", "")
 
-    def chunk_text(self, text: str, config: "LawChunkConfig") -> List[tuple]:
+    def chunk_text(self, text: str, config: LawChunkConfig) -> List[tuple]:
         return chunk_law_content(text, config)
 
-    def extract_metadata(self, item: dict) -> dict:
+    def extract_metadata(self, item: Dict[str, Any]) -> Dict[str, str]:
         return {
             "title": item.get("law_name", ""),
             "enforcement_date": item.get("enforcement_date", ""),
@@ -956,7 +1355,7 @@ class LawEmbeddingProcessor(StreamingEmbeddingProcessor):
             "law_type": item.get("law_type", ""),
         }
 
-    def create_batch_data(self) -> dict:
+    def create_batch_data(self) -> Dict[str, List]:
         return {
             "source_ids": [],
             "chunk_indices": [],
@@ -973,24 +1372,16 @@ class LawEmbeddingProcessor(StreamingEmbeddingProcessor):
 
     def add_to_batch(
         self,
-        batch_data: dict,
+        batch_data: Dict[str, List],
         source_id: str,
         chunk_idx: int,
         chunk_content: str,
         total_chunks: int,
-        metadata: dict,
+        metadata: Dict[str, str],
     ) -> None:
-        # chunk_content가 tuple인 경우 (chunk_idx, content, article_no) 형태
-        if isinstance(chunk_content, str):
-            content = chunk_content
-            article_no = ""
-        else:
-            content = chunk_content
-            article_no = ""
-
         batch_data["source_ids"].append(source_id)
         batch_data["chunk_indices"].append(chunk_idx)
-        batch_data["contents"].append(content)
+        batch_data["contents"].append(chunk_content)
         batch_data["titles"].append(metadata["title"])
         batch_data["enforcement_dates"].append(metadata["enforcement_date"])
         batch_data["departments"].append(metadata["department"])
@@ -998,9 +1389,9 @@ class LawEmbeddingProcessor(StreamingEmbeddingProcessor):
         batch_data["promulgation_dates"].append(metadata["promulgation_date"])
         batch_data["promulgation_nos"].append(metadata["promulgation_no"])
         batch_data["law_types"].append(metadata["law_type"])
-        batch_data["article_nos"].append(article_no)
+        batch_data["article_nos"].append("")  # article_no는 chunk_law_content에서 처리
 
-    def save_batch(self, batch_data: dict, embeddings: List[List[float]]) -> int:
+    def save_batch(self, batch_data: Dict[str, List], embeddings: List[List[float]]) -> int:
         self.store.add_law_documents(
             source_ids=batch_data["source_ids"],
             chunk_indices=batch_data["chunk_indices"],
@@ -1018,19 +1409,19 @@ class LawEmbeddingProcessor(StreamingEmbeddingProcessor):
         return len(batch_data["source_ids"])
 
 
-class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor):
+class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor[PrecedentChunkConfig]):
     """판례 임베딩 프로세서"""
 
     def __init__(self):
         super().__init__("판례")
 
-    def get_chunk_config(self) -> "PrecedentChunkConfig":
+    def get_chunk_config(self) -> PrecedentChunkConfig:
         return PrecedentChunkConfig()
 
-    def extract_source_id(self, item: dict, idx: int) -> str:
+    def extract_source_id(self, item: Dict[str, Any], idx: int) -> str:
         return str(item.get("판례정보일련번호", item.get("id", idx)))
 
-    def extract_text_for_embedding(self, item: dict) -> str:
+    def extract_text_for_embedding(self, item: Dict[str, Any]) -> str:
         parts = []
         case_name = item.get("사건명", item.get("case_name", ""))
         if case_name:
@@ -1046,12 +1437,12 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor):
 
         return "\n".join(parts)
 
-    def chunk_text(self, text: str, config: "PrecedentChunkConfig") -> List[tuple]:
+    def chunk_text(self, text: str, config: PrecedentChunkConfig) -> List[tuple]:
         if not text or len(text) < config.min_chunk_size:
             return [(0, text)] if text else []
         return chunk_precedent_text(text, config)
 
-    def extract_metadata(self, item: dict) -> dict:
+    def extract_metadata(self, item: Dict[str, Any]) -> Dict[str, str]:
         return {
             "case_name": item.get("사건명", item.get("case_name", "")),
             "case_number": item.get("사건번호", item.get("case_number", "")),
@@ -1062,7 +1453,7 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor):
             "reference_cases": item.get("참조판례", item.get("reference_cases", "")),
         }
 
-    def create_batch_data(self) -> dict:
+    def create_batch_data(self) -> Dict[str, List]:
         return {
             "source_ids": [],
             "chunk_indices": [],
@@ -1079,12 +1470,12 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor):
 
     def add_to_batch(
         self,
-        batch_data: dict,
+        batch_data: Dict[str, List],
         source_id: str,
         chunk_idx: int,
         chunk_content: str,
         total_chunks: int,
-        metadata: dict,
+        metadata: Dict[str, str],
     ) -> None:
         batch_data["source_ids"].append(source_id)
         batch_data["chunk_indices"].append(chunk_idx)
@@ -1098,7 +1489,7 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor):
         batch_data["reference_provisions_list"].append(metadata["reference_provisions"])
         batch_data["reference_cases_list"].append(metadata["reference_cases"])
 
-    def save_batch(self, batch_data: dict, embeddings: List[List[float]]) -> int:
+    def save_batch(self, batch_data: Dict[str, List], embeddings: List[List[float]]) -> int:
         self.store.add_precedent_documents(
             source_ids=batch_data["source_ids"],
             chunk_indices=batch_data["chunk_indices"],
@@ -1180,7 +1571,7 @@ def split_precedents(
 
                 current_chunk = []
                 part_num += 1
-                gc.collect()
+                clear_memory()
 
     # 남은 데이터 저장
     if current_chunk:
@@ -1193,7 +1584,7 @@ def split_precedents(
         part_files.append(str(filepath))
         print(f"  - {filename}: {len(current_chunk):,} items")
 
-    gc.collect()
+    clear_memory()
     print(f"\n[INFO] Split complete! {len(part_files)} files, {total_count:,} items total.")
     return part_files
 
@@ -1237,7 +1628,7 @@ def _split_precedents_full_load(
 
     del data
     del items
-    gc.collect()
+    clear_memory()
 
     print(f"\n[INFO] Split complete! {num_parts} files created.")
     return part_files
@@ -1301,7 +1692,7 @@ def split_laws(
 
                 current_chunk = []
                 part_num += 1
-                gc.collect()
+                clear_memory()
 
     # 남은 데이터 저장
     if current_chunk:
@@ -1314,7 +1705,7 @@ def split_laws(
         part_files.append(str(filepath))
         print(f"  - {filename}: {len(current_chunk):,} items")
 
-    gc.collect()
+    clear_memory()
     print(f"\n[INFO] Split complete! {len(part_files)} files, {total_count:,} items total.")
     return part_files
 
@@ -1358,7 +1749,7 @@ def _split_laws_full_load(
 
     del data
     del items
-    gc.collect()
+    clear_memory()
 
     print(f"\n[INFO] Split complete! {num_parts} files created.")
     return part_files
@@ -1377,7 +1768,7 @@ def detect_json_format(file_path: str) -> str:
     return "array" if first_char == "[" else "object"
 
 
-def load_json_streaming(file_path: str, items_path: str = None):
+def load_json_streaming(file_path: str, items_path: Optional[str] = None) -> Optional[tuple]:
     """JSON 스트리밍 로드 (ijson 사용)"""
     if not IJSON_AVAILABLE:
         return None
@@ -1403,11 +1794,22 @@ def load_json_full(file_path: str) -> List[Dict]:
 
 
 # ============================================================================
+# 청킹 설정 베이스 클래스
+# ============================================================================
+
+@dataclass
+class BaseChunkConfig:
+    """청킹 설정 베이스 클래스"""
+    pass
+
+
+# ============================================================================
 # 판례 청킹
 # ============================================================================
 
 @dataclass
-class PrecedentChunkConfig:
+class PrecedentChunkConfig(BaseChunkConfig):
+    """판례 청킹 설정"""
     chunk_size: int = CONFIG["PRECEDENT_CHUNK_SIZE"]
     chunk_overlap: int = CONFIG["PRECEDENT_CHUNK_OVERLAP"]
     min_chunk_size: int = CONFIG["PRECEDENT_MIN_CHUNK_SIZE"]
@@ -1458,7 +1860,8 @@ def chunk_precedent_text(text: str, config: PrecedentChunkConfig) -> List[tuple]
 # ============================================================================
 
 @dataclass
-class LawChunkConfig:
+class LawChunkConfig(BaseChunkConfig):
+    """법령 청킹 설정"""
     max_tokens: int = CONFIG["LAW_MAX_TOKENS"]
     min_tokens: int = CONFIG["LAW_MIN_TOKENS"]
 
@@ -1559,9 +1962,9 @@ def chunk_law_content(content: str, config: LawChunkConfig) -> List[tuple]:
 def run_law_embedding(
     source_path: str,
     reset: bool = False,
-    batch_size: int = None,
+    batch_size: Optional[int] = None,
     auto_config: bool = True,
-) -> dict:
+) -> Dict[str, Any]:
     """
     법령 임베딩 실행 (StreamingEmbeddingProcessor 사용)
 
@@ -1581,7 +1984,7 @@ def run_law_embedding(
     store = LanceDBStore()
     show_stats(store)
     del store
-    gc.collect()
+    clear_memory()
 
     return stats
 
@@ -1593,9 +1996,9 @@ def run_law_embedding(
 def run_precedent_embedding(
     source_path: str,
     reset: bool = False,
-    batch_size: int = None,
+    batch_size: Optional[int] = None,
     auto_config: bool = True,
-) -> dict:
+) -> Dict[str, Any]:
     """
     판례 임베딩 실행 (StreamingEmbeddingProcessor 사용)
 
@@ -1615,7 +2018,7 @@ def run_precedent_embedding(
     store = LanceDBStore()
     show_stats(store)
     del store
-    gc.collect()
+    clear_memory()
 
     return stats
 
@@ -1628,7 +2031,7 @@ def run_precedent_embedding_part(
     source_path: str,
     reset: bool = False,
     batch_size: int = 64,
-) -> dict:
+) -> Dict[str, Any]:
     """
     분할된 판례 파일 하나를 처리
 
@@ -1640,163 +2043,14 @@ def run_precedent_embedding_part(
     Returns:
         처리 통계 딕셔너리
     """
-    print("=" * 60)
-    print(f"판례 임베딩 (분할 파일): {source_path}")
-    print("=" * 60)
-
-    device_info = get_device_info()
-    print(f"  Device: {device_info}")
-    print(f"  Batch size: {batch_size}")
-    print(f"  Reset: {reset}")
-
-    # 데이터 로드
-    with open(source_path, "r", encoding="utf-8") as f:
-        items = json.load(f)
-
-    print(f"[INFO] Items: {len(items):,}")
-    print_memory_status()
-
-    chunk_config = PrecedentChunkConfig()
-    store = LanceDBStore()
-
-    if reset:
-        deleted = store.delete_by_type("판례")
-        print(f"[INFO] Deleted {deleted} existing precedent chunks")
-
-    stats = {
-        "total_docs": len(items),
-        "processed_docs": 0,
-        "total_chunks": 0,
-        "skipped": 0,
-        "errors": 0,
-    }
-
-    # 모델 로드
-    get_embedding_model(device_info.device)
-
-    # 배치 데이터
-    batch_data = {
-        "source_ids": [], "chunk_indices": [], "embeddings": [],
-        "titles": [], "contents": [], "decision_dates": [],
-        "court_names": [], "total_chunks_list": [], "case_numbers": [],
-        "case_types": [], "reference_provisions_list": [], "reference_cases_list": [],
-    }
-
-    start_time = datetime.now()
-
-    for item in tqdm(items, desc="판례 처리"):
-        source_id = str(item.get("판례정보일련번호", item.get("id", "")))
-
-        # 텍스트 추출
-        parts = []
-        case_name = item.get("사건명", item.get("case_name", ""))
-        if case_name:
-            parts.append(f"[{case_name}]")
-
-        summary = item.get("판시사항", item.get("summary", ""))
-        if summary:
-            parts.append(summary)
-
-        judgment_summary = item.get("판결요지", item.get("judgment_summary", ""))
-        if judgment_summary:
-            parts.append(judgment_summary)
-
-        text = "\n".join(parts)
-        if not text or len(text) < chunk_config.min_chunk_size:
-            stats["skipped"] += 1
-            continue
-
-        chunks = chunk_precedent_text(text, chunk_config)
-        if not chunks:
-            stats["skipped"] += 1
-            continue
-
-        total_chunks = len(chunks)
-        stats["processed_docs"] += 1
-
-        for chunk_idx, chunk_content in chunks:
-            batch_data["source_ids"].append(source_id)
-            batch_data["chunk_indices"].append(chunk_idx)
-            batch_data["titles"].append(case_name)
-            batch_data["contents"].append(f"[판례] {chunk_content}")
-            batch_data["decision_dates"].append(
-                item.get("선고일자", item.get("decision_date", ""))
-            )
-            batch_data["court_names"].append(
-                item.get("법원명", item.get("court_name", ""))
-            )
-            batch_data["total_chunks_list"].append(total_chunks)
-            batch_data["case_numbers"].append(
-                item.get("사건번호", item.get("case_number", ""))
-            )
-            batch_data["case_types"].append(
-                item.get("사건종류명", item.get("case_type", ""))
-            )
-            batch_data["reference_provisions_list"].append(
-                item.get("참조조문", item.get("reference_provisions", ""))
-            )
-            batch_data["reference_cases_list"].append(
-                item.get("참조판례", item.get("reference_cases", ""))
-            )
-
-        # 배치 저장
-        if len(batch_data["source_ids"]) >= batch_size:
-            try:
-                embeddings = create_embeddings(
-                    batch_data["contents"], device_info.device
-                )
-                batch_data["embeddings"] = embeddings
-                store.add_precedent_documents(**batch_data)
-                stats["total_chunks"] += len(batch_data["source_ids"])
-                del embeddings
-            except Exception as e:
-                stats["errors"] += len(batch_data["source_ids"])
-                print(f"  [ERROR] Batch error: {e}")
-
-            # 배치 데이터 클리어
-            for key in batch_data:
-                batch_data[key] = []
-
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-    # 남은 배치 처리
-    if batch_data["source_ids"]:
-        try:
-            embeddings = create_embeddings(
-                batch_data["contents"], device_info.device
-            )
-            batch_data["embeddings"] = embeddings
-            store.add_precedent_documents(**batch_data)
-            stats["total_chunks"] += len(batch_data["source_ids"])
-            del embeddings
-        except Exception as e:
-            stats["errors"] += len(batch_data["source_ids"])
-            print(f"  [ERROR] Final batch error: {e}")
-
-    # 정리
-    del items
-    del batch_data
-    store.compact()
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-    elapsed = datetime.now() - start_time
-    print(f"\n완료! 소요시간: {elapsed}")
-    print(f"  Processed: {stats['processed_docs']:,}")
-    print(f"  Chunks: {stats['total_chunks']:,}")
-    print(f"  Skipped: {stats['skipped']:,}")
-    print_memory_status()
-
-    return stats
+    processor = PrecedentEmbeddingProcessor()
+    return processor.run_part(source_path, reset=reset, batch_size=batch_size)
 
 
 def run_all_precedent_parts(
     pattern: str = "precedents_part_*.json",
     batch_size: int = 64,
-) -> dict:
+) -> Dict[str, Any]:
     """
     모든 분할된 판례 파일 처리
 
@@ -1836,9 +2090,7 @@ def run_all_precedent_parts(
         total_stats["errors"] += stats.get("errors", 0)
 
         # 파일 간 메모리 정리
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        clear_memory()
 
         print(f"\n[Progress] {i+1}/{len(files)} files done")
         print("-" * 60)
@@ -1860,7 +2112,7 @@ def run_law_embedding_part(
     source_path: str,
     reset: bool = False,
     batch_size: int = 64,
-) -> dict:
+) -> Dict[str, Any]:
     """
     분할된 법령 파일 하나를 처리
 
@@ -1872,142 +2124,14 @@ def run_law_embedding_part(
     Returns:
         처리 통계 딕셔너리
     """
-    print("=" * 60)
-    print(f"법령 임베딩 (분할 파일): {source_path}")
-    print("=" * 60)
-
-    device_info = get_device_info()
-    print(f"  Device: {device_info}")
-    print(f"  Batch size: {batch_size}")
-    print(f"  Reset: {reset}")
-
-    # 데이터 로드
-    with open(source_path, "r", encoding="utf-8") as f:
-        items = json.load(f)
-
-    print(f"[INFO] Items: {len(items):,}")
-    print_memory_status()
-
-    chunk_config = LawChunkConfig()
-    store = LanceDBStore()
-
-    if reset:
-        deleted = store.delete_by_type("법령")
-        print(f"[INFO] Deleted {deleted} existing law chunks")
-
-    stats = {
-        "total_docs": len(items),
-        "processed_docs": 0,
-        "total_chunks": 0,
-        "skipped": 0,
-        "errors": 0,
-    }
-
-    # 모델 로드
-    get_embedding_model(device_info.device)
-
-    # 배치 데이터
-    batch_data = {
-        "source_ids": [], "chunk_indices": [], "embeddings": [],
-        "titles": [], "contents": [], "enforcement_dates": [],
-        "departments": [], "total_chunks_list": [], "promulgation_dates": [],
-        "promulgation_nos": [], "law_types": [], "article_nos": [],
-    }
-
-    start_time = datetime.now()
-
-    for item in tqdm(items, desc="법령 처리"):
-        source_id = item.get("law_id", "")
-
-        content = item.get("content", "")
-        if not content:
-            stats["skipped"] += 1
-            continue
-
-        chunks = chunk_law_content(content, chunk_config)
-        if not chunks:
-            stats["skipped"] += 1
-            continue
-
-        total_chunks = len(chunks)
-        stats["processed_docs"] += 1
-
-        for chunk_idx, chunk_content, article_no in chunks:
-            if article_no:
-                prefixed_content = f"[법령] {article_no} {chunk_content}"
-            else:
-                prefixed_content = f"[법령] {chunk_content}"
-
-            batch_data["source_ids"].append(source_id)
-            batch_data["chunk_indices"].append(chunk_idx)
-            batch_data["titles"].append(item.get("law_name", ""))
-            batch_data["contents"].append(prefixed_content)
-            batch_data["enforcement_dates"].append(item.get("enforcement_date", ""))
-            batch_data["departments"].append(item.get("ministry", ""))
-            batch_data["total_chunks_list"].append(total_chunks)
-            batch_data["promulgation_dates"].append(item.get("promulgation_date", ""))
-            batch_data["promulgation_nos"].append(item.get("promulgation_no", ""))
-            batch_data["law_types"].append(item.get("law_type", ""))
-            batch_data["article_nos"].append(article_no or "")
-
-        # 배치 저장
-        if len(batch_data["source_ids"]) >= batch_size:
-            try:
-                embeddings = create_embeddings(
-                    batch_data["contents"], device_info.device
-                )
-                batch_data["embeddings"] = embeddings
-                store.add_law_documents(**batch_data)
-                stats["total_chunks"] += len(batch_data["source_ids"])
-                del embeddings
-            except Exception as e:
-                stats["errors"] += len(batch_data["source_ids"])
-                print(f"  [ERROR] Batch error: {e}")
-
-            # 배치 데이터 클리어
-            for key in batch_data:
-                batch_data[key] = []
-
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-    # 남은 배치 처리
-    if batch_data["source_ids"]:
-        try:
-            embeddings = create_embeddings(
-                batch_data["contents"], device_info.device
-            )
-            batch_data["embeddings"] = embeddings
-            store.add_law_documents(**batch_data)
-            stats["total_chunks"] += len(batch_data["source_ids"])
-            del embeddings
-        except Exception as e:
-            stats["errors"] += len(batch_data["source_ids"])
-            print(f"  [ERROR] Final batch error: {e}")
-
-    # 정리
-    del items
-    del batch_data
-    store.compact()
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-    elapsed = datetime.now() - start_time
-    print(f"\n완료! 소요시간: {elapsed}")
-    print(f"  Processed: {stats['processed_docs']:,}")
-    print(f"  Chunks: {stats['total_chunks']:,}")
-    print(f"  Skipped: {stats['skipped']:,}")
-    print_memory_status()
-
-    return stats
+    processor = LawEmbeddingProcessor()
+    return processor.run_part(source_path, reset=reset, batch_size=batch_size)
 
 
 def run_all_law_parts(
     pattern: str = "laws_part_*.json",
     batch_size: int = 64,
-) -> dict:
+) -> Dict[str, Any]:
     """
     모든 분할된 법령 파일 처리
 
@@ -2047,9 +2171,7 @@ def run_all_law_parts(
         total_stats["errors"] += stats.get("errors", 0)
 
         # 파일 간 메모리 정리
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        clear_memory()
 
         print(f"\n[Progress] {i+1}/{len(files)} files done")
         print("-" * 60)
@@ -2071,7 +2193,7 @@ def run_all_law_parts(
 # 통계 출력
 # ============================================================================
 
-def show_stats(store: LanceDBStore = None):
+def show_stats(store: Optional[LanceDBStore] = None) -> None:
     """LanceDB 통계 출력"""
     if store is None:
         store = LanceDBStore()
@@ -2157,6 +2279,16 @@ if __name__ == "__main__":
         print("  - print_memory_status()         # 메모리 사용량 확인")
         print("  - show_stats()                  # 통계 확인")
         print("  - clear_model_cache()           # 모델 메모리 정리")
+        print("  - clear_memory()                # GPU/CPU 메모리 정리")
+        print("  - set_seed(42)                  # 랜덤 시드 고정")
+        print("")
+        print("[품질 검증]")
+        print("  - checker = EmbeddingQualityChecker()")
+        print("  - checker.quick_test()          # 법률 도메인 기본 테스트")
+        print("")
+        print("[임베딩 캐싱]")
+        print("  - cache = EmbeddingCache('./cache')")
+        print("  - cache.get_stats()             # 캐시 통계")
         print("")
         print("[분할 처리 (권장)]")
         print("  - split_precedents(path, chunk_size=5000)  # 판례 분할")
@@ -2171,12 +2303,12 @@ if __name__ == "__main__":
         print("  - run_precedent_embedding(path) # 판례 임베딩")
         print("")
         print("=" * 60)
-        print("예시 (분할 처리):")
+        print("예시:")
         print("=" * 60)
-        print("  # 판례")
+        print("  # 품질 테스트")
+        print("  checker = EmbeddingQualityChecker()")
+        print("  checker.quick_test()")
+        print("")
+        print("  # 분할 처리")
         print("  split_precedents('precedents_cleaned.json', chunk_size=5000)")
         print("  run_all_precedent_parts('precedents_part_*.json', batch_size=64)")
-        print("")
-        print("  # 법령")
-        print("  split_laws('law_cleaned.json', chunk_size=2000)")
-        print("  run_all_law_parts('laws_part_*.json', batch_size=64)")
