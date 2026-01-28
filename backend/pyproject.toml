@@ -36,6 +36,8 @@ dependencies = [
     "aiofiles>=23.0.0",
     "lancedb>=0.15.0",
     "pandas>=2.0.0",
+    "ijson>=3.4.0.post0",
+    "psutil>=7.2.1",
 ]
 
 [project.optional-dependencies]

@@ -187,7 +187,22 @@ backend/
 ## 7. 실행 명령
 
 ```bash
-# 의존성 설치
+# ⚠️ 중요: PyTorch를 먼저 설치한 후 uv sync 실행
+
+# 1. PyTorch 설치 (환경에 맞게 선택)
+# CUDA 12.4 (최신)
+pip install torch --index-url https://download.pytorch.org/whl/cu124
+
+# CUDA 12.1
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# CUDA 11.8
+pip install torch --index-url https://download.pytorch.org/whl/cu118
+
+# Mac (MPS) / CPU only
+pip install torch
+
+# 2. 의존성 설치 (torch가 이미 설치된 상태에서)
 uv sync
 
 # Hugging Face 로그인 (KURE 모델 접근용)
@@ -198,30 +213,26 @@ VECTOR_DB=lancedb
 LANCEDB_URI=./data/lancedb
 LANCEDB_TABLE_NAME=legal_chunks
 
+# 디바이스 정보 확인
+uv run python scripts/create_lancedb_embeddings.py --device-info
+
 # 판례 임베딩 생성
-uv run python scripts/create_lancedb_embeddings.py --type precedent
+uv run python scripts/create_lancedb_embeddings.py --type precedent --source ../data/precedents.json
 
 # 법령 임베딩 생성
 uv run python scripts/create_lancedb_embeddings.py --type law --source ../data/law_cleaned.json
 
-# 전체 (판례 + 법령)
-uv run python scripts/create_lancedb_embeddings.py --type all --source ../data/law_cleaned.json
-
 # 전체 재생성 (기존 데이터 삭제)
-uv run python scripts/create_lancedb_embeddings.py --type precedent --reset
+uv run python scripts/create_lancedb_embeddings.py --type precedent --source ../data/precedents.json --reset
 uv run python scripts/create_lancedb_embeddings.py --type law --source ../data/law_cleaned.json --reset
 
 # 통계 확인
 uv run python scripts/create_lancedb_embeddings.py --stats
 
-# 옵션 (판례)
---batch-size 100      # 배치 크기 (GPU 메모리에 따라 조정)
---chunk-size 1250     # 판례 청크 크기 (기본값)
---chunk-overlap 125   # 판례 오버랩 (기본값 10%)
-
-# 옵션 (법령)
---max-tokens 800      # 법령 청크 최대 토큰 (기본값)
---min-tokens 100      # 법령 청크 최소 토큰 (기본값)
+# 옵션
+--batch-size N        # 배치 크기 (None=자동, 디바이스에 따라 최적화)
+--num-workers N       # DataLoader 워커 수 (None=자동)
+--reset               # 기존 데이터 삭제 후 재생성
 ```
 
 ---
