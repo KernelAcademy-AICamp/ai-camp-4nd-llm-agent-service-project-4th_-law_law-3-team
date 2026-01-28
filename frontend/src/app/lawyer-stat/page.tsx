@@ -237,7 +237,7 @@ export default function LawyerStatPage() {
 
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
                 <div className="lg:col-span-8">
-                  <RegionGeoMap data={filteredRegionData} />
+                  <RegionGeoMap data={filteredRegionData} selectedProvince={selectedProvince} />
                 </div>
                 <div className="lg:col-span-4">
                   {regionQuery.data && (

@@ -8,32 +8,82 @@ import { RegionStat } from "../types"
 // GeoJSON path (Nationwide)
 const GEO_URL = "/data/korea_geo.json"
 
-// Region Code Prefix Mapping (2-digit code -> Province Name)
+// Region Code Prefix Mapping (GeoJSON 2-digit code -> Province Name)
 const PROVINCE_PREFIX_MAP: Record<string, string> = {
   "11": "서울",
-  "26": "부산",
-  "27": "대구",
-  "28": "인천",
-  "29": "광주",
-  "30": "대전",
-  "31": "울산",
-  "36": "세종특별자치시",
-  "41": "경기",
-  "42": "강원",
-  "43": "충북",
-  "44": "충남",
-  "45": "전북",
-  "46": "전남",
-  "47": "경북",
-  "48": "경남",
-  "50": "제주",
+  "21": "부산",
+  "22": "대구",
+  "23": "인천",
+  "24": "광주",
+  "25": "대전",
+  "26": "울산",
+  "29": "세종",
+  "31": "경기",
+  "32": "강원",
+  "33": "충북",
+  "34": "충남",
+  "35": "전북",
+  "36": "전남",
+  "37": "경북",
+  "38": "경남",
+  "39": "제주",
 }
 
 interface Props {
   data: RegionStat[]
+  selectedProvince?: string | null
 }
 
-export function RegionGeoMap({ data }: Props) {
+// 시/도 이름 -> GeoJSON 코드 prefix 매핑
+const PROVINCE_TO_CODE: Record<string, string> = {
+  서울: "11",
+  부산: "21",
+  대구: "22",
+  인천: "23",
+  광주: "24",
+  대전: "25",
+  울산: "26",
+  세종: "29",
+  경기: "31",
+  강원: "32",
+  충북: "33",
+  충남: "34",
+  전북: "35",
+  전남: "36",
+  경북: "37",
+  경남: "38",
+  제주: "39",
+}
+
+// 시/도별 중심 좌표 및 줌 레벨
+const PROVINCE_VIEW_CONFIG: Record<string, { center: [number, number]; zoom: number }> = {
+  서울: { center: [127.0, 37.56], zoom: 16 },
+  경기: { center: [127.15, 37.6], zoom: 3.8 },
+  인천: { center: [126.2, 37.45], zoom: 6 },
+  부산: { center: [129.05, 35.18], zoom: 12 },
+  대구: { center: [128.55, 35.82], zoom: 12 },
+  광주: { center: [126.85, 35.15], zoom: 15 },
+  대전: { center: [127.4, 36.35], zoom: 15 },
+  울산: { center: [129.3, 35.52], zoom: 12 },
+  세종: { center: [127.25, 36.6], zoom: 11 },
+  강원: { center: [128.3, 37.9], zoom: 3 },
+  충북: { center: [127.8, 36.7], zoom: 4 },
+  충남: { center: [126.8, 36.5], zoom: 4 },
+  전북: { center: [127.1, 35.7], zoom: 4 },
+  전남: { center: [126.7, 34.7], zoom: 3 },
+  경북: { center: [129.3, 36.55], zoom: 2.6 },
+  경남: { center: [128.3, 35.2], zoom: 3.5 },
+  제주: { center: [126.55, 33.4], zoom: 8 },
+}
+
+export function RegionGeoMap({ data, selectedProvince }: Props) {
+  // 선택된 시/도의 코드 prefix
+  const selectedCodePrefix = selectedProvince ? PROVINCE_TO_CODE[selectedProvince] : null
+
+  // 뷰 설정 (선택된 시/도가 있으면 해당 지역으로, 없으면 전국)
+  const viewConfig = selectedProvince && PROVINCE_VIEW_CONFIG[selectedProvince]
+    ? PROVINCE_VIEW_CONFIG[selectedProvince]
+    : { center: [127.5, 36] as [number, number], zoom: 1 }
   const [tooltipContent, setTooltipContent] = useState<string | null>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
@@ -116,35 +166,37 @@ export function RegionGeoMap({ data }: Props) {
         height={500}
         className="w-full h-full"
       >
-        <ZoomableGroup center={[127.5, 36]} zoom={1} minZoom={0.5} maxZoom={4}>
+        <ZoomableGroup center={viewConfig.center} zoom={viewConfig.zoom} minZoom={0.5} maxZoom={8}>
           <Geographies geography={GEO_URL}>
             {({ geographies }: { geographies: any[] }) =>
               geographies.map((geo: any) => {
+                const code = geo.properties.code as string
+                const isSelected = !selectedCodePrefix || code.startsWith(selectedCodePrefix)
                 const fullName = getFullName(geo)
 
-                // Try literal match first
-                let count = dataMap.get(fullName)
-
-                // If not found, try robust matching (e.g. "경기 수원시" vs "경기도 수원시")
-                if (count === undefined) {
-                  // Fallback logic could go here if needed.
-                  // For now, assume 0
-                  count = 0
+                // 선택된 지역만 데이터 매칭
+                let count = 0
+                if (isSelected) {
+                  count = dataMap.get(fullName) ?? 0
                 }
+
+                // 줌 레벨에 반비례하여 테두리 두께 조절
+                const strokeWidth = 0.5 / viewConfig.zoom
 
                 return (
                   <Geography
                     key={geo.rsmKey}
                     geography={geo}
-                    fill={colorScale(count)}
-                    stroke="#D6D6DA"
-                    strokeWidth={0.5}
-                    onMouseEnter={(e: React.MouseEvent) => handleMouseEnter(geo, e)}
-                    onMouseMove={handleMouseMove}
-                    onMouseLeave={handleMouseLeave}
+                    fill={isSelected ? colorScale(count) : "#E5E7EB"}
+                    fillOpacity={isSelected ? 1 : 0.4}
+                    stroke={isSelected ? "#9CA3AF" : "#D6D6DA"}
+                    strokeWidth={strokeWidth}
+                    onMouseEnter={isSelected ? (e: React.MouseEvent) => handleMouseEnter(geo, e) : undefined}
+                    onMouseMove={isSelected ? handleMouseMove : undefined}
+                    onMouseLeave={isSelected ? handleMouseLeave : undefined}
                     style={{
                       default: { outline: "none" },
-                      hover: { fill: "#F53", outline: "none" },
+                      hover: isSelected ? { fill: "#F53", outline: "none" } : { outline: "none" },
                       pressed: { outline: "none" },
                     }}
                   />
