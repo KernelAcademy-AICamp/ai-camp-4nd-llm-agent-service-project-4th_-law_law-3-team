@@ -14,9 +14,15 @@ Neo4j Graph DB 검증 스크립트 (Gradio UI)
 
 import json
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 import gradio as gr
 from neo4j import GraphDatabase
+
+# .env 파일 로드
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(env_path)
 
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")

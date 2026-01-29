@@ -23,8 +23,13 @@ import os
 import re
 from pathlib import Path
 
+from dotenv import load_dotenv
 from neo4j import GraphDatabase
 from tqdm import tqdm
+
+# .env 파일 로드
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(env_path)
 
 # Configuration
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")

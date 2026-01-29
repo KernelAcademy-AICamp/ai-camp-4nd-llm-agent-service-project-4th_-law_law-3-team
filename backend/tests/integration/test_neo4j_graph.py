@@ -17,9 +17,14 @@ import sys
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+
+# .env 파일 로드
+env_path = PROJECT_ROOT / ".env"
+load_dotenv(env_path)
 
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
