@@ -28,6 +28,8 @@ export interface DensityStat {
   count: number
   population: number
   density: number  // 인구 10만명당 변호사 수
+  density_2024?: number  // 예측 모드에서 2024년 기준 밀도
+  change_percent?: number  // 예측 모드에서 2024년 대비 변화율
 }
 
 export interface DensityStatResponse {

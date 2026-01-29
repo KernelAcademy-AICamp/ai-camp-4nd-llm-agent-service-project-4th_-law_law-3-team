@@ -1,6 +1,6 @@
 """변호사 통계 모듈 - API 라우터"""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.modules.lawyer_stat.schema import (
     CrossAnalysisRequest,
@@ -42,9 +42,18 @@ async def get_by_region() -> RegionStatResponse:
 
 
 @router.get("/density-by-region", response_model=DensityStatResponse)
-async def get_density_by_region() -> DensityStatResponse:
+async def get_density_by_region(
+    year: int = Query(
+        default=2024,
+        description="인구 데이터 연도 (2024, 2030, 2040, 2050)",
+    ),
+    include_change: bool = Query(
+        default=False,
+        description="2024년 대비 변화율 포함 여부",
+    ),
+) -> DensityStatResponse:
     """지역별 인구 대비 변호사 밀도 조회."""
-    data = calculate_density_by_region()
+    data = calculate_density_by_region(year=year, include_change=include_change)
     return DensityStatResponse(data=[DensityStat(**item) for item in data])
 
 

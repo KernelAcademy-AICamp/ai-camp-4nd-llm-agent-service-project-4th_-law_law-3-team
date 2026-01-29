@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from "react-simple-maps"
-import type { ViewMode } from "@/app/lawyer-stat/page"
+import type { PredictionYear, ViewMode } from "@/app/lawyer-stat/page"
 import type { DensityStat, RegionStat } from "../types"
 
 // GeoJSON path (Nationwide)
@@ -32,9 +32,10 @@ const PROVINCE_PREFIX_MAP: Record<string, string> = {
 interface Props {
   data: (RegionStat | DensityStat)[]
   viewMode: ViewMode
+  predictionYear?: PredictionYear
   selectedProvince?: string | null
   highlightedRegion?: string | null
-  onRegionClick?: (region: string) => void
+  onRegionClick?: (region: string | null) => void
 }
 
 // 시/도 이름 -> GeoJSON 코드 prefix 매핑
@@ -82,7 +83,7 @@ const PROVINCE_VIEW_CONFIG: Record<string, { center: [number, number]; zoom: num
   제주: { center: [126.55, 33.4], zoom: 8 },
 }
 
-export function RegionGeoMap({ data, viewMode, selectedProvince, highlightedRegion, onRegionClick }: Props) {
+export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince, highlightedRegion, onRegionClick }: Props) {
   // 선택된 시/도의 코드 prefix
   const selectedCodePrefix = selectedProvince ? PROVINCE_TO_CODE[selectedProvince] : null
 
@@ -94,7 +95,12 @@ export function RegionGeoMap({ data, viewMode, selectedProvince, highlightedRegi
   // 줌 및 중심 위치 상태 관리
   const [zoom, setZoom] = useState(viewConfig.zoom)
   const [center, setCenter] = useState<[number, number]>(viewConfig.center)
-  const [tooltipContent, setTooltipContent] = useState<string | null>(null)
+  const [tooltipContent, setTooltipContent] = useState<{
+    region: string
+    density?: number
+    count: number
+    changePercent?: number
+  } | null>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
   // 선택된 시/도가 변경되면 줌 레벨과 중심 위치 리셋
@@ -107,11 +113,25 @@ export function RegionGeoMap({ data, viewMode, selectedProvince, highlightedRegi
   }, [selectedProvince])
 
 
-  // 1. Create a map of "Full Region Name" -> value (count or density)
+  // 1. Create a map of "Full Region Name" -> region data
+  const regionDataMap = useMemo(() => {
+    const map = new Map<string, { count: number; density?: number; changePercent?: number }>()
+    data.forEach((d) => {
+      map.set(d.region, {
+        count: d.count,
+        density: 'density' in d ? d.density : undefined,
+        changePercent: 'change_percent' in d ? d.change_percent : undefined,
+      })
+    })
+    return map
+  }, [data])
+
+  // 2. Create a map for color scale values
   const dataMap = useMemo(() => {
     const map = new Map<string, number>()
+    const useDensity = viewMode === 'density' || viewMode === 'prediction'
     data.forEach((d) => {
-      if (viewMode === 'density' && 'density' in d) {
+      if (useDensity && 'density' in d) {
         map.set(d.region, d.density)
       } else {
         map.set(d.region, d.count)
@@ -129,18 +149,33 @@ export function RegionGeoMap({ data, viewMode, selectedProvince, highlightedRegi
     { min: 1, max: 10, color: "#FCA5A5" },          // 1~10명 - 가장 연한 빨강
   ]
 
-  // Color Scale - density mode (에메랄드 그라데이션)
+  // Color Scale - density mode (에메랄드 그라데이션 - 6단계)
   const DENSITY_COLOR_RANGES = [
-    { min: 100, max: Infinity, color: "#064E3B" },  // 100명/10만 이상 - 가장 진한 에메랄드
-    { min: 50, max: 100, color: "#047857" },        // 50~100명/10만
-    { min: 20, max: 50, color: "#059669" },         // 20~50명/10만
-    { min: 10, max: 20, color: "#10B981" },         // 10~20명/10만
-    { min: 1, max: 10, color: "#6EE7B7" },          // 1~10명/10만 - 가장 연한 에메랄드
+    { min: 100, max: Infinity, color: "#022C22" },  // 100명 이상 - emerald-950
+    { min: 10, max: 100, color: "#047857" },        // 10~100명 - emerald-700
+    { min: 5, max: 10, color: "#059669" },          // 5~10명 - emerald-600
+    { min: 2, max: 5, color: "#10B981" },           // 2~5명 - emerald-500
+    { min: 1, max: 2, color: "#6EE7B7" },           // 1~2명 - emerald-300
+    { min: 0, max: 1, color: "#A7F3D0" },           // 1명 미만 - emerald-200
+  ]
+
+  // Color Scale - prediction mode (보라색 그라데이션 - 6단계)
+  const PREDICTION_COLOR_RANGES = [
+    { min: 100, max: Infinity, color: "#3B0764" },  // 100명 이상 - purple-950
+    { min: 10, max: 100, color: "#7C3AED" },        // 10~100명 - violet-600
+    { min: 5, max: 10, color: "#8B5CF6" },          // 5~10명 - violet-500
+    { min: 2, max: 5, color: "#A78BFA" },           // 2~5명 - violet-400
+    { min: 1, max: 2, color: "#C4B5FD" },           // 1~2명 - violet-300
+    { min: 0, max: 1, color: "#EDE9FE" },           // 1명 미만 - violet-100
   ]
 
   const colorScale = (value: number) => {
     if (value === 0) return "#ffffff"
-    const ranges = viewMode === 'density' ? DENSITY_COLOR_RANGES : COUNT_COLOR_RANGES
+    const ranges = viewMode === 'prediction'
+      ? PREDICTION_COLOR_RANGES
+      : viewMode === 'density'
+        ? DENSITY_COLOR_RANGES
+        : COUNT_COLOR_RANGES
     for (const range of ranges) {
       if (value >= range.min && value < range.max) {
         return range.color
@@ -177,11 +212,13 @@ export function RegionGeoMap({ data, viewMode, selectedProvince, highlightedRegi
 
   const handleMouseEnter = (geo: any, event: React.MouseEvent) => {
     const fullName = getFullName(geo)
-    const value = dataMap.get(fullName) || 0
-    const displayValue = viewMode === 'density'
-      ? `${value.toFixed(1)}명/10만명`
-      : `${value.toLocaleString()}명`
-    setTooltipContent(`${fullName}: ${displayValue}`)
+    const regionData = regionDataMap.get(fullName)
+    setTooltipContent({
+      region: fullName,
+      density: regionData?.density,
+      count: regionData?.count ?? 0,
+      changePercent: regionData?.changePercent,
+    })
     const e = event.nativeEvent || event
     setTooltipPos({ x: e.clientX, y: e.clientY })
   }
@@ -196,14 +233,34 @@ export function RegionGeoMap({ data, viewMode, selectedProvince, highlightedRegi
   }
 
   return (
-    <div className="relative w-full h-[500px] bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
+    <div
+      className="relative w-full h-[500px] bg-slate-50 rounded-xl border border-slate-200 overflow-hidden"
+      onClick={() => onRegionClick?.(null)}
+    >
       {/* Tooltip */}
       {tooltipContent && (
         <div
-          className="fixed z-50 px-2 py-1 text-sm text-white bg-gray-900 rounded pointer-events-none"
+          className="fixed z-50 px-3 py-2 text-sm text-white bg-gray-900 rounded pointer-events-none"
           style={{ left: tooltipPos.x + 15, top: tooltipPos.y + 15 }}
         >
-          {tooltipContent}
+          <div className="font-medium">{tooltipContent.region}</div>
+          {viewMode === 'prediction' && tooltipContent.density !== undefined ? (
+            <div>
+              {predictionYear} 예측: {tooltipContent.density.toFixed(1)}명 / 10만명
+              {tooltipContent.changePercent !== undefined && (
+                <span className={tooltipContent.changePercent >= 0 ? 'text-red-400' : 'text-blue-400'}>
+                  {' '}({tooltipContent.changePercent >= 0 ? '+' : ''}{tooltipContent.changePercent}%)
+                </span>
+              )}
+            </div>
+          ) : viewMode === 'density' && tooltipContent.density !== undefined ? (
+            <>
+              <div>{tooltipContent.density.toFixed(1)}명 / 10만명</div>
+              <div className="text-gray-300">변호사 {tooltipContent.count.toLocaleString()}명</div>
+            </>
+          ) : (
+            <div>변호사 {tooltipContent.count.toLocaleString()}명</div>
+          )}
         </div>
       )}
 
@@ -217,12 +274,6 @@ export function RegionGeoMap({ data, viewMode, selectedProvince, highlightedRegi
         height={500}
         className="w-full h-full"
       >
-        {/* Glow 효과 필터 */}
-        <defs>
-          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#2563EB" floodOpacity="0.6" />
-          </filter>
-        </defs>
         <ZoomableGroup
           center={center}
           zoom={zoom}
@@ -283,17 +334,20 @@ export function RegionGeoMap({ data, viewMode, selectedProvince, highlightedRegi
                     fillOpacity={fillOpacity}
                     stroke={strokeColor}
                     strokeWidth={strokeWidth}
-                    filter={isHighlighted ? "url(#glow)" : undefined}
                     onMouseEnter={isSelected ? (e: React.MouseEvent) => handleMouseEnter(geo, e) : undefined}
                     onMouseMove={isSelected ? handleMouseMove : undefined}
                     onMouseLeave={isSelected ? handleMouseLeave : undefined}
-                    onClick={isSelected ? () => onRegionClick?.(fullName) : undefined}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onRegionClick?.(isSelected ? fullName : null)
+                    }}
+                    tabIndex={-1}
                     style={{
                       default: { outline: "none" },
                       hover: isSelected
                         ? {
-                            fill: isHighlighted ? colorScale(count) : "#BFDBFE",  // 3️⃣ Hover: 살짝 밝게
-                            stroke: "#93C5FD",  // 연한 파랑
+                            fill: isHighlighted ? colorScale(count) : "#BFDBFE",
+                            stroke: "#93C5FD",
                             strokeWidth: baseStrokeWidth * 1.5,
                             outline: "none"
                           }
@@ -356,6 +410,34 @@ export function RegionGeoMap({ data, viewMode, selectedProvince, highlightedRegi
                 <span>1 ~ 10명</span>
               </div>
             </>
+          ) : viewMode === 'prediction' ? (
+            <>
+              <div className="font-medium text-violet-700 mb-1">{predictionYear}년 예측 (10만명당)</div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(100) }}></div>
+                <span>100명 이상</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(50) }}></div>
+                <span>10 ~ 100명</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(7) }}></div>
+                <span>5 ~ 10명</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(3) }}></div>
+                <span>2 ~ 5명</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(1.5) }}></div>
+                <span>1 ~ 2명</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(0.5) }}></div>
+                <span>1명 미만</span>
+              </div>
+            </>
           ) : (
             <>
               <div className="font-medium text-gray-700 mb-1">인구 10만명당</div>
@@ -364,20 +446,24 @@ export function RegionGeoMap({ data, viewMode, selectedProvince, highlightedRegi
                 <span>100명 이상</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(75) }}></div>
-                <span>50 ~ 100명</span>
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(50) }}></div>
+                <span>10 ~ 100명</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(30) }}></div>
-                <span>20 ~ 50명</span>
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(7) }}></div>
+                <span>5 ~ 10명</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(15) }}></div>
-                <span>10 ~ 20명</span>
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(3) }}></div>
+                <span>2 ~ 5명</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(5) }}></div>
-                <span>1 ~ 10명</span>
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(1.5) }}></div>
+                <span>1 ~ 2명</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(0.5) }}></div>
+                <span>1명 미만</span>
               </div>
             </>
           )}

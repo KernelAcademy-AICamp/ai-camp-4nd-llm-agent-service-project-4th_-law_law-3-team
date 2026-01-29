@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import { CrossAnalysisHeatmap } from '@/features/lawyer-stat/components/CrossAnalysisHeatmap'
 import { RegionDetailList } from '@/features/lawyer-stat/components/RegionDetailList'
@@ -15,7 +15,8 @@ import {
   fetchSpecialtyStats,
 } from '@/features/lawyer-stat/services'
 
-export type ViewMode = 'count' | 'density'
+export type ViewMode = 'count' | 'density' | 'prediction'
+export type PredictionYear = 2030 | 2040 | 2050
 
 function LoadingSpinner() {
   return (
@@ -66,6 +67,7 @@ const PROVINCES = [
 export default function LawyerStatPage() {
   const [activeTab, setActiveTab] = useState<TabType>('region')
   const [viewMode, setViewMode] = useState<ViewMode>('count')
+  const [predictionYear, setPredictionYear] = useState<PredictionYear>(2030)
   const [selectedProvince, setSelectedProvince] = useState<string | null>(null)
   const [highlightedRegion, setHighlightedRegion] = useState<string | null>(null)
   const [mapSelectedRegion, setMapSelectedRegion] = useState<string | null>(null)
@@ -83,9 +85,15 @@ export default function LawyerStatPage() {
     queryFn: fetchRegionStats,
   })
 
+  const isPredictionMode = viewMode === 'prediction'
+
   const densityQuery = useQuery({
-    queryKey: ['lawyer-stat', 'density'],
-    queryFn: fetchDensityStats,
+    queryKey: ['lawyer-stat', 'density', viewMode, isPredictionMode ? predictionYear : null],
+    queryFn: () => fetchDensityStats(
+      isPredictionMode ? predictionYear : 2024,
+      isPredictionMode
+    ),
+    placeholderData: keepPreviousData,
   })
 
   const specialtyQuery = useQuery({
@@ -118,7 +126,9 @@ export default function LawyerStatPage() {
   }, [specialtyQuery.data])
 
   const filteredRegionData = useMemo(() => {
-    const sourceData = viewMode === 'count' ? regionQuery.data?.data : densityQuery.data?.data
+    const sourceData = viewMode === 'count'
+      ? regionQuery.data?.data
+      : densityQuery.data?.data
     if (!sourceData) return []
     if (!selectedProvince) return sourceData
     return sourceData.filter((r) => r.region.startsWith(selectedProvince))
@@ -217,30 +227,63 @@ export default function LawyerStatPage() {
             >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900">지역별 변호사 현황</h2>
-                {/* 변호사 수 / 인구 대비 밀도 토글 */}
-                <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('count')}
-                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                      viewMode === 'count'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    변호사 수
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('density')}
-                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                      viewMode === 'density'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    인구 대비 밀도
-                  </button>
+                {/* 변호사 수 / 인구 대비 밀도 / 향후 예측 토글 */}
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('count')}
+                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                        viewMode === 'count'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      변호사 수
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('density')}
+                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                        viewMode === 'density'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      인구 대비 밀도
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('prediction')}
+                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                        viewMode === 'prediction'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      향후 예측
+                    </button>
+                  </div>
+
+                  {/* 향후 예측 선택 시 연도 선택기 표시 */}
+                  {viewMode === 'prediction' && (
+                    <div className="flex gap-1 rounded-lg bg-violet-100 p-1">
+                      {([2030, 2040, 2050] as const).map((year) => (
+                        <button
+                          key={year}
+                          type="button"
+                          onClick={() => setPredictionYear(year)}
+                          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                            predictionYear === year
+                              ? 'bg-violet-600 text-white shadow-sm'
+                              : 'text-violet-700 hover:text-violet-900'
+                          }`}
+                        >
+                          {year}년
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -250,7 +293,11 @@ export default function LawyerStatPage() {
                   <button
                     key={province}
                     type="button"
-                    onClick={() => setSelectedProvince(province === '전체' ? null : province)}
+                    onClick={() => {
+                      setSelectedProvince(province === '전체' ? null : province)
+                      setHighlightedRegion(null)
+                      setMapSelectedRegion(null)
+                    }}
                     className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                       (province === '전체' && !selectedProvince) || province === selectedProvince
                         ? 'bg-blue-600 text-white'
@@ -267,10 +314,23 @@ export default function LawyerStatPage() {
                   <RegionGeoMap
                     data={filteredRegionData}
                     viewMode={viewMode}
+                    predictionYear={isPredictionMode ? predictionYear : undefined}
                     selectedProvince={selectedProvince}
                     highlightedRegion={highlightedRegion}
                     onRegionClick={(region) => {
-                      // 지도에서 클릭 시 해당 지역 세부 화면으로 전환
+                      // 회색 영역(필터링 외 지역) 클릭 시 선택 해제
+                      if (!region) {
+                        setHighlightedRegion(null)
+                        setMapSelectedRegion(null)
+                        return
+                      }
+                      // 같은 지역 클릭 시 토글 (선택 해제)
+                      if (mapSelectedRegion === region) {
+                        setHighlightedRegion(null)
+                        setMapSelectedRegion(null)
+                        return
+                      }
+                      // 다른 지역 클릭 시 해당 지역 세부 화면으로 전환
                       const province = region.split(' ')[0]
                       setSelectedProvince(province)
                       setHighlightedRegion(region)
@@ -283,6 +343,7 @@ export default function LawyerStatPage() {
                     <RegionDetailList
                       regions={viewMode === 'count' ? regionQuery.data!.data : densityQuery.data!.data}
                       viewMode={viewMode}
+                      predictionYear={isPredictionMode ? predictionYear : undefined}
                       selectedProvince={selectedProvince}
                       mapSelectedRegion={mapSelectedRegion}
                       onRegionClick={(region) => {

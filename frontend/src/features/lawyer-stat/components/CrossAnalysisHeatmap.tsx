@@ -44,8 +44,16 @@ export function CrossAnalysisHeatmap() {
     enabled: selectedRegions.length > 0,
   })
 
-  const { matrix, maxValue } = useMemo(() => {
-    if (!crossAnalysisQuery.data) return { matrix: new Map<string, number>(), maxValue: 0 }
+  const { matrix, maxValue, rowTotals, colTotals, grandTotal } = useMemo(() => {
+    if (!crossAnalysisQuery.data) {
+      return {
+        matrix: new Map<string, number>(),
+        maxValue: 0,
+        rowTotals: new Map<string, number>(),
+        colTotals: new Map<string, number>(),
+        grandTotal: 0,
+      }
+    }
 
     const map = new Map<string, number>()
     let max = 0
@@ -56,7 +64,39 @@ export function CrossAnalysisHeatmap() {
       if (cell.count > max) max = cell.count
     }
 
-    return { matrix: map, maxValue: max }
+    const { regions, categories } = crossAnalysisQuery.data
+    const getVal = (r: string, c: string) => map.get(`${r}-${c}`) ?? 0
+
+    // 행 합계: 각 지역별 전체 카테고리 합
+    const rowTotalsMap = new Map<string, number>()
+    for (const region of regions) {
+      let sum = 0
+      for (const category of categories) {
+        sum += getVal(region, category)
+      }
+      rowTotalsMap.set(region, sum)
+    }
+
+    // 열 합계: 각 카테고리별 전체 지역 합
+    const colTotalsMap = new Map<string, number>()
+    for (const category of categories) {
+      let sum = 0
+      for (const region of regions) {
+        sum += getVal(region, category)
+      }
+      colTotalsMap.set(category, sum)
+    }
+
+    // 총합계
+    const total = Array.from(rowTotalsMap.values()).reduce((a, b) => a + b, 0)
+
+    return {
+      matrix: map,
+      maxValue: max,
+      rowTotals: rowTotalsMap,
+      colTotals: colTotalsMap,
+      grandTotal: total,
+    }
   }, [crossAnalysisQuery.data])
 
   const getValue = (region: string, category: string) => {
@@ -151,10 +191,10 @@ export function CrossAnalysisHeatmap() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-full text-xs">
+            <table className="min-w-full text-xs border-collapse border border-gray-200 table-fixed">
               <thead>
                 <tr>
-                  <th className="sticky left-0 z-10 bg-white px-2 py-1 text-left font-medium text-gray-500">
+                  <th className="sticky left-0 z-10 bg-white px-2 py-1 text-left font-medium text-gray-500 border border-gray-200 w-24">
                     지역
                   </th>
                   {data.categories.map((category) => {
@@ -165,7 +205,7 @@ export function CrossAnalysisHeatmap() {
                     return (
                       <th
                         key={category}
-                        className={`px-2 py-2 text-center font-medium text-xs leading-tight min-w-[60px] transition-colors ${
+                        className={`px-2 py-2 text-center font-medium text-xs leading-tight w-16 transition-colors border border-gray-200 ${
                           isHighlighted ? 'bg-blue-100 text-blue-700' : 'text-gray-500'
                         }`}
                       >
@@ -179,6 +219,9 @@ export function CrossAnalysisHeatmap() {
                       </th>
                     )
                   })}
+                  <th className="px-2 py-2 text-center font-semibold text-xs bg-gray-100 text-gray-700 w-16 border border-gray-200 border-l-2 border-l-gray-400">
+                    합계
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -186,7 +229,7 @@ export function CrossAnalysisHeatmap() {
                   const isRowHighlighted = selectedCell?.region === region
                   return (
                   <tr key={region}>
-                    <td className={`sticky left-0 z-10 px-2 py-1 font-medium whitespace-nowrap transition-colors ${
+                    <td className={`sticky left-0 z-10 px-2 py-1 font-medium whitespace-nowrap transition-colors border border-gray-200 ${
                       isRowHighlighted ? 'bg-blue-100 text-blue-700' : 'bg-white text-gray-700'
                     }`}>
                       {region}
@@ -202,7 +245,7 @@ export function CrossAnalysisHeatmap() {
                       return (
                         <td
                           key={cellKey}
-                          className={`relative cursor-pointer px-2 py-1 text-center transition-all ${getColorIntensity(value, maxValue)} ${
+                          className={`relative cursor-pointer px-2 py-1 text-center transition-all border border-gray-200 ${getColorIntensity(value, maxValue)} ${
                             isSelected ? 'ring-2 ring-blue-700' : ''
                           } ${(isInHighlightedRow || isInHighlightedCol) && !isSelected ? 'ring-1 ring-blue-300' : ''}`}
                           onMouseEnter={() => setHoveredCell(cellKey)}
@@ -220,9 +263,30 @@ export function CrossAnalysisHeatmap() {
                         </td>
                       )
                     })}
+                    <td className="px-2 py-1 text-center font-semibold bg-gray-50 text-gray-700 border border-gray-200 border-l-2 border-l-gray-400">
+                      {rowTotals.get(region) ?? 0}
+                    </td>
                   </tr>
                 )})}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td className="sticky left-0 z-10 px-2 py-1 font-semibold bg-gray-100 text-gray-700 border border-gray-200 border-t-2 border-t-gray-400">
+                    합계
+                  </td>
+                  {data.categories.map((category) => (
+                    <td
+                      key={`total-${category}`}
+                      className="px-2 py-1 text-center font-semibold bg-gray-100 text-gray-700 border border-gray-200 border-t-2 border-t-gray-400"
+                    >
+                      {colTotals.get(category) ?? 0}
+                    </td>
+                  ))}
+                  <td className="px-2 py-1 text-center font-bold bg-gray-200 text-gray-800 border border-gray-200 border-t-2 border-t-gray-400 border-l-2 border-l-gray-400">
+                    {grandTotal}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
           <div className="mt-4 flex items-center justify-between text-xs text-gray-500">

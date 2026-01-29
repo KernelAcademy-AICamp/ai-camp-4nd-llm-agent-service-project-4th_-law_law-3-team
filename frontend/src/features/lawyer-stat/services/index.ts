@@ -21,8 +21,14 @@ export async function fetchRegionStats(): Promise<RegionStatResponse> {
   return response.data
 }
 
-export async function fetchDensityStats(): Promise<DensityStatResponse> {
-  const response = await api.get<DensityStatResponse>(`${endpoints.lawyerStat}/density-by-region`)
+export async function fetchDensityStats(
+  year: number = 2024,
+  includeChange: boolean = false
+): Promise<DensityStatResponse> {
+  const response = await api.get<DensityStatResponse>(
+    `${endpoints.lawyerStat}/density-by-region`,
+    { params: { year, include_change: includeChange } }
+  )
   return response.data
 }
 
