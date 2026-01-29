@@ -24,10 +24,10 @@ export const modules: Module[] = [
     roles: ['user'],
   },
   {
-    id: 'lawyer-stat',
+    id: 'lawyer-stats',
     name: '변호사 통계',
     description: '지역별, 전문분야별 변호사 현황 대시보드',
-    href: '/lawyer-stat',
+    href: '/lawyer-stats',
     icon: '📊',
     enabled: true,
     roles: ['lawyer'],

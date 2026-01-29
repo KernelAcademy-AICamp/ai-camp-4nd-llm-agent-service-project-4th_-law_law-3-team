@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from "react-simple-maps"
-import type { PredictionYear, ViewMode } from "@/app/lawyer-stat/page"
+import type { PredictionYear, ViewMode } from "@/app/lawyer-stats/page"
 import type { DensityStat, RegionStat } from "../types"
 
 // GeoJSON path (Nationwide)

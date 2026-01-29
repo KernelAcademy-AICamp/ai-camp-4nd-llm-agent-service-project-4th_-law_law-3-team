@@ -3,20 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
-import { CrossAnalysisHeatmap } from '@/features/lawyer-stat/components/CrossAnalysisHeatmap'
-import { RegionDetailList } from '@/features/lawyer-stat/components/RegionDetailList'
-import { RegionGeoMap } from '@/features/lawyer-stat/components/RegionGeoMap'
-import { SpecialtyBarChart } from '@/features/lawyer-stat/components/SpecialtyBarChart'
-import { StickyTabNav, type TabType } from '@/features/lawyer-stat/components/StickyTabNav'
+import { CrossAnalysisHeatmap } from '@/features/lawyer-stats/components/CrossAnalysisHeatmap'
+import { RegionDetailList } from '@/features/lawyer-stats/components/RegionDetailList'
+import { RegionGeoMap } from '@/features/lawyer-stats/components/RegionGeoMap'
+import { SpecialtyBarChart } from '@/features/lawyer-stats/components/SpecialtyBarChart'
+import { StickyTabNav, type TabType } from '@/features/lawyer-stats/components/StickyTabNav'
 import {
   fetchDensityStats,
   fetchOverview,
   fetchRegionStats,
   fetchSpecialtyStats,
-} from '@/features/lawyer-stat/services'
+} from '@/features/lawyer-stats/services'
 
 export type ViewMode = 'count' | 'density' | 'prediction'
-export type PredictionYear = 2030 | 2040 | 2050
+export type PredictionYear = 2030 | 2035 | 2040
 
 function LoadingSpinner() {
   return (
@@ -76,28 +76,28 @@ export default function LawyerStatPage() {
   const crossSectionRef = useRef<HTMLDivElement>(null)
 
   const overviewQuery = useQuery({
-    queryKey: ['lawyer-stat', 'overview'],
+    queryKey: ['lawyer-stats', 'overview'],
     queryFn: fetchOverview,
   })
 
   const regionQuery = useQuery({
-    queryKey: ['lawyer-stat', 'region'],
+    queryKey: ['lawyer-stats', 'region'],
     queryFn: fetchRegionStats,
   })
 
   const isPredictionMode = viewMode === 'prediction'
 
   const densityQuery = useQuery({
-    queryKey: ['lawyer-stat', 'density', viewMode, isPredictionMode ? predictionYear : null],
+    queryKey: ['lawyer-stats', 'density', viewMode, isPredictionMode ? predictionYear : null],
     queryFn: () => fetchDensityStats(
-      isPredictionMode ? predictionYear : 2024,
+      isPredictionMode ? predictionYear : 'current',
       isPredictionMode
     ),
     placeholderData: keepPreviousData,
   })
 
   const specialtyQuery = useQuery({
-    queryKey: ['lawyer-stat', 'specialty'],
+    queryKey: ['lawyer-stats', 'specialty'],
     queryFn: fetchSpecialtyStats,
   })
 
@@ -268,7 +268,7 @@ export default function LawyerStatPage() {
                   {/* 향후 예측 선택 시 연도 선택기 표시 */}
                   {viewMode === 'prediction' && (
                     <div className="flex gap-1 rounded-lg bg-violet-100 p-1">
-                      {([2030, 2040, 2050] as const).map((year) => (
+                      {([2030, 2035, 2040] as const).map((year) => (
                         <button
                           key={year}
                           type="button"

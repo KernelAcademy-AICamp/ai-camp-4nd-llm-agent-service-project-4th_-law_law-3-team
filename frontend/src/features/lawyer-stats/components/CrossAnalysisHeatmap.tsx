@@ -33,13 +33,13 @@ export function CrossAnalysisHeatmap() {
 
   // 전체 지역 목록 조회 (선택 UI용)
   const regionStatsQuery = useQuery({
-    queryKey: ['lawyer-stat', 'region'],
+    queryKey: ['lawyer-stats', 'region'],
     queryFn: fetchRegionStats,
   })
 
   // 선택된 지역에 대한 교차 분석
   const crossAnalysisQuery = useQuery({
-    queryKey: ['lawyer-stat', 'cross-analysis-regions', selectedRegions],
+    queryKey: ['lawyer-stats', 'cross-analysis-regions', selectedRegions],
     queryFn: () => fetchCrossAnalysisByRegions(selectedRegions),
     enabled: selectedRegions.length > 0,
   })

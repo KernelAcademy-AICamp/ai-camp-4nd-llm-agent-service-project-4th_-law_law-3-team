@@ -22,7 +22,7 @@ export async function fetchRegionStats(): Promise<RegionStatResponse> {
 }
 
 export async function fetchDensityStats(
-  year: number = 2024,
+  year: number | string = 'current',
   includeChange: boolean = false
 ): Promise<DensityStatResponse> {
   const response = await api.get<DensityStatResponse>(

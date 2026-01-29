@@ -79,3 +79,31 @@ Backend 모듈명 `snake_case` → API 경로 `/api/kebab-case`
 - `frontend/src/lib/modules.ts` - 프론트엔드 모듈 정의
 - `frontend/src/lib/api.ts` - API 클라이언트 및 endpoints
 - `scripts/add_module.py` - 모듈 생성 스크립트
+
+## Modules
+
+### lawyer-stats (변호사 통계 대시보드)
+
+지역별·전문분야별 변호사 분포 및 시장 분석 대시보드
+
+**주요 기능:**
+- 지역별 변호사 현황 (시/도 → 시/군/구 드릴다운)
+- 인구 대비 밀도 분석 (변호사 수 / 인구 × 10만명)
+- 향후 예측 모드 (2030/2035/2040년 추계인구 기반)
+- 전문분야별 변호사 분포
+- 지역×전문분야 교차 분석 히트맵
+
+**API 엔드포인트:**
+- `GET /api/lawyer-stats/overview` - 전체 현황 요약
+- `GET /api/lawyer-stats/by-region` - 지역별 변호사 수
+- `GET /api/lawyer-stats/density-by-region` - 지역별 밀도 (year, include_change 파라미터)
+- `GET /api/lawyer-stats/by-specialty` - 전문분야별 통계
+- `GET /api/lawyer-stats/cross-analysis` - 지역×전문분야 교차 분석
+- `GET /api/lawyer-stats/region/{region}/specialties` - 특정 지역 전문분야 상세
+
+**프론트엔드 컴포넌트:**
+- `RegionGeoMap` - 대한민국 시군구 지도 시각화 (TopoJSON)
+- `RegionDetailList` - 지역 상세 목록 및 예측 상세 뷰
+- `CrossAnalysisHeatmap` - 지역×전문분야 히트맵
+- `SpecialtyBarChart` - 전문분야별 바 차트
+- `StickyTabNav` - 스크롤 연동 탭 네비게이션

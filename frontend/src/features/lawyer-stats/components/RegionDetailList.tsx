@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { PredictionYear, ViewMode } from '@/app/lawyer-stat/page'
+import type { PredictionYear, ViewMode } from '@/app/lawyer-stats/page'
 import type { DensityStat, RegionStat, SpecialtyStat } from '../types'
 import { fetchRegionSpecialties } from '../services'
 
@@ -103,7 +103,7 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
 
   // 선택된 지역의 전문분야 데이터 조회
   const specialtiesQuery = useQuery({
-    queryKey: ['lawyer-stat', 'region-specialties', selectedRegion],
+    queryKey: ['lawyer-stats', 'region-specialties', selectedRegion],
     queryFn: () => fetchRegionSpecialties(selectedRegion!),
     enabled: !!selectedRegion,
   })
@@ -118,17 +118,17 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
     // 예측 모드 상세 뷰
     if (viewMode === 'prediction' && selectedRegionData && 'density' in selectedRegionData) {
       const data = selectedRegionData as DensityStat
-      const density2024 = data.density_2024 ?? data.density
+      const densityCurrent = data.density_current ?? data.density
       const changePercent = data.change_percent ?? 0
-      const population2024 = density2024 > 0 ? Math.round(data.count / density2024 * 100000) : data.population
-      const populationChange = population2024 > 0 ? ((data.population - population2024) / population2024 * 100) : 0
+      const populationCurrent = densityCurrent > 0 ? Math.round(data.count / densityCurrent * 100000) : data.population
+      const populationChange = populationCurrent > 0 ? ((data.population - populationCurrent) / populationCurrent * 100) : 0
 
       // 바 너비 계산
-      const maxDensity = Math.max(density2024, data.density)
-      const density2024Width = (density2024 / maxDensity) * 100
+      const maxDensity = Math.max(densityCurrent, data.density)
+      const densityCurrentWidth = (densityCurrent / maxDensity) * 100
       const densityFutureWidth = (data.density / maxDensity) * 100
-      const maxPop = Math.max(population2024, data.population)
-      const pop2024Width = (population2024 / maxPop) * 100
+      const maxPop = Math.max(populationCurrent, data.population)
+      const popCurrentWidth = (populationCurrent / maxPop) * 100
       const popFutureWidth = (data.population / maxPop) * 100
 
       // 시장 전망 게이지 위치 (-30% ~ +30% → 0 ~ 100)
@@ -171,9 +171,9 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-400 w-12">현재</span>
                   <div className="flex-1 h-3 bg-gray-100 rounded overflow-hidden">
-                    <div className="h-full bg-gray-400 rounded" style={{ width: `${density2024Width}%` }} />
+                    <div className="h-full bg-gray-400 rounded" style={{ width: `${densityCurrentWidth}%` }} />
                   </div>
-                  <span className="text-sm text-gray-600 w-14 text-right">{density2024.toFixed(1)}</span>
+                  <span className="text-sm text-gray-600 w-14 text-right">{densityCurrent.toFixed(1)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-violet-500 w-12">{predictionYear}</span>
@@ -200,9 +200,9 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-400 w-12">현재</span>
                   <div className="flex-1 h-3 bg-gray-100 rounded overflow-hidden">
-                    <div className="h-full bg-gray-400 rounded" style={{ width: `${pop2024Width}%` }} />
+                    <div className="h-full bg-gray-400 rounded" style={{ width: `${popCurrentWidth}%` }} />
                   </div>
-                  <span className="text-sm text-gray-600 w-14 text-right">{(population2024 / 10000).toFixed(1)}</span>
+                  <span className="text-sm text-gray-600 w-14 text-right">{(populationCurrent / 10000).toFixed(1)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`text-sm w-12 ${populationChange >= 0 ? 'text-red-500' : 'text-blue-500'}`}>{predictionYear}</span>

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Query
 
-from app.modules.lawyer_stat.schema import (
+from app.modules.lawyer_stats.schema import (
     CrossAnalysisRequest,
     CrossAnalysisResponse,
     DensityStat,
@@ -13,7 +13,7 @@ from app.modules.lawyer_stat.schema import (
     SpecialtyStat,
     SpecialtyStatResponse,
 )
-from app.modules.lawyer_stat.service import (
+from app.modules.lawyer_stats.service import (
     calculate_by_region,
     calculate_by_specialty,
     calculate_cross_analysis,
@@ -43,13 +43,13 @@ async def get_by_region() -> RegionStatResponse:
 
 @router.get("/density-by-region", response_model=DensityStatResponse)
 async def get_density_by_region(
-    year: int = Query(
-        default=2024,
-        description="인구 데이터 연도 (2024, 2030, 2040, 2050)",
+    year: str = Query(
+        default="current",
+        description="인구 데이터 연도 ('current', '2030', '2035', '2040')",
     ),
     include_change: bool = Query(
         default=False,
-        description="2024년 대비 변화율 포함 여부",
+        description="현재 대비 변화율 포함 여부",
     ),
 ) -> DensityStatResponse:
     """지역별 인구 대비 변호사 밀도 조회."""

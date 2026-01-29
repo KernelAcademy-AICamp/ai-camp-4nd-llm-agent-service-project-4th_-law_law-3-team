@@ -39,8 +39,8 @@ class DensityStat(BaseModel):
     count: int
     population: int
     density: float  # 인구 10만명당 변호사 수
-    density_2024: float | None = None  # 예측 모드에서 2024년 기준 밀도
-    change_percent: float | None = None  # 예측 모드에서 2024년 대비 변화율
+    density_current: float | None = None  # 예측 모드에서 현재 기준 밀도
+    change_percent: float | None = None  # 예측 모드에서 현재 대비 변화율
 
 
 class DensityStatResponse(BaseModel):
