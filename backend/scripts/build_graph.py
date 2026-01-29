@@ -6,16 +6,19 @@ Neo4j Graph DB 구축 스크립트
 노드 (Nodes):
 - Statute: 법령 정보 (id, name, type, promulgation_date, abbreviation)
 - Case: 판례 정보 (id, case_number, name, summary)
+- Alias: 비공식 약칭 (name, category)
 
 관계 (Relationships):
 - HIERARCHY_OF: 법령 계급 (시행령 -> 법률)
 - CITES: 판례 -> 법령 인용
 - CITES_CASE: 판례 -> 판례 인용 (참조판례)
 - RELATED_TO: 법령 -> 법령 관련
+- ALIAS_OF: 비공식 약칭 -> 법령
 
 데이터 파일:
 - law_cleaned.json: 법령 데이터
-- lsAbrv.json: 법령 약칭 데이터
+- lsAbrv.json: 법령 약칭 데이터 (공식)
+- informal_abbreviations.json: 비공식 약칭 데이터
 - [cleaned]lsStmd-full.json: 법령 계급도/관련법령
 - precedents_cleaned.json: 판례 데이터
 
@@ -50,6 +53,9 @@ HIERARCHY_FILE = DATA_DIR / "[cleaned]lsStmd-full.json"
 CASE_FILE = DATA_DIR / "precedents_cleaned.json"
 ABBREVIATION_FILE = DATA_DIR / "lsAbrv.json"
 
+# 비공식 약칭 파일 (scripts 폴더)
+INFORMAL_ABBR_FILE = Path(__file__).parent / "informal_abbreviations.json"
+
 BATCH_SIZE = 1000
 
 
@@ -81,6 +87,7 @@ class GraphBuilder:
             "CREATE CONSTRAINT FOR (c:Case) REQUIRE c.id IS UNIQUE",
             "CREATE INDEX FOR (c:Case) ON (c.case_number)",
             "CREATE INDEX FOR (s:Statute) ON (s.abbreviation)",
+            "CREATE CONSTRAINT FOR (a:Alias) REQUIRE a.name IS UNIQUE",
         ]
         with self.driver.session() as session:
             for q in queries:
@@ -431,11 +438,68 @@ class GraphBuilder:
 
         print(f"Updated {updated} statutes with abbreviations.")
 
+    def load_informal_abbreviations(self) -> None:
+        """비공식 약칭 로드 (informal_abbreviations.json)
+
+        Alias 노드를 생성하고 ALIAS_OF 관계로 Statute에 연결합니다.
+        """
+        print(f"Loading Informal Abbreviations from {INFORMAL_ABBR_FILE}...")
+
+        if not INFORMAL_ABBR_FILE.exists():
+            print(f"Informal abbreviation file not found: {INFORMAL_ABBR_FILE}")
+            return
+
+        with open(INFORMAL_ABBR_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+
+        mappings = data.get("mappings", [])
+
+        # Alias 노드 생성 및 ALIAS_OF 관계 연결
+        query = """
+        UNWIND $batch AS row
+        MERGE (a:Alias {name: row.abbreviation})
+        SET a.category = row.category
+        WITH a, row
+        MATCH (s:Statute {name: row.full_name})
+        MERGE (a)-[:ALIAS_OF]->(s)
+        """
+
+        batch = []
+        total = 0
+        with self.driver.session() as session:
+            for category_data in mappings:
+                category = category_data.get("category", "")
+                items = category_data.get("items", [])
+
+                for item in items:
+                    abbr = item.get("abbreviation")
+                    full_name = item.get("full_name")
+
+                    if not abbr or not full_name:
+                        continue
+
+                    batch.append({
+                        "abbreviation": abbr,
+                        "full_name": full_name,
+                        "category": category,
+                    })
+                    total += 1
+
+            if batch:
+                result = session.run(query, batch=batch)
+                summary = result.consume()
+                nodes_created = summary.counters.nodes_created
+                rels_created = summary.counters.relationships_created
+                print(f"Created {nodes_created} Alias nodes, {rels_created} ALIAS_OF relationships.")
+
+        print(f"Processed {total} informal abbreviations.")
+
     def run(self) -> None:
         """전체 그래프 구축 실행"""
         self.create_constraints()
         self.load_statutes()
         self.load_abbreviations()
+        self.load_informal_abbreviations()
         self.load_hierarchy()
         self.load_related_statutes()
         self.load_cases()
