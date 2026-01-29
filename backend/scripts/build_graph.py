@@ -4,14 +4,20 @@ Neo4j Graph DB 구축 스크립트
 법령, 판례 데이터를 Neo4j 그래프로 구축합니다.
 
 노드 (Nodes):
-- Statute: 법령 정보
-- Case: 판례 정보
+- Statute: 법령 정보 (id, name, type, promulgation_date, abbreviation)
+- Case: 판례 정보 (id, case_number, name, summary)
 
 관계 (Relationships):
 - HIERARCHY_OF: 법령 계급 (시행령 -> 법률)
 - CITES: 판례 -> 법령 인용
 - CITES_CASE: 판례 -> 판례 인용 (참조판례)
 - RELATED_TO: 법령 -> 법령 관련
+
+데이터 파일:
+- law_cleaned.json: 법령 데이터
+- lsAbrv.json: 법령 약칭 데이터
+- [cleaned]lsStmd-full.json: 법령 계급도/관련법령
+- precedents_cleaned.json: 판례 데이터
 
 사용법:
     cd backend
@@ -42,6 +48,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 LAW_FILE = DATA_DIR / "law_cleaned.json"
 HIERARCHY_FILE = DATA_DIR / "[cleaned]lsStmd-full.json"
 CASE_FILE = DATA_DIR / "precedents_cleaned.json"
+ABBREVIATION_FILE = DATA_DIR / "lsAbrv.json"
 
 BATCH_SIZE = 1000
 
@@ -73,6 +80,7 @@ class GraphBuilder:
             "CREATE CONSTRAINT FOR (s:Statute) REQUIRE s.name IS UNIQUE",
             "CREATE CONSTRAINT FOR (c:Case) REQUIRE c.id IS UNIQUE",
             "CREATE INDEX FOR (c:Case) ON (c.case_number)",
+            "CREATE INDEX FOR (s:Statute) ON (s.abbreviation)",
         ]
         with self.driver.session() as session:
             for q in queries:
@@ -378,10 +386,56 @@ class GraphBuilder:
 
         print(f"Loaded {len(relations)} RELATED_TO relationships.")
 
+    def load_abbreviations(self) -> None:
+        """법령 약칭 로드 (lsAbrv.json)"""
+        print(f"Loading Abbreviations from {ABBREVIATION_FILE}...")
+
+        if not ABBREVIATION_FILE.exists():
+            print(f"Abbreviation file not found: {ABBREVIATION_FILE}")
+            return
+
+        with open(ABBREVIATION_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+
+        query = """
+        UNWIND $batch AS row
+        MATCH (s:Statute {id: row.statute_id})
+        SET s.abbreviation = row.abbreviation
+        """
+
+        batch = []
+        updated = 0
+        with self.driver.session() as session:
+            for item in tqdm(data, desc="Abbreviations"):
+                statute_id = item.get("법령ID")
+                abbreviation = item.get("법령약칭명")
+
+                if not statute_id or not abbreviation:
+                    continue
+
+                batch.append({
+                    "statute_id": statute_id,
+                    "abbreviation": abbreviation,
+                })
+
+                if len(batch) >= BATCH_SIZE:
+                    result = session.run(query, batch=batch)
+                    summary = result.consume()
+                    updated += summary.counters.properties_set
+                    batch = []
+
+            if batch:
+                result = session.run(query, batch=batch)
+                summary = result.consume()
+                updated += summary.counters.properties_set
+
+        print(f"Updated {updated} statutes with abbreviations.")
+
     def run(self) -> None:
         """전체 그래프 구축 실행"""
         self.create_constraints()
         self.load_statutes()
+        self.load_abbreviations()
         self.load_hierarchy()
         self.load_related_statutes()
         self.load_cases()

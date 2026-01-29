@@ -454,6 +454,71 @@ class TestStatuteTypes:
             driver.close()
 
 
+class TestStatuteAbbreviations:
+    """법령 약칭 테스트"""
+
+    MIN_ABBREVIATION_COUNT = 2000  # 최소 약칭 개수
+
+    def test_abbreviation_count(self):
+        """약칭이 있는 법령 개수 검증"""
+        driver = get_driver()
+        try:
+            with driver.session() as session:
+                result = session.run("""
+                    MATCH (s:Statute)
+                    WHERE s.abbreviation IS NOT NULL
+                    RETURN count(s) as count
+                """)
+                count = result.single()["count"]
+                print(f"[INFO] 약칭이 있는 법령: {count:,}개")
+                assert count >= self.MIN_ABBREVIATION_COUNT, \
+                    f"약칭 개수 부족: {count} < {self.MIN_ABBREVIATION_COUNT}"
+        finally:
+            driver.close()
+
+    def test_abbreviation_search(self):
+        """약칭으로 법령 검색 테스트"""
+        driver = get_driver()
+        try:
+            with driver.session() as session:
+                # 샘플 약칭으로 검색
+                test_cases = [
+                    ("119법", "119구조ㆍ구급에 관한 법률"),
+                    ("교통사고처리법", "교통사고처리 특례법"),
+                ]
+                for abbr, expected_name in test_cases:
+                    result = session.run("""
+                        MATCH (s:Statute {abbreviation: $abbr})
+                        RETURN s.name as name
+                    """, abbr=abbr)
+                    record = result.single()
+                    assert record is not None, f"약칭 '{abbr}'로 법령을 찾을 수 없습니다"
+                    assert record["name"] == expected_name, \
+                        f"'{abbr}'의 정식명칭이 '{expected_name}'이 아닙니다: {record['name']}"
+                    print(f"[OK] 약칭 검색: {abbr} → {record['name']}")
+        finally:
+            driver.close()
+
+    def test_abbreviation_samples(self):
+        """약칭 샘플 출력"""
+        driver = get_driver()
+        try:
+            with driver.session() as session:
+                result = session.run("""
+                    MATCH (s:Statute)
+                    WHERE s.abbreviation IS NOT NULL
+                    RETURN s.abbreviation as abbr, s.name as name
+                    LIMIT 10
+                """)
+                records = list(result)
+                print("[INFO] 약칭 샘플:")
+                for r in records:
+                    print(f"       {r['abbr']} → {r['name']}")
+                assert len(records) > 0, "약칭 샘플이 없습니다"
+        finally:
+            driver.close()
+
+
 class TestRAGContextEnrichment:
     """RAG 컨텍스트 보강 시나리오 테스트"""
 
