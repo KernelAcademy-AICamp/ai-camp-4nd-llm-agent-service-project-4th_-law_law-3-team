@@ -4,7 +4,7 @@ Neo4j Graph DB 구축 스크립트
 법령, 판례 데이터를 Neo4j 그래프로 구축합니다.
 
 노드 (Nodes):
-- Statute: 법령 정보 (id, name, type, promulgation_date, abbreviation)
+- Statute: 법령 정보 (id, name, type, promulgation_date, abbreviation, citation_count)
 - Case: 판례 정보 (id, case_number, name, summary)
 - Alias: 비공식 약칭 (name, category)
 
@@ -81,21 +81,43 @@ class GraphBuilder:
 
     def create_constraints(self) -> None:
         """인덱스 및 제약조건 생성"""
+        # 기본 제약조건 및 인덱스
         queries = [
             "CREATE CONSTRAINT FOR (s:Statute) REQUIRE s.id IS UNIQUE",
             "CREATE CONSTRAINT FOR (s:Statute) REQUIRE s.name IS UNIQUE",
             "CREATE CONSTRAINT FOR (c:Case) REQUIRE c.id IS UNIQUE",
             "CREATE INDEX FOR (c:Case) ON (c.case_number)",
+            "CREATE INDEX FOR (c:Case) ON (c.name)",
             "CREATE INDEX FOR (s:Statute) ON (s.abbreviation)",
             "CREATE CONSTRAINT FOR (a:Alias) REQUIRE a.name IS UNIQUE",
         ]
+
+        # Full-text 인덱스 (텍스트 검색 최적화)
+        fulltext_queries = [
+            """CREATE FULLTEXT INDEX ft_statute_search FOR (s:Statute)
+               ON EACH [s.name, s.abbreviation]""",
+            """CREATE FULLTEXT INDEX ft_case_search FOR (c:Case)
+               ON EACH [c.name, c.summary]""",
+            """CREATE FULLTEXT INDEX ft_alias_search FOR (a:Alias)
+               ON EACH [a.name]""",
+        ]
+
         with self.driver.session() as session:
             for q in queries:
                 try:
                     session.run(q)
                 except Exception as e:
-                    print(f"Constraint warning (may exist): {e}")
-        print("Constraints checked.")
+                    if "already exists" not in str(e).lower():
+                        print(f"Constraint warning: {e}")
+
+            for q in fulltext_queries:
+                try:
+                    session.run(q)
+                except Exception as e:
+                    if "already exists" not in str(e).lower():
+                        print(f"Fulltext index warning: {e}")
+
+        print("Constraints and indexes checked.")
 
     def load_statutes(self) -> None:
         """법령 데이터 로드 (law_cleaned.json)"""
@@ -494,6 +516,24 @@ class GraphBuilder:
 
         print(f"Processed {total} informal abbreviations.")
 
+    def compute_citation_counts(self) -> None:
+        """법령별 인용 수 미리 계산 (성능 최적화)"""
+        print("Computing citation counts...")
+
+        query = """
+        MATCH (s:Statute)
+        OPTIONAL MATCH (c:Case)-[:CITES]->(s)
+        WITH s, count(c) as cnt
+        SET s.citation_count = cnt
+        RETURN count(s) as updated
+        """
+
+        with self.driver.session() as session:
+            result = session.run(query)
+            updated = result.single()["updated"]
+
+        print(f"Updated {updated} statutes with citation_count.")
+
     def run(self) -> None:
         """전체 그래프 구축 실행"""
         self.create_constraints()
@@ -504,6 +544,7 @@ class GraphBuilder:
         self.load_related_statutes()
         self.load_cases()
         self.load_case_citations()
+        self.compute_citation_counts()
         self.close()
         print("Graph construction complete.")
 
