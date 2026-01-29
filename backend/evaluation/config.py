@@ -2,6 +2,7 @@
 RAG 평가 시스템 설정
 
 실험 설정, 디렉토리 경로, 성능 목표 등을 관리
+모든 설정은 app.core.config.settings에서 가져옴 (.env 중앙 관리)
 """
 
 from pathlib import Path
@@ -10,9 +11,22 @@ from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
+# 중앙 설정에서 기본값 가져오기
+try:
+    from app.core.config import settings as app_settings
+    _DEFAULT_EMBEDDING_MODEL = app_settings.LOCAL_EMBEDDING_MODEL
+    _DEFAULT_LANCEDB_URI = app_settings.LANCEDB_URI
+    _DEFAULT_LANCEDB_TABLE = app_settings.LANCEDB_TABLE_NAME
+except ImportError:
+    # 독립 실행 시 환경변수에서 직접 로드
+    import os
+    _DEFAULT_EMBEDDING_MODEL = os.getenv("LOCAL_EMBEDDING_MODEL", "nlpai-lab/KURE-v1")
+    _DEFAULT_LANCEDB_URI = os.getenv("LANCEDB_URI", "./lancedb_data")
+    _DEFAULT_LANCEDB_TABLE = os.getenv("LANCEDB_TABLE_NAME", "legal_chunks")
+
 
 class EvaluationSettings(BaseSettings):
-    """평가 시스템 설정"""
+    """평가 시스템 설정 (app.core.config.settings 기반)"""
 
     # 디렉토리 경로
     evaluation_dir: Path = Field(
@@ -41,24 +55,24 @@ class EvaluationSettings(BaseSettings):
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    # 임베딩 설정
+    # 임베딩 설정 (app.core.config에서 기본값)
     embedding_model: str = Field(
-        default="nlpai-lab/KURE-v1",
-        description="임베딩 모델",
+        default=_DEFAULT_EMBEDDING_MODEL,
+        description="임베딩 모델 (.env LOCAL_EMBEDDING_MODEL)",
     )
     embedding_dimension: int = Field(
         default=1024,
         description="임베딩 차원",
     )
 
-    # LanceDB 설정
+    # LanceDB 설정 (app.core.config에서 기본값)
     lancedb_uri: str = Field(
-        default="./lancedb_data",
-        description="LanceDB 경로",
+        default=_DEFAULT_LANCEDB_URI,
+        description="LanceDB 경로 (.env LANCEDB_URI)",
     )
     lancedb_table: str = Field(
-        default="legal_chunks",
-        description="LanceDB 테이블명",
+        default=_DEFAULT_LANCEDB_TABLE,
+        description="LanceDB 테이블명 (.env LANCEDB_TABLE_NAME)",
     )
     distance_metric: str = Field(
         default="cosine",

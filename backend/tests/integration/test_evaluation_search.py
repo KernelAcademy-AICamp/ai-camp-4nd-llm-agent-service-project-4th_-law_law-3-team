@@ -176,21 +176,45 @@ class TestSearchLatency:
         assert p50 < 500, f"P50 지연 시간 초과: {p50:.2f}ms"
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(
     not Path("lancedb_data").exists(),
     reason="LanceDB 및 PostgreSQL 데이터 필요"
 )
 class TestPostgreSQLIntegration:
-    """PostgreSQL 연동 테스트"""
+    """
+    PostgreSQL 연동 테스트
 
-    async def test_precedent_lookup(self):
+    Note: asyncpg 연결 풀은 첫 사용 시 이벤트 루프에 바인딩됨.
+          pytest-asyncio는 각 테스트마다 새 루프를 생성하므로,
+          테스트마다 독립적인 엔진을 생성하여 충돌 방지.
+    """
+
+    @pytest.fixture
+    def db_engine(self):
+        """테스트용 독립 DB 엔진 생성"""
+        from sqlalchemy.ext.asyncio import create_async_engine
+        from app.core.config import settings
+
+        engine = create_async_engine(
+            settings.DATABASE_URL_ASYNC,
+            pool_size=2,
+            max_overflow=0,
+        )
+        yield engine
+        # 동기적으로 dispose (이벤트 루프 문제 방지)
+
+    @pytest.mark.asyncio
+    async def test_precedent_lookup(self, db_engine):
         """판례 조회 테스트"""
         from sqlalchemy import select, func
-        from app.common.database import async_session_factory
+        from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
         from app.models.precedent_document import PrecedentDocument
 
-        async with async_session_factory() as session:
+        session_factory = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+        async with session_factory() as session:
             # 총 개수 확인
             result = await session.execute(
                 select(func.count(PrecedentDocument.id))
@@ -208,19 +232,28 @@ class TestPostgreSQLIntegration:
             assert precedent is not None
             assert precedent.serial_number is not None
 
-    async def test_law_lookup(self):
+        await db_engine.dispose()
+
+    @pytest.mark.asyncio
+    async def test_law_lookup(self, db_engine):
         """법령 조회 테스트"""
         from sqlalchemy import select, func
-        from app.common.database import async_session_factory
+        from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
         from app.models.law_document import LawDocument
 
-        async with async_session_factory() as session:
+        session_factory = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+        async with session_factory() as session:
             result = await session.execute(
                 select(func.count(LawDocument.id))
             )
             count = result.scalar()
 
             assert count > 0, "PostgreSQL에 법령 데이터가 없습니다"
+
+        await db_engine.dispose()
 
 
 if __name__ == "__main__":

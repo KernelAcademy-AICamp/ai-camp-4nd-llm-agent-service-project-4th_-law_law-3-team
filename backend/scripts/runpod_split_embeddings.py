@@ -49,19 +49,30 @@ except ImportError:
 
 
 # ============================================================================
-# 설정
+# 설정 (환경변수에서 로드)
 # ============================================================================
 
-CONFIG = {
-    "LANCEDB_URI": "./lancedb_data",
-    "LANCEDB_TABLE_NAME": "legal_chunks",
-    "EMBEDDING_MODEL": "nlpai-lab/KURE-v1",
-    "VECTOR_DIM": 1024,
-    "BATCH_SIZE": 64,  # 메모리 절약을 위해 줄임
-    "PRECEDENT_CHUNK_SIZE": 1250,
-    "PRECEDENT_CHUNK_OVERLAP": 125,
-    "PRECEDENT_MIN_CHUNK_SIZE": 100,
-}
+def _get_config() -> dict:
+    """환경변수에서 설정 로드"""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
+    return {
+        "LANCEDB_URI": os.getenv("LANCEDB_URI", "./lancedb_data"),
+        "LANCEDB_TABLE_NAME": os.getenv("LANCEDB_TABLE_NAME", "legal_chunks"),
+        "EMBEDDING_MODEL": os.getenv("LOCAL_EMBEDDING_MODEL", "nlpai-lab/KURE-v1"),
+        "VECTOR_DIM": 1024,
+        "BATCH_SIZE": 64,  # 메모리 절약을 위해 줄임
+        "PRECEDENT_CHUNK_SIZE": 1250,
+        "PRECEDENT_CHUNK_OVERLAP": 125,
+        "PRECEDENT_MIN_CHUNK_SIZE": 100,
+    }
+
+
+CONFIG = _get_config()
 
 
 # ============================================================================

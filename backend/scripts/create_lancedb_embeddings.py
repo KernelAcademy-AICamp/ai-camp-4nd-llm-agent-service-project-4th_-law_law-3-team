@@ -366,16 +366,21 @@ def chunk_law_content(
 
 
 # ============================================================================
-# 임베딩 모델 (KURE-v1)
+# 임베딩 모델 (환경변수에서 로드)
 # ============================================================================
 
-KURE_MODEL_NAME = "nlpai-lab/KURE-v1"
+def _get_embedding_model_name() -> str:
+    """환경변수에서 임베딩 모델명 로드"""
+    return os.getenv("LOCAL_EMBEDDING_MODEL", "nlpai-lab/KURE-v1")
+
+
+KURE_MODEL_NAME = _get_embedding_model_name()
 _local_model = None
 _current_device = None
 
 
 def get_local_model(device: str = None):
-    """KURE-v1 모델 로드 (1024 차원)"""
+    """임베딩 모델 로드 (환경변수 LOCAL_EMBEDDING_MODEL 사용)"""
     global _local_model, _current_device
 
     if device is None:

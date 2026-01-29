@@ -113,6 +113,29 @@ uv run --no-sync python scripts/runpod_lancedb_embeddings.py --stats
 - `backend/scripts/CLAUDE.md` - 임베딩 스크립트 가이드
 - `docs/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
 
+## Embedding Model (임베딩 모델)
+
+검색 API 사용 전 임베딩 모델(약 2.3GB)을 먼저 다운로드해야 합니다.
+
+```bash
+cd backend
+
+# 모델 다운로드
+uv run python scripts/download_models.py
+
+# 캐시 상태 확인
+uv run python scripts/download_models.py --check
+```
+
+| 항목 | 값 |
+|------|-----|
+| 모델명 | `nlpai-lab/KURE-v1` |
+| 크기 | 약 2.3GB |
+| 캐시 경로 | `backend/data/models/` |
+
+> **참고**: 서버는 모델 없이도 시작되지만, 검색 API 호출 시 503 에러가 반환됩니다.
+> 상세 내용은 `backend/CLAUDE.md`의 "Embedding Model" 섹션 참조.
+
 ## RAG 평가 시스템
 
 RAG 챗봇 평가 데이터셋 생성 및 Gradio 분석 UI 제공

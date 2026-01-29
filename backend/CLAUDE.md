@@ -62,14 +62,29 @@ uv pip install torch --index-url https://download.pytorch.org/whl/cu128
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all
 ```
 
-### 7. 서버 실행
+### 7. 임베딩 모델 다운로드 ⚠️ 중요
+
+검색 API를 사용하려면 **반드시 임베딩 모델을 먼저 다운로드**해야 합니다.
+
+```bash
+# 모델 다운로드 (약 2.3GB, 네트워크 상태에 따라 시간 소요)
+uv run python scripts/download_models.py
+
+# 캐시 상태만 확인
+uv run python scripts/download_models.py --check
+```
+
+> **참고**: 서버 시작 시 모델이 없으면 경고만 표시하고 서버는 실행됩니다.
+> 단, 검색 API 호출 시 503 에러가 반환됩니다.
+
+### 8. 서버 실행
 
 ```bash
 uv run uvicorn app.main:app --reload
 # http://localhost:8000/docs 에서 API 문서 확인
 ```
 
-### 8. 데이터 확인 (선택)
+### 9. 데이터 확인 (선택)
 
 ```bash
 # PostgreSQL 데이터 확인
@@ -147,7 +162,7 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `LANCEDB_URI` | LanceDB 저장 경로 | `./lancedb_data` |
 | `LANCEDB_TABLE_NAME` | LanceDB 테이블명 | `legal_chunks` |
 | `USE_LOCAL_EMBEDDING` | 로컬 임베딩 사용 | `true` |
-| `LOCAL_EMBEDDING_MODEL` | 임베딩 모델 | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
+| `LOCAL_EMBEDDING_MODEL` | 임베딩 모델 | `nlpai-lab/KURE-v1` |
 | `UPSTAGE_API_KEY` | Solar API 키 | - |
 | `UPSTAGE_MODEL` | Solar 모델명 | `solar-pro3-260126` |
 
@@ -406,6 +421,73 @@ results = table.search(query_vector).metric('cosine').limit(10).to_pandas()
 1. **torch는 pyproject.toml에 없음** - 환경별로 수동 설치
 2. **--no-sync 필수** - `uv run --no-sync`로 실행
 3. **GPU 자동 감지** - VRAM에 따라 batch_size 자동 설정
+
+## Embedding Model (임베딩 모델)
+
+검색 API는 쿼리를 벡터로 변환하기 위해 **임베딩 모델**이 필요합니다.
+
+### 모델 정보
+
+| 항목 | 값 |
+|------|-----|
+| 모델명 | `nlpai-lab/KURE-v1` |
+| 크기 | 약 2.3GB |
+| 차원 | 1024 |
+| 캐시 경로 | `backend/data/models/` |
+
+### 모델 다운로드
+
+```bash
+cd backend
+
+# 모델 다운로드 (네트워크 상태에 따라 시간 소요)
+uv run python scripts/download_models.py
+
+# 캐시 상태만 확인
+uv run python scripts/download_models.py --check
+
+# 재다운로드 (기존 캐시 무시)
+uv run python scripts/download_models.py --force
+
+# 다른 모델 다운로드
+uv run python scripts/download_models.py --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+```
+
+### 서버 동작 방식
+
+| 상태 | 서버 시작 | 검색 API |
+|------|----------|----------|
+| 모델 캐시됨 | ✓ 정상 | ✓ 정상 |
+| 모델 미캐시 | ⚠️ 경고 후 시작 | ❌ 503 에러 |
+
+**서버 시작 시 경고 예시** (모델 미캐시):
+```
+============================================================
+[WARNING] 임베딩 모델이 캐시되지 않았습니다.
+모델명: nlpai-lab/KURE-v1
+검색 API 사용 전 먼저 모델을 다운로드해주세요:
+  uv run python scripts/download_models.py
+============================================================
+```
+
+### 관련 코드
+
+| 파일 | 설명 |
+|------|------|
+| `app/common/chat_service.py` | `check_embedding_model_availability()`, `get_local_model()` |
+| `scripts/download_models.py` | 모델 다운로드 CLI |
+| `app/main.py` | lifespan에서 시작 시 체크 |
+
+### 환경 변수
+
+```bash
+# backend/.env
+USE_LOCAL_EMBEDDING=true              # 로컬 임베딩 사용 (기본값: true)
+LOCAL_EMBEDDING_MODEL=nlpai-lab/KURE-v1  # 임베딩 모델명
+```
+
+> **팁**: `USE_LOCAL_EMBEDDING=false`로 설정하면 OpenAI 임베딩을 사용하며,
+> 이 경우 로컬 모델 다운로드가 필요 없습니다 (단, `OPENAI_API_KEY` 필요).
 
 ## Graph DB (Neo4j)
 

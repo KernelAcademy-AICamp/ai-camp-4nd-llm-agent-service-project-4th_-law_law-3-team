@@ -87,37 +87,49 @@ except ImportError:
 
 
 # ============================================================================
-# 설정
+# 설정 (환경변수에서 로드, .env 중앙 관리)
 # ============================================================================
 
-CONFIG = {
-    # LanceDB 저장 경로 (현재 작업 디렉토리 기준)
-    "LANCEDB_URI": "./lancedb_data",
-    "LANCEDB_TABLE_NAME": "legal_chunks",
+def _get_config() -> dict:
+    """환경변수에서 설정 로드 (.env 우선)"""
+    # .env 파일 로드 시도
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
 
-    # 임베딩 모델
-    "EMBEDDING_MODEL": "nlpai-lab/KURE-v1",
-    "VECTOR_DIM": 1024,
+    return {
+        # LanceDB 저장 경로 (.env: LANCEDB_URI)
+        "LANCEDB_URI": os.getenv("LANCEDB_URI", "./lancedb_data"),
+        "LANCEDB_TABLE_NAME": os.getenv("LANCEDB_TABLE_NAME", "legal_chunks"),
 
-    # 배치 크기 (자동 설정됨)
-    "BATCH_SIZE": 100,
+        # 임베딩 모델 (.env: LOCAL_EMBEDDING_MODEL)
+        "EMBEDDING_MODEL": os.getenv("LOCAL_EMBEDDING_MODEL", "nlpai-lab/KURE-v1"),
+        "VECTOR_DIM": 1024,
 
-    # 판례 청킹 설정
-    "PRECEDENT_CHUNK_SIZE": 1250,
-    "PRECEDENT_CHUNK_OVERLAP": 125,
-    "PRECEDENT_MIN_CHUNK_SIZE": 100,
+        # 배치 크기 (자동 설정됨)
+        "BATCH_SIZE": 100,
 
-    # 법령 청킹 설정 (토큰 기반)
-    "LAW_MAX_TOKENS": 800,
-    "LAW_MIN_TOKENS": 100,
+        # 판례 청킹 설정
+        "PRECEDENT_CHUNK_SIZE": 1250,
+        "PRECEDENT_CHUNK_OVERLAP": 125,
+        "PRECEDENT_MIN_CHUNK_SIZE": 100,
 
-    # 텍스트 처리 제한
-    "MAX_TEXT_LENGTH": 4000,
-    "DEFAULT_EMPTY_TEXT": "(내용 없음)",
+        # 법령 청킹 설정 (토큰 기반)
+        "LAW_MAX_TOKENS": 800,
+        "LAW_MIN_TOKENS": 100,
 
-    # 쿼리 제한
-    "MAX_QUERY_LIMIT": 1_000_000,
-}
+        # 텍스트 처리 제한
+        "MAX_TEXT_LENGTH": 4000,
+        "DEFAULT_EMPTY_TEXT": "(내용 없음)",
+
+        # 쿼리 제한
+        "MAX_QUERY_LIMIT": 1_000_000,
+    }
+
+
+CONFIG = _get_config()
 
 
 # ============================================================================

@@ -8,7 +8,21 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from app.common.chat_service import generate_chat_response, search_relevant_documents
+from app.common.chat_service import (
+    EmbeddingModelNotFoundError,
+    generate_chat_response,
+    search_relevant_documents,
+)
+
+
+def _map_data_type(data_type: str) -> str:
+    """LanceDB data_type을 표준 doc_type으로 변환"""
+    mapping = {
+        "판례": "precedent",
+        "법령": "law",
+        "헌법재판소": "constitutional",
+    }
+    return mapping.get(data_type, data_type.lower() if data_type else "")
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +41,29 @@ class ChatRequest(BaseModel):
 
 
 class ChatSource(BaseModel):
-    case_name: str
-    case_number: str
+    """
+    챗봇 응답의 출처 정보
+
+    판례와 법령 모두 지원 (필드가 각각 다름)
+    """
+
+    # 판례 필드 (법령일 때는 없음)
+    case_name: Optional[str] = None
+    case_number: Optional[str] = None
+
+    # 법령 필드 (판례일 때는 없음)
+    law_name: Optional[str] = None
+    law_type: Optional[str] = None
+
+    # 공통 필드
     doc_type: str
     similarity: float
+    summary: Optional[str] = None
+    content: Optional[str] = None
+
+    # 그래프 보강 정보 (optional)
+    cited_statutes: Optional[List[str]] = None
+    similar_cases: Optional[List[str]] = None
 
 
 class ChatResponse(BaseModel):
@@ -116,9 +149,38 @@ async def chat(request: ChatRequest):
             chat_history=history,
         )
 
+        # chat_service가 반환하는 모든 필드를 ChatSource로 매핑
+        sources = []
+        for s in result["sources"]:
+            content = s.get("content", "")
+            sources.append(
+                ChatSource(
+                    # 판례 필드
+                    case_name=s.get("case_name"),
+                    case_number=s.get("case_number"),
+                    # 법령 필드
+                    law_name=s.get("law_name"),
+                    law_type=s.get("law_type"),
+                    # 공통 필드
+                    doc_type=s.get("doc_type", ""),
+                    similarity=s.get("similarity", 0),
+                    content=content[:500] if content else None,
+                    summary=content[:300] + "..." if content and len(content) > 300 else content,
+                    # 그래프 보강 정보
+                    cited_statutes=s.get("cited_statutes"),
+                    similar_cases=s.get("similar_cases"),
+                )
+            )
+
         return ChatResponse(
             response=result["response"],
-            sources=[ChatSource(**s) for s in result["sources"]],
+            sources=sources,
+        )
+    except EmbeddingModelNotFoundError as e:
+        logger.error(f"임베딩 모델 없음: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="임베딩 모델이 준비되지 않았습니다. 서버 관리자에게 문의하세요.",
         )
     except Exception as e:
         logger.error(f"챗봇 응답 생성 실패: {e}", exc_info=True)
@@ -152,6 +214,12 @@ async def search(request: SearchRequest):
         ]
 
         return SearchResponse(query=request.query, results=search_results)
+    except EmbeddingModelNotFoundError as e:
+        logger.error(f"임베딩 모델 없음: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="임베딩 모델이 준비되지 않았습니다. 서버 관리자에게 문의하세요.",
+        )
     except Exception as e:
         logger.error(f"검색 실패: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="검색 중 오류가 발생했습니다")
@@ -190,8 +258,10 @@ async def search_precedents(
         precedents = []
         for doc in results:
             metadata = doc.get("metadata", {})
+            # court_name 또는 court 필드 사용 (search_relevant_documents는 court_name으로 반환)
+            court_value = metadata.get("court_name") or metadata.get("court", "")
             # 법원 필터 적용
-            if court and metadata.get("court") != court:
+            if court and court_value != court:
                 continue
             precedents.append(
                 PrecedentItem(
@@ -199,7 +269,7 @@ async def search_precedents(
                     case_name=metadata.get("case_name", ""),
                     case_number=metadata.get("case_number", ""),
                     doc_type=metadata.get("doc_type", ""),
-                    court=metadata.get("court"),
+                    court=court_value,
                     date=metadata.get("date"),
                     summary=doc["content"][:300] + "..." if len(doc["content"]) > 300 else doc["content"],
                     similarity=round(doc.get("similarity", 0), 3),
@@ -210,6 +280,12 @@ async def search_precedents(
             keyword=keyword,
             total=len(precedents),
             precedents=precedents,
+        )
+    except EmbeddingModelNotFoundError as e:
+        logger.error(f"임베딩 모델 없음: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="임베딩 모델이 준비되지 않았습니다. 서버 관리자에게 문의하세요.",
         )
     except Exception as e:
         logger.error(f"판례 검색 실패: {e}", exc_info=True)
@@ -233,16 +309,24 @@ async def get_precedent_detail(precedent_id: str):
             raise HTTPException(status_code=404, detail="판례를 찾을 수 없습니다")
 
         metadata = result.get("metadata", {})
+        content = result.get("content", "")
+
+        # LanceDB 필드명 → 표준 필드명 매핑
+        # LanceDB: title, data_type, source_name
+        # 표준: case_name, doc_type, court
+        case_name = metadata.get("title", "") or metadata.get("case_name", "")
+        doc_type = _map_data_type(metadata.get("data_type", "")) or metadata.get("doc_type", "")
+        court = metadata.get("source_name", "") or metadata.get("court", "")
 
         return PrecedentDetailResponse(
             id=precedent_id,
-            case_name=metadata.get("case_name", ""),
+            case_name=case_name,
             case_number=metadata.get("case_number", ""),
-            doc_type=metadata.get("doc_type", ""),
-            court=metadata.get("court"),
+            doc_type=doc_type,
+            court=court,
             date=metadata.get("date"),
-            content=result.get("content", ""),
-            summary=result.get("content", "")[:500] + "..." if len(result.get("content", "")) > 500 else result.get("content", ""),
+            content=content,
+            summary=content[:500] + "..." if len(content) > 500 else content,
         )
     except HTTPException:
         raise
@@ -251,16 +335,31 @@ async def get_precedent_detail(precedent_id: str):
         raise HTTPException(status_code=500, detail="판례 조회 중 오류가 발생했습니다")
 
 
+def _get_graph_service():
+    """GraphService lazy 로드 (Neo4j 연결 실패 시에도 동작)"""
+    try:
+        from app.common.graph_service import get_graph_service
+
+        service = get_graph_service()
+        if service.is_connected:
+            return service
+    except Exception as e:
+        logger.debug(f"GraphService 로드 실패: {e}")
+    return None
+
+
 @router.post("/precedents/{precedent_id}/ask", response_model=AIQuestionResponse)
 async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest):
     """
     특정 판례에 대해 AI에게 질문
 
     선택한 판례의 컨텍스트를 기반으로 질문에 답변합니다.
+    그래프 컨텍스트로 인용 법령 및 유사 판례 정보를 추가합니다.
     """
     try:
         from app.common.vectorstore import VectorStore
         from openai import OpenAI
+
         from app.core.config import settings
 
         # 판례 내용 조회
@@ -272,6 +371,30 @@ async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest):
 
         metadata = precedent.get("metadata", {})
         content = precedent.get("content", "")
+        case_number = metadata.get("case_number", "")
+
+        # 그래프 컨텍스트 조회 (선택적)
+        cited_statutes = None
+        similar_cases = None
+        graph_context_text = ""
+
+        if graph_service := _get_graph_service():
+            try:
+                case_context = graph_service.enrich_case_context(case_number)
+                if case_context.get("cited_statutes"):
+                    cited_statutes = [
+                        s.get("name", "") for s in case_context["cited_statutes"][:5]
+                    ]
+                    graph_context_text += f"\n- 인용 법령: {', '.join(cited_statutes)}"
+
+                if case_context.get("similar_cases"):
+                    similar_cases = [
+                        s.get("case_number", "")
+                        for s in case_context["similar_cases"][:3]
+                    ]
+                    graph_context_text += f"\n- 유사 판례: {', '.join(similar_cases)}"
+            except Exception as e:
+                logger.debug(f"그래프 컨텍스트 조회 실패: {e}")
 
         # AI 응답 생성
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -284,9 +407,9 @@ async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest):
 
 [판례 정보]
 - 사건명: {metadata.get('case_name', '')}
-- 사건번호: {metadata.get('case_number', '')}
+- 사건번호: {case_number}
 - 법원: {metadata.get('court', '')}
-- 판결일: {metadata.get('date', '')}
+- 판결일: {metadata.get('date', '')}{graph_context_text}
 
 [판례 내용]
 {content[:3000]}
@@ -314,10 +437,16 @@ async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest):
             answer=answer or "",
             sources=[
                 ChatSource(
-                    case_name=metadata.get("case_name", ""),
-                    case_number=metadata.get("case_number", ""),
+                    case_name=metadata.get("case_name"),
+                    case_number=case_number or None,
                     doc_type=metadata.get("doc_type", ""),
                     similarity=1.0,
+                    summary=(
+                        content[:300] + "..." if len(content) > 300 else content
+                    ),
+                    content=content[:500] if content else None,
+                    cited_statutes=cited_statutes,
+                    similar_cases=similar_cases,
                 )
             ],
         )

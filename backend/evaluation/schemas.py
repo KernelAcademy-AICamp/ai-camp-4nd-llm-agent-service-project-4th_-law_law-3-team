@@ -202,6 +202,16 @@ class QueryResult(BaseModel):
     ndcg_at_10: float = Field(description="NDCG@10")
 
 
+def _get_default_embedding_model() -> str:
+    """중앙 설정에서 임베딩 모델 기본값 가져오기"""
+    try:
+        from app.core.config import settings
+        return settings.LOCAL_EMBEDDING_MODEL
+    except ImportError:
+        import os
+        return os.getenv("LOCAL_EMBEDDING_MODEL", "nlpai-lab/KURE-v1")
+
+
 class ExperimentConfig(BaseModel):
     """실험 설정"""
     experiment_id: str = Field(description="실험 ID (EXP-YYYYMMDD-NNN 형식)")
@@ -212,8 +222,8 @@ class ExperimentConfig(BaseModel):
     )
     dataset_path: str = Field(description="평가 데이터셋 경로")
     embedding_model: str = Field(
-        default="nlpai-lab/KURE-v1",
-        description="임베딩 모델",
+        default_factory=_get_default_embedding_model,
+        description="임베딩 모델 (.env LOCAL_EMBEDDING_MODEL)",
     )
     distance_metric: str = Field(
         default="cosine",

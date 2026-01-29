@@ -215,30 +215,35 @@ def print_device_info():
     return device_info, config
 
 # ============================================================================
-# 설정 (필요에 따라 수정)
+# 설정 (환경변수에서 로드, Colab 기본값 사용)
 # ============================================================================
 
-CONFIG = {
-    # LanceDB 저장 경로
-    "LANCEDB_URI": "/content/lancedb_data",
-    "LANCEDB_TABLE_NAME": "legal_chunks",
+def _get_config() -> dict:
+    """환경변수에서 설정 로드 (Colab 기본값 포함)"""
+    return {
+        # LanceDB 저장 경로 (.env: LANCEDB_URI, Colab 기본: /content/lancedb_data)
+        "LANCEDB_URI": os.getenv("LANCEDB_URI", "/content/lancedb_data"),
+        "LANCEDB_TABLE_NAME": os.getenv("LANCEDB_TABLE_NAME", "legal_chunks"),
 
-    # 임베딩 모델
-    "EMBEDDING_MODEL": "nlpai-lab/KURE-v1",
-    "VECTOR_DIM": 1024,
+        # 임베딩 모델 (.env: LOCAL_EMBEDDING_MODEL)
+        "EMBEDDING_MODEL": os.getenv("LOCAL_EMBEDDING_MODEL", "nlpai-lab/KURE-v1"),
+        "VECTOR_DIM": 1024,
 
-    # 배치 크기
-    "BATCH_SIZE": 100,
+        # 배치 크기
+        "BATCH_SIZE": 100,
 
-    # 판례 청킹 설정
-    "PRECEDENT_CHUNK_SIZE": 1250,
-    "PRECEDENT_CHUNK_OVERLAP": 125,
-    "PRECEDENT_MIN_CHUNK_SIZE": 100,
+        # 판례 청킹 설정
+        "PRECEDENT_CHUNK_SIZE": 1250,
+        "PRECEDENT_CHUNK_OVERLAP": 125,
+        "PRECEDENT_MIN_CHUNK_SIZE": 100,
 
-    # 법령 청킹 설정 (토큰 기반)
-    "LAW_MAX_TOKENS": 800,
-    "LAW_MIN_TOKENS": 100,
-}
+        # 법령 청킹 설정 (토큰 기반)
+        "LAW_MAX_TOKENS": 800,
+        "LAW_MIN_TOKENS": 100,
+    }
+
+
+CONFIG = _get_config()
 
 
 # ============================================================================

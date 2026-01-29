@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,10 +12,24 @@ from app.core.registry import ModuleRegistry
 MEDIA_DIR = Path(__file__).parent.parent / "data" / "media"
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """애플리케이션 생명주기 관리"""
+    # 시작 시: 임베딩 모델 캐시 상태 확인
+    from app.common.chat_service import check_embedding_model_availability
+
+    check_embedding_model_availability()
+
+    yield
+    # 종료 시: 정리 작업 (필요 시)
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     description="법률 서비스 플랫폼 API",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS 설정

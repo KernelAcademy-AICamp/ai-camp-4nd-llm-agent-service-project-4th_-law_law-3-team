@@ -19,13 +19,24 @@ _embedding_model = None
 _vector_store = None
 
 
+def _get_embedding_model_name() -> str:
+    """중앙 설정에서 임베딩 모델명 가져오기"""
+    try:
+        from app.core.config import settings
+        return settings.LOCAL_EMBEDDING_MODEL
+    except ImportError:
+        import os
+        return os.getenv("LOCAL_EMBEDDING_MODEL", "nlpai-lab/KURE-v1")
+
+
 def get_embedding_model():
-    """임베딩 모델 로드 (lazy)"""
+    """임베딩 모델 로드 (lazy, .env 설정 사용)"""
     global _embedding_model
     if _embedding_model is None:
         from sentence_transformers import SentenceTransformer
+        model_name = _get_embedding_model_name()
         _embedding_model = SentenceTransformer(
-            "nlpai-lab/KURE-v1",
+            model_name,
             trust_remote_code=True,
         )
     return _embedding_model

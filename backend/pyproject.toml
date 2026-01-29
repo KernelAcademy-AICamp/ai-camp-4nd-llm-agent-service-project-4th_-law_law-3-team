@@ -73,6 +73,7 @@ strict = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"  # 전체 테스트 세션 동안 같은 이벤트 루프 공유
 testpaths = ["tests"]
 filterwarnings = [
     "ignore::DeprecationWarning",

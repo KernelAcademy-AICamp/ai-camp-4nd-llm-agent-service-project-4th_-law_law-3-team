@@ -11,9 +11,35 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+import asyncio
 import pytest
+import pytest_asyncio
 import tempfile
 from typing import Generator
+
+
+# ============================================================================
+# Async 테스트용 이벤트 루프 설정
+# ============================================================================
+# 문제: SQLAlchemy async engine이 첫 사용 시 이벤트 루프에 바인딩됨
+#       pytest-asyncio 기본값은 각 테스트마다 새 루프 생성 → 충돌 발생
+# 해결: 전체 테스트 세션 동안 같은 이벤트 루프 공유
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """세션 스코프 이벤트 루프 (asyncpg 연결 풀 공유용)"""
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
+    yield loop
+    loop.close()
+
+
+@pytest_asyncio.fixture(scope="session")
+async def db_engine():
+    """세션 스코프 DB 엔진 (테스트 종료 시 정리)"""
+    from app.common.database import engine
+    yield engine
+    await engine.dispose()
 
 
 @pytest.fixture(scope="session")
