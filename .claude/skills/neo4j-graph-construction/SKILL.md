@@ -57,8 +57,9 @@ dependencies = [
 
 | Label | Description | 주요 속성 (Properties) |
 | :--- | :--- | :--- |
-| **Statute** | 법령 및 조문 | `name` (법령명), `article` (조문번호), `type` (법률/시행령/규칙), `content` (본문) |
-| **Case** | 판례 | `case_number` (사건번호), `summary` (판결요지), `date` (선고일), `verdict` (주문) |
+| **Statute** | 법령 및 조문 | `name` (법령명), `abbreviation` (공식약칭), `type` (법률/시행령/규칙), `citation_count` (인용 수) |
+| **Case** | 판례 | `case_number` (사건번호), `name` (사건명), `summary` (판결요지) |
+| **Alias** | 비공식 약칭 | `name` (약칭명), `category` (분류: 소송법, 형사특별법 등) |
 | **Lawyer** | 변호사 | `name`, `specialty` (전문분야) |
 
 ### 2.2 Relationships (엣지)
@@ -69,6 +70,7 @@ dependencies = [
 | `CITES` | Case → Statute | 72,414 | 판례가 법령 인용 |
 | `CITES_CASE` | Case → Case | 87,654 | 판례가 판례 인용 |
 | `RELATED_TO` | Statute → Statute | 93 | 관련 법령 |
+| `ALIAS_OF` | Alias → Statute | 69 | 비공식 약칭 연결 |
 
 #### `HIERARCHY_OF` (법령 계급 관계)
 - **방향**: `(Statute:Lower)-[:HIERARCHY_OF]->(Statute:Upper)`
@@ -89,6 +91,12 @@ dependencies = [
 - **방향**: `(Statute)-[:RELATED_TO]->(Statute)`
 - **의미**: 관련 법령 연결
 - **데이터 소스**: 계급도의 `관련법령` 필드
+
+#### `ALIAS_OF` (비공식 약칭)
+- **방향**: `(Alias)-[:ALIAS_OF]->(Statute)`
+- **의미**: 비공식 약칭이 정식 법령명을 가리킴
+- **데이터 소스**: `scripts/informal_abbreviations.json` (69개 매핑)
+- **예시**: `(민소법)-[:ALIAS_OF]->(민사소송법)`, `(특가법)-[:ALIAS_OF]->(특정범죄 가중처벌 등에 관한 법률)`
 
 ## 3. 데이터 마이그레이션 (Migration Strategy)
 
@@ -168,12 +176,14 @@ docker compose up -d neo4j
 uv run python scripts/build_graph.py
 
 # 구축 결과:
-# - Statute 노드: 5,572개
+# - Statute 노드: 5,572개 (abbreviation, citation_count 속성 포함)
 # - Case 노드: 65,107개
+# - Alias 노드: 69개 (비공식 약칭)
 # - HIERARCHY_OF: 3,624개
 # - CITES: 72,414개
 # - CITES_CASE: 87,654개
 # - RELATED_TO: 93개
+# - ALIAS_OF: 69개
 ```
 
 ### 5.2 검증
@@ -238,3 +248,110 @@ MATCH path = (s:Statute {name: $name})<-[:HIERARCHY_OF*]-(child)
 RETURN child.name, length(path) as depth
 ORDER BY depth
 ```
+
+### 6.4 약칭 통합 검색
+정식명, 공식약칭, 비공식약칭 모두 지원하는 통합 검색 패턴입니다.
+
+```cypher
+-- 통합 검색: 정식명 OR 공식약칭 OR 비공식약칭
+OPTIONAL MATCH (s1:Statute {name: $query})
+OPTIONAL MATCH (s2:Statute {abbreviation: $query})
+OPTIONAL MATCH (a:Alias {name: $query})-[:ALIAS_OF]->(s3:Statute)
+WITH coalesce(s1, s2, s3) as s
+WHERE s IS NOT NULL
+RETURN s.name, s.abbreviation, s.citation_count
+```
+
+**검색 예시:**
+| 입력 | 매칭 방식 | 결과 |
+|------|----------|------|
+| `민사소송법` | 정식명 | ✓ |
+| `119법` | 공식약칭 | ✓ |
+| `민소법` | 비공식약칭 (Alias) | ✓ |
+| `특가법` | 비공식약칭 (Alias) | ✓ |
+
+## 7. 성능 최적화
+
+### 7.1 인덱스 구성
+
+```cypher
+-- 기본 인덱스 (Constraint)
+CREATE CONSTRAINT FOR (s:Statute) REQUIRE s.id IS UNIQUE
+CREATE CONSTRAINT FOR (s:Statute) REQUIRE s.name IS UNIQUE
+CREATE CONSTRAINT FOR (c:Case) REQUIRE c.id IS UNIQUE
+CREATE CONSTRAINT FOR (c:Case) REQUIRE c.case_number IS UNIQUE
+
+-- 추가 인덱스
+CREATE INDEX FOR (s:Statute) ON (s.abbreviation)
+CREATE INDEX FOR (c:Case) ON (c.name)
+CREATE INDEX FOR (a:Alias) ON (a.name)
+
+-- Full-text 인덱스 (텍스트 검색용)
+CREATE FULLTEXT INDEX ft_statute_search FOR (s:Statute) ON EACH [s.name, s.abbreviation]
+CREATE FULLTEXT INDEX ft_case_search FOR (c:Case) ON EACH [c.name, c.summary]
+CREATE FULLTEXT INDEX ft_alias_search FOR (a:Alias) ON EACH [a.name]
+```
+
+### 7.2 사전 계산 속성
+
+`citation_count` 속성을 Statute 노드에 미리 저장하여 집계 쿼리 성능 향상:
+
+```cypher
+-- 구축 시 사전 계산
+MATCH (s:Statute)
+OPTIONAL MATCH (c:Case)-[:CITES]->(s)
+WITH s, count(c) as cnt
+SET s.citation_count = cnt
+
+-- 활용: 가장 많이 인용된 법령 TOP 10
+MATCH (s:Statute) WHERE s.citation_count > 0
+RETURN s.name, s.citation_count
+ORDER BY s.citation_count DESC LIMIT 10
+```
+
+### 7.3 Full-text 검색
+
+```cypher
+-- 법령 Full-text 검색
+CALL db.index.fulltext.queryNodes("ft_statute_search", "도로교통")
+YIELD node, score
+RETURN node.name, score LIMIT 10
+
+-- 판례 Full-text 검색
+CALL db.index.fulltext.queryNodes("ft_case_search", "손해배상")
+YIELD node, score
+RETURN node.case_number, node.name, score LIMIT 10
+```
+
+### 7.4 벤치마크 결과
+
+| 쿼리 유형 | 응답 시간 |
+|----------|----------|
+| ID/이름 조회 | 3-14ms |
+| 약칭 통합 검색 | 9ms |
+| 계급 탐색 | 17-33ms |
+| 인용 법령 TOP 10 | 13ms |
+| 유사 판례 검색 | 35ms |
+
+## 8. 데이터 파일
+
+| 파일 | 위치 | 설명 |
+|------|------|------|
+| `lsAbrv.json` | `data/` | 공식 약칭 (2,642개) |
+| `informal_abbreviations.json` | `scripts/` | 비공식 약칭 (69개, 10개 카테고리) |
+| `[cleaned]lsStmd-full.json` | `data/` | 법령 계급도 |
+| `law_cleaned.json` | `data/` | 법령 데이터 (5,841건) |
+| `precedents_cleaned.json` | `data/` | 판례 데이터 (65,107건) |
+
+### 비공식 약칭 카테고리
+
+| 카테고리 | 예시 |
+|----------|------|
+| 소송법 | 민소법, 형소법, 행소법 |
+| 형사특별법 | 특가법, 특경법, 폭처법, 성폭법 |
+| 노동법 | 근기법, 노조법, 산재법 |
+| 조세법 | 상증세법, 부가세법, 조특법 |
+| 경제/상거래 | 공정거래법, 하도급법, 자본시장법 |
+| IT/정보 | 정통망법, 개보법, 통비법 |
+| 부동산/건설 | 주임법, 상임법, 도교법 |
+| 행정/공공 | 행절법, 행심법, 국배법 |

@@ -446,10 +446,12 @@ uv run python scripts/build_graph.py
 # 구축 내용:
 # - Statute 노드 (법령): 5,572개
 # - Case 노드 (판례): 65,107개
+# - Alias 노드 (비공식 약칭): 69개
 # - HIERARCHY_OF 관계 (법령 계급): 3,624개
 # - CITES 관계 (판례→법령): 72,414개
 # - CITES_CASE 관계 (판례→판례): 87,654개
 # - RELATED_TO 관계 (법령→법령): 93개
+# - ALIAS_OF 관계 (약칭→법령): 69개
 ```
 
 ### 검증
@@ -458,27 +460,69 @@ uv run python scripts/build_graph.py
 # CLI 검증 (통계, 샘플 경로)
 uv run python scripts/verify_graph.py
 
-# Gradio UI 검증
+# Gradio UI 검증 (약칭 통합 검색 지원)
 uv run python scripts/verify_gradio.py
 # → http://localhost:7860
 
-# 테스트 실행 (27개 테스트)
-uv run python tests/integration/test_neo4j_graph.py
+# 테스트 실행 (30개 테스트)
+uv run pytest tests/integration/test_neo4j_graph.py -v
 ```
 
 ### 그래프 스키마
 
 ```
 노드 (Nodes):
-- Statute: id, name, type, promulgation_date
+- Statute: id, name, type, promulgation_date, abbreviation, citation_count
 - Case: id, case_number, name, summary
+- Alias: name, category (비공식 약칭)
 
 관계 (Relationships):
 - (Statute)-[:HIERARCHY_OF]->(Statute)  # 시행령 → 법률
 - (Case)-[:CITES]->(Statute)             # 판례 → 법령 인용
 - (Case)-[:CITES_CASE]->(Case)           # 판례 → 판례 인용
 - (Statute)-[:RELATED_TO]->(Statute)     # 법령 → 법령 관련
+- (Alias)-[:ALIAS_OF]->(Statute)         # 비공식 약칭 → 법령
 ```
+
+### 약칭 검색
+
+세 가지 방식으로 법령을 검색할 수 있습니다:
+- **정식 법령명**: `민사소송법`, `도로교통법`
+- **공식 약칭** (`lsAbrv.json`): `119법`, `특정범죄가중법`
+- **비공식 약칭** (`informal_abbreviations.json`): `민소법`, `도교법`, `특가법`
+
+```cypher
+-- 통합 검색 (정식명/공식약칭/비공식약칭)
+OPTIONAL MATCH (s1:Statute {name: $query})
+OPTIONAL MATCH (s2:Statute {abbreviation: $query})
+OPTIONAL MATCH (a:Alias {name: $query})-[:ALIAS_OF]->(s3:Statute)
+WITH coalesce(s1, s2, s3) as s WHERE s IS NOT NULL
+RETURN s
+```
+
+### 성능 최적화
+
+인덱스 및 Full-text 검색이 적용되어 있습니다:
+
+| 인덱스 | 용도 |
+|--------|------|
+| `Statute.id`, `Statute.name` | 기본 조회 |
+| `Statute.abbreviation` | 공식 약칭 검색 |
+| `Case.id`, `Case.case_number`, `Case.name` | 판례 조회 |
+| `Alias.name` | 비공식 약칭 검색 |
+| `ft_statute_search` | 법령 Full-text 검색 |
+| `ft_case_search` | 판례 Full-text 검색 |
+| `ft_alias_search` | 약칭 Full-text 검색 |
+
+**성능 벤치마크:**
+
+| 쿼리 | 응답 시간 |
+|------|-----------|
+| ID/이름 조회 | 3-14ms |
+| 약칭 통합 검색 | 9ms |
+| 계급 탐색 | 17-33ms |
+| 인용 법령 TOP 10 | 13ms |
+| 유사 판례 검색 | 35ms |
 
 ### Cypher 쿼리 예시
 
@@ -489,21 +533,27 @@ OPTIONAL MATCH (s)-[:HIERARCHY_OF]->(upper)
 OPTIONAL MATCH (lower)-[:HIERARCHY_OF]->(s)
 RETURN s.name, collect(upper.name) as 상위법, collect(lower.name) as 하위법
 
--- 특정 판례가 인용한 법령/판례
-MATCH (c:Case {case_number: '2023다12345'})
-OPTIONAL MATCH (c)-[:CITES]->(statute:Statute)
-OPTIONAL MATCH (c)-[:CITES_CASE]->(cited:Case)
-RETURN c.name, collect(statute.name), collect(cited.case_number)
+-- 비공식 약칭으로 법령 검색
+MATCH (a:Alias {name: '민소법'})-[:ALIAS_OF]->(s:Statute)
+RETURN s.name, s.abbreviation
 
--- 가장 많이 인용된 법령 TOP 10
-MATCH (c:Case)-[:CITES]->(s:Statute)
-RETURN s.name, count(c) as citations
-ORDER BY citations DESC LIMIT 10
+-- Full-text 법령 검색
+CALL db.index.fulltext.queryNodes("ft_statute_search", "도로교통")
+YIELD node RETURN node LIMIT 10
+
+-- Full-text 판례 검색
+CALL db.index.fulltext.queryNodes("ft_case_search", "손해배상")
+YIELD node RETURN node LIMIT 10
+
+-- 가장 많이 인용된 법령 TOP 10 (최적화: citation_count 사용)
+MATCH (s:Statute) WHERE s.citation_count > 0
+RETURN s.name, s.citation_count
+ORDER BY s.citation_count DESC LIMIT 10
 
 -- 같은 법령을 인용한 유사 판례
-MATCH (c1:Case)-[:CITES]->(s:Statute)<-[:CITES]-(c2:Case)
+MATCH (c1:Case {id: $id})-[:CITES]->(s:Statute)<-[:CITES]-(c2:Case)
 WHERE c1 <> c2
-RETURN c1.case_number, c2.case_number, count(s) as common
+RETURN c2.case_number, count(s) as common
 ORDER BY common DESC LIMIT 10
 ```
 
