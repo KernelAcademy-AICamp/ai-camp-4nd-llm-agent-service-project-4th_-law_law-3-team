@@ -24,6 +24,15 @@ export const modules: Module[] = [
     roles: ['user'],
   },
   {
+    id: 'lawyer-stats',
+    name: '변호사 통계',
+    description: '지역별, 전문분야별 변호사 현황 대시보드',
+    href: '/lawyer-stats',
+    icon: '📊',
+    enabled: true,
+    roles: ['lawyer'],
+  },
+  {
     id: 'case-precedent',
     name: '판례 검색',
     description: 'RAG 기반 판례 검색 및 AI 질문',

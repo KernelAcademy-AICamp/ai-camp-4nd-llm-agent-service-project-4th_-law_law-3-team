@@ -58,6 +58,32 @@ settings.DATABASE_URL
 settings.ENABLED_MODULES  # 빈 리스트면 모든 모듈 활성화
 ```
 
+## Modules
+
+### lawyer_stats (변호사 통계)
+
+**경로:** `app/modules/lawyer_stats/`
+
+**서비스 함수 (`service/__init__.py`):**
+- `calculate_overview()` - 전체 현황 요약
+- `calculate_by_region()` - 지역별 변호사 수 집계
+- `calculate_density_by_region(year, include_change)` - 인구 대비 밀도 계산
+- `calculate_by_specialty()` - 전문분야별 통계
+- `calculate_cross_analysis()` - 지역×전문분야 교차 분석
+
+**인구 데이터:** `../data/population.json` (프로젝트 루트)
+- 출처: KOSIS e지방지표 (주민등록인구, 추계인구)
+- `current` - 현재 인구 (2025.12 기준)
+- `2030/2035/2040` - 추계인구
+- 업데이트: `python scripts/update_population.py` (CSV → JSON 변환)
+
+**API 엔드포인트:**
+- `GET /overview` - 전체 현황 요약
+- `GET /by-region` - 지역별 변호사 수
+- `GET /density-by-region?year=current&include_change=false` - 밀도 조회
+- `GET /by-specialty` - 전문분야별 통계
+- `GET /cross-analysis` - 지역×전문분야 교차 분석
+
 ## Conventions
 
 - 라우터 함수는 `async def` 사용

@@ -53,6 +53,24 @@ src/features/<module-name>/
 
 `next.config.js`의 rewrites 설정으로 `/api/*` 요청이 백엔드(localhost:8000)로 프록시됩니다.
 
+## Features
+
+### lawyer-stats (변호사 통계 대시보드)
+
+**경로:** `src/features/lawyer-stats/`
+
+**컴포넌트:**
+- `RegionGeoMap` - 대한민국 시군구 지도 (TopoJSON)
+- `RegionDetailList` - 지역 목록 및 예측 상세 뷰
+- `CrossAnalysisHeatmap` - 지역×전문분야 히트맵
+- `SpecialtyBarChart` - 전문분야별 바 차트
+- `StickyTabNav` - 스크롤 연동 탭
+
+**ViewMode:**
+- `count` - 변호사 수
+- `density` - 인구 대비 밀도 (현재)
+- `prediction` - 향후 예측 (2030/2035/2040)
+
 ## Conventions
 
 - 컴포넌트: 함수형 컴포넌트 + TypeScript

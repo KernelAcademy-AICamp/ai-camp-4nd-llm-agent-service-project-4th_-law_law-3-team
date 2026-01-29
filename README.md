@@ -22,6 +22,7 @@ law-3-team/
 │   │   │   └── registry.py          # 모듈 자동 등록
 │   │   ├── modules/                 # 기능 모듈 (추가/삭제 용이)
 │   │   │   ├── lawyer_finder/       # 위치 기반 변호사 추천
+│   │   │   ├── lawyer_stats/         # 변호사 통계 대시보드
 │   │   │   ├── case_precedent/      # 판례 검색 및 추천
 │   │   │   ├── review_price/        # 후기/가격 비교
 │   │   │   ├── storyboard/          # 타임라인 스토리보드
@@ -37,6 +38,7 @@ law-3-team/
     ├── src/
     │   ├── app/                     # Next.js App Router 페이지
     │   │   ├── lawyer-finder/
+    │   │   ├── lawyer-stats/
     │   │   ├── case-precedent/
     │   │   ├── review-price/
     │   │   ├── storyboard/
@@ -44,6 +46,7 @@ law-3-team/
     │   │   └── small-claims/
     │   ├── features/                # 기능별 컴포넌트/훅/서비스
     │   │   ├── lawyer-finder/
+    │   │   ├── lawyer-stats/
     │   │   ├── case-precedent/
     │   │   ├── review-price/
     │   │   ├── storyboard/
@@ -63,11 +66,23 @@ law-3-team/
 | 모듈 | 설명 | 주요 기능 |
 |------|------|----------|
 | **lawyer_finder** | 카카오맵 API를 활용한 위치 기반 변호사 검색 | 지도 기반 검색, 반경 설정, 변호사 상세 정보 |
+| **lawyer_stats** | 지역별·전문분야별 변호사 분포 및 시장 분석 | 지역별 밀도, 향후 예측(2030/2035/2040), 히트맵 |
 | **case_precedent** | RAG 기반 판례 검색 및 AI 질문 | Split View 검색, 필터(문서유형/법원), AI 판례 분석 |
 | **review_price** | 상담 후기 및 가격 정보 비교 | 후기 검색, 가격 비교, 필터링 |
 | **storyboard** | AI 이미지 생성을 활용한 사건 타임라인 시각화 | 타임라인 생성, 이미지 생성 |
 | **law_study** | 로스쿨 학생용 학습 자료, 퀴즈 제공 | 학습 자료, 퀴즈, 오답 노트 |
 | **small_claims** | 소액 소송 나홀로 소송 지원 | 4단계 위자드, 증거 체크리스트, AI 서류 생성 |
+
+### 변호사 통계 (lawyer_stats) 상세
+
+- **지역별 현황**: 시/도 → 시/군/구 드릴다운, 변호사 수 및 인구 대비 밀도
+- **향후 예측**: 2030/2035/2040년 추계인구 기반 밀도 변화 예측
+- **교차 분석**: 지역×전문분야 히트맵 시각화
+- **API 엔드포인트**:
+  - `GET /api/lawyer-stats/overview` - 전체 현황 요약
+  - `GET /api/lawyer-stats/by-region` - 지역별 변호사 수
+  - `GET /api/lawyer-stats/density-by-region?year=current` - 지역별 밀도
+  - `GET /api/lawyer-stats/cross-analysis` - 지역×전문분야 교차 분석
 
 ### 판례 검색 (case_precedent) 상세
 
@@ -185,6 +200,53 @@ uv run python scripts/geocode_lawyers.py --api-key YOUR_KAKAO_REST_API_KEY
 - 동일 주소는 캐싱하여 중복 호출 방지
 
 > **참고:** 데이터 파일이 없으면 변호사 찾기 기능이 빈 결과를 반환합니다.
+
+### 인구 데이터 (lawyer_stats 모듈)
+
+변호사 통계의 인구 대비 밀도 및 향후 예측 기능에 사용됩니다.
+
+```
+data/
+└── population.json    # 인구 데이터 (현재 + 추계)
+```
+
+**데이터 구조:**
+```json
+{
+  "meta": {
+    "source": "KOSIS e지방지표 (https://kosis.kr)",
+    "source_current": "주민등록인구(시도/시/군/구)",
+    "source_prediction": "추계인구(시/군/구)",
+    "current_year": 2025,
+    "prediction_years": [2030, 2035, 2040]
+  },
+  "data": {
+    "서울 강남구": {
+      "current": 556330,
+      "2030": 541234,
+      "2035": 528901,
+      "2040": 515678
+    }
+  }
+}
+```
+
+**데이터 업데이트:**
+```bash
+cd backend
+
+# 1. KOSIS에서 CSV 다운로드
+#    -> e지방지표(주제별) -> 인구
+#    -> 주민등록인구(시도/시/군/구) 또는 추계인구(시/군/구)
+#    -> 조회 조건 '합계'로 다운로드 (CSV UTF-8)
+
+# 2. CSV 파일을 data/ 폴더에 저장
+#    - data/population_YYYYMM.csv (현재 인구)
+#    - data/population_pred.csv (추계인구)
+
+# 3. JSON 변환 스크립트 실행
+python scripts/update_population.py
+```
 
 ### 법률 데이터 (판례, 헌재결정례, 행정심판례, 법령해석례)
 
