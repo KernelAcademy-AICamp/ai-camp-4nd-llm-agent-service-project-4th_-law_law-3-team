@@ -17,10 +17,18 @@ interface Message {
 }
 
 interface ChatSource {
-  case_name: string
-  case_number: string
+  case_name?: string
+  case_number?: string
   doc_type: string
   similarity: number
+  summary?: string
+  content?: string
+  // 법령용 필드
+  law_name?: string
+  law_type?: string
+  // 그래프 보강 정보
+  cited_statutes?: string[]
+  similar_cases?: string[]
 }
 
 interface MultiAgentChatResponse {
@@ -173,7 +181,7 @@ export default function ChatWidget() {
         
         // 세션 데이터에 추가하여 페이지 이동 후 사용할 수 있게 함
         newSessionData.aiGeneratedCase = aiCase
-        // [NEW] 모든 참조 자료를 저장 (일반인 모드용)
+        // 모든 참조 자료를 저장 (일반인 모드용)
         newSessionData.aiReferences = response.data.sources || []
         
         setSessionData({ ...sessionData, ...newSessionData })

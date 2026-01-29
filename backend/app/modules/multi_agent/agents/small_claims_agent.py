@@ -291,7 +291,7 @@ class SmallClaimsAgent(BaseAgent):
                 ),
             ]
 
-        # 관련 판례 정보 추가
+        # 관련 판례 정보 추가 (content 포함)
         sources = []
         if related_docs:
             sources = [
@@ -300,6 +300,7 @@ class SmallClaimsAgent(BaseAgent):
                     "case_number": doc.get("metadata", {}).get("case_number", ""),
                     "doc_type": doc.get("metadata", {}).get("doc_type", ""),
                     "similarity": round(doc.get("similarity", 0), 3),
+                    "content": doc.get("content", ""),
                 }
                 for doc in related_docs
             ]

@@ -48,8 +48,6 @@ export function UserView() {
     // 세션 데이터에서 챗봇 참조 자료를 로드합니다.
     if (sessionData.aiReferences && Array.isArray(sessionData.aiReferences)) {
       setReferences(sessionData.aiReferences as ChatSource[])
-      // UserView에서는 명시적으로 선택하기 전까지 리스트를 보여줍니다.
-      // setSelectedRef(null) 
     }
   }, [sessionData.aiReferences])
 

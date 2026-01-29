@@ -36,6 +36,9 @@ export interface ChatSource {
   // 법령용 필드
   law_name?: string
   law_type?: string
+  // 그래프 보강 정보
+  cited_statutes?: string[]
+  similar_cases?: string[]
 }
 
 export interface AIQuestionResponse {
