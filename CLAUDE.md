@@ -112,3 +112,38 @@ uv run --no-sync python scripts/runpod_lancedb_embeddings.py --stats
 - `docs/vectordb_design.md` - 벡터 DB 설계
 - `backend/scripts/CLAUDE.md` - 임베딩 스크립트 가이드
 - `docs/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
+
+## RAG 평가 시스템
+
+RAG 챗봇 평가 데이터셋 생성 및 Gradio 분석 UI 제공
+
+### 빠른 시작
+```bash
+cd backend
+
+# Gradio UI 실행
+uv run python -m evaluation
+# → http://localhost:7860 접속
+
+# Solar 자동 질문 생성
+uv run python -m evaluation.tools.solar_generator --count 30
+
+# 평가 실행
+uv run python -m evaluation.runners.evaluation_runner \
+    --dataset evaluation/datasets/eval_dataset_v1.json
+
+# 데이터셋 검증
+uv run python -m evaluation.tools.validate_dataset eval_dataset_v1.json
+```
+
+### 성능 목표
+| 지표 | 목표값 |
+|------|--------|
+| Recall@5 | ≥ 0.7 |
+| Recall@10 | ≥ 0.8 |
+| MRR | ≥ 0.7 |
+| Hit Rate | ≥ 0.9 |
+| NDCG@10 | ≥ 0.75 |
+
+### 관련 문서
+- `backend/evaluation/CLAUDE.md` - 평가 시스템 상세 가이드
