@@ -172,6 +172,7 @@ backend/tests/
 │   ├── __init__.py
 │   ├── test_lancedb_search.py       # LanceDB 벡터 검색 테스트
 │   ├── test_postgresql_data.py      # PostgreSQL 데이터 확인
+│   ├── test_neo4j_graph.py          # Neo4j 그래프 검증 테스트 (27개)
 │   ├── test_evaluation_runner.py    # 평가 실행기 테스트
 │   └── test_evaluation_search.py    # 평가 검색 테스트
 ├── unit/                            # 단위 테스트 (개별 함수/클래스)
@@ -405,3 +406,142 @@ results = table.search(query_vector).metric('cosine').limit(10).to_pandas()
 1. **torch는 pyproject.toml에 없음** - 환경별로 수동 설치
 2. **--no-sync 필수** - `uv run --no-sync`로 실행
 3. **GPU 자동 감지** - VRAM에 따라 batch_size 자동 설정
+
+## Graph DB (Neo4j)
+
+법령 계급(시행령→법률), 판례 인용 관계를 Neo4j 그래프로 저장합니다.
+
+### 실행 (Docker)
+
+```bash
+# 프로젝트 루트에서 실행
+cd ..
+docker compose up -d neo4j
+
+# 상태 확인
+docker ps
+docker logs neo4j-law-graph
+
+# Neo4j Browser 접속
+# http://localhost:7474 (neo4j / password)
+```
+
+### .env 설정
+
+```bash
+# backend/.env
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password
+```
+
+### 그래프 구축
+
+```bash
+cd backend
+
+# 전체 그래프 구축 (초기 1회)
+uv run python scripts/build_graph.py
+
+# 구축 내용:
+# - Statute 노드 (법령): 5,572개
+# - Case 노드 (판례): 65,107개
+# - HIERARCHY_OF 관계 (법령 계급): 3,624개
+# - CITES 관계 (판례→법령): 72,414개
+# - CITES_CASE 관계 (판례→판례): 87,654개
+# - RELATED_TO 관계 (법령→법령): 93개
+```
+
+### 검증
+
+```bash
+# CLI 검증 (통계, 샘플 경로)
+uv run python scripts/verify_graph.py
+
+# Gradio UI 검증
+uv run python scripts/verify_gradio.py
+# → http://localhost:7860
+
+# 테스트 실행 (27개 테스트)
+uv run python tests/integration/test_neo4j_graph.py
+```
+
+### 그래프 스키마
+
+```
+노드 (Nodes):
+- Statute: id, name, type, promulgation_date
+- Case: id, case_number, name, summary
+
+관계 (Relationships):
+- (Statute)-[:HIERARCHY_OF]->(Statute)  # 시행령 → 법률
+- (Case)-[:CITES]->(Statute)             # 판례 → 법령 인용
+- (Case)-[:CITES_CASE]->(Case)           # 판례 → 판례 인용
+- (Statute)-[:RELATED_TO]->(Statute)     # 법령 → 법령 관련
+```
+
+### Cypher 쿼리 예시
+
+```cypher
+-- 특정 법령의 상하위 계급 조회
+MATCH (s:Statute {name: '도로교통법'})
+OPTIONAL MATCH (s)-[:HIERARCHY_OF]->(upper)
+OPTIONAL MATCH (lower)-[:HIERARCHY_OF]->(s)
+RETURN s.name, collect(upper.name) as 상위법, collect(lower.name) as 하위법
+
+-- 특정 판례가 인용한 법령/판례
+MATCH (c:Case {case_number: '2023다12345'})
+OPTIONAL MATCH (c)-[:CITES]->(statute:Statute)
+OPTIONAL MATCH (c)-[:CITES_CASE]->(cited:Case)
+RETURN c.name, collect(statute.name), collect(cited.case_number)
+
+-- 가장 많이 인용된 법령 TOP 10
+MATCH (c:Case)-[:CITES]->(s:Statute)
+RETURN s.name, count(c) as citations
+ORDER BY citations DESC LIMIT 10
+
+-- 같은 법령을 인용한 유사 판례
+MATCH (c1:Case)-[:CITES]->(s:Statute)<-[:CITES]-(c2:Case)
+WHERE c1 <> c2
+RETURN c1.case_number, c2.case_number, count(s) as common
+ORDER BY common DESC LIMIT 10
+```
+
+### 스크립트 파일
+
+| 파일 | 설명 |
+|------|------|
+| `scripts/build_graph.py` | 그래프 구축 (법령, 판례, 관계) |
+| `scripts/verify_graph.py` | CLI 검증 (통계, 샘플) |
+| `scripts/verify_gradio.py` | Gradio UI 검증 |
+
+### Python API 사용
+
+```python
+from neo4j import GraphDatabase
+
+driver = GraphDatabase.driver(
+    "bolt://localhost:7687",
+    auth=("neo4j", "password")
+)
+
+with driver.session() as session:
+    # 법령 계급 조회
+    result = session.run("""
+        MATCH (s:Statute {name: $name})-[:HIERARCHY_OF]->(upper)
+        RETURN upper.name
+    """, name="도로교통법 시행령")
+
+    for record in result:
+        print(record["upper.name"])
+
+driver.close()
+```
+
+### 활용 시나리오
+
+| 시나리오 | 관계 | 설명 |
+|----------|------|------|
+| RAG 컨텍스트 보강 | HIERARCHY_OF, CITES, RELATED_TO | 검색 결과에 관련 법령/판례 추가 |
+| 법령 탐색 UI | HIERARCHY_OF, RELATED_TO | 계급도 시각화, 관련 법령 탐색 |
+| 판례 추천 | CITES_CASE, CITES | 유사 판례 찾기 (같은 법령 인용) |

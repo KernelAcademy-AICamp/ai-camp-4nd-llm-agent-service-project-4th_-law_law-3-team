@@ -147,3 +147,60 @@ uv run python -m evaluation.tools.validate_dataset eval_dataset_v1.json
 
 ### 관련 문서
 - `backend/evaluation/CLAUDE.md` - 평가 시스템 상세 가이드
+
+## Graph DB (Neo4j)
+
+법령 계급, 판례 인용 관계를 Neo4j 그래프로 저장합니다.
+
+### 빠른 시작
+```bash
+# Neo4j 컨테이너 실행
+docker compose up -d neo4j
+
+# 그래프 구축 (초기 1회)
+cd backend
+uv run python scripts/build_graph.py
+
+# 검증
+NEO4J_PASSWORD=password uv run python scripts/verify_graph.py
+
+# Gradio UI 검증
+NEO4J_PASSWORD=password uv run python scripts/verify_gradio.py
+# → http://localhost:7860
+```
+
+### 그래프 스키마
+
+**노드 (Nodes)**
+| Label | 설명 | 개수 |
+|-------|------|------|
+| Statute | 법령 | 5,572 |
+| Case | 판례 | 65,107 |
+
+**관계 (Relationships)**
+| Type | 설명 | 개수 |
+|------|------|------|
+| HIERARCHY_OF | 법령 계급 (시행령→법률) | 3,624 |
+| CITES | 판례→법령 인용 | 72,414 |
+| CITES_CASE | 판례→판례 인용 | 87,654 |
+| RELATED_TO | 법령→법령 관련 | 93 |
+
+### 환경 변수
+```bash
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password
+```
+
+### 테스트
+```bash
+NEO4J_PASSWORD=password uv run python tests/integration/test_neo4j_graph.py
+```
+
+### 활용 시나리오
+1. **RAG 컨텍스트 보강** - 검색된 법령/판례의 관련 정보 추가
+2. **법령 탐색 UI** - 법령 계급도 시각화, 인용 네트워크
+3. **판례 추천** - 유사 판례 찾기 (같은 법령 인용, 인용 관계)
+
+### 관련 문서
+- `.claude/skills/neo4j-graph-construction/SKILL.md` - 그래프 구축 스킬
