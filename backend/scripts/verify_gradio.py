@@ -46,11 +46,22 @@ class GraphVerifier:
         법령 계급 조회
 
         Args:
-            statute_name: 법령명
+            statute_name: 법령명 (정식명, 공식약칭, 비공식약칭 모두 지원)
 
         Returns:
             계급 구조 JSON
         """
+        # 통합 검색: 정식명 OR 공식약칭 OR 비공식약칭(Alias)
+        find_statute_query = """
+        OPTIONAL MATCH (s1:Statute {name: $name})
+        OPTIONAL MATCH (s2:Statute {abbreviation: $name})
+        OPTIONAL MATCH (a:Alias {name: $name})-[:ALIAS_OF]->(s3:Statute)
+        WITH coalesce(s1, s2, s3) as s
+        WHERE s IS NOT NULL
+        RETURN s.name as name, s.abbreviation as abbreviation
+        LIMIT 1
+        """
+
         query_upper = """
         MATCH (s:Statute {name: $name})
         OPTIONAL MATCH path = (s)-[:HIERARCHY_OF*]->(root)
@@ -63,18 +74,33 @@ class GraphVerifier:
         RETURN child.name as child_name, child.type as child_type
         """
 
-        result = {"law": statute_name, "parents_chain": [], "children": []}
+        result = {"query": statute_name, "law": None, "parents_chain": [], "children": []}
 
         try:
             with self.driver.session() as session:
-                res_upper = list(session.run(query_upper, name=statute_name))
+                # 먼저 법령 찾기 (정식명/공식약칭/비공식약칭)
+                res_find = session.run(find_statute_query, name=statute_name)
+                found = res_find.single()
+
+                if not found or not found["name"]:
+                    result["error"] = f"'{statute_name}'에 해당하는 법령을 찾을 수 없습니다."
+                    return json.dumps(result, indent=2, ensure_ascii=False)
+
+                actual_name = found["name"]
+                result["law"] = actual_name
+                if found["abbreviation"]:
+                    result["official_abbreviation"] = found["abbreviation"]
+
+                # 상위 법령 조회
+                res_upper = list(session.run(query_upper, name=actual_name))
                 paths = []
                 for record in res_upper:
                     if record["path_names"]:
                         paths.append(" -> ".join(record["path_names"]))
                 result["parents_chain"] = paths
 
-                res_lower = list(session.run(query_lower, name=statute_name))
+                # 하위 법령 조회
+                res_lower = list(session.run(query_lower, name=actual_name))
                 children = []
                 for record in res_lower:
                     if record["child_name"]:
