@@ -22,7 +22,7 @@ class AgentOrchestrator:
     Intent 감지 → 에이전트 선택 → 실행 → 응답 반환
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # 에이전트 인스턴스 생성
         self._agents: dict[AgentType, BaseAgent] = {
             AgentType.CASE_SEARCH: CaseSearchAgent(),

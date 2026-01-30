@@ -18,8 +18,8 @@ Usage:
 
 from typing import Optional
 
+from app.common.vectorstore.base import SearchResult, VectorStoreBase
 from app.core.config import settings
-from app.common.vectorstore.base import VectorStoreBase, SearchResult
 
 
 def get_vector_store(collection_name: Optional[str] = None) -> VectorStoreBase:
@@ -60,7 +60,7 @@ class VectorStore(VectorStoreBase):
     새 코드에서는 get_vector_store() 팩토리 함수 사용을 권장합니다.
     """
 
-    def __new__(cls, collection_name: Optional[str] = None):
+    def __new__(cls, collection_name: Optional[str] = None) -> VectorStoreBase:  # type: ignore[misc]
         # 실제로는 환경에 맞는 구현체를 반환
         return get_vector_store(collection_name)
 

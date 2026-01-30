@@ -5,7 +5,7 @@
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -19,7 +19,7 @@ router = APIRouter()
 
 
 # 서류 템플릿 정의 (동적 값은 {placeholder} 형식)
-SMALL_CLAIMS_TEMPLATES = {
+SMALL_CLAIMS_TEMPLATES: dict[str, dict[str, Any]] = {
     "demand_letter": {
         "title": "내용증명",
         "template_sections": {
@@ -100,7 +100,7 @@ def render_template_for_case(
     case_info: "CaseInfo",
     today: str,
     document_type: str,
-) -> dict:
+) -> dict[str, Any]:
     """
     템플릿을 케이스 정보로 렌더링
 
@@ -142,7 +142,7 @@ def render_template_for_case(
 
 
 # 증거 체크리스트 데이터
-EVIDENCE_CHECKLISTS = {
+EVIDENCE_CHECKLISTS: dict[str, dict[str, Any]] = {
     "product_payment": {
         "dispute_type": "물품대금",
         "description": "물품을 판매했으나 대금을 받지 못한 경우",
@@ -237,7 +237,7 @@ class DocumentResponse(BaseModel):
     document_type: str
     title: str
     content: str
-    template_sections: dict
+    template_sections: dict[str, Any]
 
 
 class RelatedCaseItem(BaseModel):
@@ -256,7 +256,7 @@ class RelatedCasesResponse(BaseModel):
 
 # 기존 엔드포인트
 @router.post("/interview/start")
-async def start_interview(case_type: str):
+async def start_interview(case_type: str) -> dict[str, Any]:
     """자연어 인터뷰 시작"""
     return {
         "session_id": "interview_session_id",
@@ -266,7 +266,7 @@ async def start_interview(case_type: str):
 
 
 @router.post("/interview/{session_id}/answer")
-async def submit_answer(session_id: str, answer: str):
+async def submit_answer(session_id: str, answer: str) -> dict[str, Any]:
     """인터뷰 답변 제출"""
     return {
         "session_id": session_id,
@@ -280,7 +280,7 @@ async def submit_answer(session_id: str, answer: str):
 async def generate_documents(
     session_id: str,
     document_types: List[str],
-):
+) -> dict[str, Any]:
     """법률 서류 자동 생성 (내용증명, 지급명령신청서, 소액심판청구서)"""
     return {
         "session_id": session_id,
@@ -293,7 +293,7 @@ async def upload_evidence(
     session_id: str,
     files: List[UploadFile] = File(...),
     evidence_type: str = "chat_log",
-):
+) -> dict[str, Any]:
     """증거 자료 업로드"""
     return {
         "session_id": session_id,
@@ -302,7 +302,7 @@ async def upload_evidence(
 
 
 @router.post("/evidence/{session_id}/organize")
-async def organize_evidence(session_id: str):
+async def organize_evidence(session_id: str) -> dict[str, Any]:
     """증거 자료 타임라인 정리 및 PDF 변환"""
     return {
         "session_id": session_id,
@@ -312,7 +312,7 @@ async def organize_evidence(session_id: str):
 
 
 @router.get("/guide/{case_type}")
-async def get_lawsuit_guide(case_type: str):
+async def get_lawsuit_guide(case_type: str) -> dict[str, Any]:
     """소송 절차 가이드 조회"""
     return {
         "case_type": case_type,
@@ -326,7 +326,7 @@ async def get_lawsuit_guide(case_type: str):
 
 # 새로운 엔드포인트
 @router.get("/evidence-checklist/{dispute_type}", response_model=EvidenceChecklistResponse)
-async def get_evidence_checklist(dispute_type: str):
+async def get_evidence_checklist(dispute_type: str) -> EvidenceChecklistResponse:
     """
     분쟁 유형별 증거 체크리스트 조회
 
@@ -348,7 +348,7 @@ async def get_evidence_checklist(dispute_type: str):
 
 
 @router.get("/dispute-types")
-async def get_dispute_types():
+async def get_dispute_types() -> dict[str, Any]:
     """지원하는 분쟁 유형 목록 조회"""
     return {
         "dispute_types": [
@@ -359,7 +359,7 @@ async def get_dispute_types():
 
 
 @router.post("/generate-document", response_model=DocumentResponse)
-async def generate_document(request: DocumentGenerateRequest):
+async def generate_document(request: DocumentGenerateRequest) -> DocumentResponse:
     """
     서류 생성
 
@@ -456,7 +456,7 @@ async def generate_document(request: DocumentGenerateRequest):
 
 
 @router.get("/related-cases/{dispute_type}", response_model=RelatedCasesResponse)
-async def get_related_cases(dispute_type: str):
+async def get_related_cases(dispute_type: str) -> RelatedCasesResponse:
     """
     분쟁 유형별 관련 판례 조회
 

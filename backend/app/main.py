@@ -50,5 +50,5 @@ app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, object]:
     return {"status": "healthy", "modules": registry.get_registered_modules()}

@@ -2,13 +2,14 @@
 import logging
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from google import genai
 from google.genai import types
 from PIL import Image
 
 from app.core.config import settings
+
 from ..schema import Participant, ParticipantRole
 
 logger = logging.getLogger(__name__)
@@ -114,7 +115,7 @@ async def generate_image(
     time_of_day: Optional[str] = None,
     participants_detailed: Optional[list[Participant]] = None,
     mood: Optional[str] = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     타임라인 항목에 대한 스토리보드 이미지 생성 (Google Gemini 2.0 Flash)
 
@@ -156,12 +157,14 @@ async def generate_image(
             ),
         )
 
-        if not response.candidates or not response.candidates[0].content.parts:
+        if not response.candidates or not response.candidates[0].content or not response.candidates[0].content.parts:
             raise ValueError("이미지 생성 결과가 없습니다")
 
         # 이미지 데이터 추출
         image_data = None
-        for part in response.candidates[0].content.parts:
+        content = response.candidates[0].content
+        assert content is not None and content.parts is not None  # Already checked above
+        for part in content.parts:
             if part.inline_data:
                 image_data = part.inline_data.data
                 break
@@ -203,7 +206,7 @@ async def generate_image_fallback(
     time_of_day: Optional[str] = None,
     participants_detailed: Optional[list[Participant]] = None,
     mood: Optional[str] = None,
-) -> dict:
+) -> dict[str, Any]:
     """Gemini 실패 시 플레이스홀더 이미지 생성"""
     _ensure_dirs()
 

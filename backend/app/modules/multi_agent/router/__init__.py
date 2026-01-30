@@ -4,12 +4,14 @@
 /api/multi-agent/* 엔드포인트 정의
 """
 
+from typing import Any
+
 from fastapi import APIRouter
 
 from app.modules.multi_agent.schema import (
+    ChatActionResponse,
     MultiAgentChatRequest,
     MultiAgentChatResponse,
-    ChatActionResponse,
 )
 from app.modules.multi_agent.service import get_orchestrator
 
@@ -62,7 +64,7 @@ async def multi_agent_chat(request: MultiAgentChatRequest) -> MultiAgentChatResp
 
 
 @router.get("/agents")
-async def list_agents(user_role: str = "user"):
+async def list_agents(user_role: str = "user") -> dict[str, Any]:
     """
     사용 가능한 에이전트 목록 반환
 
@@ -88,6 +90,6 @@ async def list_agents(user_role: str = "user"):
 
 
 @router.post("/reset")
-async def reset_session():
+async def reset_session() -> dict[str, Any]:
     """세션 초기화"""
     return {"status": "ok", "session_data": {}}

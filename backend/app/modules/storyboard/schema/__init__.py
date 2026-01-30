@@ -1,7 +1,8 @@
 """스토리보드 모듈 - Pydantic 스키마"""
 from enum import Enum
+from typing import Any, List, Optional, Tuple
+
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional, Tuple
 
 
 # 전환 효과 타입
@@ -183,5 +184,5 @@ class JobStatusResponse(BaseModel):
     current_step: int
     total_steps: int
     message: str
-    result: Optional[dict] = None
+    result: Optional[dict[str, Any]] = None
     error: Optional[str] = None

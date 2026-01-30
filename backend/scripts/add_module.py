@@ -9,7 +9,6 @@
     python scripts/add_module.py document_generator "법률 문서 자동 생성"
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -150,7 +149,7 @@ def update_modules_ts(module_name: str, kebab_name: str, description: str):
     content = content.replace(",,", ",")  # 중복 쉼표 제거
 
     FRONTEND_MODULES_TS.write_text(content)
-    print(f"[Frontend] modules.ts 업데이트 완료")
+    print("[Frontend] modules.ts 업데이트 완료")
 
 
 def update_api_ts(kebab_name: str, camel_name: str):
@@ -164,7 +163,6 @@ def update_api_ts(kebab_name: str, camel_name: str):
         return
 
     # endpoints 객체에 추가
-    old_endpoints_end = "}"
     new_endpoint = f"  {camel_name}: '/{kebab_name}',\n}}"
 
     # 마지막 } 찾아서 교체
@@ -178,7 +176,7 @@ def update_api_ts(kebab_name: str, camel_name: str):
             break
 
     api_ts_path.write_text("\n".join(lines))
-    print(f"[Frontend] api.ts 업데이트 완료")
+    print("[Frontend] api.ts 업데이트 완료")
 
 
 def remove_module(module_name: str):
@@ -205,7 +203,7 @@ def remove_module(module_name: str):
         shutil.rmtree(features_path)
         print(f"[Frontend] 기능 삭제: {kebab_name}")
 
-    print(f"\n[주의] modules.ts와 api.ts에서 수동으로 해당 항목을 삭제하세요.")
+    print("\n[주의] modules.ts와 api.ts에서 수동으로 해당 항목을 삭제하세요.")
 
 
 def main():
@@ -225,7 +223,7 @@ def main():
         print(f"\n=== 모듈 추가: {module_name} ===\n")
         create_backend_module(module_name, description)
         create_frontend_module(module_name, description)
-        print(f"\n완료! 서버를 재시작하세요.")
+        print("\n완료! 서버를 재시작하세요.")
     else:
         print(__doc__)
         sys.exit(1)

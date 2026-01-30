@@ -23,7 +23,8 @@ Usage:
     graph.add_node("agent", lambda state: llm.invoke(state["messages"]))
 """
 
-from typing import Optional
+from typing import Any, Optional
+
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.core.config import settings
@@ -33,7 +34,7 @@ def get_chat_model(
     provider: Optional[str] = None,
     model: Optional[str] = None,
     temperature: float = 0.7,
-    **kwargs,
+    **kwargs: Any,
 ) -> BaseChatModel:
     """
     환경 설정에 따라 적절한 ChatModel 인스턴스 반환
@@ -47,12 +48,12 @@ def get_chat_model(
     Returns:
         BaseChatModel 인스턴스
     """
-    provider = provider or getattr(settings, "LLM_PROVIDER", "openai")
-    provider = provider.lower()
+    provider_name = provider or getattr(settings, "LLM_PROVIDER", "openai")
+    provider_name = str(provider_name).lower()
 
-    if provider == "anthropic":
+    if provider_name == "anthropic":
         return _get_anthropic_model(model, temperature, **kwargs)
-    elif provider == "google":
+    elif provider_name == "google":
         return _get_google_model(model, temperature, **kwargs)
     else:
         # 기본값: OpenAI
@@ -62,17 +63,17 @@ def get_chat_model(
 def _get_openai_model(
     model: Optional[str] = None,
     temperature: float = 0.7,
-    **kwargs,
+    **kwargs: Any,
 ) -> BaseChatModel:
     """OpenAI ChatModel 생성"""
     from langchain_openai import ChatOpenAI
 
-    model_name = model or getattr(settings, "OPENAI_MODEL", "gpt-4o-mini")
+    model_name = str(model or getattr(settings, "OPENAI_MODEL", "gpt-4o-mini"))
 
     return ChatOpenAI(
         model=model_name,
         temperature=temperature,
-        api_key=settings.OPENAI_API_KEY,
+        api_key=str(settings.OPENAI_API_KEY),  # type: ignore[arg-type]
         **kwargs,
     )
 
@@ -80,7 +81,7 @@ def _get_openai_model(
 def _get_anthropic_model(
     model: Optional[str] = None,
     temperature: float = 0.7,
-    **kwargs,
+    **kwargs: Any,
 ) -> BaseChatModel:
     """Anthropic ChatModel 생성"""
     try:
@@ -91,16 +92,16 @@ def _get_anthropic_model(
             "설치: uv add langchain-anthropic"
         )
 
-    model_name = model or getattr(settings, "ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
-    api_key = getattr(settings, "ANTHROPIC_API_KEY", "")
+    model_name = str(model or getattr(settings, "ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"))
+    api_key = str(getattr(settings, "ANTHROPIC_API_KEY", ""))
 
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY가 설정되지 않았습니다.")
 
     return ChatAnthropic(
-        model=model_name,
+        model_name=model_name,
         temperature=temperature,
-        api_key=api_key,
+        api_key=api_key,  # type: ignore[arg-type]
         **kwargs,
     )
 
@@ -108,7 +109,7 @@ def _get_anthropic_model(
 def _get_google_model(
     model: Optional[str] = None,
     temperature: float = 0.7,
-    **kwargs,
+    **kwargs: Any,
 ) -> BaseChatModel:
     """Google Gemini ChatModel 생성"""
     try:
@@ -133,7 +134,7 @@ def _get_google_model(
     )
 
 
-def get_llm_config() -> dict:
+def get_llm_config() -> dict[str, Any]:
     """현재 LLM 설정 정보 반환"""
     provider = getattr(settings, "LLM_PROVIDER", "openai")
 

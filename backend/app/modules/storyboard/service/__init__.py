@@ -1,13 +1,19 @@
 """스토리보드 모듈 - 서비스 레이어"""
 import json
 import uuid
-from typing import List
+from typing import Any, List
 
 from openai import OpenAI
 
 from app.core.config import settings
-from ..schema import TimelineItem, ExtractTimelineResponse, TimelineData, Participant, ParticipantRole
 
+from ..schema import (
+    ExtractTimelineResponse,
+    Participant,
+    ParticipantRole,
+    TimelineData,
+    TimelineItem,
+)
 
 EXTRACTION_SYSTEM_PROMPT = """당신은 법률 사건 분석 전문가이자 영화 스토리보드 작가입니다.
 사용자가 입력한 사건 내용에서 시간순으로 중요한 이벤트들을 **영화 스토리보드 형식**으로 추출합니다.
@@ -73,7 +79,7 @@ EXTRACTION_SYSTEM_PROMPT = """당신은 법률 사건 분석 전문가이자 영
 추가 설명 없이 JSON만 출력합니다. 모든 필드를 가능한 상세하게 채워주세요."""
 
 
-def _parse_participant(participant_data: dict) -> Participant:
+def _parse_participant(participant_data: dict[str, Any]) -> Participant:
     """참여자 데이터를 Participant 모델로 변환"""
     role_str = participant_data.get("role", "other")
     try:
@@ -156,6 +162,9 @@ async def extract_timeline_from_text(text: str) -> ExtractTimelineResponse:
                 description=description,
                 participants=participant_names,
                 order=idx,
+                image_url=None,
+                image_prompt=None,
+                image_status=None,
                 scene_number=idx + 1,
                 location=item.get("location"),
                 time_of_day=item.get("time_of_day"),
@@ -177,7 +186,7 @@ async def extract_timeline_from_text(text: str) -> ExtractTimelineResponse:
     )
 
 
-def validate_timeline_data(data: dict) -> bool:
+def validate_timeline_data(data: dict[str, Any]) -> bool:
     """타임라인 데이터 유효성 검사"""
     try:
         TimelineData(**data)

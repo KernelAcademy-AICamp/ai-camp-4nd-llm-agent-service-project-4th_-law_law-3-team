@@ -2,13 +2,10 @@
 import asyncio
 import json
 import logging
-from typing import Optional
+from typing import Any, AsyncGenerator
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
-
-logger = logging.getLogger(__name__)
 
 from ..schema import (
     AnalyzeImageResponse,
@@ -26,21 +23,22 @@ from ..schema import (
     ValidateTimelineRequest,
 )
 from ..service import extract_timeline_from_text, validate_timeline_data
-from ..service.stt import transcribe_audio
-from ..service.vision import analyze_image
 from ..service.image_generation import generate_image, generate_image_fallback
-from ..service.video_generation import generate_video
 from ..service.job_manager import (
     job_manager,
     run_batch_image_generation,
-    JobStatus,
 )
+from ..service.stt import transcribe_audio
+from ..service.video_generation import generate_video
+from ..service.vision import analyze_image
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
 @router.post("/extract", response_model=ExtractTimelineResponse)
-async def extract_timeline(request: ExtractTimelineRequest):
+async def extract_timeline(request: ExtractTimelineRequest) -> ExtractTimelineResponse:
     """
     텍스트에서 타임라인 자동 추출
 
@@ -57,7 +55,7 @@ async def extract_timeline(request: ExtractTimelineRequest):
 
 
 @router.post("/validate")
-async def validate_timeline(request: ValidateTimelineRequest):
+async def validate_timeline(request: ValidateTimelineRequest) -> dict[str, Any]:
     """
     가져온 JSON 데이터 유효성 검사
 
@@ -78,7 +76,7 @@ async def validate_timeline(request: ValidateTimelineRequest):
 async def transcribe_audio_endpoint(
     audio: UploadFile = File(..., description="음성 파일 (wav, mp3, webm, m4a)"),
     language: str = Form(default="ko", description="언어 코드"),
-):
+) -> TranscribeResponse:
     """
     음성 파일을 텍스트로 변환 (STT)
 
@@ -102,7 +100,7 @@ async def transcribe_audio_endpoint(
 async def analyze_image_endpoint(
     image: UploadFile = File(..., description="이미지 파일 (jpg, png, gif, webp)"),
     context: str = Form(default="", description="추가 컨텍스트 설명"),
-):
+) -> AnalyzeImageResponse:
     """
     이미지 분석을 통한 타임라인 추출
 
@@ -136,7 +134,7 @@ async def analyze_image_endpoint(
 
 
 @router.post("/generate-image", response_model=GenerateImageResponse)
-async def generate_image_endpoint(request: GenerateImageRequest):
+async def generate_image_endpoint(request: GenerateImageRequest) -> GenerateImageResponse:
     """
     타임라인 항목에 대한 스토리보드 이미지 생성
 
@@ -184,7 +182,7 @@ async def generate_image_endpoint(request: GenerateImageRequest):
 
 
 @router.post("/generate-images-batch", response_model=GenerateImagesBatchResponse)
-async def generate_images_batch_endpoint(request: GenerateImagesBatchRequest):
+async def generate_images_batch_endpoint(request: GenerateImagesBatchRequest) -> GenerateImagesBatchResponse:
     """
     여러 타임라인 항목에 대한 스토리보드 이미지 일괄 생성
 
@@ -217,7 +215,7 @@ async def generate_images_batch_endpoint(request: GenerateImagesBatchRequest):
 
 
 @router.get("/jobs/{job_id}/status")
-async def get_job_status_sse(job_id: str):
+async def get_job_status_sse(job_id: str) -> EventSourceResponse:
     """
     작업 진행 상태 SSE 스트림
 
@@ -227,7 +225,7 @@ async def get_job_status_sse(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다")
 
-    async def event_generator():
+    async def event_generator() -> AsyncGenerator[dict[str, str], None]:
         async for progress in job_manager.subscribe(job_id):
             yield {
                 "event": "progress",
@@ -238,7 +236,7 @@ async def get_job_status_sse(job_id: str):
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
-async def get_job_status(job_id: str):
+async def get_job_status(job_id: str) -> JobStatusResponse:
     """
     작업 상태 조회 (폴링용)
 
@@ -261,7 +259,7 @@ async def get_job_status(job_id: str):
 
 
 @router.post("/generate-video", response_model=GenerateVideoResponse)
-async def generate_video_endpoint(request: GenerateVideoRequest):
+async def generate_video_endpoint(request: GenerateVideoRequest) -> GenerateVideoResponse:
     """
     이미지들을 결합하여 영상 생성
 
@@ -280,7 +278,7 @@ async def generate_video_endpoint(request: GenerateVideoRequest):
             duration_per_image=request.duration_per_image,
             transition=request.transition.value,
             transition_duration=request.transition_duration,
-            resolution=tuple(request.resolution),
+            resolution=(request.resolution[0], request.resolution[1]),
         )
 
         if result["success"]:

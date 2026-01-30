@@ -3,32 +3,33 @@
 위치 기반 변호사 검색, 클러스터링, 상세 조회
 """
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-logger = logging.getLogger(__name__)
-
 from ..schema import (
+    ClusterItem,
+    ClusterResponse,
     LawyerResponse,
     NearbySearchResponse,
-    ClusterResponse,
 )
 from ..service import (
     find_nearby_lawyers,
-    get_lawyer_by_id,
-    search_lawyers,
+    get_categories,
     get_clusters,
+    get_lawyer_by_id,
     get_zoom_grid_size,
     load_lawyers_data,
-    get_categories,
+    search_lawyers,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
 @router.get("/categories")
-async def get_specialty_categories():
+async def get_specialty_categories() -> dict[str, Any]:
     """
     전문분야 12대분류 목록 조회
 
@@ -49,7 +50,7 @@ async def get_nearby_lawyers(
     limit: Optional[int] = Query(None, ge=1, description="최대 결과 수 (미지정 시 전체)"),
     category: Optional[str] = Query(None, description="전문분야 카테고리 ID"),
     specialty: Optional[str] = Query(None, description="특정 전문분야 (예: 이혼, 형사법)"),
-):
+) -> NearbySearchResponse:
     """
     사용자 위치 기반 주변 변호사 검색
 
@@ -60,7 +61,7 @@ async def get_nearby_lawyers(
     - **category**: 전문분야 카테고리 ID (예: "criminal", "civil-family")
     - **specialty**: 특정 전문분야 키워드 (예: "이혼", "형사법") - category보다 우선 적용
     """
-    lawyers = find_nearby_lawyers(
+    lawyers_data = find_nearby_lawyers(
         latitude=latitude,
         longitude=longitude,
         radius_m=radius,
@@ -69,12 +70,13 @@ async def get_nearby_lawyers(
         specialty=specialty
     )
 
-    return {
-        "lawyers": lawyers,
-        "total_count": len(lawyers),
-        "center": {"lat": latitude, "lng": longitude},
-        "radius": radius,
-    }
+    lawyers = [LawyerResponse(**lawyer) for lawyer in lawyers_data]
+    return NearbySearchResponse(
+        lawyers=lawyers,
+        total_count=len(lawyers),
+        center={"lat": latitude, "lng": longitude},
+        radius=radius,
+    )
 
 
 @router.get("/clusters", response_model=ClusterResponse)
@@ -84,22 +86,23 @@ async def get_lawyer_clusters(
     min_lng: float = Query(..., description="최소 경도"),
     max_lng: float = Query(..., description="최대 경도"),
     zoom: int = Query(10, ge=1, le=21, description="줌 레벨"),
-):
+) -> ClusterResponse:
     """
     줌 레벨에 따른 클러스터 데이터 반환
 
     지도 뷰포트 내의 변호사들을 그리드로 묶어 클러스터 정보 제공
     """
     grid_size = get_zoom_grid_size(zoom)
-    clusters = get_clusters(min_lat, max_lat, min_lng, max_lng, grid_size)
+    clusters_data = get_clusters(min_lat, max_lat, min_lng, max_lng, grid_size)
 
-    total_count = sum(c["count"] for c in clusters)
+    clusters = [ClusterItem(**c) for c in clusters_data]
+    total_count = sum(c.count for c in clusters)
 
-    return {
-        "clusters": clusters,
-        "zoom_level": zoom,
-        "total_count": total_count,
-    }
+    return ClusterResponse(
+        clusters=clusters,
+        zoom_level=zoom,
+        total_count=total_count,
+    )
 
 
 @router.get("/search")
@@ -113,7 +116,7 @@ async def search_lawyers_endpoint(
     longitude: Optional[float] = Query(None, ge=-180, le=180, description="위치 필터 - 경도"),
     radius: int = Query(5000, ge=100, le=50000, description="위치 필터 - 반경 (미터)"),
     limit: Optional[int] = Query(None, ge=1, description="최대 결과 수 (미지정 시 전체)"),
-):
+) -> dict[str, Any]:
     """
     변호사 검색 (이름/사무소/지역/전문분야 + 선택적 위치 필터)
 
@@ -154,19 +157,19 @@ async def search_lawyers_endpoint(
 
 
 @router.get("/stats")
-async def get_stats():
+async def get_stats() -> dict[str, Any]:
     """데이터 통계 조회"""
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
     metadata = data.get("metadata", {})
 
     # 좌표가 있는 변호사 수
-    with_coords = sum(1 for l in lawyers if l.get("latitude") is not None)
+    with_coords = sum(1 for lawyer in lawyers if lawyer.get("latitude") is not None)
 
     # 전문분야가 있는 변호사 수
     with_specialties = sum(
-        1 for l in lawyers
-        if l.get("specialties") and len(l.get("specialties", [])) > 0
+        1 for lawyer in lawyers
+        if lawyer.get("specialties") and len(lawyer.get("specialties", [])) > 0
     )
 
     return {
@@ -182,7 +185,7 @@ async def get_stats():
 
 
 @router.get("/{lawyer_id}", response_model=LawyerResponse)
-async def get_lawyer_detail(lawyer_id: int):
+async def get_lawyer_detail(lawyer_id: int) -> LawyerResponse:
     """
     변호사 상세 정보 조회
 
@@ -193,4 +196,4 @@ async def get_lawyer_detail(lawyer_id: int):
     if not lawyer:
         raise HTTPException(status_code=404, detail="변호사를 찾을 수 없습니다")
 
-    return lawyer
+    return LawyerResponse(**lawyer)

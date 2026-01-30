@@ -4,18 +4,18 @@
 조약, 행정규칙, 법률용어 등 참조용 데이터 저장 테이블
 """
 
-from datetime import datetime, date
-from typing import Optional
+from datetime import date, datetime
 from enum import Enum
+from typing import Any, Optional
 
 from sqlalchemy import (
     Column,
-    Integer,
-    String,
-    Text,
     Date,
     DateTime,
     Index,
+    Integer,
+    String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -30,7 +30,7 @@ class RefType(str, Enum):
     LAW_TERM = "law_term"      # 법률용어
 
 
-class LegalReference(Base):
+class LegalReference(Base):  # type: ignore[misc]
     """
     법률 참조 데이터 테이블
 
@@ -131,7 +131,7 @@ class LegalReference(Base):
         return "\n".join(parts)
 
     @classmethod
-    def from_treaty(cls, data: dict) -> "LegalReference":
+    def from_treaty(cls, data: dict[str, Any]) -> "LegalReference":
         """조약 데이터에서 인스턴스 생성
 
         treaty-full.json 형식:
@@ -169,7 +169,7 @@ class LegalReference(Base):
         )
 
     @classmethod
-    def from_admin_rule(cls, data: dict) -> "LegalReference":
+    def from_admin_rule(cls, data: dict[str, Any]) -> "LegalReference":
         """행정규칙 데이터에서 인스턴스 생성
 
         administrative_rules_full.json 형식:
@@ -203,7 +203,7 @@ class LegalReference(Base):
         )
 
     @classmethod
-    def from_law_term(cls, data: dict) -> "LegalReference":
+    def from_law_term(cls, data: dict[str, Any]) -> "LegalReference":
         """법률용어 데이터에서 인스턴스 생성
 
         lawterms_full.json 형식:

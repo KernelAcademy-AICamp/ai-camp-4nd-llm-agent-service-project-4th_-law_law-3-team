@@ -4,24 +4,24 @@
 법령 조문 정보 저장 테이블
 """
 
-from datetime import datetime, date
-from typing import Optional
+from datetime import date, datetime
+from typing import Any, Optional
 
 from sqlalchemy import (
     Column,
-    Integer,
-    String,
-    Text,
     Date,
     DateTime,
     Index,
+    Integer,
+    String,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.common.database import Base
 
 
-class Law(Base):
+class Law(Base):  # type: ignore[misc]
     """
     법령 테이블
 
@@ -126,7 +126,7 @@ class Law(Base):
         return "\n".join(parts)
 
     @classmethod
-    def from_law_data(cls, data: dict) -> "Law":
+    def from_law_data(cls, data: dict[str, Any]) -> "Law":
         """법령 데이터에서 인스턴스 생성
 
         law.json의 items 배열 내 객체 형식:

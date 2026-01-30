@@ -4,14 +4,13 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from typing import BinaryIO, List
+from typing import Any, BinaryIO, List
 
 import google.generativeai as genai
 
-logger = logging.getLogger(__name__)
-
 from app.core.config import settings
-from ..schema import TimelineItem
+
+logger = logging.getLogger(__name__)
 
 # 지원되는 이미지 포맷
 SUPPORTED_IMAGE_FORMATS = {"jpg", "jpeg", "png", "gif", "webp", "bmp"}
@@ -41,7 +40,7 @@ async def analyze_image(
     image_file: BinaryIO,
     filename: str,
     additional_context: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """
     이미지를 분석하여 타임라인 추출
 
@@ -59,8 +58,8 @@ async def analyze_image(
         raise ValueError(f"지원하지 않는 이미지 포맷입니다: {extension}")
 
     # Gemini 설정
-    genai.configure(api_key=settings.GOOGLE_API_KEY)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    genai.configure(api_key=settings.GOOGLE_API_KEY)  # type: ignore[attr-defined]
+    model = genai.GenerativeModel("gemini-2.0-flash")  # type: ignore[attr-defined]
 
     # 이미지 읽기
     image_data = image_file.read()
@@ -128,7 +127,7 @@ async def analyze_image(
         return {"success": False, "timeline": [], "summary": None}
 
     # TimelineItem 리스트로 변환
-    timeline_items: List[dict] = []
+    timeline_items: List[dict[str, Any]] = []
     raw_timeline = data.get("timeline", [])
 
     for idx, item in enumerate(raw_timeline):

@@ -5,16 +5,16 @@ ChromaDB 벡터 저장소 구현체
 """
 
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
+from app.common.vectorstore.base import SearchResult, VectorStoreBase
 from app.core.config import settings
-from app.common.vectorstore.base import VectorStoreBase, SearchResult
 
 
-def get_chroma_client() -> chromadb.ClientAPI:
+def get_chroma_client() -> chromadb.ClientAPI:  # type: ignore[name-defined]
     """
     ChromaDB 클라이언트 생성
 
@@ -34,9 +34,9 @@ def get_chroma_client() -> chromadb.ClientAPI:
 
 
 def get_collection(
-    client: Optional[chromadb.ClientAPI] = None,
+    client: Optional["chromadb.ClientAPI"] = None,  # type: ignore[name-defined]
     collection_name: Optional[str] = None,
-) -> chromadb.Collection:
+) -> "chromadb.Collection":
     """
     법률 문서 컬렉션 가져오기 (없으면 생성)
 
@@ -52,7 +52,7 @@ def get_collection(
 
     name = collection_name or settings.CHROMA_COLLECTION_NAME
 
-    return client.get_or_create_collection(
+    return client.get_or_create_collection(  # type: ignore[no-any-return]
         name=name,
         metadata={
             "description": "법률 문서 임베딩 (판례, 헌재결정, 행정심판, 법령해석)",
@@ -131,7 +131,7 @@ class ChromaVectorStore(VectorStoreBase):
         return SearchResult(
             ids=result.get("ids", []),
             distances=result.get("distances"),
-            metadatas=result.get("metadatas"),
+            metadatas=result.get("metadatas"),  # type: ignore[arg-type]
             documents=result.get("documents"),
         )
 
@@ -160,13 +160,14 @@ class ChromaVectorStore(VectorStoreBase):
         return SearchResult(
             ids=result.get("ids", []),
             distances=result.get("distances"),
-            metadatas=result.get("metadatas"),
+            metadatas=result.get("metadatas"),  # type: ignore[arg-type]
             documents=result.get("documents"),
         )
 
     def get_by_ids(self, ids: List[str]) -> Dict[str, Any]:
         """ID로 문서 조회"""
-        return self.collection.get(ids=ids)
+        result = self.collection.get(ids=ids)
+        return dict(result)
 
     def delete_by_ids(self, ids: List[str]) -> None:
         """ID로 문서 삭제"""
