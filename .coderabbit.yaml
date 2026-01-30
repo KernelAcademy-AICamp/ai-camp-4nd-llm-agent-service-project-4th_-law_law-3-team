@@ -4,41 +4,42 @@ reviews:
   profile: "assertive"
   request_changes_workflow: false
   high_level_summary: true
-  
-  # [핵심] 기술 스택 맞춤형 리뷰 지침
-  instructions: |
-    이 프로젝트는 FastAPI(Backend), Next.js 14(Frontend), 그리고 LangChain/ChromaDB(AI)를 사용하는 서비스입니다.
-    각 영역별로 다음 사항을 중점적으로 리뷰해주세요:
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        이 프로젝트는 FastAPI(Backend), Next.js 14(Frontend), 그리고 LangChain/ChromaDB(AI)를 사용하는 서비스입니다.
+        각 영역별로 다음 사항을 중점적으로 리뷰해주세요:
 
-    1. **Backend (FastAPI & Python)**
-       - **비동기 처리**: DB 호출이나 외부 API(OpenAI 등) 요청 시 `await`가 누락되지 않았는지 확인.
-       - **Pydantic**: Request/Response 모델 정의가 명확한지, 불필요한 필드가 없는지 확인.
-       - **RAG/LangChain**: 벡터 검색(ChromaDB) 로직에서 비효율적인 쿼리나 과도한 토큰 사용이 없는지 체크.
-    
-    2. **Frontend (Next.js 14 & TypeScript)**
-       - **서버/클라이언트 분리**: 'use client' 지시어가 적절히 사용되었는지, 불필요하게 클라이언트 컴포넌트로 만들지 않았는지 확인.
-       - **타입 안정성**: `any` 타입 사용을 지양하고, Interface/Type 정의가 잘 되어 있는지 확인.
-       - **최적화**: `useEffect` 의존성 배열(dependency array)이 올바른지 체크.
+        1. **Backend (FastAPI & Python)**
+           - **비동기 처리**: DB 호출이나 외부 API(OpenAI 등) 요청 시 `await`가 누락되지 않았는지 확인.
+           - **Pydantic**: Request/Response 모델 정의가 명확한지, 불필요한 필드가 없는지 확인.
+           - **RAG/LangChain**: 벡터 검색(ChromaDB) 로직에서 비효율적인 쿼리나 과도한 토큰 사용이 없는지 체크.
 
-    3. **Common & Security**
-       - **환경변수**: API Key(OpenAI, DB URL 등)가 코드에 하드코딩 되어 있다면 즉시 경고.
-       - **예외 처리**: API 실패 시 프론트엔드/백엔드에서 적절한 에러 핸들링을 하고 있는지 확인.
+        2. **Frontend (Next.js 14 & TypeScript)**
+           - **서버/클라이언트 분리**: 'use client' 지시어가 적절히 사용되었는지, 불필요하게 클라이언트 컴포넌트로 만들지 않았는지 확인.
+           - **타입 안정성**: `any` 타입 사용을 지양하고, Interface/Type 정의가 잘 되어 있는지 확인.
+           - **최적화**: `useEffect` 의존성 배열(dependency array)이 올바른지 체크.
 
-  # 불필요한 파일 리뷰 제외 (AI 토큰 절약 및 노이즈 제거)
+        3. **Common & Security**
+           - **환경변수**: API Key(OpenAI, DB URL 등)가 코드에 하드코딩 되어 있다면 즉시 경고.
+           - **예외 처리**: API 실패 시 프론트엔드/백엔드에서 적절한 에러 핸들링을 하고 있는지 확인.
   path_filters:
     - "!**/*.json"
     - "!**/*.lock"
     - "!**/*.map"
     - "!**/__pycache__/**"
-    - "!**/.next/**"       # Next.js 빌드 산출물 제외
+    - "!**/.next/**"
     - "!**/node_modules/**"
     - "!**/venv/**"
-    - "!**/migrations/**"  # Alembic 등 DB 마이그레이션 파일은 로직만 가볍게
-    - "!**/*.csv"          # RAG 데이터 파일 등 제외
-
+    - "!**/migrations/**"
+    - "!**/*.csv"
   auto_review:
     enabled: true
     drafts: false
+    base_branches:
+      - "main"
+      - "master"
+      - "dev"
     ignore_title_keywords:
       - "WIP"
       - "Draft"
