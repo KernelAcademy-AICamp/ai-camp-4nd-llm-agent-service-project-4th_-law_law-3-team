@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.17.9",
+    "@xyflow/react": "^12.10.0",
     "@types/d3-geo": "^3.1.0",
     "@types/d3-scale": "^4.0.9",
     "axios": "^1.6.5",
@@ -21,6 +22,7 @@
     "next": "^14.2.21",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-force-graph-2d": "^1.29.0",
     "react-markdown": "^10.1.0",
     "react-simple-maps": "^3.0.0",
     "recharts": "^3.7.0",

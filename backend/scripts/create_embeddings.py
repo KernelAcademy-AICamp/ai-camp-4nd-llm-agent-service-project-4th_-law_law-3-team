@@ -490,8 +490,9 @@ def _store_chunk_batch(store: VectorStore, chunks: List[Chunk], use_local: bool)
     texts = [c.chunk_text for c in chunks]
     embeddings = create_embeddings_batch(texts, use_local)
 
-    # ChromaDB에 저장 (documents 저장 안 함 - 용량 최적화)
-    # 검색 시 doc_id + chunk_start/chunk_end로 PostgreSQL에서 원문 조회
+    # 벡터 저장소에 저장
+    # LanceDB는 디스크 기반이라 텍스트 저장에 부담 없음
+    # ChromaDB/Qdrant는 용량 최적화를 위해 텍스트 저장 안 함
     ids = [c.chunk_id for c in chunks]
     metadatas = [
         {
@@ -508,9 +509,12 @@ def _store_chunk_batch(store: VectorStore, chunks: List[Chunk], use_local: bool)
         for c in chunks
     ]
 
+    # LanceDB는 텍스트를 저장해도 효율적이므로 texts를 넘김
+    documents_to_save = texts if settings.VECTOR_DB == "lancedb" else None
+
     store.add_documents(
         ids=ids,
-        documents=None,  # 텍스트 저장 안 함 (용량 최적화)
+        documents=documents_to_save,
         metadatas=metadatas,
         embeddings=embeddings,
     )

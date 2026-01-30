@@ -17,10 +17,18 @@ interface Message {
 }
 
 interface ChatSource {
-  case_name: string
-  case_number: string
+  case_name?: string
+  case_number?: string
   doc_type: string
   similarity: number
+  summary?: string
+  content?: string
+  // 법령용 필드
+  law_name?: string
+  law_type?: string
+  // 그래프 보강 정보
+  cited_statutes?: string[]
+  similar_cases?: string[]
 }
 
 interface MultiAgentChatResponse {
@@ -45,8 +53,10 @@ export default function ChatWidget() {
     resetSession,
   } = useChat()
 
-  // Determine if we are on the map page
+  // Determine if we are on pages that support floating mode
   const isMapPage = pathname === '/lawyer-finder'
+  const isStatuteHierarchyPage = pathname === '/statute-hierarchy'
+  const supportsFloatingMode = isMapPage || isStatuteHierarchyPage
 
   // Global state for view mode is now handled by UIContext
 
@@ -70,15 +80,17 @@ export default function ChatWidget() {
     if (prevPathnameRef.current === pathname) return
     prevPathnameRef.current = pathname
 
-    if (isMapPage) {
-      // 지도 페이지 첫 진입 시 floating 모드로 시작
+    if (supportsFloatingMode) {
+      // floating 모드 지원 페이지 첫 진입 시 floating 모드로 시작
       setChatMode('floating')
-      setChatOpen(true)
+      if (isMapPage) {
+        setChatOpen(true)
+      }
     } else {
       // 다른 페이지 진입 시 Split 모드 사용
       setChatMode('split')
     }
-  }, [pathname, setChatMode, setChatOpen, isMapPage])
+  }, [pathname, setChatMode, setChatOpen, isMapPage, supportsFloatingMode])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -173,7 +185,7 @@ export default function ChatWidget() {
         
         // 세션 데이터에 추가하여 페이지 이동 후 사용할 수 있게 함
         newSessionData.aiGeneratedCase = aiCase
-        // [NEW] 모든 참조 자료를 저장 (일반인 모드용)
+        // 모든 참조 자료를 저장 (일반인 모드용)
         newSessionData.aiReferences = response.data.sources || []
         
         setSessionData({ ...sessionData, ...newSessionData })
@@ -329,7 +341,7 @@ export default function ChatWidget() {
     setChatMode(chatMode === 'split' ? 'floating' : 'split')
   }
 
-  // Theme configuration
+  // Theme configuration (map page uses light theme, others use dark)
   const isLightTheme = isMapPage
 
   // Styles based on theme
@@ -446,8 +458,8 @@ export default function ChatWidget() {
             </button>
           </div>
 
-          {/* Toggle View Mode Button (Only on Map Page) */}
-          {isMapPage && (
+          {/* Toggle View Mode Button (floating mode 지원 페이지에서만) */}
+          {supportsFloatingMode && (
             <button
               onClick={toggleViewMode}
               className={`p-2 rounded-lg transition-colors ${themeClasses.closeBtn}`}

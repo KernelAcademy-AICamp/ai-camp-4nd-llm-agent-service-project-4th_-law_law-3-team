@@ -1,0 +1,80 @@
+# RAG 평가 쿼리셋
+# 형식: YAML
+# 사용법: Gradio UI에서 직접 편집하거나, DatasetBuilder로 JSON 변환
+
+queries:
+  # 예시 쿼리 1: 개념검색 (민사)
+  - id: Q-001
+    question: "임대차 보증금 반환 청구 요건은 무엇인가요?"
+    metadata:
+      category: 민사
+      subcategory: 임대차
+      query_type: 개념검색
+      difficulty: medium
+    ground_truth:
+      source_documents:
+        - doc_id: "76396"
+          doc_type: precedent
+          relevance: highly_relevant
+          reason: "임대차보증금 반환 요건 직접 판시"
+        - doc_id: "010719"
+          doc_type: law
+          article: "제621조"
+          relevance: highly_relevant
+          reason: "임대차 관련 민법 조문"
+      key_points:
+        - "계약 종료 요건"
+        - "목적물 반환과 동시이행"
+      required_citations:
+        - "민법 제621조"
+    source: manual
+
+  # 예시 쿼리 2: 단순조회 (형사)
+  - id: Q-002
+    question: "형법 제250조 살인죄의 구성요건은?"
+    metadata:
+      category: 형사
+      subcategory: 살인죄
+      query_type: 단순조회
+      difficulty: easy
+    ground_truth:
+      source_documents:
+        - doc_id: "012345"
+          doc_type: law
+          article: "제250조"
+          relevance: highly_relevant
+          reason: "살인죄 조문"
+      key_points:
+        - "사람을 살해"
+        - "사형, 무기 또는 5년 이상의 징역"
+      required_citations:
+        - "형법 제250조"
+    source: manual
+
+  # 예시 쿼리 3: 비교검색 (형사)
+  - id: Q-003
+    question: "사기죄와 횡령죄의 차이점은 무엇인가요?"
+    metadata:
+      category: 형사
+      subcategory: 재산범죄
+      query_type: 비교검색
+      difficulty: hard
+    ground_truth:
+      source_documents:
+        - doc_id: "012346"
+          doc_type: law
+          article: "제347조"
+          relevance: highly_relevant
+          reason: "사기죄 조문"
+        - doc_id: "012347"
+          doc_type: law
+          article: "제355조"
+          relevance: highly_relevant
+          reason: "횡령죄 조문"
+      key_points:
+        - "기망행위 vs 신임관계 위반"
+        - "재물 교부 vs 보관물 횡령"
+      required_citations:
+        - "형법 제347조"
+        - "형법 제355조"
+    source: manual

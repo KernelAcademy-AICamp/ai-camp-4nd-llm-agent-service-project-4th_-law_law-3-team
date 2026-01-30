@@ -46,8 +46,8 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     GOOGLE_MODEL: str = "gemini-3-flash-preview"
 
-    # Vector DB 선택 (chroma, qdrant)
-    VECTOR_DB: str = "chroma"
+    # Vector DB 선택 (chroma, qdrant, lancedb)
+    VECTOR_DB: str = "lancedb"
 
     # ChromaDB 설정
     CHROMA_PERSIST_DIR: str = "./data/chroma"
@@ -58,13 +58,22 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str = ""  # Qdrant Cloud 사용 시
     QDRANT_COLLECTION_NAME: str = "legal_documents"
 
+    # LanceDB 설정 (VECTOR_DB=lancedb 일 때 사용)
+    LANCEDB_URI: str = "./lancedb_data"
+    LANCEDB_TABLE_NAME: str = "legal_chunks"
+
     # Embedding
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_BATCH_SIZE: int = 100
 
     # Local Embedding (sentence-transformers)
     USE_LOCAL_EMBEDDING: bool = True
-    LOCAL_EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    LOCAL_EMBEDDING_MODEL: str = "nlpai-lab/KURE-v1"  # 1024차원, LanceDB 데이터와 일치
+
+    # Neo4j Graph DB 설정
+    NEO4J_URI: str = "bolt://localhost:7687"
+    NEO4J_USER: str = "neo4j"
+    NEO4J_PASSWORD: str = "password"
 
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []

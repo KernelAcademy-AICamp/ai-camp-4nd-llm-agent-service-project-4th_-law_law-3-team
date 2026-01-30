@@ -80,6 +80,153 @@ Backend 모듈명 `snake_case` → API 경로 `/api/kebab-case`
 - `frontend/src/lib/api.ts` - API 클라이언트 및 endpoints
 - `scripts/add_module.py` - 모듈 생성 스크립트
 
+## Vector DB (LanceDB)
+
+법령/판례 임베딩 데이터를 LanceDB에 저장합니다.
+
+### 임베딩 스크립트
+```bash
+cd backend
+
+# PyTorch CUDA 설치 (GPU 사용 시)
+uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+
+# 임베딩 생성 (--no-sync 필수)
+uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all --reset
+
+# 통계 확인
+uv run --no-sync python scripts/runpod_lancedb_embeddings.py --stats
+```
+
+### 저장 위치
+- `backend/lancedb_data/` - LanceDB 데이터
+- 테이블: `legal_chunks` (법령 + 판례 통합)
+
+### 데이터 현황
+| 타입 | 원본 건수 | 임베딩 청크 |
+|------|-----------|-------------|
+| 판례 | 65,107건 | 134,846개 |
+| 법령 | 5,841건 | 118,922개 |
+
+### 관련 문서
+- `docs/vectordb_design.md` - 벡터 DB 설계
+- `backend/scripts/CLAUDE.md` - 임베딩 스크립트 가이드
+- `docs/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
+
+## Embedding Model (임베딩 모델)
+
+검색 API 사용 전 임베딩 모델(약 2.3GB)을 먼저 다운로드해야 합니다.
+
+```bash
+cd backend
+
+# 모델 다운로드
+uv run python scripts/download_models.py
+
+# 캐시 상태 확인
+uv run python scripts/download_models.py --check
+```
+
+| 항목 | 값 |
+|------|-----|
+| 모델명 | `nlpai-lab/KURE-v1` |
+| 크기 | 약 2.3GB |
+| 캐시 경로 | `backend/data/models/` |
+
+> **참고**: 서버는 모델 없이도 시작되지만, 검색 API 호출 시 503 에러가 반환됩니다.
+> 상세 내용은 `backend/CLAUDE.md`의 "Embedding Model" 섹션 참조.
+
+## RAG 평가 시스템
+
+RAG 챗봇 평가 데이터셋 생성 및 Gradio 분석 UI 제공
+
+### 빠른 시작
+```bash
+cd backend
+
+# Gradio UI 실행
+uv run python -m evaluation
+# → http://localhost:7860 접속
+
+# Solar 자동 질문 생성
+uv run python -m evaluation.tools.solar_generator --count 30
+
+# 평가 실행
+uv run python -m evaluation.runners.evaluation_runner \
+    --dataset evaluation/datasets/eval_dataset_v1.json
+
+# 데이터셋 검증
+uv run python -m evaluation.tools.validate_dataset eval_dataset_v1.json
+```
+
+### 성능 목표
+| 지표 | 목표값 |
+|------|--------|
+| Recall@5 | ≥ 0.7 |
+| Recall@10 | ≥ 0.8 |
+| MRR | ≥ 0.7 |
+| Hit Rate | ≥ 0.9 |
+| NDCG@10 | ≥ 0.75 |
+
+### 관련 문서
+- `backend/evaluation/CLAUDE.md` - 평가 시스템 상세 가이드
+
+## Graph DB (Neo4j)
+
+법령 계급, 판례 인용 관계를 Neo4j 그래프로 저장합니다.
+
+### 빠른 시작
+```bash
+# Neo4j 컨테이너 실행
+docker compose up -d neo4j
+
+# 그래프 구축 (초기 1회)
+cd backend
+uv run python scripts/build_graph.py
+
+# 검증
+NEO4J_PASSWORD=password uv run python scripts/verify_graph.py
+
+# Gradio UI 검증
+NEO4J_PASSWORD=password uv run python scripts/verify_gradio.py
+# → http://localhost:7860
+```
+
+### 그래프 스키마
+
+**노드 (Nodes)**
+| Label | 설명 | 개수 |
+|-------|------|------|
+| Statute | 법령 | 5,572 |
+| Case | 판례 | 65,107 |
+
+**관계 (Relationships)**
+| Type | 설명 | 개수 |
+|------|------|------|
+| HIERARCHY_OF | 법령 계급 (시행령→법률) | 3,624 |
+| CITES | 판례→법령 인용 | 72,414 |
+| CITES_CASE | 판례→판례 인용 | 87,654 |
+| RELATED_TO | 법령→법령 관련 | 93 |
+
+### 환경 변수
+```bash
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password
+```
+
+### 테스트
+```bash
+NEO4J_PASSWORD=password uv run python tests/integration/test_neo4j_graph.py
+```
+
+### 활용 시나리오
+1. **RAG 컨텍스트 보강** - 검색된 법령/판례의 관련 정보 추가
+2. **법령 탐색 UI** - 법령 계급도 시각화, 인용 네트워크
+3. **판례 추천** - 유사 판례 찾기 (같은 법령 인용, 인용 관계)
+
+### 관련 문서
+- `.claude/skills/neo4j-graph-construction/SKILL.md` - 그래프 구축 스킬
 ## Modules
 
 ### lawyer-stats (변호사 통계 대시보드)
