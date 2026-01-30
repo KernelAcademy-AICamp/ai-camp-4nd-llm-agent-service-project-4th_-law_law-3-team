@@ -60,6 +60,15 @@ export const modules: Module[] = [
     roles: ['lawyer'],
   },
   {
+    id: 'statute-hierarchy',
+    name: '법령 체계도',
+    description: '법령 간 계급 관계를 시각화합니다',
+    href: '/statute-hierarchy',
+    icon: '🔗',
+    enabled: true,
+    roles: ['lawyer'],
+  },
+  {
     id: 'small-claims',
     name: '소액 소송 도우미',
     description: '4단계 위자드로 내용증명, 지급명령, 소액심판 서류 작성',

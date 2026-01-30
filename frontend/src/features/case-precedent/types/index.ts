@@ -61,3 +61,6 @@ export interface SearchFilters {
 
 export type DocType = 'precedent' | 'constitutional' | ''
 export type Court = '대법원' | '고등법원' | '지방법원' | '헌법재판소' | ''
+
+// 법령 계층도 타입
+export * from './hierarchy'
