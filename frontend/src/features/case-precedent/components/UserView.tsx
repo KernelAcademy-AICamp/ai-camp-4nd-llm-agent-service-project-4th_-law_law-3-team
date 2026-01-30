@@ -5,6 +5,38 @@ import ReactMarkdown from 'react-markdown'
 import { useChat } from '@/context/ChatContext'
 import type { ChatSource } from '../types'
 
+// 아코디언 섹션 컴포넌트
+function CollapsibleSection({
+  title,
+  content,
+  defaultOpen = false,
+}: {
+  title: string
+  content?: string
+  defaultOpen?: boolean
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen)
+
+  if (!content) return null
+
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden mb-3">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-4 py-3 bg-gray-50 flex justify-between items-center hover:bg-gray-100 transition-colors"
+      >
+        <span className="font-medium text-gray-700">{title}</span>
+        <span className="text-gray-400">{isOpen ? '▲' : '▼'}</span>
+      </button>
+      {isOpen && (
+        <div className="p-4 bg-white text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
+          {content}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // doc_type을 한글로 변환
 const docTypeLabels: Record<string, string> = {
   precedent: '판례',
@@ -40,9 +72,10 @@ const getDocTypeBadgeColor = (docType: string): string => {
 }
 
 export function UserView() {
-  const { sessionData } = useChat()
+  const { sessionData, userRole } = useChat()
   const [references, setReferences] = useState<ChatSource[]>([])
   const [selectedRef, setSelectedRef] = useState<ChatSource | null>(null)
+  const isLawyer = userRole === 'lawyer'
 
   useEffect(() => {
     // 세션 데이터에서 챗봇 참조 자료를 로드합니다.
@@ -74,19 +107,27 @@ export function UserView() {
   // Detail View
   if (selectedRef) {
     const isLaw = selectedRef.doc_type === 'law'
+    const isPrecedent = selectedRef.doc_type === 'precedent'
     const title = isLaw ? selectedRef.law_name : selectedRef.case_name
     const subtitle = isLaw ? selectedRef.law_type : selectedRef.case_number
 
     return (
       <div className="h-full flex flex-col bg-white animate-in slide-in-from-right duration-300">
-        <div className="p-4 border-b border-gray-100 flex items-center gap-3">
-          <button
-            onClick={() => setSelectedRef(null)}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
-          >
-            ←
-          </button>
-          <span className="font-bold text-gray-900">상세 내용</span>
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSelectedRef(null)}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
+            >
+              ←
+            </button>
+            <span className="font-bold text-gray-900">상세 내용</span>
+          </div>
+          <span className={`px-2 py-1 rounded text-xs font-medium ${
+            isLawyer ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+          }`}>
+            {isLawyer ? '변호사 모드' : '일반인 모드'}
+          </span>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 md:p-8">
@@ -105,13 +146,83 @@ export function UserView() {
               )}
             </div>
 
-            <div className="prose prose-lg max-w-none text-gray-700">
-              <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 leading-relaxed">
-                <ReactMarkdown>
-                    {selectedRef.content || "상세 내용을 불러올 수 없습니다."}
-                </ReactMarkdown>
+            {/* 판례인 경우 역할별 차등 표시 */}
+            {isPrecedent ? (
+              <div className="space-y-4">
+                {/* 일반인 모드: 판결요지 + 주문 중심 */}
+                {!isLawyer ? (
+                  <>
+                    {/* 판결요지 (핵심) */}
+                    {selectedRef.reasoning && (
+                      <div className="bg-blue-50 p-5 rounded-xl border border-blue-100">
+                        <h3 className="font-bold text-blue-800 mb-3 flex items-center gap-2">
+                          <span>📋</span> 판결 요지 (핵심 내용)
+                        </h3>
+                        <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                          {selectedRef.reasoning}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 주문 (결과) */}
+                    {selectedRef.ruling && (
+                      <div className="bg-green-50 p-5 rounded-xl border border-green-100">
+                        <h3 className="font-bold text-green-800 mb-3 flex items-center gap-2">
+                          <span>⚖️</span> 주문 (판결 결과)
+                        </h3>
+                        <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                          {selectedRef.ruling}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 더 보기 (접힘) */}
+                    <div className="pt-4">
+                      <p className="text-sm text-gray-500 mb-3">▼ 더 자세한 내용</p>
+                      <CollapsibleSection title="청구취지" content={selectedRef.claim} />
+                      <CollapsibleSection title="검색된 원문" content={selectedRef.content} />
+                    </div>
+                  </>
+                ) : (
+                  /* 변호사 모드: 전체 표시 */
+                  <>
+                    <CollapsibleSection title="판결요지" content={selectedRef.reasoning} defaultOpen />
+                    <CollapsibleSection title="주문" content={selectedRef.ruling} defaultOpen />
+                    <CollapsibleSection title="청구취지" content={selectedRef.claim} defaultOpen />
+                    <CollapsibleSection title="이유 (상세)" content={selectedRef.full_reason} />
+                    <CollapsibleSection title="검색된 원문" content={selectedRef.content} />
+                  </>
+                )}
+
+                {/* 그래프 보강 정보 */}
+                {(selectedRef.cited_statutes?.length || selectedRef.similar_cases?.length) && (
+                  <div className="mt-6 pt-4 border-t border-gray-200">
+                    <h3 className="font-bold text-gray-700 mb-3">📊 관련 정보</h3>
+                    {selectedRef.cited_statutes && selectedRef.cited_statutes.length > 0 && (
+                      <p className="text-sm text-gray-600 mb-2">
+                        <span className="font-medium">인용 법령:</span>{' '}
+                        {selectedRef.cited_statutes.join(', ')}
+                      </p>
+                    )}
+                    {selectedRef.similar_cases && selectedRef.similar_cases.length > 0 && (
+                      <p className="text-sm text-gray-600">
+                        <span className="font-medium">유사 판례:</span>{' '}
+                        {selectedRef.similar_cases.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
+            ) : (
+              /* 법령인 경우 기존 방식 */
+              <div className="prose prose-lg max-w-none text-gray-700">
+                <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 leading-relaxed">
+                  <ReactMarkdown>
+                    {selectedRef.content || "상세 내용을 불러올 수 없습니다."}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

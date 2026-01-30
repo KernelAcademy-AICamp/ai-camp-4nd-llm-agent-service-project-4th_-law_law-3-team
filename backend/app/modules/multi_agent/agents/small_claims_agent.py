@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 from app.common.agent_base import ActionType, AgentResponse, BaseAgent, ChatAction
-from app.common.chat_service import search_relevant_documents
+from app.common.chat_service import fetch_precedent_details, search_relevant_documents
 
 logger = logging.getLogger(__name__)
 
@@ -291,19 +291,38 @@ class SmallClaimsAgent(BaseAgent):
                 ),
             ]
 
-        # 관련 판례 정보 추가 (content 포함)
+        # 관련 판례 정보 추가 (역할별 차등 표시용 상세 필드 포함)
         sources = []
         if related_docs:
-            sources = [
-                {
-                    "case_name": doc.get("metadata", {}).get("case_name", ""),
-                    "case_number": doc.get("metadata", {}).get("case_number", ""),
-                    "doc_type": doc.get("metadata", {}).get("doc_type", ""),
+            # 판례 상세 정보 조회
+            source_ids = [
+                doc.get("metadata", {}).get("doc_id")
+                for doc in related_docs
+                if doc.get("metadata", {}).get("doc_id")
+            ]
+            precedent_details = fetch_precedent_details(source_ids) if source_ids else {}
+
+            for doc in related_docs:
+                metadata = doc.get("metadata", {})
+                source_id = metadata.get("doc_id", "")
+
+                source_item = {
+                    "case_name": metadata.get("case_name", ""),
+                    "case_number": metadata.get("case_number", ""),
+                    "doc_type": metadata.get("doc_type", ""),
                     "similarity": round(doc.get("similarity", 0), 3),
                     "content": doc.get("content", ""),
                 }
-                for doc in related_docs
-            ]
+
+                # 판례 상세 정보 추가
+                if source_id in precedent_details:
+                    details = precedent_details[source_id]
+                    source_item["ruling"] = details.get("ruling", "")
+                    source_item["claim"] = details.get("claim", "")
+                    source_item["reasoning"] = details.get("reasoning", "")
+                    source_item["full_reason"] = details.get("full_reason", "")
+
+                sources.append(source_item)
 
         return AgentResponse(
             message=response,

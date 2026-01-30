@@ -33,6 +33,11 @@ export interface ChatSource {
   similarity: number
   summary?: string
   content?: string
+  // 판례 상세 필드 (역할별 차등 표시용)
+  ruling?: string        // 주문
+  claim?: string         // 청구취지
+  reasoning?: string     // 판결요지
+  full_reason?: string   // 이유 (전체)
   // 법령용 필드
   law_name?: string
   law_type?: string

@@ -21,6 +21,7 @@ from app.common.vectorstore import VectorStore
 from app.core.config import settings
 from app.models.law import Law
 from app.models.legal_document import LegalDocument
+from app.models.precedent_document import PrecedentDocument
 
 # ============================================================================
 # 상수 정의
@@ -284,6 +285,38 @@ def fetch_laws_by_names(law_names: Set[str], limit: int = 5) -> List[dict]:
             }
             for law in laws
         ]
+
+
+def fetch_precedent_details(source_ids: List[str]) -> dict:
+    """
+    source_id 목록으로 PostgreSQL에서 판례 상세 정보 조회
+
+    Args:
+        source_ids: 판례 serial_number 목록
+
+    Returns:
+        {serial_number: {ruling, claim, reasoning, full_reason}} 딕셔너리
+    """
+    if not source_ids:
+        return {}
+
+    with sync_session_factory() as session:
+        result = session.execute(
+            select(PrecedentDocument).where(
+                PrecedentDocument.serial_number.in_(source_ids)
+            )
+        )
+        precedents = result.scalars().all()
+
+        return {
+            p.serial_number: {
+                "ruling": p.ruling or "",
+                "claim": p.claim or "",
+                "reasoning": p.reasoning or "",
+                "full_reason": p.full_reason or "",
+            }
+            for p in precedents
+        }
 
 
 def fetch_reference_articles_from_docs(doc_ids: List[int]) -> str:
@@ -613,18 +646,37 @@ def generate_chat_response(
     assistant_message = response.content
 
     # 8. 결과 반환
+    # 판례 상세 정보 조회 (역할별 차등 표시용)
+    source_ids = [
+        doc.get("metadata", {}).get("doc_id")
+        for doc in relevant_docs
+        if doc.get("metadata", {}).get("doc_type") == "precedent"
+        and doc.get("metadata", {}).get("doc_id")
+    ]
+    precedent_details = fetch_precedent_details(source_ids) if source_ids else {}
+
     sources = []
     for doc in relevant_docs:
         metadata = doc.get("metadata", {})
         case_number = metadata.get("case_number", "")
+        doc_type = metadata.get("doc_type", "")
+        source_id = metadata.get("doc_id", "")
 
         source_item = {
             "case_name": metadata.get("case_name", ""),
             "case_number": case_number,
-            "doc_type": metadata.get("doc_type", ""),
+            "doc_type": doc_type,
             "similarity": round(doc.get("similarity", 0), 3),
             "content": doc.get("content", ""),
         }
+
+        # 판례 상세 정보 추가 (역할별 차등 표시용)
+        if doc_type == "precedent" and source_id in precedent_details:
+            details = precedent_details[source_id]
+            source_item["ruling"] = details.get("ruling", "")
+            source_item["claim"] = details.get("claim", "")
+            source_item["reasoning"] = details.get("reasoning", "")
+            source_item["full_reason"] = details.get("full_reason", "")
 
         # 그래프 정보 추가 (인용 법령)
         for gc in graph_contexts:
