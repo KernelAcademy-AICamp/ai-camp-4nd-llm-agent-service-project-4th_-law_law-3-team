@@ -173,3 +173,93 @@ export function getLawTypeOrgName(lawType: string | undefined): string {
  * 기본 정부 로고 경로
  */
 export const DEFAULT_GOV_LOGO = '/data/logo/government_of_Korea.svg'
+
+// ============================================
+// 법원 (판례용) 로고 맵핑
+// ============================================
+
+// court_name → 로고 파일명 맵핑
+const COURT_LOGO_MAP: Record<string, string> = {
+  // 대법원
+  '대법원': 'sck.svg',
+
+  // 헌법재판소
+  '헌법재판소': 'cck.svg',
+
+  // 고등법원
+  '서울고등법원': 'sck.svg',
+  '대전고등법원': 'sck.svg',
+  '대구고등법원': 'sck.svg',
+  '부산고등법원': 'sck.svg',
+  '광주고등법원': 'sck.svg',
+  '수원고등법원': 'sck.svg',
+  '춘천지방법원': 'sck.svg',
+  '특허법원': 'sck.svg',
+
+  // 지방법원 (일반)
+  '서울중앙지방법원': 'sck.svg',
+  '서울동부지방법원': 'sck.svg',
+  '서울서부지방법원': 'sck.svg',
+  '서울남부지방법원': 'sck.svg',
+  '서울북부지방법원': 'sck.svg',
+  '의정부지방법원': 'sck.svg',
+  '인천지방법원': 'sck.svg',
+  '수원지방법원': 'sck.svg',
+  '대전지방법원': 'sck.svg',
+  '대구지방법원': 'sck.svg',
+  '부산지방법원': 'sck.svg',
+  '울산지방법원': 'sck.svg',
+  '광주지방법원': 'sck.svg',
+  '전주지방법원': 'sck.svg',
+  '청주지방법원': 'sck.svg',
+  '창원지방법원': 'sck.svg',
+  '제주지방법원': 'sck.svg',
+
+  // 행정법원
+  '서울행정법원': 'sck.svg',
+
+  // 가정법원
+  '서울가정법원': 'sck.svg',
+}
+
+/**
+ * 법원명에 해당하는 로고 경로를 반환
+ * @param courtName - 법원명 (예: "대법원", "헌법재판소", "서울고등법원")
+ * @returns 로고 경로 또는 null
+ */
+export function getCourtLogo(courtName: string | undefined): string | null {
+  if (!courtName) return null
+
+  // 정확한 매칭 먼저 시도
+  if (COURT_LOGO_MAP[courtName]) {
+    return `/data/logo/${COURT_LOGO_MAP[courtName]}`
+  }
+
+  // 부분 매칭 (고등법원, 지방법원 등)
+  if (courtName.includes('헌법재판소')) {
+    return '/data/logo/cck.svg'
+  }
+  if (courtName.includes('대법원') || courtName.includes('법원')) {
+    return '/data/logo/sck.svg'
+  }
+
+  return null
+}
+
+/**
+ * doc_type에 해당하는 기본 로고 경로를 반환
+ * @param docType - 문서 유형 (precedent, constitutional 등)
+ * @returns 로고 경로 또는 null
+ */
+export function getDocTypeLogo(docType: string | undefined): string | null {
+  if (!docType) return null
+
+  switch (docType) {
+    case 'precedent':
+      return '/data/logo/sck.svg'  // 판례 기본: 대법원
+    case 'constitutional':
+      return '/data/logo/cck.svg'  // 헌재결정: 헌법재판소
+    default:
+      return null
+  }
+}

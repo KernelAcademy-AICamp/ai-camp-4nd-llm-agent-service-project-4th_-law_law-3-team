@@ -310,6 +310,7 @@ class SmallClaimsAgent(BaseAgent):
                     "case_name": metadata.get("case_name", ""),
                     "case_number": metadata.get("case_number", ""),
                     "doc_type": metadata.get("doc_type", ""),
+                    "court_name": metadata.get("court_name", ""),
                     "similarity": round(doc.get("similarity", 0), 3),
                     "content": doc.get("content", ""),
                 }

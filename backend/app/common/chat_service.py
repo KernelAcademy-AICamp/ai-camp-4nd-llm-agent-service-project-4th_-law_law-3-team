@@ -666,6 +666,7 @@ def generate_chat_response(
             "case_name": metadata.get("case_name", ""),
             "case_number": case_number,
             "doc_type": doc_type,
+            "court_name": metadata.get("court_name", ""),
             "similarity": round(doc.get("similarity", 0), 3),
             "content": doc.get("content", ""),
         }

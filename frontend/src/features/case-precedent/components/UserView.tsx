@@ -5,7 +5,7 @@ import Image from 'next/image'
 import ReactMarkdown from 'react-markdown'
 import { useChat } from '@/context/ChatContext'
 import type { ChatSource } from '../types'
-import { getLawTypeLogo, getLawTypeOrgName, DEFAULT_GOV_LOGO } from '../utils/lawTypeLogo'
+import { getLawTypeLogo, getLawTypeOrgName, getCourtLogo, getDocTypeLogo, DEFAULT_GOV_LOGO } from '../utils/lawTypeLogo'
 
 // 아코디언 섹션 컴포넌트
 function CollapsibleSection({
@@ -135,36 +135,36 @@ export function UserView() {
         <div className="flex-1 overflow-y-auto p-6 md:p-8">
           <div className="max-w-3xl mx-auto">
             <div className="mb-8 pb-6 border-b border-gray-100">
-              {/* 법령인 경우 발행기관 로고 표시 */}
-              {isLaw && (
-                <div className="flex items-center gap-3 mb-4">
-                  {(() => {
-                    const logoPath = getLawTypeLogo(selectedRef.law_type)
-                    return logoPath ? (
+              {/* 발행기관/법원 로고 표시 */}
+              <div className="flex items-center gap-3 mb-4">
+                {(() => {
+                  const logoPath = isLaw
+                    ? getLawTypeLogo(selectedRef.law_type)
+                    : getCourtLogo(selectedRef.court_name) || getDocTypeLogo(selectedRef.doc_type)
+                  const altText = isLaw
+                    ? getLawTypeOrgName(selectedRef.law_type)
+                    : (selectedRef.court_name || '법원')
+                  const orgName = isLaw
+                    ? getLawTypeOrgName(selectedRef.law_type)
+                    : (selectedRef.court_name || (selectedRef.doc_type === 'constitutional' ? '헌법재판소' : '대법원'))
+
+                  return (
+                    <>
                       <Image
-                        src={logoPath}
-                        alt={getLawTypeOrgName(selectedRef.law_type)}
+                        src={logoPath || DEFAULT_GOV_LOGO}
+                        alt={altText}
                         width={48}
                         height={48}
                         className="object-contain"
                         unoptimized
                       />
-                    ) : (
-                      <Image
-                        src={DEFAULT_GOV_LOGO}
-                        alt="대한민국 정부"
-                        width={48}
-                        height={48}
-                        className="object-contain"
-                        unoptimized
-                      />
-                    )
-                  })()}
-                  <span className="text-sm text-gray-500 font-medium">
-                    {getLawTypeOrgName(selectedRef.law_type)}
-                  </span>
-                </div>
-              )}
+                      <span className="text-sm text-gray-500 font-medium">
+                        {orgName}
+                      </span>
+                    </>
+                  )
+                })()}
+              </div>
               <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium mb-4 ${getDocTypeBadgeColor(selectedRef.doc_type)}`}>
                 {getDocTypeLabel(selectedRef.doc_type)}
               </span>
@@ -279,7 +279,11 @@ export function UserView() {
           const isLaw = ref.doc_type === 'law'
           const title = isLaw ? ref.law_name : ref.case_name
           const subtitle = isLaw ? ref.law_type : ref.case_number
-          const logoPath = isLaw ? getLawTypeLogo(ref.law_type) : null
+
+          // 로고 경로 결정: 법령 → law_type 기준, 판례 → court_name 또는 doc_type 기준
+          const logoPath = isLaw
+            ? getLawTypeLogo(ref.law_type)
+            : getCourtLogo(ref.court_name) || getDocTypeLogo(ref.doc_type)
 
           return (
             <button
@@ -288,30 +292,28 @@ export function UserView() {
               className="w-full text-left p-5 rounded-xl bg-white border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all duration-200 group"
             >
               <div className="flex items-start gap-3">
-                {/* 법령인 경우 로고 표시 */}
-                {isLaw && (
-                  <div className="shrink-0 w-10 h-10 flex items-center justify-center bg-gray-50 rounded-lg">
-                    {logoPath ? (
-                      <Image
-                        src={logoPath}
-                        alt={getLawTypeOrgName(ref.law_type)}
-                        width={32}
-                        height={32}
-                        className="object-contain"
-                        unoptimized
-                      />
-                    ) : (
-                      <Image
-                        src={DEFAULT_GOV_LOGO}
-                        alt="대한민국 정부"
-                        width={32}
-                        height={32}
-                        className="object-contain"
-                        unoptimized
-                      />
-                    )}
-                  </div>
-                )}
+                {/* 로고 표시 (법령 및 판례 모두) */}
+                <div className="shrink-0 w-10 h-10 flex items-center justify-center bg-gray-50 rounded-lg">
+                  {logoPath ? (
+                    <Image
+                      src={logoPath}
+                      alt={isLaw ? getLawTypeOrgName(ref.law_type) : (ref.court_name || '법원')}
+                      width={32}
+                      height={32}
+                      className="object-contain"
+                      unoptimized
+                    />
+                  ) : (
+                    <Image
+                      src={DEFAULT_GOV_LOGO}
+                      alt="대한민국 정부"
+                      width={32}
+                      height={32}
+                      className="object-contain"
+                      unoptimized
+                    />
+                  )}
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2">
                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${getDocTypeBadgeColor(ref.doc_type)}`}>

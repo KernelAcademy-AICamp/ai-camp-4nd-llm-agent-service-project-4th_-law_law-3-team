@@ -38,6 +38,7 @@ export interface ChatSource {
   claim?: string         // 청구취지
   reasoning?: string     // 판결요지
   full_reason?: string   // 이유 (전체)
+  court_name?: string    // 법원명 (대법원, 헌법재판소 등)
   // 법령용 필드
   law_name?: string
   law_type?: string
