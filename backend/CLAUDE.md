@@ -113,6 +113,61 @@ uv add --dev <package>               # 개발 패키지 추가
 
 ## Architecture
 
+### 전체 폴더 구조
+
+```
+app/
+├── api/router/          # 통합 API 라우터
+│   └── chat.py          # /api/chat 엔드포인트
+├── core/                # 핵심 인프라
+│   ├── config.py        # 환경 설정 (pydantic-settings)
+│   ├── database.py      # SQLAlchemy 연결
+│   ├── registry.py      # 모듈 자동 등록
+│   ├── errors.py        # 공통 예외 클래스
+│   ├── context.py       # 요청 컨텍스트
+│   ├── logging.py       # 로깅 유틸리티
+│   ├── policies/        # 법률 안전정책
+│   └── state/           # 세션 저장소
+├── multi_agent/         # 멀티 에이전트 시스템
+│   ├── orchestrator.py  # 전체 흐름 조율
+│   ├── executor.py      # 에이전트 실행
+│   ├── routing/         # 라우팅 로직
+│   │   ├── rules_router.py   # 키워드 기반 라우팅
+│   │   └── router_agent.py   # 라우터 에이전트
+│   ├── agents/          # 에이전트 구현
+│   │   ├── base_chat.py           # 베이스 클래스
+│   │   ├── case_precedent_agent.py # 판례 검색
+│   │   ├── lawyer_finder_agent.py  # 변호사 찾기
+│   │   └── small_claims_agent.py   # 소액소송
+│   └── schemas/         # 스키마
+│       ├── plan.py      # AgentPlan, AgentResult
+│       └── messages.py  # 메시지 타입
+├── services/            # 비즈니스 로직
+│   ├── rag/
+│   │   ├── retrieval.py  # 벡터 검색, 임베딩
+│   │   └── rerank.py     # 리랭킹 (미구현)
+│   ├── cases/
+│   │   ├── precedent_service.py  # 판례 조회
+│   │   └── document_service.py   # 법령 조회
+│   ├── lawyers/
+│   │   └── lawyer_service.py
+│   └── small_claims/
+│       └── small_claims_service.py
+├── tools/               # 외부 도구 클라이언트
+│   ├── llm/             # LLM (Solar, OpenAI)
+│   ├── vectorstore/     # LanceDB, Chroma, Qdrant
+│   ├── graph/           # Neo4j GraphService
+│   └── geo/             # 거리 계산
+├── modules/             # 독립 API 모듈 (자동 등록)
+│   ├── case_precedent/
+│   ├── lawyer_finder/
+│   ├── lawyer_stats/
+│   └── small_claims/
+├── models/              # SQLAlchemy ORM 모델
+└── common/              # (deprecated) 레거시 코드
+    └── chat_service.py  # → services/rag/로 이전됨
+```
+
 ### 모듈 자동 등록
 
 `app/core/registry.py`의 `ModuleRegistry`가 서버 시작 시 `app/modules/` 폴더를 스캔하여 각 모듈의 라우터를 자동 등록합니다.
@@ -142,6 +197,25 @@ app/modules/<module_name>/
 - `lawyer_finder` → `/api/lawyer-finder`
 - `small_claims` → `/api/small-claims`
 
+### Multi-Agent 시스템
+
+```
+POST /api/chat → Orchestrator → Router → Agent → Response
+                      ↓            ↓         ↓
+                 SessionStore  RulesRouter  CasePrecedentAgent
+                                           LawyerFinderAgent
+                                           SmallClaimsAgent
+                                           SimpleChatAgent
+```
+
+**에이전트 목록:**
+| 에이전트 | 역할 | RAG | LLM |
+|---------|------|-----|-----|
+| `CasePrecedentAgent` | 판례 검색 + 법률 상담 | ✅ | ✅ |
+| `LawyerFinderAgent` | 위치 기반 변호사 추천 | ❌ | ❌ |
+| `SmallClaimsAgent` | 소액소송 단계별 가이드 | ✅ | ❌ |
+| `SimpleChatAgent` | 일반 LLM 채팅 | ❌ | ✅ |
+
 ### 설정
 
 `app/core/config.py`에서 pydantic-settings 사용. `.env` 파일에서 환경변수 로드.
@@ -167,6 +241,42 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `UPSTAGE_MODEL` | Solar 모델명 | `solar-pro3-260126` |
 
 자세한 설정은 `.env.example` 참조.
+
+## Services
+
+### RAG 서비스 (`app/services/rag/`)
+
+```python
+from app.services.rag.retrieval import get_retrieval_service, create_query_embedding
+
+# 검색 서비스
+service = get_retrieval_service()
+results = service.search(
+    query="손해배상 판례",
+    n_results=5,
+    doc_type="precedent"  # "precedent" | "law"
+)
+
+# 임베딩 생성
+embedding = create_query_embedding("검색 쿼리")
+```
+
+### 판례/법령 서비스 (`app/services/cases/`)
+
+```python
+from app.services.cases.precedent_service import get_precedent_service
+from app.services.cases.document_service import get_document_service
+
+# 판례 상세 조회
+precedent_svc = get_precedent_service()
+details = precedent_svc.get_details(["serial_number1", "serial_number2"])
+
+# 법령명 추출 및 조회
+doc_svc = get_document_service()
+law_names = doc_svc.extract_law_names("민사소송법 제704조")  # {"민사소송법"}
+laws = doc_svc.get_laws_by_names(law_names, limit=5)
+```
+
 ## Modules
 
 ### lawyer_stats (변호사 통계)
@@ -346,7 +456,7 @@ app/models/
 
 ```python
 from sqlalchemy import select
-from app.common.database import async_session_factory
+from app.core.database import async_session_factory
 from app.models.precedent_document import PrecedentDocument
 
 async with async_session_factory() as session:
@@ -359,6 +469,22 @@ async with async_session_factory() as session:
     precedent = result.scalar_one_or_none()
     print(precedent.ruling)  # 주문
     print(precedent.reasoning)  # 판결요지
+```
+
+### 서비스 사용 예시
+
+```python
+# 판례 서비스
+from app.services.cases.precedent_service import get_precedent_service
+
+service = get_precedent_service()
+details = service.get_details(["76396", "76397"])
+
+# RAG 검색 서비스
+from app.services.rag.retrieval import get_retrieval_service
+
+retrieval = get_retrieval_service()
+results = retrieval.search("손해배상 판례", n_results=5, doc_type="precedent")
 ```
 
 ## Vector DB (LanceDB)
@@ -499,7 +625,8 @@ uv run python scripts/download_models.py --model sentence-transformers/paraphras
 
 | 파일 | 설명 |
 |------|------|
-| `app/common/chat_service.py` | `check_embedding_model_availability()`, `get_local_model()` |
+| `app/services/rag/retrieval.py` | `check_embedding_model_availability()`, `get_local_model()`, `create_query_embedding()` |
+| `app/core/errors.py` | `EmbeddingModelNotFoundError` 예외 클래스 |
 | `scripts/download_models.py` | 모델 다운로드 CLI |
 | `app/main.py` | lifespan에서 시작 시 체크 |
 

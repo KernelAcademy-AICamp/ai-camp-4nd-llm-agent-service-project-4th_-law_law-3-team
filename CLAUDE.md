@@ -75,10 +75,83 @@ Backend 모듈명 `snake_case` → API 경로 `/api/kebab-case`
 
 - `backend/app/main.py` - FastAPI 앱 진입점
 - `backend/app/core/config.py` - 환경 설정 (pydantic-settings)
+- `backend/app/core/database.py` - DB 연결 (SQLAlchemy)
 - `backend/app/core/registry.py` - 모듈 자동 등록
 - `frontend/src/lib/modules.ts` - 프론트엔드 모듈 정의
 - `frontend/src/lib/api.ts` - API 클라이언트 및 endpoints
 - `scripts/add_module.py` - 모듈 생성 스크립트
+
+## Backend Architecture
+
+### 폴더 구조
+
+```
+backend/app/
+├── api/router/          # 통합 API (채팅 등)
+│   └── chat.py          # /api/chat 엔드포인트
+├── core/                # 핵심 인프라
+│   ├── config.py        # 환경 설정
+│   ├── database.py      # DB 연결
+│   ├── errors.py        # 공통 예외
+│   ├── context.py       # 요청 컨텍스트
+│   ├── policies/        # 법률 안전정책
+│   └── state/           # 세션 저장소
+├── multi_agent/         # 멀티 에이전트 시스템
+│   ├── orchestrator.py  # 오케스트레이션
+│   ├── executor.py      # 에이전트 실행
+│   ├── routing/         # 라우팅 (rules_router)
+│   ├── agents/          # 에이전트 구현체
+│   └── schemas/         # 스키마 (AgentPlan, AgentResult)
+├── services/            # 비즈니스 로직 서비스
+│   ├── rag/             # RAG 검색 (retrieval, rerank)
+│   ├── cases/           # 판례/법령 서비스
+│   ├── lawyers/         # 변호사 서비스
+│   └── small_claims/    # 소액소송 서비스
+├── tools/               # 외부 도구 클라이언트
+│   ├── llm/             # LLM 클라이언트 (Solar)
+│   ├── vectorstore/     # 벡터 DB (LanceDB)
+│   ├── graph/           # Neo4j 그래프 서비스
+│   └── geo/             # 거리 계산
+├── modules/             # 독립 API 모듈 (자동 등록)
+│   ├── case_precedent/
+│   ├── lawyer_finder/
+│   ├── lawyer_stats/
+│   └── small_claims/
+└── models/              # ORM 모델
+```
+
+### Multi-Agent 시스템
+
+```
+사용자 메시지 → Orchestrator → Router → Agent → Response
+                    ↓            ↓        ↓
+               SessionStore  RulesRouter  CasePrecedentAgent
+                                         LawyerFinderAgent
+                                         SmallClaimsAgent
+                                         SimpleChatAgent
+```
+
+**에이전트 목록:**
+| 에이전트 | 역할 | RAG 사용 |
+|---------|------|---------|
+| `CasePrecedentAgent` | 판례 검색 + LLM 응답 | ✅ |
+| `LawyerFinderAgent` | 변호사 찾기 페이지 이동 | ❌ |
+| `SmallClaimsAgent` | 소액소송 단계별 가이드 | ✅ (참고용) |
+| `SimpleChatAgent` | 일반 LLM 채팅 | ❌ |
+
+### 통합 채팅 API
+
+```bash
+# 새 통합 채팅 API
+POST /api/chat
+{
+  "message": "손해배상 판례 알려줘",
+  "history": [],
+  "session_data": {}
+}
+```
+
+프론트엔드 `ChatWidget`은 `/api/chat` 사용 (기존 `/api/multi-agent/chat` 대체)
 
 ## Vector DB (LanceDB)
 
