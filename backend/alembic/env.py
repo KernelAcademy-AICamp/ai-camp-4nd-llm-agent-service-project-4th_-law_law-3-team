@@ -14,7 +14,7 @@ from alembic import context
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 설정 및 모델 임포트
-from app.common.database import Base
+from app.core.database import Base
 from app.models import (
     LegalDocument,
     Law,

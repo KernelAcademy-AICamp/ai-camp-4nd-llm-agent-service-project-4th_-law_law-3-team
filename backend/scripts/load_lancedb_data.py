@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import select, func, delete
 from sqlalchemy.dialects.postgresql import insert
 
-from app.common.database import async_session_factory
+from app.core.database import async_session_factory
 from app.models.law_document import LawDocument
 from app.models.precedent_document import PrecedentDocument
 

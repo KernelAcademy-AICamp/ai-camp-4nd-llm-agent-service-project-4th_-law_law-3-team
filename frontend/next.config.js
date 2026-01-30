@@ -32,8 +32,12 @@ const nextConfig = {
         destination: 'http://localhost:8000/api/small-claims/:path*',
       },
       {
-        source: '/api/multi-agent/:path*',
-        destination: 'http://localhost:8000/api/multi-agent/:path*',
+        source: '/api/chat/:path*',
+        destination: 'http://localhost:8000/api/chat/:path*',
+      },
+      {
+        source: '/api/chat',
+        destination: 'http://localhost:8000/api/chat',
       },
       {
         source: '/media/:path*',

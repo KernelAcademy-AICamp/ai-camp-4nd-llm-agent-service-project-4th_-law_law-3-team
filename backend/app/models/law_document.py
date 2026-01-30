@@ -19,7 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.common.database import Base
+from app.core.database import Base
 
 
 class LawDocument(Base):

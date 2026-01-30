@@ -10,9 +10,9 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.17.9",
-    "@xyflow/react": "^12.10.0",
     "@types/d3-geo": "^3.1.0",
     "@types/d3-scale": "^4.0.9",
+    "@xyflow/react": "^12.10.0",
     "axios": "^1.6.5",
     "clsx": "^2.1.0",
     "d3-geo": "^3.1.1",

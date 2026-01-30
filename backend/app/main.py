@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.registry import ModuleRegistry
+from app.api.router import chat_router
 
 # 미디어 디렉토리 경로
 MEDIA_DIR = Path(__file__).parent.parent / "data" / "media"
@@ -17,7 +18,7 @@ MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 async def lifespan(app: FastAPI):
     """애플리케이션 생명주기 관리"""
     # 시작 시: 임베딩 모델 캐시 상태 확인
-    from app.common.chat_service import check_embedding_model_availability
+    from app.services.rag.retrieval import check_embedding_model_availability
 
     check_embedding_model_availability()
 
@@ -44,6 +45,9 @@ app.add_middleware(
 # 모듈 자동 등록
 registry = ModuleRegistry(app)
 registry.register_all_modules()
+
+# API 라우터 수동 등록 (모듈 시스템과 별도)
+app.include_router(chat_router, prefix="/api")
 
 # 미디어 정적 파일 마운트
 app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")

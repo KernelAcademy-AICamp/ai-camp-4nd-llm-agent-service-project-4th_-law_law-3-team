@@ -3,6 +3,15 @@ RAG 기반 법률 챗봇 서비스
 
 VectorStore에서 관련 문서를 검색하고 LLM으로 응답 생성
 LangChain/LangGraph 호환 구조
+
+.. deprecated::
+    이 모듈의 일부 기능은 분리되었습니다:
+    - 검색 기능: app.services.rag.retrieval
+    - 판례 조회: app.services.cases.precedent_service
+    - 법령 조회: app.services.cases.document_service
+
+
+----->>>> **** 그래프 관련 폴더 정리 후, 컨텍스트 보강하는 거 반영해야함! (_get_graph_service())
 """
 
 import logging
@@ -11,13 +20,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, Set
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from openai import OpenAI
 from sqlalchemy import or_, select
 
-from app.common.database import sync_session_factory
-from app.common.llm import get_chat_model
-from app.common.vectorstore import get_vector_store
+from app.core.database import sync_session_factory
+from app.tools.llm import get_chat_model
+from app.tools.vectorstore import get_vector_store
 from app.core.config import settings
 from app.models.law import Law
 from app.models.legal_document import LegalDocument
@@ -51,7 +60,7 @@ def _get_graph_service():
     _graph_service_init_attempted = True
 
     try:
-        from app.common.graph_service import get_graph_service
+        from app.tools.graph import get_graph_service
         service = get_graph_service()
         if service.is_connected:
             _graph_service = service

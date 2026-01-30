@@ -8,11 +8,10 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from app.common.chat_service import (
-    EmbeddingModelNotFoundError,
-    generate_chat_response,
-    search_relevant_documents,
-)
+from app.common.chat_service import generate_chat_response
+from app.core.errors import EmbeddingModelNotFoundError
+from app.services.rag.retrieval import search_relevant_documents
+from app.tools.vectorstore import get_vector_store
 
 
 def _map_data_type(data_type: str) -> str:
@@ -300,8 +299,6 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
     특정 판례의 전체 내용을 조회합니다.
     """
     try:
-        from app.common.vectorstore import get_vector_store
-
         store = get_vector_store()
         result = store.get_by_id(precedent_id)
 
@@ -338,7 +335,7 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
 def _get_graph_service():
     """GraphService lazy 로드 (Neo4j 연결 실패 시에도 동작)"""
     try:
-        from app.common.graph_service import get_graph_service
+        from app.tools.graph import get_graph_service
 
         service = get_graph_service()
         if service.is_connected:

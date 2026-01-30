@@ -124,9 +124,9 @@ export default function ChatWidget() {
       // 위치 정보: override > context
       const locationToSend = overrideLocation !== undefined ? overrideLocation : userLocation
 
-      // 멀티 에이전트 API 호출
+      // 통합 채팅 API 호출
       const response = await api.post<MultiAgentChatResponse>(
-        '/multi-agent/chat',
+        '/chat',
         {
           message: messageToSend,
           user_role: userRole,
