@@ -1,14 +1,10 @@
 'use client'
 
 import { useRef, useCallback, useEffect, useState } from 'react'
-import dynamic from 'next/dynamic'
 import { casePrecedentService, type GraphNode, type GraphLink } from '../services'
 import { getLawTypeLogo, DEFAULT_GOV_LOGO } from '../utils/lawTypeLogo'
-
-// Dynamic import to avoid SSR issues
-const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
-  ssr: false,
-})
+import { forceCollide, forceManyBody, forceRadial } from 'd3-force'
+import type { ForceGraphMethods } from 'react-force-graph-2d'
 
 // 이미지 캐시
 const imageCache = new Map<string, HTMLImageElement>()
@@ -20,7 +16,8 @@ interface StatuteForceGraphProps {
 
 // 법령 유형별 색상
 const TYPE_COLORS: Record<string, string> = {
-  '법률': '#fbbf24',        // amber
+  '헌법': '#ff6b35',         // 태양 (주황-빨강)
+  '법률': '#fbbf24',         // amber
   '대통령령': '#60a5fa',     // blue
   '총리령': '#34d399',       // emerald
   '대법원규칙': '#a78bfa',   // violet
@@ -33,15 +30,35 @@ function getNodeColor(type: string): string {
   return '#9ca3af' // gray default
 }
 
-// 법령 계급별 크기 (상위법일수록 큼)
+// 법령 계급별 크기 (헌법은 태양처럼 크게)
 function getHierarchySize(type: string): number {
-  if (type === '헌법') return 14
-  if (type === '법률') return 11
-  if (type === '대통령령') return 8
+  if (type === '헌법') return 25  // 태양
+  if (type === '법률') return 12
+  if (type === '대통령령') return 9
   if (type === '총리령') return 7
   if (type.endsWith('부령')) return 6
   if (type.includes('규칙')) return 5
   return 5 // 기타
+}
+
+// 법령 유형별 방사형 반경 (헌법은 중심, 나머지는 동심원)
+function getRadialRadius(type: string): number {
+  if (type === '헌법') return 0  // 태양 (중심)
+  if (type === '법률') return 120
+  if (type === '대통령령') return 220
+  if (type === '총리령') return 300
+  if (type.endsWith('부령')) return 300
+  if (type.includes('규칙')) return 380
+  return 380 // 기타
+}
+
+// 헌법 노드 (태양)
+const CONSTITUTION_NODE: GraphNode = {
+  id: '001444',
+  name: '대한민국헌법',
+  type: '헌법',
+  abbreviation: '헌법',
+  citation_count: 0,
 }
 
 // 표시용 이름 (약어 또는 8자 제한)
@@ -81,10 +98,19 @@ function getLogoImage(type: string): HTMLImageElement | null {
 
 export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const fgRef = useRef<ForceGraphMethods | null>(null)
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; links: GraphLink[] }>({ nodes: [], links: [] })
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
   const [isLoading, setIsLoading] = useState(true)
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null)
+  const [ForceGraph2D, setForceGraph2D] = useState<any>(null)
+
+  // 클라이언트에서만 ForceGraph2D 로드 (SSR 회피)
+  useEffect(() => {
+    import('react-force-graph-2d').then((mod) => {
+      setForceGraph2D(() => mod.default)
+    })
+  }, [])
 
   // 그래프 데이터 로드
   useEffect(() => {
@@ -92,7 +118,55 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
       setIsLoading(true)
       try {
         const data = await casePrecedentService.getStatuteGraph(centerId, 150)
-        setGraphData(data)
+
+        let nodes = [...data.nodes]
+
+        // centerId가 없을 때만 헌법을 추가 (초기 화면)
+        if (!centerId) {
+          const hasConstitution = nodes.some(n => n.type === '헌법')
+          if (!hasConstitution) {
+            nodes = [CONSTITUTION_NODE, ...nodes]
+          }
+        }
+
+        // 중심 노드 결정: centerId가 있으면 해당 노드, 없으면 헌법
+        const centerNodeId = centerId || CONSTITUTION_NODE.id
+
+        // 노드 초기 위치를 계층별 원형으로 배치
+        const nonCenterNodes = nodes.filter(n => n.id !== centerNodeId)
+        const typeGroups: Record<string, typeof nodes> = {}
+        nonCenterNodes.forEach(node => {
+          const radius = getRadialRadius(node.type)
+          if (!typeGroups[radius]) typeGroups[radius] = []
+          typeGroups[radius].push(node)
+        })
+
+        const nodesWithPosition = nodes.map((node) => {
+          // 중심 노드는 중앙에 고정
+          if (node.id === centerNodeId) {
+            return {
+              ...node,
+              x: 0,
+              y: 0,
+              fx: 0,
+              fy: 0,
+            }
+          }
+
+          const radius = getRadialRadius(node.type)
+          const group = typeGroups[radius] || []
+          const indexInGroup = group.indexOf(node)
+          const totalInGroup = group.length || 1
+          // 같은 계층 노드들을 원형으로 균등 배치
+          const angle = (indexInGroup / totalInGroup) * 2 * Math.PI + Math.random() * 0.2
+          return {
+            ...node,
+            x: Math.cos(angle) * radius + (Math.random() - 0.5) * 20,
+            y: Math.sin(angle) * radius + (Math.random() - 0.5) * 20,
+          }
+        })
+
+        setGraphData({ nodes: nodesWithPosition, links: data.links })
       } catch (error) {
         console.error('그래프 로드 실패:', error)
       } finally {
@@ -144,6 +218,46 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
     return getHierarchySize(node.type)
   }, [])
 
+  // ref callback (fgRef만 설정)
+  const handleGraphRef = useCallback((fg: ForceGraphMethods | null) => {
+    fgRef.current = fg
+  }, [])
+
+  // graphData가 변경될 때 force 설정 적용
+  useEffect(() => {
+    if (!fgRef.current || graphData.nodes.length === 0) return
+
+    const fg = fgRef.current
+
+    // 방사형 배치 (황도 십이궁 스타일) - 가장 강한 힘
+    fg.d3Force('radial', forceRadial(
+      (node: any) => getRadialRadius(node.type),
+      0, 0  // 중심점
+    ).strength(1.5))
+
+    // 충돌 방지: 노드가 겹치지 않도록
+    fg.d3Force('collide', forceCollide((node: any) => {
+      const size = getHierarchySize(node.type)
+      return size * 3 + 15
+    }).strength(0.8).iterations(3))
+
+    // 반발력 (같은 궤도 내에서 분산) - 약하게
+    fg.d3Force('charge', forceManyBody()
+      .strength(-80)
+      .distanceMin(10)
+      .distanceMax(200)
+    )
+
+    // 링크는 약하게 (궤도 배치를 방해하지 않도록)
+    fg.d3Force('link')?.distance(50).strength(0.1)
+
+    // center force 제거 (radial이 중심 역할)
+    fg.d3Force('center', null)
+
+    // 시뮬레이션 재가열
+    fg.d3ReheatSimulation()
+  }, [graphData])
+
   // 노드 클릭 핸들러
   const handleNodeClick = useCallback((node: object) => {
     const n = node as GraphNode
@@ -157,7 +271,7 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
     setHoveredNode(node as GraphNode | null)
   }, [])
 
-  if (isLoading) {
+  if (isLoading || !ForceGraph2D) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-slate-900">
         <div className="text-white">그래프 로딩 중...</div>
@@ -168,62 +282,91 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
   return (
     <div ref={containerRef} className="w-full h-full relative bg-slate-900">
       <ForceGraph2D
+        ref={handleGraphRef}
         width={dimensions.width}
         height={dimensions.height}
         graphData={graphData}
         nodeId="id"
-        nodeLabel="name"
+        nodeLabel={() => ''}
+
         nodeColor={(node) => getNodeColor((node as GraphNode).type)}
         nodeVal={(node) => getNodeSize(node as GraphNode)}
         nodeCanvasObject={(node, ctx, globalScale) => {
           const n = node as GraphNode & { x?: number; y?: number }
-          if (!n.x || !n.y) return
+          if (n.x === undefined || n.y === undefined) return
 
           const size = getNodeSize(n)
           const fontSize = Math.max(12 / globalScale, 3)
           const isHovered = hoveredNode?.id === n.id
-          const isCenter = centerId === n.id
+          // 중심 노드: centerId가 있으면 해당 노드, 없으면 헌법
+          const isCenterNode = centerId ? (n.id === centerId) : (n.type === '헌법')
 
           // 로고 이미지 가져오기
           const logoImg = getLogoImage(n.type)
 
-          // 노드 배경 (흰색 원)
-          ctx.beginPath()
-          ctx.arc(n.x, n.y, size + 2, 0, 2 * Math.PI)
-          ctx.fillStyle = '#ffffff'
-          if (isHovered || isCenter) {
-            ctx.shadowColor = getNodeColor(n.type)
-            ctx.shadowBlur = 15
-          }
-          ctx.fill()
-          ctx.shadowBlur = 0
-
-          // 테두리 (타입별 색상)
-          ctx.strokeStyle = getNodeColor(n.type)
-          ctx.lineWidth = isHovered ? 3 / globalScale : 2 / globalScale
-          ctx.stroke()
-
-          // 로고 이미지 그리기
-          if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
-            const imgSize = size * 1.5
-            ctx.drawImage(
-              logoImg,
-              n.x - imgSize / 2,
-              n.y - imgSize / 2,
-              imgSize,
-              imgSize
-            )
-          } else {
-            // 이미지 로드 전/실패 시 색상 원으로 대체
+          // 중심 노드(태양) 특별 효과
+          if (isCenterNode) {
+            // 태양 glow 효과
+            const gradient = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, size * 2)
+            gradient.addColorStop(0, 'rgba(255, 107, 53, 0.8)')
+            gradient.addColorStop(0.5, 'rgba(255, 165, 0, 0.4)')
+            gradient.addColorStop(1, 'rgba(255, 200, 0, 0)')
             ctx.beginPath()
-            ctx.arc(n.x, n.y, size * 0.7, 0, 2 * Math.PI)
-            ctx.fillStyle = getNodeColor(n.type)
+            ctx.arc(n.x, n.y, size * 2, 0, 2 * Math.PI)
+            ctx.fillStyle = gradient
             ctx.fill()
+
+            // 태양 본체
+            ctx.beginPath()
+            ctx.arc(n.x, n.y, size, 0, 2 * Math.PI)
+            const sunGradient = ctx.createRadialGradient(n.x - size * 0.3, n.y - size * 0.3, 0, n.x, n.y, size)
+            sunGradient.addColorStop(0, '#ffdd00')
+            sunGradient.addColorStop(0.5, '#ff8c00')
+            sunGradient.addColorStop(1, '#ff4500')
+            ctx.fillStyle = sunGradient
+            ctx.shadowColor = '#ff6b35'
+            ctx.shadowBlur = 20
+            ctx.fill()
+            ctx.shadowBlur = 0
+          } else {
+            // 일반 노드 배경 (흰색 원)
+            ctx.beginPath()
+            ctx.arc(n.x, n.y, size + 2, 0, 2 * Math.PI)
+            ctx.fillStyle = '#ffffff'
+            if (isHovered) {
+              ctx.shadowColor = getNodeColor(n.type)
+              ctx.shadowBlur = 15
+            }
+            ctx.fill()
+            ctx.shadowBlur = 0
+
+            // 테두리 (타입별 색상)
+            ctx.strokeStyle = getNodeColor(n.type)
+            ctx.lineWidth = isHovered ? 3 / globalScale : 2 / globalScale
+            ctx.stroke()
+
+            // 로고 이미지 그리기
+            if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
+              const imgSize = size * 1.5
+              ctx.drawImage(
+                logoImg,
+                n.x - imgSize / 2,
+                n.y - imgSize / 2,
+                imgSize,
+                imgSize
+              )
+            } else {
+              // 이미지 로드 전/실패 시 색상 원으로 대체
+              ctx.beginPath()
+              ctx.arc(n.x, n.y, size * 0.7, 0, 2 * Math.PI)
+              ctx.fillStyle = getNodeColor(n.type)
+              ctx.fill()
+            }
           }
 
-          // 라벨 표시: 호버 시 전체 이름, 아니면 약어/8자
-          if (n.name) {
-            const displayText = isHovered ? n.name : getDisplayName(n)
+          // 라벨 표시: 호버되지 않은 경우에만 여기서 그림 (호버된 노드는 onRenderFramePost에서 최상단에 그림)
+          if (n.name && !isHovered) {
+            const displayText = getDisplayName(n)
 
             ctx.font = `${fontSize}px Sans-Serif`
             ctx.textAlign = 'center'
@@ -238,6 +381,7 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
             ctx.fillText(displayText, n.x, n.y + size + fontSize / 2 + 6)
           }
         }}
+        linkLabel={() => ''}
         linkColor={(link) => {
           const l = link as GraphLink
           // HIERARCHY_OF: 하위법령 → 상위법령 (시행령 → 법률)
@@ -254,11 +398,49 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
         }}
         linkDirectionalArrowRelPos={1}
         linkDirectionalParticles={0}
+        onRenderFramePre={(ctx) => {
+          // 궤도 원 그리기 (황도 십이궁 스타일)
+          const orbits = [120, 220, 300, 380]  // 법률, 대통령령, 총리령/부령, 규칙
+          const orbitColors = ['rgba(251, 191, 36, 0.15)', 'rgba(96, 165, 250, 0.15)', 'rgba(52, 211, 153, 0.12)', 'rgba(156, 163, 175, 0.1)']
+
+          orbits.forEach((radius, i) => {
+            ctx.beginPath()
+            ctx.arc(0, 0, radius, 0, 2 * Math.PI)
+            ctx.strokeStyle = orbitColors[i]
+            ctx.lineWidth = 2
+            ctx.setLineDash([5, 5])
+            ctx.stroke()
+            ctx.setLineDash([])
+          })
+        }}
+        onRenderFramePost={(ctx, globalScale) => {
+          if (hoveredNode) {
+            const n = hoveredNode as GraphNode & { x?: number; y?: number }
+            if (n.x === undefined || n.y === undefined) return
+
+            const size = getNodeSize(n)
+            const fontSize = Math.max(12 / globalScale, 3)
+            const displayText = n.name
+
+            ctx.font = `${fontSize}px Sans-Serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+
+            // 텍스트 배경 (호버 시 더 명확하게)
+            const textWidth = ctx.measureText(displayText).width
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.9)'
+            ctx.fillRect(n.x - textWidth / 2 - 4, n.y + size + 4, textWidth + 8, fontSize + 6)
+
+            ctx.fillStyle = '#ffffff'
+            ctx.fillText(displayText, n.x, n.y + size + fontSize / 2 + 7)
+          }
+        }}
         onNodeClick={handleNodeClick}
         onNodeHover={handleNodeHover}
-        cooldownTicks={100}
+        cooldownTicks={150}
         d3AlphaDecay={0.02}
         d3VelocityDecay={0.3}
+        warmupTicks={50}
         enableNodeDrag={true}
         enableZoomInteraction={true}
         enablePanInteraction={true}
@@ -266,8 +448,12 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
 
       {/* 범례 */}
       <div className="absolute bottom-4 left-4 bg-black/70 rounded-lg p-3 text-xs text-white">
-        <div className="font-bold mb-2">법령 유형</div>
+        <div className="font-bold mb-2">법령 계층 (황도 십이궁)</div>
         <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-orange-400 to-red-500 shadow-lg shadow-orange-500/50" />
+            <span>헌법 (태양/중심)</span>
+          </div>
           <div className="flex items-center gap-2">
             <img src="/data/logo/National_Assembly.png" alt="국회" className="w-5 h-5 object-contain bg-white rounded-full p-0.5" />
             <span>법률</span>
@@ -278,7 +464,7 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
           </div>
           <div className="flex items-center gap-2">
             <img src="/data/logo/government_of_Korea.svg" alt="정부" className="w-5 h-5 object-contain bg-white rounded-full p-0.5" />
-            <span>부령/기타</span>
+            <span>총리령/부령/규칙</span>
           </div>
         </div>
         <div className="mt-3 pt-2 border-t border-gray-600">
@@ -291,9 +477,6 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
             <span className="text-gray-400">—</span>
             <span>관련 법령</span>
           </div>
-        </div>
-        <div className="mt-2 text-gray-400">
-          노드 크기 = 법령 계급
         </div>
       </div>
 
