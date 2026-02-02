@@ -1,10 +1,25 @@
 'use client'
 
 import { useRef, useCallback, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { casePrecedentService, type GraphNode, type GraphLink } from '../services'
 import { getLawTypeLogo, DEFAULT_GOV_LOGO } from '../utils/lawTypeLogo'
 import { forceCollide, forceManyBody, forceRadial } from 'd3-force'
-import type { ForceGraphMethods } from 'react-force-graph-2d'
+// import type { ForceGraphMethods } from 'react-force-graph-2d' // 타입 정의 문제 방지
+
+// SSR 비활성화로 ForceGraph 로드
+// SSR 비활성화로 ForceGraph 로드 (Wrapper 컴포넌트 사용)
+const ForceGraph2D = dynamic(
+  () => import('./StatuteForceGraphWrapper'), 
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full flex items-center justify-center bg-slate-900">
+        <div className="text-white">그래프 엔진 로딩 중...</div>
+      </div>
+    )
+  }
+)
 
 // 이미지 캐시
 const imageCache = new Map<string, HTMLImageElement>()
@@ -98,19 +113,11 @@ function getLogoImage(type: string): HTMLImageElement | null {
 
 export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const fgRef = useRef<ForceGraphMethods | null>(null)
+  const fgRef = useRef<any>(null) // ForceGraphMethods 타입 제거
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; links: GraphLink[] }>({ nodes: [], links: [] })
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
   const [isLoading, setIsLoading] = useState(true)
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null)
-  const [ForceGraph2D, setForceGraph2D] = useState<any>(null)
-
-  // 클라이언트에서만 ForceGraph2D 로드 (SSR 회피)
-  useEffect(() => {
-    import('react-force-graph-2d').then((mod) => {
-      setForceGraph2D(() => mod.default)
-    })
-  }, [])
 
   // 그래프 데이터 로드
   useEffect(() => {
@@ -121,13 +128,29 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
 
         let nodes = [...data.nodes]
 
-        // centerId가 없을 때만 헌법을 추가 (초기 화면)
+        // centerId가 없을 때만 헌법을 추가하고, 하위 법령(총리령/부령/규칙)은 필터링
         if (!centerId) {
           const hasConstitution = nodes.some(n => n.type === '헌법')
           if (!hasConstitution) {
             nodes = [CONSTITUTION_NODE, ...nodes]
           }
+          
+          // 초기 화면에서는 총리령/부령/규칙 숨김 (대통령령까지만 표시)
+          nodes = nodes.filter(n => 
+            n.type === '헌법' || n.type === '법률' || n.type === '대통령령'
+          )
         }
+
+        // 필터링된 노드 ID 집합 생성 (링크 필터링용)
+        const visibleNodeIds = new Set(nodes.map(n => n.id))
+
+        // 유효한 노드끼리 연결된 링크만 남김 (dangling link 제거)
+        const links = data.links.filter(link => {
+          // D3 초기화 전에는 source/target이 string ID임
+          const sourceId = typeof link.source === 'object' ? (link.source as any).id : link.source
+          const targetId = typeof link.target === 'object' ? (link.target as any).id : link.target
+          return visibleNodeIds.has(sourceId) && visibleNodeIds.has(targetId)
+        })
 
         // 중심 노드 결정: centerId가 있으면 해당 노드, 없으면 헌법
         const centerNodeId = centerId || CONSTITUTION_NODE.id
@@ -135,29 +158,34 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
         // HIERARCHY_OF 관계로 부모-자식 맵 생성 (법률 → 시행령)
         const parentToChildren: Record<string, string[]> = {}
         const childToParent: Record<string, string> = {}
-        data.links.forEach(link => {
+        links.forEach(link => {
           if (link.relation === 'HIERARCHY_OF') {
             // source가 하위법(시행령), target이 상위법(법률)
-            const childId = link.source
-            const parentId = link.target
+            const sourceId = typeof link.source === 'object' ? (link.source as any).id : link.source
+            const targetId = typeof link.target === 'object' ? (link.target as any).id : link.target
+            
+            const childId = sourceId
+            const parentId = targetId
+
             childToParent[childId] = parentId
             if (!parentToChildren[parentId]) parentToChildren[parentId] = []
             parentToChildren[parentId].push(childId)
           }
         })
 
+        // ... (중략: angleMap 계산 로직은 유지하되, 헌법/법률에만 의미가 있음)
+        
         // 법률 노드들 (상위법)에 각도 할당
         const lawNodes = nodes.filter(n => n.type === '법률' && n.id !== centerNodeId)
         const angleMap: Record<string, number> = {}
         lawNodes.forEach((node, index) => {
           const angle = (index / lawNodes.length) * 2 * Math.PI
           angleMap[node.id] = angle
-          // 자식 노드들(시행령)도 같은 각도 할당
+          // 자식 노드들(시행령)도 초기 위치는 부모 근처로 설정
           const children = parentToChildren[node.id] || []
           children.forEach((childId, childIndex) => {
-            // 같은 법률에 여러 시행령이 있으면 약간씩 각도 분산
-            const childAngle = angle + (childIndex - (children.length - 1) / 2) * 0.05
-            angleMap[childId] = childAngle
+             // 부모 각도 주변으로 초기 배치
+             angleMap[childId] = angle + (Math.random() - 0.5) * 0.1
           })
         })
 
@@ -166,6 +194,8 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
         const unassignedNodes = nodes.filter(n =>
           n.id !== centerNodeId && !assignedIds.has(n.id)
         )
+        // ... (나머지 초기 위치 로직 유지)
+
         // 계층별로 분류
         const unassignedByRadius: Record<number, typeof nodes> = {}
         unassignedNodes.forEach(node => {
@@ -203,7 +233,7 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
           }
         })
 
-        setGraphData({ nodes: nodesWithPosition, links: data.links })
+        setGraphData({ nodes: nodesWithPosition, links: links })
       } catch (error) {
         console.error('그래프 로드 실패:', error)
       } finally {
@@ -255,45 +285,81 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
     return getHierarchySize(node.type)
   }, [])
 
-  // ref callback (fgRef만 설정)
-  const handleGraphRef = useCallback((fg: ForceGraphMethods | null) => {
+  // D3 Force 설정 적용 함수
+  const applyD3Forces = useCallback((fg: any) => {
+    if (!fg) return
+    
+    console.log('applyD3Forces executing...', { nodes: graphData.nodes.length })
+
+    try {
+      // 1. 방사형 배치 (황도 십이궁 스타일) - 헌법과 법률만 궤도 강제
+      // 대통령령 등 하위 법령은 궤도에 구속되지 않고 부모(법률) 주변에 위성처럼 위치함
+      fg.d3Force('radial', forceRadial(
+        (node: any) => {
+          if (node.type === '헌법') return 0 // 태양
+          if (node.type === '법률') return 300 // 법률 궤도
+          return 300 // 위성 노드도 일단 300 반환
+        },
+        0, 0  // 중심점
+      ).strength((node: any) => {
+         // 헌법/법률은 고정하되, 링크에 의해 약간 움직일 수 있도록 강도 조절
+         return (node.type === '헌법' || node.type === '법률') ? 0.7 : 0
+      }))
+
+      // 2. 충돌 방지: 노드가 겹치지 않도록
+      fg.d3Force('collide', forceCollide((node: any) => {
+        const size = getHierarchySize(node.type)
+        return size * 2 + 10 // 간격 조정
+      }).strength(0.8).iterations(3))
+
+      // 3. 반발력 (Charge)
+      fg.d3Force('charge', forceManyBody()
+        .strength(-200) // 서로 밀어내는 힘 적절히 유지
+        .distanceMin(10)
+        .distanceMax(400)
+      )
+
+      // 4. 링크 힘 (위성 배치 & 관련 법령 응집)
+      fg.d3Force('link')
+        ?.distance((link: any) => {
+          // 계급 관계(HIERARCHY_OF)는 짧게 -> 부모 옆에 착 붙게 (위성)
+          if (link.relation === 'HIERARCHY_OF') return 50 
+          // 관련 법령은 적당히 가깝게 (너무 멀지 않게)
+          return 100 // 150 -> 100
+        })
+        ?.strength((link: any) => {
+           // 계급 관계는 강하게 당김
+           if (link.relation === 'HIERARCHY_OF') return 1.0
+           // 관련 법령도 서로 끌어당기도록 힘 강화
+           return 0.3 // 0.05 -> 0.3
+        })
+
+      // center force 제거
+      fg.d3Force('center', null)
+
+      // 시뮬레이션 재가열
+      fg.d3ReheatSimulation()
+      console.log('applyD3Forces applied successfully')
+    } catch (err) {
+      console.error('Failed to apply D3 forces:', err)
+    }
+  }, [graphData.nodes.length])
+
+  // ref callback (fgRef 설정 및 force 초기화)
+  const handleGraphRef = useCallback((fg: any) => {
     fgRef.current = fg
-  }, [])
+    if (fg && graphData.nodes.length > 0) {
+      // 약간의 지연 후 적용 (초기화 안정성)
+      setTimeout(() => applyD3Forces(fg), 10)
+    }
+  }, [graphData.nodes.length, applyD3Forces])
 
-  // graphData가 변경될 때 force 설정 적용
+  // graphData가 변경될 때 force 설정 재적용
   useEffect(() => {
-    if (!fgRef.current || graphData.nodes.length === 0) return
-
-    const fg = fgRef.current
-
-    // 방사형 배치 (황도 십이궁 스타일) - 가장 강한 힘
-    fg.d3Force('radial', forceRadial(
-      (node: any) => getRadialRadius(node.type),
-      0, 0  // 중심점
-    ).strength(1.5))
-
-    // 충돌 방지: 노드가 겹치지 않도록
-    fg.d3Force('collide', forceCollide((node: any) => {
-      const size = getHierarchySize(node.type)
-      return size * 3 + 15
-    }).strength(0.8).iterations(3))
-
-    // 반발력 (같은 궤도 내에서 분산) - 약하게
-    fg.d3Force('charge', forceManyBody()
-      .strength(-80)
-      .distanceMin(10)
-      .distanceMax(200)
-    )
-
-    // 링크는 약하게 (궤도 배치를 방해하지 않도록)
-    fg.d3Force('link')?.distance(50).strength(0.1)
-
-    // center force 제거 (radial이 중심 역할)
-    fg.d3Force('center', null)
-
-    // 시뮬레이션 재가열
-    fg.d3ReheatSimulation()
-  }, [graphData])
+    if (fgRef.current && graphData.nodes.length > 0) {
+      setTimeout(() => applyD3Forces(fgRef.current), 10)
+    }
+  }, [graphData, applyD3Forces])
 
   // 노드 클릭 핸들러
   const handleNodeClick = useCallback((node: object) => {
@@ -319,7 +385,7 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
   return (
     <div ref={containerRef} className="w-full h-full relative bg-slate-900">
       <ForceGraph2D
-        ref={handleGraphRef}
+        graphRef={handleGraphRef} { ...({} as any) }
         width={dimensions.width}
         height={dimensions.height}
         graphData={graphData}
@@ -420,7 +486,7 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
         }}
         linkLabel={() => ''}
         linkVisibility={(link) => {
-          const l = link as GraphLink & { source: GraphNode | string; target: GraphNode | string }
+          const l = link as unknown as Omit<GraphLink, 'source' | 'target'> & { source: GraphNode | string; target: GraphNode | string }
           // 계급 관계(HIERARCHY_OF)는 항상 표시
           if (l.relation === 'HIERARCHY_OF') return true
           // 관련 법령은 호버된 노드와 연결된 경우에만 표시
