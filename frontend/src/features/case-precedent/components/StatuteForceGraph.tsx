@@ -132,13 +132,54 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
         // 중심 노드 결정: centerId가 있으면 해당 노드, 없으면 헌법
         const centerNodeId = centerId || CONSTITUTION_NODE.id
 
-        // 노드 초기 위치를 계층별 원형으로 배치
-        const nonCenterNodes = nodes.filter(n => n.id !== centerNodeId)
-        const typeGroups: Record<string, typeof nodes> = {}
-        nonCenterNodes.forEach(node => {
+        // HIERARCHY_OF 관계로 부모-자식 맵 생성 (법률 → 시행령)
+        const parentToChildren: Record<string, string[]> = {}
+        const childToParent: Record<string, string> = {}
+        data.links.forEach(link => {
+          if (link.relation === 'HIERARCHY_OF') {
+            // source가 하위법(시행령), target이 상위법(법률)
+            const childId = link.source
+            const parentId = link.target
+            childToParent[childId] = parentId
+            if (!parentToChildren[parentId]) parentToChildren[parentId] = []
+            parentToChildren[parentId].push(childId)
+          }
+        })
+
+        // 법률 노드들 (상위법)에 각도 할당
+        const lawNodes = nodes.filter(n => n.type === '법률' && n.id !== centerNodeId)
+        const angleMap: Record<string, number> = {}
+        lawNodes.forEach((node, index) => {
+          const angle = (index / lawNodes.length) * 2 * Math.PI
+          angleMap[node.id] = angle
+          // 자식 노드들(시행령)도 같은 각도 할당
+          const children = parentToChildren[node.id] || []
+          children.forEach((childId, childIndex) => {
+            // 같은 법률에 여러 시행령이 있으면 약간씩 각도 분산
+            const childAngle = angle + (childIndex - (children.length - 1) / 2) * 0.05
+            angleMap[childId] = childAngle
+          })
+        })
+
+        // 부모가 없는 노드들(독립 노드)에 각도 할당
+        const assignedIds = new Set(Object.keys(angleMap))
+        const unassignedNodes = nodes.filter(n =>
+          n.id !== centerNodeId && !assignedIds.has(n.id)
+        )
+        // 계층별로 분류
+        const unassignedByRadius: Record<number, typeof nodes> = {}
+        unassignedNodes.forEach(node => {
           const radius = getRadialRadius(node.type)
-          if (!typeGroups[radius]) typeGroups[radius] = []
-          typeGroups[radius].push(node)
+          if (!unassignedByRadius[radius]) unassignedByRadius[radius] = []
+          unassignedByRadius[radius].push(node)
+        })
+        // 각 계층 내에서 균등 배치 (기존 각도 피해서)
+        Object.entries(unassignedByRadius).forEach(([, nodesInRadius]) => {
+          nodesInRadius.forEach((node, index) => {
+            // 기존 법률 노드들 사이에 배치
+            const baseAngle = ((index + 0.5) / nodesInRadius.length) * 2 * Math.PI
+            angleMap[node.id] = baseAngle
+          })
         })
 
         const nodesWithPosition = nodes.map((node) => {
@@ -154,15 +195,11 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
           }
 
           const radius = getRadialRadius(node.type)
-          const group = typeGroups[radius] || []
-          const indexInGroup = group.indexOf(node)
-          const totalInGroup = group.length || 1
-          // 같은 계층 노드들을 원형으로 균등 배치
-          const angle = (indexInGroup / totalInGroup) * 2 * Math.PI + Math.random() * 0.2
+          const angle = angleMap[node.id] ?? Math.random() * 2 * Math.PI
           return {
             ...node,
-            x: Math.cos(angle) * radius + (Math.random() - 0.5) * 20,
-            y: Math.sin(angle) * radius + (Math.random() - 0.5) * 20,
+            x: Math.cos(angle) * radius + (Math.random() - 0.5) * 10,
+            y: Math.sin(angle) * radius + (Math.random() - 0.5) * 10,
           }
         })
 
@@ -382,14 +419,24 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
           }
         }}
         linkLabel={() => ''}
+        linkVisibility={(link) => {
+          const l = link as GraphLink & { source: GraphNode | string; target: GraphNode | string }
+          // 계급 관계(HIERARCHY_OF)는 항상 표시
+          if (l.relation === 'HIERARCHY_OF') return true
+          // 관련 법령은 호버된 노드와 연결된 경우에만 표시
+          if (!hoveredNode) return false
+          const sourceId = typeof l.source === 'string' ? l.source : l.source.id
+          const targetId = typeof l.target === 'string' ? l.target : l.target.id
+          return sourceId === hoveredNode.id || targetId === hoveredNode.id
+        }}
         linkColor={(link) => {
           const l = link as GraphLink
-          // HIERARCHY_OF: 하위법령 → 상위법령 (시행령 → 법률)
-          return l.relation === 'HIERARCHY_OF' ? 'rgba(251, 191, 36, 0.6)' : 'rgba(100, 116, 139, 0.4)'
+          // HIERARCHY_OF: 계급 관계는 황금색, 그 외는 회색
+          return l.relation === 'HIERARCHY_OF' ? 'rgba(251, 191, 36, 0.8)' : 'rgba(148, 163, 184, 0.6)'
         }}
         linkWidth={(link) => {
           const l = link as GraphLink
-          return l.relation === 'HIERARCHY_OF' ? 1.5 : 0.5
+          return l.relation === 'HIERARCHY_OF' ? 2 : 1
         }}
         linkDirectionalArrowLength={(link) => {
           const l = link as GraphLink
@@ -474,8 +521,8 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
             <span>계급 (하위법 → 상위법)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-gray-400">—</span>
-            <span>관련 법령</span>
+            <span className="text-slate-400">—</span>
+            <span className="text-slate-400">관련 법령 (호버 시)</span>
           </div>
         </div>
       </div>
