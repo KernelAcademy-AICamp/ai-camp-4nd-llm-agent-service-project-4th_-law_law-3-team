@@ -17,9 +17,14 @@ RunPod 사용법
 2. Jupyter Lab 접속 후 새 노트북 생성
 
 3. 셀 1: 패키지 설치
+   !pip install --upgrade typing_extensions pydantic pydantic-core -q
    !pip install lancedb sentence-transformers pyarrow ijson psutil tqdm gdown -q
 
-4. 셀 2: Google Drive에서 데이터 다운로드 (권장 - 빠름!)
+   # ⚠️ 중요: 설치 후 커널 재시작 필요!
+   # Kernel -> Restart Kernel 또는 아래 실행:
+   import os; os._exit(0)
+
+4. 셀 2 (커널 재시작 후): Google Drive에서 데이터 다운로드 (권장 - 빠름!)
 
    # 방법 A: Google Drive 사용 (서버간 전송이라 빠름)
    # 1) 파일을 Google Drive에 업로드
@@ -27,7 +32,9 @@ RunPod 사용법
    # 3) 링크에서 FILE_ID 추출
    #    예: https://drive.google.com/file/d/ABC123xyz/view
    #        FILE_ID = ABC123xyz
-
+   #  
+    !gdown --id 1EhkUlPvAa3JJSD4pcRFkbgZDblLwDskz -O law_cleaned.json
+   !gdown --id 1EhzBLsxTWrQfVB9X-XHZs-cmLX9DlJwM -O precedents_cleaned.json
    !gdown --id YOUR_LAW_FILE_ID -O law_cleaned.json
    !gdown --id YOUR_PRECEDENT_FILE_ID -O precedents_cleaned.json
 
@@ -945,6 +952,31 @@ class EmbeddingQualityChecker:
 
 
 # ============================================================================
+# 청킹 설정 클래스 (Config)
+# ============================================================================
+
+@dataclass
+class BaseChunkConfig:
+    """청킹 설정 베이스 클래스"""
+    pass
+
+
+@dataclass
+class PrecedentChunkConfig(BaseChunkConfig):
+    """판례 청킹 설정"""
+    chunk_size: int = CONFIG["PRECEDENT_CHUNK_SIZE"]
+    chunk_overlap: int = CONFIG["PRECEDENT_CHUNK_OVERLAP"]
+    min_chunk_size: int = CONFIG["PRECEDENT_MIN_CHUNK_SIZE"]
+
+
+@dataclass
+class LawChunkConfig(BaseChunkConfig):
+    """법령 청킹 설정"""
+    max_tokens: int = CONFIG["LAW_MAX_TOKENS"]
+    min_tokens: int = CONFIG["LAW_MIN_TOKENS"]
+
+
+# ============================================================================
 # 통합 임베딩 프로세서 (스트리밍 방식)
 # ============================================================================
 
@@ -1806,26 +1838,8 @@ def load_json_full(file_path: str) -> List[Dict]:
 
 
 # ============================================================================
-# 청킹 설정 베이스 클래스
-# ============================================================================
-
-@dataclass
-class BaseChunkConfig:
-    """청킹 설정 베이스 클래스"""
-    pass
-
-
-# ============================================================================
 # 판례 청킹
 # ============================================================================
-
-@dataclass
-class PrecedentChunkConfig(BaseChunkConfig):
-    """판례 청킹 설정"""
-    chunk_size: int = CONFIG["PRECEDENT_CHUNK_SIZE"]
-    chunk_overlap: int = CONFIG["PRECEDENT_CHUNK_OVERLAP"]
-    min_chunk_size: int = CONFIG["PRECEDENT_MIN_CHUNK_SIZE"]
-
 
 def chunk_precedent_text(text: str, config: PrecedentChunkConfig) -> List[tuple]:
     """판례 텍스트를 청크로 분할"""
@@ -1870,13 +1884,6 @@ def chunk_precedent_text(text: str, config: PrecedentChunkConfig) -> List[tuple]
 # ============================================================================
 # 법령 청킹
 # ============================================================================
-
-@dataclass
-class LawChunkConfig(BaseChunkConfig):
-    """법령 청킹 설정"""
-    max_tokens: int = CONFIG["LAW_MAX_TOKENS"]
-    min_tokens: int = CONFIG["LAW_MIN_TOKENS"]
-
 
 PARAGRAPH_PATTERN = re.compile(r"([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])")
 
