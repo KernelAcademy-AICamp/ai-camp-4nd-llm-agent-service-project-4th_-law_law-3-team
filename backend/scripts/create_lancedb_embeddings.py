@@ -35,6 +35,7 @@ import argparse
 import asyncio
 import gc
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -49,9 +50,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import select, func
 
 from app.core.config import settings
-from app.common.database import async_session_factory
-from app.common.vectorstore.lancedb import LanceDBStore
-from app.common.vectorstore.schema_v2 import VECTOR_DIM
+from app.core.database import async_session_factory
+from app.tools.vectorstore.lancedb import LanceDBStore
+from app.tools.vectorstore.schema_v2 import VECTOR_DIM
 from app.models.law_document import LawDocument
 from app.models.precedent_document import PrecedentDocument
 

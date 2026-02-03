@@ -59,7 +59,7 @@ async def search_documents(
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
     from sqlalchemy import select, or_
-    from app.common.database import async_session_factory
+    from app.core.database import async_session_factory
     from app.models.precedent_document import PrecedentDocument
     from app.models.law_document import LawDocument
 

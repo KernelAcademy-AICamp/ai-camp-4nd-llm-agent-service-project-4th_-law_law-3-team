@@ -155,7 +155,7 @@ class TestEvaluationWithLanceDB:
 
     def test_vector_search(self):
         """벡터 검색 테스트"""
-        from app.common.vectorstore.lancedb import LanceDBStore
+        from app.tools.vectorstore.lancedb import LanceDBStore
 
         store = LanceDBStore()
         count = store.count()

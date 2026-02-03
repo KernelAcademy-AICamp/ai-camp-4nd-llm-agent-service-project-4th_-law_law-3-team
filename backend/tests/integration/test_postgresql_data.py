@@ -16,7 +16,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common.database import async_session_factory
+from app.core.database import async_session_factory
 from app.models.law_document import LawDocument
 from app.models.precedent_document import PrecedentDocument
 

@@ -106,7 +106,7 @@ class EvaluationRunner:
     def _get_vector_store(self):
         """벡터 스토어 연결 (lazy)"""
         if self._vector_store is None:
-            from app.common.vectorstore.lancedb import LanceDBStore
+            from app.tools.vectorstore.lancedb import LanceDBStore
             self._vector_store = LanceDBStore()
         return self._vector_store
 

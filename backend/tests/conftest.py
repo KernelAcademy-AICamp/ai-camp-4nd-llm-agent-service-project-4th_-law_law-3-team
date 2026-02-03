@@ -37,7 +37,7 @@ def event_loop():
 @pytest_asyncio.fixture(scope="session")
 async def db_engine():
     """세션 스코프 DB 엔진 (테스트 종료 시 정리)"""
-    from app.common.database import engine
+    from app.core.database import engine
     yield engine
     await engine.dispose()
 

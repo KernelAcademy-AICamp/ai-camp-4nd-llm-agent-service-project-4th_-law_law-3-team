@@ -29,8 +29,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import func, select
 
-from app.common.database import async_session_factory
-from app.common.vectorstore import VectorStore
+from app.core.database import async_session_factory
+from app.tools.vectorstore import VectorStore
 from app.models.law import Law
 from app.models.legal_document import DocType, LegalDocument
 from app.models.legal_reference import LegalReference

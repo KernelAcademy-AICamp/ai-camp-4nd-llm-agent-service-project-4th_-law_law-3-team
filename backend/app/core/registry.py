@@ -18,11 +18,20 @@ class ModuleRegistry:
         self._registered_modules: List[str] = []
 
     def _get_available_modules(self) -> List[str]:
-        """modules 폴더에서 사용 가능한 모듈 목록 반환"""
+        """modules 폴더에서 사용 가능한 모듈 목록 반환
+
+        Note: router/__init__.py가 존재하는 모듈만 반환
+              (__pycache__만 남은 빈 폴더 무시)
+        """
         modules = []
         for item in os.listdir(self.MODULES_DIR):
             module_path = os.path.join(self.MODULES_DIR, item)
-            if os.path.isdir(module_path) and not item.startswith("_"):
+            router_init = os.path.join(module_path, "router", "__init__.py")
+            if (
+                os.path.isdir(module_path)
+                and not item.startswith("_")
+                and os.path.isfile(router_init)
+            ):
                 modules.append(item)
         return modules
 

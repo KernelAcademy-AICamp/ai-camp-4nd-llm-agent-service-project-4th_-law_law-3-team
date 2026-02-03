@@ -24,7 +24,7 @@ class TestLanceDBSearch:
     @pytest.fixture(scope="class")
     def vector_store(self):
         """벡터 스토어 인스턴스"""
-        from app.common.vectorstore.lancedb import LanceDBStore
+        from app.tools.vectorstore.lancedb import LanceDBStore
         return LanceDBStore()
 
     @pytest.fixture(scope="class")
@@ -136,7 +136,7 @@ class TestSearchLatency:
     def test_search_latency(self):
         """검색 지연 시간 측정"""
         import time
-        from app.common.vectorstore.lancedb import LanceDBStore
+        from app.tools.vectorstore.lancedb import LanceDBStore
         from sentence_transformers import SentenceTransformer
 
         model = SentenceTransformer(

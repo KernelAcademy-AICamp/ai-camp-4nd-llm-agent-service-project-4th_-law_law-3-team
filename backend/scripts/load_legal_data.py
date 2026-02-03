@@ -43,7 +43,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common.database import async_session_factory
+from app.core.database import async_session_factory
 from app.models.law import Law
 from app.models.legal_document import COMMITTEE_SOURCES, DocType, LegalDocument
 from app.models.legal_reference import LegalReference, RefType

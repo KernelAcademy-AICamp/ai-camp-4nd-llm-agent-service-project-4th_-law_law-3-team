@@ -48,7 +48,7 @@ def get_vector_store():
     if _vector_store is None:
         import sys
         sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-        from app.common.vectorstore.lancedb import LanceDBStore
+        from app.tools.vectorstore.lancedb import LanceDBStore
         _vector_store = LanceDBStore()
     return _vector_store
 
@@ -144,7 +144,7 @@ async def get_document_detail(doc_id: str) -> str:
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
     from sqlalchemy import select
-    from app.common.database import async_session_factory
+    from app.core.database import async_session_factory
     from app.models.precedent_document import PrecedentDocument
     from app.models.law_document import LawDocument
 
