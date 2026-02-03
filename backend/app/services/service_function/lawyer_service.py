@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 # 5 parents up = law-3-team/ (프로젝트 루트)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
-LAWYERS_WITH_SPECIALTIES_FILE = DATA_DIR / "lawyers_with_specialties.json"
 LAWYERS_FILE = DATA_DIR / "lawyers_with_coords.json"
 FALLBACK_FILE = PROJECT_ROOT / "all_lawyers.json"
 
@@ -156,9 +155,8 @@ def get_categories() -> List[Dict[str, Any]]:
 def load_lawyers_data() -> Dict[str, Any]:
     """변호사 데이터 로드 (캐싱)"""
     files_to_try = [
-        LAWYERS_WITH_SPECIALTIES_FILE,
-        LAWYERS_FILE,
-        FALLBACK_FILE,
+        LAWYERS_FILE,       # data/lawyers_with_coords.json (좌표 + 전문분야 포함)
+        FALLBACK_FILE,      # all_lawyers.json (원본 데이터, 좌표 없음)
     ]
 
     for file_path in files_to_try:
@@ -394,6 +392,7 @@ def search_lawyers(
                 continue
 
         # 위치 필터링 (AND 조건)
+        dist: Optional[float] = None
         if bbox:
             lat = lawyer.get("latitude")
             lng = lawyer.get("longitude")
@@ -408,12 +407,16 @@ def search_lawyers(
                 if dist > (radius_m / 1000):
                     continue
 
-        results.append({**lawyer, "id": idx})
+        result_item: Dict[str, Any] = {**lawyer, "id": idx}
+        if dist is not None:
+            result_item["distance"] = round(dist, 2)
+        results.append(result_item)
 
-        if limit and len(results) >= limit:
-            break
+    # 위치 검색 시 거리순 정렬
+    if bbox:
+        results.sort(key=lambda x: x.get("distance", float("inf")))
 
-    return results
+    return results[:limit] if limit else results
 
 
 # =============================================================================

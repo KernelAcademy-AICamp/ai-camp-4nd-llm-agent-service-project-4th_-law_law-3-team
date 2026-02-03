@@ -8,7 +8,7 @@ export interface Lawyer {
   status: string
   photo_url: string | null
   detail_id: string | null
-  birth_year: number | null
+  birth_year: string | null
   office_name: string | null
   address: string | null
   phone: string | null

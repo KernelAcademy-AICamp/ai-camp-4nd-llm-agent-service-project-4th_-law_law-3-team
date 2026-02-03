@@ -1,7 +1,7 @@
 """변호사 찾기 모듈 - Pydantic 스키마"""
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LawyerBase(BaseModel):
@@ -24,8 +24,7 @@ class LawyerResponse(LawyerBase):
     distance: Optional[float] = Field(None, description="사용자 위치로부터 거리 (km)")
     specialties: Optional[List[str]] = Field(None, description="전문분야 목록")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 class NearbySearchRequest(BaseModel):
@@ -42,6 +41,12 @@ class NearbySearchResponse(BaseModel):
     total_count: int
     center: dict[str, Any]  # {"lat": ..., "lng": ...}
     radius: int
+
+
+class SearchResponse(BaseModel):
+    """변호사 검색 응답"""
+    lawyers: List[LawyerResponse]
+    total_count: int
 
 
 class SearchRequest(BaseModel):

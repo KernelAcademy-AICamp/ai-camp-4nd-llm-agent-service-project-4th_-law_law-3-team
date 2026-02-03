@@ -7,12 +7,6 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ..schema import (
-    ClusterItem,
-    ClusterResponse,
-    LawyerResponse,
-    NearbySearchResponse,
-)
 from app.services.service_function.lawyer_service import (
     find_nearby_lawyers,
     get_categories,
@@ -21,6 +15,14 @@ from app.services.service_function.lawyer_service import (
     get_zoom_grid_size,
     load_lawyers_data,
     search_lawyers,
+)
+
+from ..schema import (
+    ClusterItem,
+    ClusterResponse,
+    LawyerResponse,
+    NearbySearchResponse,
+    SearchResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -105,7 +107,7 @@ async def get_lawyer_clusters(
     )
 
 
-@router.get("/search")
+@router.get("/search", response_model=SearchResponse)
 async def search_lawyers_endpoint(
     name: Optional[str] = Query(None, description="변호사 이름"),
     office: Optional[str] = Query(None, description="사무소명"),
@@ -116,7 +118,7 @@ async def search_lawyers_endpoint(
     longitude: Optional[float] = Query(None, ge=-180, le=180, description="위치 필터 - 경도"),
     radius: int = Query(5000, ge=100, le=50000, description="위치 필터 - 반경 (미터)"),
     limit: Optional[int] = Query(None, ge=1, description="최대 결과 수 (미지정 시 전체)"),
-) -> dict[str, Any]:
+) -> SearchResponse:
     """
     변호사 검색 (이름/사무소/지역/전문분야 + 선택적 위치 필터)
 
@@ -136,7 +138,7 @@ async def search_lawyers_endpoint(
         )
 
     try:
-        lawyers = search_lawyers(
+        lawyers_data = search_lawyers(
             name=name,
             office=office,
             district=district,
@@ -150,10 +152,8 @@ async def search_lawyers_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    return {
-        "lawyers": lawyers,
-        "total_count": len(lawyers),
-    }
+    validated = [LawyerResponse(**lawyer) for lawyer in lawyers_data]
+    return SearchResponse(lawyers=validated, total_count=len(validated))
 
 
 @router.get("/stats")

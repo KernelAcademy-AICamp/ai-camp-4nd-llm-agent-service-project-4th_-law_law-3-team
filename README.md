@@ -157,6 +157,7 @@ data/
       "office_name": "법무법인 예시",
       "address": "서울 강남구 테헤란로 123",
       "phone": "02-1234-5678",
+      "specialties": ["민사법", "부동산"],
       "latitude": 37.5059,
       "longitude": 127.0329
     }
@@ -170,7 +171,8 @@ data/
 
 #### 1단계: 원본 데이터 준비 (`all_lawyers.json`)
 
-대한변호사협회에서 변호사 목록을 크롤링하여 `all_lawyers.json` 파일을 생성합니다.
+별도 저장소에서 생성된 `all_lawyers.json` 파일을 프로젝트 루트에 배치합니다.
+이 파일에는 변호사 기본 정보와 전문분야가 포함되어 있습니다.
 
 ```json
 {
@@ -184,13 +186,14 @@ data/
       "status": "개업",
       "office_name": "법무법인 예시",
       "address": "서울 강남구 테헤란로 123",
-      "phone": "02-1234-5678"
+      "phone": "02-1234-5678",
+      "specialties": ["민사법", "부동산"]
     }
   ]
 }
 ```
 
-> **참고:** 크롤링 스크립트는 별도로 제공되지 않습니다. 직접 크롤러를 작성하거나 수동으로 데이터를 수집해야 합니다.
+> **참고:** 변호사 데이터 수집 코드(크롤링, 전문분야)는 별도 저장소에서 관리됩니다. 이 프로젝트에서는 좌표 변환(지오코딩)만 수행합니다.
 
 #### 2단계: 지오코딩 실행 (주소 → 좌표 변환)
 
@@ -210,6 +213,17 @@ uv run python scripts/geocode_lawyers.py --api-key YOUR_KAKAO_REST_API_KEY
 | `all_lawyers.json` (입력) | 원본 변호사 데이터 |
 | `data/lawyers_with_coords.json` (출력) | 좌표가 추가된 데이터 |
 | `data/geocode_failed.json` (출력) | 지오코딩 실패 목록 |
+
+```bash
+# 실패 항목 재시도
+uv run python scripts/geocode_lawyers.py --retry-failed
+
+# 데이터 상태 확인
+uv run python scripts/geocode_lawyers.py --stats
+
+# 입출력 경로 지정
+uv run python scripts/geocode_lawyers.py --input path/to/input.json --output path/to/output.json
+```
 
 **주의사항:**
 - 카카오 REST API 키 필요 (발급: https://developers.kakao.com)

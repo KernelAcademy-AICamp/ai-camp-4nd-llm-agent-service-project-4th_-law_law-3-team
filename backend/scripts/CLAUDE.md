@@ -285,3 +285,63 @@ for _, row in results.iterrows():
 
 - `docs/vectordb_design.md` - 전체 설계 문서
 - `docs/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
+
+---
+
+## 변호사 지오코딩 (geocode_lawyers.py)
+
+변호사 주소를 카카오 API로 좌표 변환합니다.
+
+> **데이터 경계:** 변호사 데이터 수집(크롤링, 전문분야)은 별도 저장소에서 관리합니다.
+> 이 프로젝트에서는 좌표 변환(지오코딩)만 수행합니다.
+
+### 데이터 흐름
+
+```
+별도 저장소 → all_lawyers.json → geocode_lawyers.py → data/lawyers_with_coords.json
+```
+
+### 사용법
+
+```bash
+cd backend
+
+# 기본 실행 (all_lawyers.json → data/lawyers_with_coords.json)
+uv run python scripts/geocode_lawyers.py
+
+# API 키 직접 전달
+uv run python scripts/geocode_lawyers.py --api-key YOUR_KAKAO_REST_API_KEY
+
+# 입출력 경로 지정
+uv run python scripts/geocode_lawyers.py --input path/to/input.json --output path/to/output.json
+
+# 실패 항목만 재시도 (기존 출력 파일에서 좌표 없는 항목)
+uv run python scripts/geocode_lawyers.py --retry-failed
+
+# 현재 데이터 상태 확인 (지오코딩 실행 안 함)
+uv run python scripts/geocode_lawyers.py --stats
+```
+
+### CLI 옵션
+
+| 옵션 | 설명 | 기본값 |
+|------|------|--------|
+| `--api-key` | 카카오 REST API 키 | `KAKAO_REST_API_KEY` 환경변수 |
+| `--input` | 입력 파일 경로 | `all_lawyers.json` |
+| `--output` | 출력 파일 경로 | `data/lawyers_with_coords.json` |
+| `--retry-failed` | 좌표 없는 항목만 재시도 | - |
+| `--stats` | 데이터 상태만 출력 | - |
+
+### 필수 환경 변수
+
+```bash
+# backend/.env
+KAKAO_REST_API_KEY=your_kakao_rest_api_key
+```
+
+### 출력 파일
+
+| 파일 | 설명 |
+|------|------|
+| `data/lawyers_with_coords.json` | 좌표가 추가된 변호사 데이터 |
+| `data/geocode_failed.json` | 지오코딩 실패 목록 |
