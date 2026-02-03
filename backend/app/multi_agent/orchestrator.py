@@ -5,12 +5,13 @@
 """
 
 import logging
+from collections.abc import AsyncGenerator
 from typing import Any, Optional
 
-from app.core.context import ChatContext, RequestContext
+from app.core.context import ChatContext
 from app.core.state.session_store import SessionStore, get_session_store
-from app.multi_agent.router import RouterAgent, get_router_agent
 from app.multi_agent.executor import AgentExecutor, get_agent_executor
+from app.multi_agent.router import RouterAgent, get_router_agent
 from app.multi_agent.schemas.messages import ChatRequest, ChatResponse
 from app.multi_agent.schemas.plan import AgentResult
 
@@ -98,6 +99,45 @@ class Orchestrator:
 
         # 5. 응답 변환
         return self._build_response(result)
+
+    async def process_stream(
+        self,
+        request: ChatRequest,
+    ) -> AsyncGenerator[tuple[str, Any], None]:
+        """
+        스트리밍 채팅 요청 처리
+
+        Args:
+            request: 채팅 요청
+
+        Yields:
+            (event_type, data) 튜플
+        """
+        from app.multi_agent.schemas.plan import AgentPlan
+
+        # 1. 컨텍스트 구성
+        context = self._build_context(request)
+
+        # 2. 라우팅 (agent 직접 지정 시 건너뜀)
+        if request.agent:
+            # 에이전트 직접 지정
+            plan = AgentPlan(
+                agent_type=request.agent,
+                confidence=1.0,
+                reason="직접 지정",
+            )
+            logger.info(f"[Stream] Agent directly specified: {request.agent}")
+        else:
+            # 라우터로 에이전트 선택
+            plan = self.router.route(context)
+            logger.info(
+                f"[Stream] Routed to {plan.agent_type} "
+                f"(confidence: {plan.confidence}, reason: {plan.reason})"
+            )
+
+        # 3. 스트리밍 에이전트 실행
+        async for event_type, data in self.executor.execute_stream(plan, context):
+            yield (event_type, data)
 
     def _build_context(self, request: ChatRequest) -> ChatContext:
         """요청에서 ChatContext 구성"""

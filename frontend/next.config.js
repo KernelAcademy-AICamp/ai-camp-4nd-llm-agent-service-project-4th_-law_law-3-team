@@ -36,10 +36,8 @@ const nextConfig = {
         source: '/api/small-claims/:path*',
         destination: 'http://localhost:8000/api/small-claims/:path*',
       },
-      {
-        source: '/api/chat/:path*',
-        destination: 'http://localhost:8000/api/chat/:path*',
-      },
+      // /api/chat/stream은 Next.js API Route에서 SSE 프록시 처리
+      // (rewrites는 SSE 스트리밍을 버퍼링하므로 API Route 사용)
       {
         source: '/api/chat',
         destination: 'http://localhost:8000/api/chat',
