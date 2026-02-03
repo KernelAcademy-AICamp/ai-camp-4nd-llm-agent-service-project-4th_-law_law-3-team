@@ -10,11 +10,13 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.17.9",
+    "@types/d3-force": "^3.0.10",
     "@types/d3-geo": "^3.1.0",
     "@types/d3-scale": "^4.0.9",
     "@xyflow/react": "^12.10.0",
     "axios": "^1.6.5",
     "clsx": "^2.1.0",
+    "d3-force": "^3.0.0",
     "d3-geo": "^3.1.1",
     "d3-scale": "^4.0.2",
     "framer-motion": "^12.28.1",

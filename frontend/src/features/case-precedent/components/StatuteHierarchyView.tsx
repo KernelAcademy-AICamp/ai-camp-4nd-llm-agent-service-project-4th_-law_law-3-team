@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Network, Search, X, Loader2, ArrowLeft } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { StatuteForceGraph } from './StatuteForceGraph'
 import { casePrecedentService, type GraphNode } from '../services'
 import { useChat } from '@/context/ChatContext'
@@ -10,6 +10,7 @@ import type { StatuteNode } from '../types'
 
 export function StatuteHierarchyView() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { userRole } = useChat()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<StatuteNode[]>([])
@@ -17,13 +18,39 @@ export function StatuteHierarchyView() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [selectedStatute, setSelectedStatute] = useState<StatuteNode | null>(null)
 
-  const handleBack = useCallback(() => {
-    if (userRole) {
-      router.push(`/?role=${userRole}`)
+  // URL 파라미터에서 선택된 법령 복원
+  useEffect(() => {
+    const statuteId = searchParams.get('id')
+    const statuteName = searchParams.get('name')
+    const statuteType = searchParams.get('type')
+
+    if (statuteId && statuteName) {
+      setSelectedStatute({
+        id: statuteId,
+        name: statuteName,
+        type: statuteType || '',
+        citation_count: 0,
+      })
+      setSearchQuery(statuteName)
     } else {
-      router.back()
+      setSelectedStatute(null)
+      setSearchQuery('')
     }
-  }, [router, userRole])
+  }, [searchParams])
+
+  const handleBack = useCallback(() => {
+    // 선택된 법령이 있으면 브라우저 히스토리로 뒤로가기
+    if (selectedStatute) {
+      router.back()
+    } else {
+      // 선택된 법령이 없으면 (초기 상태) 홈으로
+      if (userRole) {
+        router.push(`/?role=${userRole}`)
+      } else {
+        router.push('/')
+      }
+    }
+  }, [router, userRole, selectedStatute])
 
   // 검색 실행
   const handleSearch = useCallback(async (query: string) => {
@@ -58,31 +85,31 @@ export function StatuteHierarchyView() {
     return () => clearTimeout(timer)
   }, [handleSearch])
 
-  // 법령 선택
+  // 법령 선택 (URL에 추가하여 뒤로가기 지원)
   const handleSelect = useCallback((statute: StatuteNode) => {
-    setSelectedStatute(statute)
-    setSearchQuery(statute.name)
     setShowDropdown(false)
-  }, [])
+    const params = new URLSearchParams()
+    params.set('id', statute.id)
+    params.set('name', statute.name)
+    if (statute.type) params.set('type', statute.type)
+    router.push(`/statute-hierarchy?${params.toString()}`)
+  }, [router])
 
-  // 선택 초기화
+  // 선택 초기화 (URL에서 파라미터 제거)
   const handleClear = useCallback(() => {
-    setSelectedStatute(null)
-    setSearchQuery('')
     setSearchResults([])
     setShowDropdown(false)
-  }, [])
+    router.push('/statute-hierarchy')
+  }, [router])
 
-  // 그래프에서 노드 클릭
+  // 그래프에서 노드 클릭 (URL에 추가하여 뒤로가기 지원)
   const handleNodeClick = useCallback((node: GraphNode) => {
-    setSelectedStatute({
-      id: node.id,
-      name: node.name,
-      type: node.type,
-      citation_count: node.citation_count,
-    })
-    setSearchQuery(node.name)
-  }, [])
+    const params = new URLSearchParams()
+    params.set('id', node.id)
+    params.set('name', node.name)
+    if (node.type) params.set('type', node.type)
+    router.push(`/statute-hierarchy?${params.toString()}`)
+  }, [router])
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-900">
