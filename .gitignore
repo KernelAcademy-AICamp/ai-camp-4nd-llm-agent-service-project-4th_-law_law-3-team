@@ -57,6 +57,7 @@ npm-debug.log*
 .eslintcache
 
 data/
+!frontend/public/data/
 all_lawyers.json
 
 # LanceDB
