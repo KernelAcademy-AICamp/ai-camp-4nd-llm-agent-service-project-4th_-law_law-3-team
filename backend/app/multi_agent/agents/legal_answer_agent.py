@@ -286,6 +286,10 @@ class LegalAnswerAgent(BaseChatAgent):
                 source_item["decision_date"] = detail.get("decision_date", "")
                 source_item["case_type"] = detail.get("case_type", "")
                 source_item["summary"] = detail.get("summary", "")  # 판시사항
+                source_item["full_reason"] = detail.get("full_reason", "")  # 이유
+                source_item["full_text"] = detail.get("full_text", "")  # 판례내용 전문
+                source_item["reference_provisions"] = detail.get("reference_provisions", "")  # 참조조문
+                source_item["reference_cases"] = detail.get("reference_cases", "")  # 참조판례
 
             # 그래프 컨텍스트 추가
             if case_number in graph_contexts:

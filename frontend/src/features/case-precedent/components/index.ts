@@ -4,6 +4,7 @@ export { CaseDetailPanel } from './CaseDetailPanel'
 export { AIChatSection } from './AIChatSection'
 export { LawyerView } from './LawyerView'
 export { UserView } from './UserView'
+export { PrecedentDocumentViewer } from './PrecedentDocumentViewer'
 
 // 법령 체계도
 export { StatuteHierarchyView } from './StatuteHierarchyView'

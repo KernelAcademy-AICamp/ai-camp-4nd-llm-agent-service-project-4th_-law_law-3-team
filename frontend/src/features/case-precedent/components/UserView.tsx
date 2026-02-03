@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown'
 import { useChat } from '@/context/ChatContext'
 import type { ChatSource } from '../types'
 import { getLawTypeLogo, getLawTypeOrgName, getCourtLogo, getDocTypeLogo, DEFAULT_GOV_LOGO } from '../utils/lawTypeLogo'
+import { PrecedentDocumentViewer } from './PrecedentDocumentViewer'
 
 // 아코디언 섹션 컴포넌트
 function CollapsibleSection({
@@ -252,22 +253,47 @@ export function UserView() {
                       </div>
                     )}
 
-                    {/* 더 보기 (접힘) */}
+                    {/* 더 보기 (접힘) - 판결문 전체 보기 */}
                     <div className="pt-4">
-                      <p className="text-sm text-gray-500 mb-3">▼ 더 자세한 내용</p>
-                      <CollapsibleSection title="청구취지" content={selectedRef.claim} />
-                      <CollapsibleSection title="검색된 원문" content={selectedRef.content} />
+                      <details className="border border-gray-200 rounded-lg overflow-hidden">
+                        <summary className="w-full px-4 py-3 bg-gray-50 flex justify-between items-center hover:bg-gray-100 transition-colors cursor-pointer font-medium text-gray-700">
+                          📄 판결문 전체 보기
+                        </summary>
+                        <div className="p-4 bg-white">
+                          <PrecedentDocumentViewer
+                            courtName={selectedRef.court_name}
+                            caseNumber={selectedRef.case_number}
+                            caseName={selectedRef.case_name}
+                            decisionDate={selectedRef.decision_date}
+                            summary={selectedRef.summary}
+                            reasoning={selectedRef.reasoning}
+                            referenceProvisions={selectedRef.reference_provisions}
+                            referenceCases={selectedRef.reference_cases}
+                            ruling={selectedRef.ruling}
+                            claim={selectedRef.claim}
+                            fullReason={selectedRef.full_reason}
+                            fullText={selectedRef.full_text}
+                          />
+                        </div>
+                      </details>
                     </div>
                   </>
                 ) : (
-                  /* 변호사 모드: 전체 표시 */
-                  <>
-                    <CollapsibleSection title="판결요지" content={selectedRef.reasoning} defaultOpen />
-                    <CollapsibleSection title="주문" content={selectedRef.ruling} defaultOpen />
-                    <CollapsibleSection title="청구취지" content={selectedRef.claim} defaultOpen />
-                    <CollapsibleSection title="이유 (상세)" content={selectedRef.full_reason} />
-                    <CollapsibleSection title="검색된 원문" content={selectedRef.content} />
-                  </>
+                  /* 변호사 모드: 판결문 전체 표시 */
+                  <PrecedentDocumentViewer
+                    courtName={selectedRef.court_name}
+                    caseNumber={selectedRef.case_number}
+                    caseName={selectedRef.case_name}
+                    decisionDate={selectedRef.decision_date}
+                    summary={selectedRef.summary}
+                    reasoning={selectedRef.reasoning}
+                    referenceProvisions={selectedRef.reference_provisions}
+                    referenceCases={selectedRef.reference_cases}
+                    ruling={selectedRef.ruling}
+                    claim={selectedRef.claim}
+                    fullReason={selectedRef.full_reason}
+                    fullText={selectedRef.full_text}
+                  />
                 )}
 
                 {/* 그래프 보강 정보 */}
