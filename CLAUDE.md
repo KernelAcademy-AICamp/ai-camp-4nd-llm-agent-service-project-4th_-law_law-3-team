@@ -50,9 +50,11 @@ python3 scripts/add_module.py remove <module_name>
 
 Backend 모듈 (`backend/app/modules/<module_name>/`):
 - `router/` - API 라우터 (필수: `router` 변수)
-- `service/` - 비즈니스 로직
 - `schema/` - Pydantic 스키마
 - `model/` - DB 모델
+
+> **Note**: 비즈니스 로직은 `app/services/service_function/`에 통합 관리됩니다.
+> 모듈의 router는 services를 import하여 사용합니다.
 
 Frontend 모듈:
 - `src/app/<module-name>/page.tsx` - 페이지
@@ -103,10 +105,13 @@ backend/app/
 │   ├── agents/          # 에이전트 구현체
 │   └── schemas/         # 스키마 (AgentPlan, AgentResult)
 ├── services/            # 비즈니스 로직 서비스
-│   ├── rag/             # RAG 검색 (retrieval, rerank)
-│   ├── cases/           # 판례/법령 서비스
-│   ├── lawyers/         # 변호사 서비스
-│   └── small_claims/    # 소액소송 서비스
+│   ├── rag/             # RAG 검색 (retrieval, rerank, pipeline)
+│   └── service_function/ # 통합 서비스 함수
+│       ├── lawyer_service.py       # 변호사 검색/클러스터링
+│       ├── lawyer_stats_service.py # 변호사 통계
+│       ├── precedent_service.py    # 판례 조회
+│       ├── law_service.py          # 법령 조회
+│       └── small_claims_service.py # 소액소송 가이드
 ├── tools/               # 외부 도구 클라이언트
 │   ├── llm/             # LLM 클라이언트 (Solar)
 │   ├── vectorstore/     # 벡터 DB (LanceDB)
@@ -125,7 +130,7 @@ backend/app/
 ```
 사용자 메시지 → Orchestrator → Router → Agent → Response
                     ↓            ↓        ↓
-               SessionStore  RulesRouter  CasePrecedentAgent
+               SessionStore  RulesRouter  LegalAnswerAgent
                                          LawyerFinderAgent
                                          SmallClaimsAgent
                                          SimpleChatAgent
@@ -134,7 +139,7 @@ backend/app/
 **에이전트 목록:**
 | 에이전트 | 역할 | RAG 사용 |
 |---------|------|---------|
-| `CasePrecedentAgent` | 판례 검색 + LLM 응답 | ✅ |
+| `LegalAnswerAgent` | 판례/법령 검색 + LLM 응답 (focus 파라미터로 조절) | ✅ |
 | `LawyerFinderAgent` | 변호사 찾기 페이지 이동 | ❌ |
 | `SmallClaimsAgent` | 소액소송 단계별 가이드 | ✅ (참고용) |
 | `SimpleChatAgent` | 일반 LLM 채팅 | ❌ |

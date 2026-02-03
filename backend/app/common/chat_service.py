@@ -8,7 +8,7 @@ LangChain/LangGraph 호환 구조
     이 모듈의 일부 기능은 분리되었습니다:
     - 검색 기능: app.services.rag.retrieval
     - 판례 조회: app.services.cases.precedent_service
-    - 법령 조회: app.services.cases.document_service
+    - 법령 조회: app.services.cases.law_service
 
 
 ----->>>> **** 그래프 관련 폴더 정리 후, 컨텍스트 보강하는 거 반영해야함! (_get_graph_service())

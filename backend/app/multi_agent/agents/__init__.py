@@ -5,7 +5,7 @@
 """
 
 from app.multi_agent.agents.base_chat import BaseChatAgent, SimpleChatAgent
-from app.multi_agent.agents.case_precedent_agent import CasePrecedentAgent
+from app.multi_agent.agents.legal_answer_agent import LegalAnswerAgent
 from app.multi_agent.agents.lawyer_finder_agent import LawyerFinderAgent
 from app.multi_agent.agents.small_claims_agent import SmallClaimsAgent
 
@@ -14,7 +14,7 @@ __all__ = [
     "BaseChatAgent",
     "SimpleChatAgent",
     # Domain agents
-    "CasePrecedentAgent",
+    "LegalAnswerAgent",
     "LawyerFinderAgent",
     "SmallClaimsAgent",
 ]

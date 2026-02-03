@@ -8,8 +8,10 @@
 
 - **Backend**: FastAPI (Python)
 - **Frontend**: Next.js 14 (React, TypeScript)
-- **Database**: PostgreSQL
-- **AI/ML**: OpenAI, LangChain, ChromaDB (RAG)
+- **Database**: PostgreSQL, Neo4j (Graph DB)
+- **Vector DB**: LanceDB (RAG)
+- **AI/ML**: Solar (Upstage), LangChain
+- **Embedding**: KURE-v1 (로컬) / OpenAI (선택)
 
 ## 프로젝트 구조
 
@@ -17,18 +19,33 @@
 law-3-team/
 ├── backend/
 │   ├── app/
-│   │   ├── core/                    # 핵심 설정
+│   │   ├── api/router/              # 통합 API (채팅 등)
+│   │   │   └── chat.py              # /api/chat 엔드포인트
+│   │   ├── core/                    # 핵심 인프라
 │   │   │   ├── config.py            # 환경 설정
+│   │   │   ├── database.py          # DB 연결
+│   │   │   ├── errors.py            # 공통 예외
 │   │   │   └── registry.py          # 모듈 자동 등록
-│   │   ├── modules/                 # 기능 모듈 (추가/삭제 용이)
+│   │   ├── multi_agent/             # 멀티 에이전트 시스템
+│   │   │   ├── orchestrator.py      # 오케스트레이션
+│   │   │   ├── routing/             # 라우팅 (rules_router)
+│   │   │   └── agents/              # 에이전트 구현체
+│   │   ├── services/                # 비즈니스 로직
+│   │   │   ├── rag/                 # RAG 검색 서비스
+│   │   │   └── service_function/    # 통합 서비스 함수
+│   │   ├── tools/                   # 외부 도구 클라이언트
+│   │   │   ├── llm/                 # LLM (Solar)
+│   │   │   ├── vectorstore/         # LanceDB
+│   │   │   └── graph/               # Neo4j
+│   │   ├── modules/                 # 독립 API 모듈 (자동 등록)
 │   │   │   ├── lawyer_finder/       # 위치 기반 변호사 추천
-│   │   │   ├── lawyer_stats/         # 변호사 통계 대시보드
+│   │   │   ├── lawyer_stats/        # 변호사 통계 대시보드
 │   │   │   ├── case_precedent/      # 판례 검색 및 추천
 │   │   │   ├── review_price/        # 후기/가격 비교
 │   │   │   ├── storyboard/          # 타임라인 스토리보드
 │   │   │   ├── law_study/           # 로스쿨 학습
 │   │   │   └── small_claims/        # 소액 소송 에이전트
-│   │   ├── common/                  # 공통 유틸리티
+│   │   ├── models/                  # ORM 모델
 │   │   └── main.py                  # FastAPI 앱 진입점
 │   ├── tests/
 │   ├── pyproject.toml               # uv 패키지 설정

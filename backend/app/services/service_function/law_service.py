@@ -1,8 +1,7 @@
 """
-문서 서비스
+법령 서비스
 
 법령 조회 및 참조조문 처리
-chat_service.py에서 추출
 """
 
 import logging
@@ -126,8 +125,8 @@ def fetch_reference_articles_from_docs(doc_ids: List[int]) -> str:
         return ""
 
 
-class DocumentService:
-    """문서 서비스 클래스"""
+class LawService:
+    """법령 서비스 클래스"""
 
     def extract_law_names(self, reference_text: str) -> Set[str]:
         """참조조문에서 법령명 추출"""
@@ -175,12 +174,12 @@ class DocumentService:
             return None
 
 
-_document_service: Optional[DocumentService] = None
+_law_service: Optional[LawService] = None
 
 
-def get_document_service() -> DocumentService:
-    """DocumentService 싱글톤 인스턴스 반환"""
-    global _document_service
-    if _document_service is None:
-        _document_service = DocumentService()
-    return _document_service
+def get_law_service() -> LawService:
+    """LawService 싱글톤 인스턴스 반환"""
+    global _law_service
+    if _law_service is None:
+        _law_service = LawService()
+    return _law_service

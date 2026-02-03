@@ -65,15 +65,27 @@ class Orchestrator:
         Returns:
             ChatResponse: 채팅 응답
         """
+        from app.multi_agent.schemas.plan import AgentPlan
+
         # 1. 컨텍스트 구성
         context = self._build_context(request)
 
-        # 2. 라우팅
-        plan = self.router.route(context)
-        logger.info(
-            f"Routed to {plan.agent_type} "
-            f"(confidence: {plan.confidence}, reason: {plan.reason})"
-        )
+        # 2. 라우팅 (agent 직접 지정 시 건너뜀)
+        if request.agent:
+            # 에이전트 직접 지정
+            plan = AgentPlan(
+                agent_type=request.agent,
+                confidence=1.0,
+                reason="직접 지정",
+            )
+            logger.info(f"Agent directly specified: {request.agent}")
+        else:
+            # 라우터로 에이전트 선택
+            plan = self.router.route(context)
+            logger.info(
+                f"Routed to {plan.agent_type} "
+                f"(confidence: {plan.confidence}, reason: {plan.reason})"
+            )
 
         # 3. 에이전트 실행
         result = await self.executor.execute(plan, context)

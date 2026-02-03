@@ -44,6 +44,9 @@ def fetch_precedent_details(source_ids: List[str]) -> Dict[str, Dict[str, str]]:
                     "claim": p.claim or "",
                     "reasoning": p.reasoning or "",
                     "full_reason": p.full_reason or "",
+                    "decision_date": str(p.decision_date) if p.decision_date else "",
+                    "case_type": p.case_type or "",
+                    "summary": p.summary or "",  # 판시사항 (핵심 쟁점)
                 }
                 for p in precedents
             }

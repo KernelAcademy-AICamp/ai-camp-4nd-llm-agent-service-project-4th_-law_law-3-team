@@ -31,7 +31,7 @@ export interface ChatSource {
   case_number?: string
   doc_type: string
   similarity: number
-  summary?: string
+  summary?: string       // 판시사항 (핵심 쟁점)
   content?: string
   // 판례 상세 필드 (역할별 차등 표시용)
   ruling?: string        // 주문
@@ -39,6 +39,8 @@ export interface ChatSource {
   reasoning?: string     // 판결요지
   full_reason?: string   // 이유 (전체)
   court_name?: string    // 법원명 (대법원, 헌법재판소 등)
+  decision_date?: string // 선고일
+  case_type?: string     // 사건유형 (민사/형사/행정)
   // 법령용 필드
   law_name?: string
   law_type?: string

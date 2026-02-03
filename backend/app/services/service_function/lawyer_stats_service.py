@@ -1,4 +1,8 @@
-"""변호사 통계 모듈 - 통계 계산 서비스"""
+"""
+변호사 통계 서비스
+
+지역별·전문분야별 변호사 분포 통계 계산
+"""
 
 import json
 import re
@@ -7,10 +11,15 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from app.modules.lawyer_finder.service import SPECIALTY_CATEGORIES, load_lawyers_data
+from app.services.service_function.lawyer_service import SPECIALTY_CATEGORIES, load_lawyers_data
 
-# 인구 데이터 JSON 파일 경로 (data/population.json)
-POPULATION_JSON_PATH = Path(__file__).parent.parent.parent.parent.parent.parent / "data" / "population.json"
+# =============================================================================
+# 상수 정의
+# =============================================================================
+# __file__ = backend/app/services/service_function/lawyer_stats_service.py
+# 5 parents up = law-3-team/ (프로젝트 루트)
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
+POPULATION_JSON_PATH = PROJECT_ROOT / "data" / "population.json"
 
 # 주소에서 지역(시군구) 추출 패턴
 REGION_PATTERN = re.compile(r"^(\S+)\s+(\S+구|\S+시|\S+군)")
@@ -58,6 +67,9 @@ PROVINCE_NORMALIZE_MAP: dict[str, str] = {
 _population_cache: dict[str, Any] | None = None
 
 
+# =============================================================================
+# 인구 데이터 함수
+# =============================================================================
 def _load_population_json() -> dict[str, Any]:
     """
     인구 데이터 JSON 파일 로드 (캐시 사용).
@@ -100,6 +112,9 @@ def get_population_meta() -> dict[str, Any]:
     return data.get("meta", {})
 
 
+# =============================================================================
+# 지역 정규화 함수
+# =============================================================================
 def normalize_province(province: str) -> str:
     """시/도명을 표준 형식으로 정규화."""
     return PROVINCE_NORMALIZE_MAP.get(province, province)
@@ -133,6 +148,9 @@ def get_category_for_specialty(specialty: str) -> str | None:
     return None
 
 
+# =============================================================================
+# 통계 계산 함수
+# =============================================================================
 @lru_cache(maxsize=1)
 def calculate_overview() -> dict[str, Any]:
     """
@@ -380,6 +398,9 @@ def calculate_specialty_by_region(region: str) -> list[dict[str, Any]]:
     return sorted(result, key=lambda x: -x["count"])
 
 
+# =============================================================================
+# 교차 분석 함수
+# =============================================================================
 @lru_cache(maxsize=1)
 def calculate_cross_analysis() -> dict[str, Any]:
     """

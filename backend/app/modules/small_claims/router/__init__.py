@@ -10,7 +10,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from app.services.rag.retrieval import search_relevant_documents
+from app.services.rag import search_relevant_documents
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)

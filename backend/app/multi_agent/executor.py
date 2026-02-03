@@ -86,9 +86,9 @@ class AgentExecutor:
 
     def _get_default_agent(self) -> Optional[BaseChatAgent]:
         """기본 에이전트 반환"""
-        # case_search를 기본으로 사용
-        if "case_search" in self._agents:
-            return self._agents["case_search"]
+        # legal_answer를 기본으로 사용
+        if "legal_answer" in self._agents:
+            return self._agents["legal_answer"]
         # 없으면 첫 번째 에이전트
         if self._agents:
             return next(iter(self._agents.values()))
@@ -104,14 +104,19 @@ def get_agent_executor() -> AgentExecutor:
     global _executor
     if _executor is None:
         from app.multi_agent.agents import (
-            CasePrecedentAgent,
+            LegalAnswerAgent,
             LawyerFinderAgent,
             SmallClaimsAgent,
             SimpleChatAgent,
         )
 
         agents: Dict[str, BaseChatAgent] = {
-            "case_search": CasePrecedentAgent(),
+            # 판례 위주 검색 (기존 case_search 대체)
+            "legal_answer": LegalAnswerAgent(focus="precedent"),
+            "case_search": LegalAnswerAgent(focus="precedent"),  # 하위 호환
+            # 법령 위주 검색
+            "law_search": LegalAnswerAgent(focus="law"),
+            # 기타 에이전트
             "lawyer_finder": LawyerFinderAgent(),
             "small_claims": SmallClaimsAgent(),
             "general": SimpleChatAgent(),

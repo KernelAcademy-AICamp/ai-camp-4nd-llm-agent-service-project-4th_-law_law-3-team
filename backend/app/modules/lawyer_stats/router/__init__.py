@@ -13,7 +13,7 @@ from app.modules.lawyer_stats.schema import (
     SpecialtyStat,
     SpecialtyStatResponse,
 )
-from app.modules.lawyer_stats.service import (
+from app.services.service_function.lawyer_stats_service import (
     calculate_by_region,
     calculate_by_specialty,
     calculate_cross_analysis,

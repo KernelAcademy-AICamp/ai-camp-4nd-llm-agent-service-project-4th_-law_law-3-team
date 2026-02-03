@@ -144,15 +144,17 @@ app/
 │       └── messages.py  # 메시지 타입
 ├── services/            # 비즈니스 로직
 │   ├── rag/
-│   │   ├── retrieval.py  # 벡터 검색, 임베딩
-│   │   └── rerank.py     # 리랭킹 (미구현)
-│   ├── cases/
-│   │   ├── precedent_service.py  # 판례 조회
-│   │   └── document_service.py   # 법령 조회
-│   ├── lawyers/
-│   │   └── lawyer_service.py
-│   └── small_claims/
-│       └── small_claims_service.py
+│   │   ├── embedding.py  # 임베딩 모델
+│   │   ├── retrieval.py  # 벡터 검색
+│   │   ├── rerank.py     # 리랭킹
+│   │   ├── query_rewrite.py  # 쿼리 리라이팅
+│   │   └── pipeline.py   # 검색 파이프라인
+│   └── service_function/ # 통합 서비스 함수
+│       ├── lawyer_service.py       # 변호사 검색/클러스터링
+│       ├── lawyer_stats_service.py # 변호사 통계
+│       ├── precedent_service.py    # 판례 조회
+│       ├── law_service.py          # 법령 조회
+│       └── small_claims_service.py # 소액소송 가이드
 ├── tools/               # 외부 도구 클라이언트
 │   ├── llm/             # LLM (Solar, OpenAI)
 │   ├── vectorstore/     # LanceDB, Chroma, Qdrant
@@ -183,13 +185,14 @@ app/modules/<module_name>/
 ├── __init__.py
 ├── router/
 │   └── __init__.py    # router = APIRouter() 필수
-├── service/
-│   └── __init__.py    # 비즈니스 로직
 ├── schema/
 │   └── __init__.py    # Pydantic 모델 (request/response)
 └── model/
     └── __init__.py    # SQLAlchemy 모델
 ```
+
+> **참고:** 비즈니스 로직은 `app/services/service_function/`에 위치합니다.
+> 모듈의 `router/`는 서비스 함수를 import하여 사용합니다.
 
 ### API 경로 규칙
 
@@ -202,7 +205,7 @@ app/modules/<module_name>/
 ```
 POST /api/chat → Orchestrator → Router → Agent → Response
                       ↓            ↓         ↓
-                 SessionStore  RulesRouter  CasePrecedentAgent
+                 SessionStore  RulesRouter  LegalAnswerAgent
                                            LawyerFinderAgent
                                            SmallClaimsAgent
                                            SimpleChatAgent
@@ -211,7 +214,7 @@ POST /api/chat → Orchestrator → Router → Agent → Response
 **에이전트 목록:**
 | 에이전트 | 역할 | RAG | LLM |
 |---------|------|-----|-----|
-| `CasePrecedentAgent` | 판례 검색 + 법률 상담 | ✅ | ✅ |
+| `LegalAnswerAgent` | 판례/법령 검색 + 법률 상담 | ✅ | ✅ |
 | `LawyerFinderAgent` | 위치 기반 변호사 추천 | ❌ | ❌ |
 | `SmallClaimsAgent` | 소액소송 단계별 가이드 | ✅ | ❌ |
 | `SimpleChatAgent` | 일반 LLM 채팅 | ❌ | ✅ |
@@ -261,20 +264,25 @@ results = service.search(
 embedding = create_query_embedding("검색 쿼리")
 ```
 
-### 판례/법령 서비스 (`app/services/cases/`)
+### 통합 서비스 함수 (`app/services/service_function/`)
 
 ```python
-from app.services.cases.precedent_service import get_precedent_service
-from app.services.cases.document_service import get_document_service
+# 변호사 검색/클러스터링
+from app.services.service_function.lawyer_service import (
+    find_nearby_lawyers,
+    search_lawyers,
+    get_clusters,
+    load_lawyers_data,
+)
 
-# 판례 상세 조회
-precedent_svc = get_precedent_service()
-details = precedent_svc.get_details(["serial_number1", "serial_number2"])
-
-# 법령명 추출 및 조회
-doc_svc = get_document_service()
-law_names = doc_svc.extract_law_names("민사소송법 제704조")  # {"민사소송법"}
-laws = doc_svc.get_laws_by_names(law_names, limit=5)
+# 변호사 통계
+from app.services.service_function.lawyer_stats_service import (
+    calculate_overview,
+    calculate_by_region,
+    calculate_density_by_region,
+    calculate_by_specialty,
+    calculate_cross_analysis,
+)
 ```
 
 ## Modules
@@ -283,7 +291,7 @@ laws = doc_svc.get_laws_by_names(law_names, limit=5)
 
 **경로:** `app/modules/lawyer_stats/`
 
-**서비스 함수 (`service/__init__.py`):**
+**서비스 함수:** `app/services/service_function/lawyer_stats_service.py`
 - `calculate_overview()` - 전체 현황 요약
 - `calculate_by_region()` - 지역별 변호사 수 집계
 - `calculate_density_by_region(year, include_change)` - 인구 대비 밀도 계산
@@ -302,6 +310,24 @@ laws = doc_svc.get_laws_by_names(law_names, limit=5)
 - `GET /density-by-region?year=current&include_change=false` - 밀도 조회
 - `GET /by-specialty` - 전문분야별 통계
 - `GET /cross-analysis` - 지역×전문분야 교차 분석
+
+### lawyer_finder (변호사 찾기)
+
+**경로:** `app/modules/lawyer_finder/`
+
+**서비스 함수:** `app/services/service_function/lawyer_service.py`
+- `load_lawyers_data()` - 변호사 데이터 로드 (캐싱)
+- `find_nearby_lawyers()` - 반경 내 변호사 검색
+- `search_lawyers()` - 조건 기반 검색
+- `get_clusters()` - 지도 클러스터링
+- `get_categories()` / `get_specialties_by_category()` - 전문분야 분류
+
+**API 엔드포인트:**
+- `GET /nearby` - 반경 내 변호사 검색
+- `GET /search` - 조건 기반 검색
+- `GET /clusters` - 클러스터 데이터
+- `GET /specialties` - 전문분야 목록
+- `GET /{lawyer_id}` - 변호사 상세 정보
 
 ## Conventions
 

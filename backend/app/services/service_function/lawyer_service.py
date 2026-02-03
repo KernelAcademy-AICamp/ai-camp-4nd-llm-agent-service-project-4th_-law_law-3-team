@@ -1,15 +1,34 @@
-"""변호사 찾기 모듈 - 서비스 레이어"""
+"""
+변호사 서비스
+
+위치 및 전문분야 추출, 변호사 검색 지원
+"""
+
 import json
 import logging
+import re
 from functools import lru_cache
 from math import asin, cos, radians, sin, sqrt
 from pathlib import Path
-from typing import Any, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
+# =============================================================================
+# 데이터 파일 경로
+# =============================================================================
+# __file__ = backend/app/services/service_function/lawyer_service.py
+# 5 parents up = law-3-team/ (프로젝트 루트)
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+LAWYERS_WITH_SPECIALTIES_FILE = DATA_DIR / "lawyers_with_specialties.json"
+LAWYERS_FILE = DATA_DIR / "lawyers_with_coords.json"
+FALLBACK_FILE = PROJECT_ROOT / "all_lawyers.json"
+
+# =============================================================================
 # 전문분야 12대분류 (사용자에게는 이것만 표시)
-SPECIALTY_CATEGORIES: dict[str, dict[str, Any]] = {
+# =============================================================================
+SPECIALTY_CATEGORIES: Dict[str, Dict[str, Any]] = {
     "civil-family": {
         "name": "민사·가사",
         "icon": "👨‍👩‍👧",
@@ -84,7 +103,32 @@ SPECIALTY_CATEGORIES: dict[str, dict[str, Any]] = {
     },
 }
 
+# =============================================================================
+# 에이전트용 메시지 파싱 상수
+# =============================================================================
+SPECIALTY_KEYWORDS: Dict[str, List[str]] = {
+    "민사": ["민사", "계약", "채권", "채무", "손해배상", "임대차", "전세", "월세"],
+    "형사": ["형사", "범죄", "고소", "고발", "구속", "기소", "재판"],
+    "가사": ["이혼", "양육권", "상속", "유언", "재산분할", "가사"],
+    "부동산": ["부동산", "토지", "건물", "등기", "분양", "재개발"],
+    "기업": ["회사", "법인", "기업", "M&A", "합병", "인수"],
+    "노동": ["노동", "근로", "해고", "임금", "퇴직금", "산재"],
+    "행정": ["행정", "허가", "인허가", "소송", "취소"],
+    "지적재산권": ["특허", "상표", "저작권", "지식재산", "IP"],
+    "세무": ["세금", "세무", "조세", "탈세", "국세"],
+    "의료": ["의료", "병원", "의사", "의료사고", "의료분쟁"],
+}
 
+REGION_PATTERNS = [
+    r"(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)",
+    r"(강남|서초|송파|마포|영등포|종로|중구|용산|성동|광진|동대문|중랑|성북|강북|도봉|노원|"
+    r"은평|서대문|양천|구로|금천|동작|관악|강서|강동|잠실|판교|분당|일산|수원|성남)",
+]
+
+
+# =============================================================================
+# 카테고리/전문분야 유틸리티 함수
+# =============================================================================
 def get_specialties_by_category(category: str) -> Set[str]:
     """카테고리 ID로 해당 카테고리의 전문분야 목록 조회"""
     if category in SPECIALTY_CATEGORIES:
@@ -92,7 +136,7 @@ def get_specialties_by_category(category: str) -> Set[str]:
     return set()
 
 
-def get_categories() -> List[dict[str, Any]]:
+def get_categories() -> List[Dict[str, Any]]:
     """12대분류 목록 반환 (프론트엔드 표시용)"""
     return [
         {
@@ -104,18 +148,12 @@ def get_categories() -> List[dict[str, Any]]:
         for cat_id, cat in SPECIALTY_CATEGORIES.items()
     ]
 
-# 데이터 파일 경로
-# __file__ = backend/app/modules/lawyer_finder/service/__init__.py
-# 6 parents up = law-3-team/ (프로젝트 루트)
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
-LAWYERS_WITH_SPECIALTIES_FILE = DATA_DIR / "lawyers_with_specialties.json"
-LAWYERS_FILE = DATA_DIR / "lawyers_with_coords.json"
-FALLBACK_FILE = PROJECT_ROOT / "all_lawyers.json"
 
-
+# =============================================================================
+# 데이터 로드
+# =============================================================================
 @lru_cache(maxsize=1)
-def load_lawyers_data() -> dict[str, Any]:
+def load_lawyers_data() -> Dict[str, Any]:
     """변호사 데이터 로드 (캐싱)"""
     files_to_try = [
         LAWYERS_WITH_SPECIALTIES_FILE,
@@ -127,7 +165,7 @@ def load_lawyers_data() -> dict[str, Any]:
         if file_path.exists():
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
-                    result: dict[str, Any] = json.load(f)
+                    result: Dict[str, Any] = json.load(f)
                     logger.info(f"Loaded lawyers data from: {file_path}")
                     return result
             except json.JSONDecodeError as e:
@@ -146,7 +184,7 @@ def get_available_specialties() -> List[str]:
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
 
-    specialties_set: set[str] = set()
+    specialties_set: Set[str] = set()
     for lawyer in lawyers:
         specs = lawyer.get("specialties", [])
         if isinstance(specs, list):
@@ -155,6 +193,9 @@ def get_available_specialties() -> List[str]:
     return sorted(specialties_set)
 
 
+# =============================================================================
+# 거리 계산 유틸리티
+# =============================================================================
 def haversine(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
     """
     두 좌표 간 거리 계산 (Haversine 공식)
@@ -180,14 +221,17 @@ def get_bounding_box(
     return (lat - lat_delta, lat + lat_delta, lng - lng_delta, lng + lng_delta)
 
 
+# =============================================================================
+# 변호사 검색 함수
+# =============================================================================
 def find_nearby_lawyers(
     latitude: float,
     longitude: float,
     radius_m: int = 5000,
-    limit: Optional[int] = None,  # None이면 제한 없음
+    limit: Optional[int] = None,
     category: Optional[str] = None,
     specialty: Optional[str] = None
-) -> List[dict[str, Any]]:
+) -> List[Dict[str, Any]]:
     """
     반경 내 변호사 검색
 
@@ -196,6 +240,10 @@ def find_nearby_lawyers(
     3단계: 전문분야 필터링 (specialty > category 우선순위)
 
     Args:
+        latitude: 위도
+        longitude: 경도
+        radius_m: 검색 반경 (미터)
+        limit: 최대 결과 수 (None이면 제한 없음)
         specialty: 특정 전문분야 키워드 (예: "이혼", "형사법") - 정확히 일치하는 전문분야 필터
         category: 전문분야 카테고리 ID (예: "civil-family") - 카테고리 내 모든 전문분야 필터
     """
@@ -250,7 +298,7 @@ def find_nearby_lawyers(
     return results[:limit] if limit else results
 
 
-def get_lawyer_by_id(lawyer_id: int) -> Optional[dict[str, Any]]:
+def get_lawyer_by_id(lawyer_id: int) -> Optional[Dict[str, Any]]:
     """ID로 변호사 조회"""
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
@@ -271,8 +319,8 @@ def search_lawyers(
     latitude: Optional[float] = None,
     longitude: Optional[float] = None,
     radius_m: int = 5000,
-    limit: Optional[int] = None  # None이면 제한 없음
-) -> List[dict[str, Any]]:
+    limit: Optional[int] = None
+) -> List[Dict[str, Any]]:
     """
     이름/사무소/지역/전문분야로 검색
 
@@ -368,13 +416,16 @@ def search_lawyers(
     return results
 
 
+# =============================================================================
+# 클러스터링 함수
+# =============================================================================
 def get_clusters(
     min_lat: float,
     max_lat: float,
     min_lng: float,
     max_lng: float,
-    grid_size: float = 0.01  # 약 1km 그리드
-) -> List[dict[str, Any]]:
+    grid_size: float = 0.01
+) -> List[Dict[str, Any]]:
     """
     뷰포트 내 변호사를 그리드로 클러스터링
     """
@@ -382,7 +433,7 @@ def get_clusters(
     lawyers = data.get("lawyers", [])
 
     # 그리드 집계
-    grid = {}
+    grid: Dict[Tuple[float, float], Dict[str, Any]] = {}
 
     for lawyer in lawyers:
         lat = lawyer.get("latitude")
@@ -421,3 +472,103 @@ def get_zoom_grid_size(zoom: int) -> float:
         12: 0.003,
     }
     return grid_sizes.get(zoom, 0.01)
+
+
+# =============================================================================
+# 에이전트용 메시지 파싱 클래스
+# =============================================================================
+class LawyerService:
+    """변호사 서비스 클래스 (에이전트용 메시지 파싱)"""
+
+    def extract_location(self, message: str) -> Optional[Dict[str, Any]]:
+        """
+        메시지에서 위치 정보 추출
+
+        Args:
+            message: 사용자 메시지
+
+        Returns:
+            {"region": "지역명", "sub_region": "세부지역"} 또는 None
+        """
+        location: Dict[str, Any] = {}
+
+        # 시/도 추출
+        for pattern in REGION_PATTERNS:
+            match = re.search(pattern, message)
+            if match:
+                region = match.group(1)
+                if region in ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
+                              "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"]:
+                    location["region"] = region
+                else:
+                    location["sub_region"] = region
+
+        if location:
+            return location
+        return None
+
+    def extract_specialty(self, message: str) -> Optional[str]:
+        """
+        메시지에서 전문분야 추출
+
+        Args:
+            message: 사용자 메시지
+
+        Returns:
+            전문분야명 또는 None
+        """
+        message_lower = message.lower()
+
+        for specialty, keywords in SPECIALTY_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword in message_lower:
+                    return specialty
+
+        return None
+
+    def extract_requirements(self, message: str) -> Dict[str, Any]:
+        """
+        메시지에서 변호사 검색 요구사항 추출
+
+        Args:
+            message: 사용자 메시지
+
+        Returns:
+            {"location": {...}, "specialty": "...", "keywords": [...]}
+        """
+        return {
+            "location": self.extract_location(message),
+            "specialty": self.extract_specialty(message),
+            "keywords": self._extract_keywords(message),
+        }
+
+    def _extract_keywords(self, message: str) -> List[str]:
+        """메시지에서 검색 키워드 추출"""
+        keywords = []
+
+        # 법률 용어 키워드 추출
+        legal_terms = [
+            "손해배상", "계약위반", "사기", "횡령", "배임",
+            "이혼", "상속", "유언", "임대차", "전세",
+            "해고", "퇴직금", "산재", "의료사고",
+        ]
+
+        for term in legal_terms:
+            if term in message:
+                keywords.append(term)
+
+        return keywords
+
+
+# =============================================================================
+# 싱글톤 인스턴스
+# =============================================================================
+_lawyer_service: Optional[LawyerService] = None
+
+
+def get_lawyer_service() -> LawyerService:
+    """LawyerService 싱글톤 인스턴스 반환"""
+    global _lawyer_service
+    if _lawyer_service is None:
+        _lawyer_service = LawyerService()
+    return _lawyer_service

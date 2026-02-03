@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import ReactMarkdown from 'react-markdown'
 import { useChat } from '@/context/ChatContext'
@@ -74,10 +74,12 @@ const getDocTypeBadgeColor = (docType: string): string => {
 }
 
 export function UserView() {
-  const { sessionData, userRole } = useChat()
+  const { sessionData, userRole, highlightedCaseNumber, setHighlightedCaseNumber } = useChat()
   const [references, setReferences] = useState<ChatSource[]>([])
   const [selectedRef, setSelectedRef] = useState<ChatSource | null>(null)
   const isLawyer = userRole === 'lawyer'
+  const cardRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
+  const listContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     // 세션 데이터에서 챗봇 참조 자료를 로드합니다.
@@ -85,6 +87,28 @@ export function UserView() {
       setReferences(sessionData.aiReferences as ChatSource[])
     }
   }, [sessionData.aiReferences])
+
+  // 하이라이트된 판례번호로 스크롤 및 하이라이트
+  useEffect(() => {
+    if (!highlightedCaseNumber) return
+
+    // 해당 판례번호를 가진 카드 찾기
+    const matchingRef = references.find(
+      (ref) => ref.case_number && ref.case_number.includes(highlightedCaseNumber)
+    )
+
+    if (matchingRef?.case_number) {
+      const cardElement = cardRefs.current.get(matchingRef.case_number)
+      if (cardElement) {
+        // 스크롤
+        cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        // 3초 후 하이라이트 해제
+        setTimeout(() => {
+          setHighlightedCaseNumber(null)
+        }, 3000)
+      }
+    }
+  }, [highlightedCaseNumber, references, setHighlightedCaseNumber])
 
   if (references.length === 0) {
     return (
@@ -165,15 +189,35 @@ export function UserView() {
                   )
                 })()}
               </div>
-              <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium mb-4 ${getDocTypeBadgeColor(selectedRef.doc_type)}`}>
-                {getDocTypeLabel(selectedRef.doc_type)}
-              </span>
+              <div className="flex items-center gap-2 flex-wrap mb-4">
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${getDocTypeBadgeColor(selectedRef.doc_type)}`}>
+                  {getDocTypeLabel(selectedRef.doc_type)}
+                </span>
+                {/* 사건유형 (민사/형사/행정) */}
+                {selectedRef.case_type && (
+                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
+                    {selectedRef.case_type}
+                  </span>
+                )}
+                {/* 선고일 */}
+                {selectedRef.decision_date && (
+                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-50 text-gray-500">
+                    📅 {selectedRef.decision_date}
+                  </span>
+                )}
+              </div>
               <h1 className="text-2xl font-bold text-gray-900 leading-tight mb-4">
                 {title || '상세 정보'}
               </h1>
               {subtitle && (
-                <div className="text-gray-500 font-mono text-sm bg-gray-50 px-3 py-1 rounded inline-block">
+                <div className="text-gray-500 font-mono text-sm bg-gray-50 px-3 py-1 rounded inline-block mb-4">
                   {subtitle}
+                </div>
+              )}
+              {/* 핵심 쟁점 (판시사항) */}
+              {selectedRef.summary && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+                  💡 <strong>핵심 쟁점:</strong> {selectedRef.summary}
                 </div>
               )}
             </div>
@@ -274,7 +318,7 @@ export function UserView() {
         </p>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div ref={listContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3">
         {references.map((ref, idx) => {
           const isLaw = ref.doc_type === 'law'
           const title = isLaw ? ref.law_name : ref.case_name
@@ -285,11 +329,23 @@ export function UserView() {
             ? getLawTypeLogo(ref.law_type)
             : getCourtLogo(ref.court_name) || getDocTypeLogo(ref.doc_type)
 
+          // 하이라이트 여부 확인
+          const isHighlighted = !isLaw && highlightedCaseNumber && ref.case_number?.includes(highlightedCaseNumber)
+
           return (
             <button
               key={`${ref.case_number || ref.law_name}-${idx}`}
+              ref={(el) => {
+                if (el && ref.case_number) {
+                  cardRefs.current.set(ref.case_number, el)
+                }
+              }}
               onClick={() => setSelectedRef(ref)}
-              className="w-full text-left p-5 rounded-xl bg-white border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all duration-200 group"
+              className={`w-full text-left p-5 rounded-xl border transition-all duration-200 group ${
+                isHighlighted
+                  ? 'bg-yellow-50 border-yellow-400 shadow-lg ring-2 ring-yellow-300 animate-pulse'
+                  : 'bg-white border-gray-100 hover:border-blue-300 hover:shadow-md'
+              }`}
             >
               <div className="flex items-start gap-3">
                 {/* 로고 표시 (법령 및 판례 모두) */}
@@ -315,19 +371,48 @@ export function UserView() {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
+                  {/* 상단 배지: 문서유형, 사건유형, 법원, 선고일 */}
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${getDocTypeBadgeColor(ref.doc_type)}`}>
                       {getDocTypeLabel(ref.doc_type)}
                     </span>
-                    <span className="text-xs text-gray-400 font-mono group-hover:text-blue-500 transition-colors">
-                      {subtitle}
-                    </span>
+                    {/* 사건유형 (민사/형사/행정) */}
+                    {ref.case_type && (
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                        {ref.case_type}
+                      </span>
+                    )}
+                    {/* 법원명 */}
+                    {ref.court_name && (
+                      <span className="text-xs text-gray-500">
+                        {ref.court_name}
+                      </span>
+                    )}
+                    {/* 선고일 */}
+                    {ref.decision_date && (
+                      <span className="text-xs text-gray-400">
+                        {ref.decision_date}
+                      </span>
+                    )}
                   </div>
-                  <h3 className="font-bold text-lg text-gray-900 mb-2 group-hover:text-blue-700 transition-colors">
-                    {title || '제목 없음'}
+
+                  {/* 메인 제목: 판시사항 (판례) 또는 법령명 (법령) */}
+                  <h3 className="font-bold text-lg text-gray-900 mb-2 group-hover:text-blue-700 transition-colors line-clamp-2">
+                    {isLaw ? (title || '제목 없음') : (ref.summary || title || '제목 없음')}
                   </h3>
+
+                  {/* 하단 정보: 사건명 + 사건번호 (판례만) */}
+                  {!isLaw && (
+                    <p className="text-sm text-gray-400 mb-2">
+                      {title && <span>{title}</span>}
+                      {title && subtitle && <span className="mx-1">|</span>}
+                      {subtitle && <span className="font-mono">{subtitle}</span>}
+                    </p>
+                  )}
+
+                  {/* 내용 미리보기 */}
                   <p className="text-sm text-gray-500 line-clamp-2">
-                    {ref.content ? ref.content.slice(0, 150) + '...' : '클릭하여 상세 내용을 확인하세요.'}
+                    {ref.reasoning ? ref.reasoning.slice(0, 120) + '...' : (ref.content ? ref.content.slice(0, 120) + '...' : '클릭하여 상세 내용을 확인하세요.')}
                   </p>
                 </div>
               </div>

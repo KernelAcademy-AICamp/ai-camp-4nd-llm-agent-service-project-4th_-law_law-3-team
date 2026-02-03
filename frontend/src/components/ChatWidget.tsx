@@ -1,12 +1,58 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
 import { api } from '@/lib/api'
 import ReactMarkdown from 'react-markdown'
 import ChatActions, { ChatAction } from './ChatActions'
+
+// 판례번호 패턴: 2023다12345, 88도820, 99가합1234 등
+const CASE_NUMBER_PATTERN = /(\d{2,4}[가-힣]{1,3}\d{1,6})/g
+
+// 텍스트에서 판례번호를 클릭 가능한 버튼으로 변환하는 컴포넌트
+function CaseNumberLink({
+  text,
+  onCaseClick,
+  isLightTheme
+}: {
+  text: string
+  onCaseClick: (caseNumber: string) => void
+  isLightTheme: boolean
+}) {
+  const parts = text.split(CASE_NUMBER_PATTERN)
+
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (CASE_NUMBER_PATTERN.test(part)) {
+          // Reset the regex lastIndex
+          CASE_NUMBER_PATTERN.lastIndex = 0
+          return (
+            <button
+              key={index}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onCaseClick(part)
+              }}
+              className={`inline px-1 py-0.5 mx-0.5 rounded text-sm font-mono font-bold transition-all hover:scale-105 ${
+                isLightTheme
+                  ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                  : 'bg-blue-500/30 text-blue-300 hover:bg-blue-500/50'
+              }`}
+              title={`${part} 판례 보기`}
+            >
+              {part}
+            </button>
+          )
+        }
+        return <span key={index}>{part}</span>
+      })}
+    </>
+  )
+}
 
 interface Message {
   id: string
@@ -14,6 +60,7 @@ interface Message {
   content: string
   actions?: ChatAction[]
   agentUsed?: string
+  sources?: ChatSource[]  // 참조 자료 (카드 연결용)
 }
 
 interface ChatSource {
@@ -42,6 +89,8 @@ interface MultiAgentChatResponse {
 export default function ChatWidget() {
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const agentFromUrl = searchParams.get('agent')
   const { isChatOpen, toggleChat, setChatOpen, chatMode, setChatMode } = useUI()
   const {
     userRole,
@@ -51,6 +100,7 @@ export default function ChatWidget() {
     userLocation,
     requestUserLocation,
     resetSession,
+    setHighlightedCaseNumber,
   } = useChat()
 
   // Determine if we are on pages that support floating mode
@@ -60,20 +110,54 @@ export default function ChatWidget() {
 
   // Global state for view mode is now handled by UIContext
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
+  // agent 타입에 따른 초기 메시지 생성
+  const getInitialMessage = useCallback((agent: string | null): Message => {
+    if (agent === 'law_search') {
+      return {
+        id: '1',
+        role: 'assistant',
+        content: '안녕하세요! 법령 검색 AI입니다.\n\n**법령에 대해 질문해주세요.**\n- 관련 법령 조항 검색\n- 법령 해석 및 적용 사례',
+      }
+    } else if (agent === 'case_search') {
+      return {
+        id: '1',
+        role: 'assistant',
+        content: '안녕하세요! 판례 검색 AI입니다.\n\n**판례에 대해 질문해주세요.**\n- 관련 판례 검색\n- 법률 상담',
+      }
+    }
+    return {
       id: '1',
       role: 'assistant',
-      content:
-        '안녕하세요! 저는 당신의 법률 AI 어시스턴트입니다.\n\n**무엇을 도와드릴까요?**\n- 변호사 찾기\n- 판례 검색\n- 소액소송 가이드',
-    },
-  ])
+      content: '안녕하세요! 저는 당신의 법률 AI 어시스턴트입니다.\n\n**무엇을 도와드릴까요?**\n- 변호사 찾기\n- 판례 검색\n- 소액소송 가이드',
+    }
+  }, [])
+
+  const [messages, setMessages] = useState<Message[]>([getInitialMessage(null)])
+
+  // agent 파라미터 변경 시 채팅 초기화
+  const prevAgentRef = useRef<string | null>(null)
+  useEffect(() => {
+    // 첫 렌더링이 아니고 agent가 변경된 경우에만 초기화
+    if (prevAgentRef.current !== null && prevAgentRef.current !== agentFromUrl) {
+      setMessages([getInitialMessage(agentFromUrl)])
+      resetSession()
+    }
+    prevAgentRef.current = agentFromUrl
+  }, [agentFromUrl, getInitialMessage, resetSession])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // 페이지 변경 시에만 초기 모드 설정 (첫 진입 시에만)
+  // 페이지 변경 시 초기화 및 모드 설정
   const prevPathnameRef = useRef<string | null>(null)
+
+  // 페이지 변경 시 채팅 초기화
+  useEffect(() => {
+    if (prevPathnameRef.current !== null && prevPathnameRef.current !== pathname) {
+      // 다른 페이지로 이동 시 채팅 초기화
+      setMessages([getInitialMessage(agentFromUrl)])
+    }
+  }, [pathname, agentFromUrl, getInitialMessage])
 
   useEffect(() => {
     // 같은 페이지에서는 모드 변경 안 함 (사용자가 토글한 상태 유지)
@@ -133,6 +217,7 @@ export default function ChatWidget() {
           history: history,
           session_data: sessionData,
           user_location: locationToSend,
+          agent: agentFromUrl || undefined,  // URL에서 지정된 에이전트 사용
         }
       )
 
@@ -241,6 +326,7 @@ export default function ChatWidget() {
         content: assistantContent,
         actions: response.data.actions,
         agentUsed: response.data.agent_used,
+        sources: response.data.sources,  // 참조 자료 추가
       }
       setMessages((prev) => [...prev, assistantMsg])
     } catch (error) {
@@ -535,7 +621,65 @@ export default function ChatWidget() {
             >
               {msg.role === 'assistant' ? (
                 <div className={`prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit ${!isLightTheme ? 'prose-invert' : ''}`}>
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  <ReactMarkdown
+                    components={{
+                      // 텍스트 노드에서 판례번호를 클릭 가능하게 변환
+                      p: ({ children }) => (
+                        <p>
+                          {typeof children === 'string' ? (
+                            <CaseNumberLink
+                              text={children}
+                              onCaseClick={setHighlightedCaseNumber}
+                              isLightTheme={isLightTheme}
+                            />
+                          ) : Array.isArray(children) ? (
+                            children.map((child, i) =>
+                              typeof child === 'string' ? (
+                                <CaseNumberLink
+                                  key={i}
+                                  text={child}
+                                  onCaseClick={setHighlightedCaseNumber}
+                                  isLightTheme={isLightTheme}
+                                />
+                              ) : (
+                                <span key={i}>{child}</span>
+                              )
+                            )
+                          ) : (
+                            children
+                          )}
+                        </p>
+                      ),
+                      li: ({ children }) => (
+                        <li>
+                          {typeof children === 'string' ? (
+                            <CaseNumberLink
+                              text={children}
+                              onCaseClick={setHighlightedCaseNumber}
+                              isLightTheme={isLightTheme}
+                            />
+                          ) : Array.isArray(children) ? (
+                            children.map((child, i) =>
+                              typeof child === 'string' ? (
+                                <CaseNumberLink
+                                  key={i}
+                                  text={child}
+                                  onCaseClick={setHighlightedCaseNumber}
+                                  isLightTheme={isLightTheme}
+                                />
+                              ) : (
+                                <span key={i}>{child}</span>
+                              )
+                            )
+                          ) : (
+                            children
+                          )}
+                        </li>
+                      ),
+                    }}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
                   {msg.actions && msg.actions.length > 0 && (
                     <ChatActions
                       actions={msg.actions}

@@ -13,7 +13,7 @@ from ..schema import (
     LawyerResponse,
     NearbySearchResponse,
 )
-from ..service import (
+from app.services.service_function.lawyer_service import (
     find_nearby_lawyers,
     get_categories,
     get_clusters,

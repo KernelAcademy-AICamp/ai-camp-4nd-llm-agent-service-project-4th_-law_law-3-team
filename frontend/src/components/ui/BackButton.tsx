@@ -10,13 +10,15 @@ interface BackButtonProps {
 
 export function BackButton({ className }: BackButtonProps) {
   const router = useRouter()
-  const { userRole } = useChat()
+  const { userRole, resetSession } = useChat()
 
   const handleBack = () => {
+    // 세션 초기화 후 홈으로 이동
+    resetSession()
     if (userRole) {
       router.push(`/?role=${userRole}`)
     } else {
-      router.back()
+      router.push('/')
     }
   }
 

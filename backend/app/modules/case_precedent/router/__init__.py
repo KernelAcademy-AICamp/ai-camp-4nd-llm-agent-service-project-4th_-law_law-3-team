@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from app.common.chat_service import generate_chat_response
 from app.core.errors import EmbeddingModelNotFoundError
-from app.services.rag.retrieval import search_relevant_documents
+from app.services.rag import search_relevant_documents
 from app.tools.vectorstore import get_vector_store
 
 

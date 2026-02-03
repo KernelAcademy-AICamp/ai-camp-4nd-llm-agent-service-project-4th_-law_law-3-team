@@ -21,6 +21,7 @@ class ChatRequest(BaseModel):
     history: List[ChatMessage] = []
     session_data: Dict[str, Any] = {}
     user_location: Optional[Dict[str, float]] = None
+    agent: Optional[str] = None  # 에이전트 직접 지정 (라우팅 건너뜀)
 
 
 class ChatResponse(BaseModel):

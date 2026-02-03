@@ -8,7 +8,7 @@ from typing import Any
 
 from app.multi_agent.agents.base_chat import ActionType, BaseChatAgent, ChatAction
 from app.multi_agent.schemas.plan import AgentResult
-from app.modules.lawyer_finder.service import find_nearby_lawyers, search_lawyers
+from app.services.service_function.lawyer_service import find_nearby_lawyers, search_lawyers
 
 # 검색 반경 (미터)
 DEFAULT_SEARCH_RADIUS = 3000  # 3km

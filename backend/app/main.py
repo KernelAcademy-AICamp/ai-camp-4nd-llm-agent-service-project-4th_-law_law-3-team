@@ -18,7 +18,7 @@ MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 async def lifespan(app: FastAPI):
     """애플리케이션 생명주기 관리"""
     # 시작 시: 임베딩 모델 캐시 상태 확인
-    from app.services.rag.retrieval import check_embedding_model_availability
+    from app.services.rag import check_embedding_model_availability
 
     check_embedding_model_availability()
 
