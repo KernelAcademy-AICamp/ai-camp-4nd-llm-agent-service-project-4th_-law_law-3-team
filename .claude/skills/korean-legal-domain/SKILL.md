@@ -178,147 +178,117 @@ patterns = {
 
 ---
 
-## 4. Graph DB 스키마 설계
+## 4. Graph DB 스키마 (Neo4j)
+
+이 프로젝트의 실제 Neo4j 그래프 스키마입니다.
 
 ### 노드 (Nodes)
 ```cypher
-// 법령 노드
-(:Law {
-  law_id: STRING,           // 법령ID
-  name: STRING,             // 법령명
-  name_abbr: STRING,        // 약칭
-  law_type: STRING,         // 법종구분
-  enforcement_date: DATE,   // 시행일자
-  ministry: STRING,         // 소관부처
-  status: STRING            // 현행/폐지
+// 법령 노드 (5,572개)
+(:Statute {
+  id: STRING,              // statute_id (고유 식별자)
+  name: STRING,            // 법령명
+  abbreviation: STRING,    // 약칭
+  law_type: STRING,        // 법종구분 (법률/대통령령/총리령/부령)
 })
 
-// 조문 노드
-(:Article {
-  article_id: STRING,       // 법령ID_조문키
-  law_id: STRING,           // 소속 법령
-  article_num: STRING,      // 조문번호 (예: "750", "382의3")
-  title: STRING,            // 조문제목
-  content: TEXT,            // 조문내용
-  enforcement_date: DATE,   // 시행일자
-  revision_type: STRING     // 제개정유형
-})
-
-// 항 노드 (필요시)
-(:Paragraph {
-  paragraph_id: STRING,
-  article_id: STRING,
-  para_num: INTEGER,
-  content: TEXT
-})
-
-// 판례 노드
+// 판례 노드 (65,107개)
 (:Case {
-  case_id: STRING,          // 판례일련번호
-  case_number: STRING,      // 사건번호
-  case_name: STRING,        // 사건명
-  ruling_date: DATE,        // 선고일자
-  court: STRING,            // 법원명
-  case_type: STRING,        // 사건종류
-  summary: TEXT,            // 판결요지
-  holding: TEXT             // 판시사항
+  id: STRING,              // case_id (고유 식별자)
+  case_number: STRING,     // 사건번호 (예: "2023다12345")
+  case_name: STRING,       // 사건명
 })
 ```
 
 ### 관계 (Relationships)
 ```cypher
-// 법령 구조 관계
-(:Law)-[:CONTAINS]->(:Article)
-(:Article)-[:CONTAINS]->(:Paragraph)
+// 법령 계급 관계 (3,624개) - 시행령→법률 등
+(:Statute)-[:HIERARCHY_OF]->(:Statute)
 
-// 법령 계층 관계
-(:Law)-[:DELEGATES_TO {type: "시행령"}]->(:Law)
-(:Law)-[:AMENDS {date: DATE}]->(:Law)
-(:Law)-[:REPEALS {date: DATE}]->(:Law)
+// 판례→법령 인용 (72,414개)
+(:Case)-[:CITES]->(:Statute)
 
-// 조문 간 참조
-(:Article)-[:REFERENCES {
-  ref_type: "위임|준용|정의|적용배제",
-  context: STRING
-}]->(:Article)
+// 판례→판례 인용 (87,654개)
+(:Case)-[:CITES_CASE]->(:Case)
 
-// 판례-법령 관계
-(:Case)-[:INTERPRETS {
-  interpretation_type: "해석|위헌|합헌|적용"
-}]->(:Article)
-
-// 판례 간 관계
-(:Case)-[:CITES {
-  cite_type: "선례인용|변경|보충|구분"
-}]->(:Case)
+// 법령→법령 관련 (93개)
+(:Statute)-[:RELATED_TO]->(:Statute)
 ```
 
 ### 예시 Cypher 쿼리
 
 ```cypher
-// 1. 특정 조문을 인용한 모든 판례 찾기
-MATCH (c:Case)-[:INTERPRETS]->(a:Article)
-WHERE a.law_id = "민법" AND a.article_num = "750"
-RETURN c.case_number, c.ruling_date, c.summary
-ORDER BY c.ruling_date DESC
+// 1. 특정 법령을 인용한 판례 찾기
+MATCH (c:Case)-[:CITES]->(s:Statute)
+WHERE s.name = "민법"
+RETURN c.case_number, c.case_name
+LIMIT 10
 
-// 2. 특정 법률의 위임 관계 체인
-MATCH path = (parent:Law)-[:DELEGATES_TO*1..3]->(child:Law)
-WHERE parent.name = "민법"
+// 2. 법령 계급 체인 (시행령 → 법률)
+MATCH path = (child:Statute)-[:HIERARCHY_OF*1..3]->(parent:Statute)
+WHERE child.name CONTAINS "시행령"
 RETURN path
 
 // 3. 판례 인용 네트워크 (2단계)
-MATCH path = (c1:Case)-[:CITES*1..2]->(c2:Case)
+MATCH path = (c1:Case)-[:CITES_CASE*1..2]->(c2:Case)
 WHERE c1.case_number = "2023다12345"
 RETURN path
 
-// 4. 특정 조문과 관련된 모든 참조 관계
-MATCH (a:Article {law_id: "민법", article_num: "750"})
-OPTIONAL MATCH (a)-[r1:REFERENCES]->(ref:Article)
-OPTIONAL MATCH (c:Case)-[r2:INTERPRETS]->(a)
-RETURN a, collect(distinct ref), collect(distinct c)
+// 4. 같은 법령을 인용한 유사 판례
+MATCH (c1:Case)-[:CITES]->(s:Statute)<-[:CITES]-(c2:Case)
+WHERE c1.case_number = "2023다12345" AND c1 <> c2
+RETURN c2.case_number, c2.case_name, count(s) AS common_statutes
+ORDER BY common_statutes DESC
+LIMIT 5
 ```
 
 ---
 
-## 5. Graph DB 옵션 비교
+## 5. Graph DB 설정 (Neo4j)
 
-### 예산 제약 하 추천 순위
+이 프로젝트는 Neo4j Community Edition을 사용합니다.
 
-| 순위 | DB | 월 예상 비용 | 장점 | 단점 |
-|------|-----|-------------|------|------|
-| 1 | **FalkorDB** | $0 (self-hosted) | 빠른 성능, Cypher 지원, GraphRAG 최적화 | Redis 의존성 |
-| 2 | **PostgreSQL + Apache AGE** | $0 (기존 인프라 활용) | SQL + Cypher, 익숙한 PostgreSQL | 순수 Graph DB보다 느림 |
-| 3 | **Neo4j Community** | $0 (self-hosted) | 성숙한 생태계, 풍부한 문서 | 클러스터링 미지원 |
-
-### FalkorDB 설치 (OCI 환경)
+### 환경 변수
 ```bash
-# Redis 설치
-sudo apt-get update
-sudo apt-get install redis-server
-
-# FalkorDB 모듈 설치
-git clone https://github.com/FalkorDB/FalkorDB.git
-cd FalkorDB
-make
-
-# Redis에 FalkorDB 모듈 로드
-redis-server --loadmodule ./bin/linux-x64-release/falkordb.so
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password
 ```
 
-### PostgreSQL + AGE 설치
+### Docker 실행
 ```bash
-# PostgreSQL 확장 설치
-CREATE EXTENSION age;
+docker compose up -d neo4j
+```
 
-# 그래프 생성
-SELECT create_graph('legal_graph');
+### 그래프 구축
+```bash
+cd backend
+uv run python scripts/build_graph.py
+```
 
-# Cypher 쿼리 실행
-SELECT * FROM cypher('legal_graph', $$
-  MATCH (a:Article)-[:REFERENCES]->(b:Article)
-  RETURN a.article_num, b.article_num
-$$) as (from_article agtype, to_article agtype);
+### 검증
+```bash
+NEO4J_PASSWORD=password uv run python scripts/verify_graph.py
+```
+
+### 코드 위치
+- 그래프 서비스: `app/tools/graph/graph_service.py`
+- 그래프 구축 스크립트: `scripts/build_graph.py`
+- 스킬 가이드: `.claude/skills/neo4j-graph-construction/SKILL.md`
+
+### RAG 컨텍스트 보강
+```python
+from app.tools.graph import get_graph_service
+
+graph = get_graph_service()
+
+# 판례 컨텍스트 보강 (인용 법령 + 유사 판례)
+case_context = graph.enrich_case_context("2023다12345")
+# → {"cited_statutes": [...], "similar_cases": [...]}
+
+# 법령 컨텍스트 보강 (계급 관계 + 관련 법령)
+statute_context = graph.enrich_statute_context("민법")
+# → {"hierarchy": {"upper": [...], "lower": [...]}, "related": [...]}
 ```
 
 ---

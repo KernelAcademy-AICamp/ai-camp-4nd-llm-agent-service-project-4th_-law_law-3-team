@@ -14,6 +14,11 @@ LangChain/LangGraph 기반 RAG 시스템 구현 패턴과 가이드라인.
      │
      ▼
 ┌─────────────────┐
+│ 쿼리 리라이팅   │  ← rewrite_query() (선택)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
 │ 임베딩 생성     │  ← create_query_embedding()
 └────────┬────────┘
          │
@@ -21,6 +26,11 @@ LangChain/LangGraph 기반 RAG 시스템 구현 패턴과 가이드라인.
 ┌─────────────────┐
 │ 벡터 검색       │  ← LanceDB / VectorStore
 │ (Top-K 문서)    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ 리랭킹 (선택)   │  ← rerank_documents()
 └────────┬────────┘
          │
          ▼
@@ -42,28 +52,47 @@ LangChain/LangGraph 기반 RAG 시스템 구현 패턴과 가이드라인.
 
 ### 2.1 위치
 ```
-backend/app/common/
-├── chat_service.py    # RAG 메인 로직
-├── vectorstore.py     # 벡터 DB 추상화
-├── graph_service.py   # Neo4j 그래프 서비스
-└── llm/
-    └── __init__.py    # get_chat_model, get_llm_config
+backend/app/
+├── tools/
+│   ├── llm/
+│   │   └── __init__.py        # get_chat_model, get_llm_config
+│   ├── vectorstore/
+│   │   ├── __init__.py        # get_vector_store (팩토리)
+│   │   ├── base.py            # VectorStoreBase (ABC), SearchResult
+│   │   ├── lancedb.py         # LanceDBStore 구현체
+│   │   ├── schema_v2.py       # LanceDB v2 스키마 (VECTOR_DIM=1024)
+│   │   ├── chroma.py          # ChromaVectorStore 구현체
+│   │   └── qdrant.py          # QdrantVectorStore 구현체
+│   └── graph/
+│       ├── __init__.py
+│       └── graph_service.py   # GraphService (Neo4j), get_graph_service
+└── services/rag/
+    ├── __init__.py             # 모듈 export
+    ├── embedding.py            # create_query_embedding, get_local_model
+    ├── retrieval.py            # search_relevant_documents
+    ├── rerank.py               # rerank_documents
+    ├── query_rewrite.py        # rewrite_query, extract_legal_keywords
+    └── pipeline.py             # search_with_pipeline, PipelineConfig
 ```
 
 ### 2.2 Import 패턴
 ```python
 # LLM 사용
-from app.common.llm import get_chat_model
+from app.tools.llm import get_chat_model, get_llm_config
 
-# RAG 서비스 사용
-from app.common.chat_service import (
-    generate_chat_response,
-    search_relevant_documents,
-    create_query_embedding,
-)
+# RAG 파이프라인 사용
+from app.services.rag.pipeline import search_with_pipeline, PipelineConfig
+from app.services.rag.retrieval import search_relevant_documents
+from app.services.rag.embedding import create_query_embedding, get_local_model
+from app.services.rag.rerank import rerank_documents
+from app.services.rag.query_rewrite import rewrite_query, extract_legal_keywords
 
 # 벡터 스토어 사용
-from app.common.vectorstore import get_vector_store
+from app.tools.vectorstore import get_vector_store
+from app.tools.vectorstore.base import VectorStoreBase, SearchResult
+
+# 그래프 서비스 사용
+from app.tools.graph import get_graph_service
 
 # LangChain 메시지 타입
 from langchain_core.messages import (
@@ -78,7 +107,7 @@ from langchain_core.messages import (
 
 ### 3.1 get_chat_model 사용
 ```python
-from app.common.llm import get_chat_model
+from app.tools.llm import get_chat_model
 
 # 기본 사용
 llm = get_chat_model()
@@ -158,11 +187,14 @@ def build_rag_context(documents: list[dict]) -> str:
 
 ### 4.2 그래프 보강 컨텍스트
 ```python
-def enrich_context_with_graph(
-    documents: list[dict],
-    graph_service,
-) -> str:
+from app.tools.graph import get_graph_service
+
+def enrich_context_with_graph(documents: list[dict]) -> str:
     """Neo4j 그래프 정보로 컨텍스트 보강"""
+    graph_service = get_graph_service()
+    if not graph_service or not graph_service.is_connected:
+        return ""
+
     context_parts = []
 
     for doc in documents:
@@ -240,99 +272,90 @@ def get_system_prompt(user_role: str) -> str:
 
 ### 6.1 기본 검색
 ```python
-from app.common.vectorstore import get_vector_store
-from app.common.chat_service import create_query_embedding
+from app.services.rag.retrieval import search_relevant_documents
 
-def search_documents(
-    query: str,
-    n_results: int = 5,
-    doc_type: str | None = None,
-) -> list[dict]:
-    """관련 문서 검색"""
-    store = get_vector_store()
+# 기본 사용
+results = search_relevant_documents("손해배상 요건", n_results=5)
 
-    # 쿼리 임베딩 생성
-    query_embedding = create_query_embedding(query)
+# 문서 타입 필터링
+results = search_relevant_documents(
+    "손해배상",
+    n_results=10,
+    doc_type="precedent",  # "precedent" | "law" | None (전체)
+)
 
-    # 필터 조건
-    where = {"doc_type": doc_type} if doc_type else None
-
-    # 검색
-    results = store.search(
-        query_embedding=query_embedding,
-        n_results=n_results,
-        where=where,
-        include=["metadatas", "distances"],
-    )
-
-    return results
+# 반환 형식: [{"id": str, "content": str, "metadata": dict, "similarity": float}, ...]
 ```
 
-### 6.2 하이브리드 검색 (벡터 + 키워드)
+### 6.2 RAG 파이프라인 (리라이팅 + 리랭킹)
 ```python
-def hybrid_search(
-    query: str,
-    n_results: int = 10,
-) -> list[dict]:
-    """벡터 검색 + 키워드 매칭"""
-    # 1. 벡터 검색
-    vector_results = search_documents(query, n_results=n_results * 2)
+from app.services.rag.pipeline import search_with_pipeline, PipelineConfig
 
-    # 2. 키워드 추출 및 필터링
-    keywords = extract_keywords(query)
+# 전체 파이프라인 사용
+config = PipelineConfig(
+    n_results=10,
+    doc_type="precedent",       # 문서 타입 필터
+    enable_rewrite=True,        # 쿼리 리라이팅 활성화
+    num_rewrite_queries=3,      # 리라이팅 쿼리 수
+    enable_rerank=True,         # 리랭킹 활성화
+    rerank_top_k=5,             # 리랭킹 후 상위 K개
+    use_llm_rewrite=True,       # LLM 기반 리라이팅
+)
+result = search_with_pipeline("부동산 매매 분쟁", config)
 
-    # 3. 키워드 매칭 점수 추가
-    scored_results = []
-    for doc in vector_results:
-        keyword_score = calculate_keyword_match(doc["content"], keywords)
-        combined_score = doc["similarity"] * 0.7 + keyword_score * 0.3
-        scored_results.append({**doc, "combined_score": combined_score})
-
-    # 4. 재정렬
-    scored_results.sort(key=lambda x: x["combined_score"], reverse=True)
-    return scored_results[:n_results]
+# 결과: PipelineResult
+# result.documents         → 최종 문서 목록
+# result.original_query    → 원본 쿼리
+# result.rewritten_queries → 리라이팅된 쿼리들
+# result.reranked          → 리랭킹 여부
+# result.total_retrieved   → 리랭킹 전 총 문서 수
 ```
 
-## 7. 전체 RAG 파이프라인
-
-### 7.1 generate_chat_response 구조
+### 6.3 편의 함수
 ```python
-def generate_chat_response(
-    user_message: str,
-    chat_history: list[dict[str, Any]] | None = None,
-    n_context_docs: int = 5,
-) -> dict[str, Any]:
-    """RAG 기반 챗봇 응답 생성"""
+from app.services.rag.pipeline import search_with_rerank, search_with_rewrite
 
-    # 1. 관련 문서 검색
-    relevant_docs = search_relevant_documents(user_message, n_results=n_context_docs)
+# 리랭킹만 사용
+docs = search_with_rerank("계약 해제", n_results=10, top_k=5)
 
-    # 2. 참조 법령 추출 (판례에서)
-    law_names = extract_law_names_from_docs(relevant_docs)
-    related_laws = fetch_laws_by_names(law_names)
+# 쿼리 확장만 사용
+docs = search_with_rewrite("임대차", use_llm=True)
+```
 
-    # 3. 그래프 컨텍스트 보강 (Neo4j)
-    graph_contexts = enrich_with_graph(relevant_docs)
+## 7. 전체 RAG 응답 생성 플로우
 
-    # 4. 컨텍스트 구성
-    context = build_context(relevant_docs, related_laws, graph_contexts)
+현재 시스템은 멀티 에이전트 아키텍처를 사용합니다.
+RAG 기반 응답은 `LegalAnswerAgent`가 담당합니다.
 
-    # 5. 메시지 구성
-    messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        *convert_history(chat_history),
-        HumanMessage(content=build_user_prompt(user_message, context)),
-    ]
-
-    # 6. LLM 호출
-    llm = get_chat_model(temperature=0.7)
-    response = llm.invoke(messages)
-
-    # 7. 결과 반환
-    return {
-        "response": response.content,
-        "sources": format_sources(relevant_docs, related_laws),
-    }
+```
+POST /api/chat (ChatRequest)
+    ↓
+Orchestrator.process(request)
+    ↓
+RouterAgent.route(context)  → AgentPlan
+    ↓
+AgentExecutor.execute(plan, context)
+    ↓
+LegalAnswerAgent.process(message, history, session_data)
+    │
+    ├─ 1. 하이브리드 검색 (판례 + 법령)
+    │     search_relevant_documents(query, doc_type="precedent")
+    │     search_relevant_documents(query, doc_type="law")
+    │
+    ├─ 2. 판례 상세 조회
+    │     precedent_service.get_precedent_detail(case_id)
+    │
+    ├─ 3. 법령 조회 (참조조문 기반)
+    │     law_service.fetch_laws_by_names(law_names)
+    │
+    ├─ 4. 그래프 컨텍스트 보강
+    │     graph_service.enrich_case_context(case_number)
+    │
+    ├─ 5. LLM 응답 생성
+    │     get_chat_model().invoke(messages)
+    │
+    └─ 6. AgentResult 반환
+          AgentResult(message=..., sources=..., actions=...)
 ```
 
 ## 8. 상수 및 설정
@@ -368,113 +391,80 @@ def map_data_type(data_type: str) -> str:
 
 ### 9.1 로컬 모델 로드 (캐싱)
 ```python
-from functools import lru_cache
+from app.services.rag.embedding import get_local_model
 
-@lru_cache(maxsize=1)
-def get_local_model() -> SentenceTransformer:
-    """sentence-transformers 모델 로드 (싱글톤)"""
-    from sentence_transformers import SentenceTransformer
-
-    return SentenceTransformer(
-        settings.LOCAL_EMBEDDING_MODEL,
-        cache_folder=str(MODEL_CACHE_DIR),
-        trust_remote_code=True,
-        local_files_only=True,  # 다운로드 방지
-    )
+# 모델: nlpai-lab/KURE-v1 (1024차원)
+# 캐시 경로: backend/data/models/
+model = get_local_model()  # LRU 캐시로 싱글톤
 ```
 
 ### 9.2 임베딩 생성
 ```python
-def create_query_embedding(query: str) -> list[float]:
-    """쿼리 텍스트를 임베딩 벡터로 변환"""
-    if settings.USE_LOCAL_EMBEDDING:
-        model = get_local_model()
-        embedding = model.encode(
-            query,
-            show_progress_bar=False,
-            normalize_embeddings=True,  # 코사인 유사도용
-        )
-        return embedding.tolist()
-    else:
-        # OpenAI 임베딩 fallback
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        response = client.embeddings.create(
-            model=settings.EMBEDDING_MODEL,
-            input=query,
-        )
-        return response.data[0].embedding
+from app.services.rag.embedding import create_query_embedding
+
+# 쿼리 임베딩 생성 (1024차원 벡터)
+embedding = create_query_embedding("손해배상 요건")
+# → List[float] (길이 1024)
+
+# 내부 동작:
+# - USE_LOCAL_EMBEDDING=True → SentenceTransformer (KURE-v1)
+# - USE_LOCAL_EMBEDDING=False → OpenAI API fallback
+```
+
+### 9.3 모델 가용성 확인
+```python
+from app.services.rag.embedding import is_embedding_model_cached
+
+if not is_embedding_model_cached():
+    # 모델 다운로드 필요
+    # uv run python scripts/download_models.py
+    pass
 ```
 
 ## 10. Lazy 초기화 패턴
 
-### 10.1 외부 서비스 Lazy 로드
+### 10.1 그래프 서비스 Lazy 로드
 ```python
-_graph_service = None
-_graph_service_init_attempted = False
+from app.tools.graph import get_graph_service
 
-def _get_graph_service():
-    """GraphService lazy 로드 (한 번 시도 후 캐싱)"""
-    global _graph_service, _graph_service_init_attempted
+# LRU 캐시로 싱글톤 관리
+graph_service = get_graph_service()
 
-    if _graph_service_init_attempted:
-        return _graph_service
-
-    _graph_service_init_attempted = True
-
-    try:
-        from app.common.graph_service import get_graph_service
-        service = get_graph_service()
-        if service.is_connected:
-            _graph_service = service
-        else:
-            logger.warning("GraphService 연결 실패")
-    except Exception as e:
-        logger.warning("GraphService 로드 실패: %s", e)
-
-    return _graph_service
+if graph_service and graph_service.is_connected:
+    # 그래프 보강 사용
+    context = graph_service.enrich_case_context(case_number)
+else:
+    # 그래프 없이 진행 (graceful degradation)
+    context = {}
 ```
 
-### 10.2 사용 패턴
+### 10.2 벡터 스토어 Lazy 로드
 ```python
-def generate_response(...):
-    # 그래프 서비스 (없어도 동작)
-    graph_service = _get_graph_service()
+from app.tools.vectorstore import get_vector_store
 
-    if graph_service and graph_service.is_connected:
-        # 그래프 보강 사용
-        graph_context = graph_service.enrich_case_context(case_number)
-    else:
-        # 그래프 없이 진행
-        graph_context = {}
+# VECTOR_DB 환경 변수에 따라 구현체 선택
+# lancedb (기본) | qdrant | chroma
+store = get_vector_store()
 ```
 
 ## 11. 에러 처리
 
 ### 11.1 임베딩 모델 없음
 ```python
-class EmbeddingModelNotFoundError(Exception):
-    """임베딩 모델이 캐시되지 않았을 때"""
-    pass
+from app.services.rag.embedding import get_local_model
 
-def get_local_model():
-    if not is_embedding_model_cached():
-        raise EmbeddingModelNotFoundError(
-            f"임베딩 모델 '{settings.LOCAL_EMBEDDING_MODEL}'이 캐시되지 않았습니다. "
-            "먼저 'uv run python scripts/download_models.py'를 실행해주세요."
-        )
-    # ...
+# 모델 캐시 없으면 EmbeddingModelNotFoundError 발생
+# → "uv run python scripts/download_models.py" 실행 안내
+# → 서버는 모델 없이 시작 가능하나 검색 시 503 반환
 ```
 
 ### 11.2 검색 결과 없음 처리
 ```python
-def search_relevant_documents(query: str, n_results: int = 5) -> list[dict]:
-    results = store.search(...)
+results = search_relevant_documents(query, n_results=5)
 
-    if not results or not results.get("ids") or not results["ids"][0]:
-        return []  # 빈 목록 반환
-
-    # 결과 처리
-    return documents
+if not results:
+    # 빈 목록 반환 → 에이전트에서 "관련 자료 없음" 안내
+    pass
 ```
 
 ## 12. LangGraph 연동 (확장)
@@ -506,6 +496,9 @@ def create_rag_graph():
 
 ### 12.2 노드 함수
 ```python
+from app.services.rag.retrieval import search_relevant_documents
+from app.tools.llm import get_chat_model
+
 def retrieve_documents(state: AgentState) -> AgentState:
     """문서 검색 노드"""
     query = state["messages"][-1].content
@@ -537,34 +530,28 @@ def generate_response(state: AgentState) -> AgentState:
 
 ### 13.1 RAG 서비스 테스트
 ```python
+from app.services.rag.retrieval import search_relevant_documents
+
 def test_search_relevant_documents():
     results = search_relevant_documents("손해배상 요건", n_results=5)
 
     assert len(results) > 0
     assert all("content" in doc for doc in results)
     assert all("metadata" in doc for doc in results)
-
-def test_generate_chat_response():
-    result = generate_chat_response("민법 제750조 설명해줘")
-
-    assert "response" in result
-    assert "sources" in result
-    assert len(result["response"]) > 0
 ```
 
 ### 13.2 LLM Mock 테스트
 ```python
 from unittest.mock import MagicMock, patch
 
-@patch("app.common.llm.get_chat_model")
+@patch("app.tools.llm.get_chat_model")
 def test_with_mock_llm(mock_get_model):
     mock_llm = MagicMock()
     mock_llm.invoke.return_value = MagicMock(content="테스트 응답")
     mock_get_model.return_value = mock_llm
 
-    result = generate_chat_response("테스트 질문")
-
-    assert result["response"] == "테스트 응답"
+    # 에이전트 또는 서비스 테스트
+    # ...
     mock_llm.invoke.assert_called_once()
 ```
 
@@ -572,6 +559,8 @@ def test_with_mock_llm(mock_get_model):
 
 ### 14.1 배치 임베딩
 ```python
+from app.services.rag.embedding import get_local_model
+
 def create_batch_embeddings(texts: list[str]) -> list[list[float]]:
     """배치 임베딩 생성"""
     model = get_local_model()
