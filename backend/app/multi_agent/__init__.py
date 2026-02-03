@@ -6,7 +6,7 @@ Multi-Agent 패키지
 
 from app.multi_agent.orchestrator import Orchestrator, get_orchestrator
 from app.multi_agent.executor import AgentExecutor, get_agent_executor
-from app.multi_agent.routing import RouterAgent, get_router_agent
+from app.multi_agent.router import RouterAgent, get_router_agent
 from app.multi_agent.schemas.plan import AgentPlan, AgentResult
 from app.multi_agent.schemas.messages import ChatRequest, ChatResponse, ChatMessage
 

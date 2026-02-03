@@ -1,13 +1,13 @@
 """
-규칙 기반 라우터
+에이전트 라우팅 모듈
 
-키워드 매칭을 통한 에이전트 라우팅
-common/agent_router.py에서 리팩토링
+규칙 기반 라우터 + 라우터 에이전트 통합
 """
 
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from app.core.context import ChatContext
 from app.multi_agent.schemas.plan import AgentPlan
 
 
@@ -194,6 +194,87 @@ class RulesRouter:
         )
 
 
+class RouterAgent:
+    """
+    라우터 에이전트
+
+    규칙 기반 라우팅을 우선 사용하고, 신뢰도가 낮을 경우
+    LLM 기반 라우팅으로 보완
+    """
+
+    # LLM 라우팅 활성화 임계값
+    LLM_ROUTING_THRESHOLD = 0.6
+
+    def __init__(self) -> None:
+        self._rules_router = RulesRouter()
+        self._llm_router: Optional[Any] = None  # LLMRouter (lazy init)
+
+    def route(
+        self,
+        context: ChatContext,
+    ) -> AgentPlan:
+        """
+        컨텍스트 기반 에이전트 라우팅
+
+        Args:
+            context: 채팅 컨텍스트
+
+        Returns:
+            AgentPlan
+        """
+        # 1. 규칙 기반 라우팅 시도
+        plan = self._rules_router.route(
+            message=context.message,
+            user_role=context.user_role,
+            session_data=context.session_data,
+        )
+
+        # 2. 신뢰도가 충분하면 반환
+        if plan.confidence >= self.LLM_ROUTING_THRESHOLD:
+            return plan
+
+        # 3. LLM 라우팅으로 보완 (향후 구현)
+        # llm_plan = self._get_llm_router().route(context.message, ...)
+        # return llm_plan if llm_plan.confidence > plan.confidence else plan
+
+        return plan
+
+    def route_simple(
+        self,
+        message: str,
+        user_role: str = "user",
+        session_data: Optional[Dict[str, Any]] = None,
+    ) -> AgentPlan:
+        """
+        간단한 라우팅 (ChatContext 없이)
+
+        Args:
+            message: 사용자 메시지
+            user_role: 사용자 역할
+            session_data: 세션 데이터
+
+        Returns:
+            AgentPlan
+        """
+        return self._rules_router.route(
+            message=message,
+            user_role=user_role,
+            session_data=session_data,
+        )
+
+
+# 싱글톤 인스턴스
+_router_agent: Optional[RouterAgent] = None
+
+
+def get_router_agent() -> RouterAgent:
+    """RouterAgent 싱글톤 인스턴스 반환"""
+    global _router_agent
+    if _router_agent is None:
+        _router_agent = RouterAgent()
+    return _router_agent
+
+
 def get_available_agents(user_role: UserRole) -> List[AgentType]:
     """역할별 사용 가능한 에이전트 목록 반환"""
     return ROLE_AGENTS.get(user_role, [AgentType.GENERAL])
@@ -202,3 +283,20 @@ def get_available_agents(user_role: UserRole) -> List[AgentType]:
 def is_agent_available(agent_type: AgentType, user_role: UserRole) -> bool:
     """특정 에이전트가 해당 역할에서 사용 가능한지 확인"""
     return agent_type in ROLE_AGENTS.get(user_role, [])
+
+
+__all__ = [
+    # Enum
+    "AgentType",
+    "UserRole",
+    # 상수
+    "ROLE_AGENTS",
+    "INTENT_PATTERNS",
+    # 클래스
+    "RulesRouter",
+    "RouterAgent",
+    # 함수
+    "get_router_agent",
+    "get_available_agents",
+    "is_agent_available",
+]

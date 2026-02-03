@@ -5,9 +5,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.api.router import chat_router
 from app.core.config import settings
 from app.core.registry import ModuleRegistry
-from app.api.router import chat_router
 
 # 미디어 디렉토리 경로
 MEDIA_DIR = Path(__file__).parent.parent / "data" / "media"
@@ -17,10 +17,23 @@ MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """애플리케이션 생명주기 관리"""
-    # 시작 시: 임베딩 모델 캐시 상태 확인
-    from app.services.rag import check_embedding_model_availability
+    import logging
 
-    check_embedding_model_availability()
+    from app.services.rag import check_embedding_model_availability, get_local_model
+
+    logger = logging.getLogger(__name__)
+
+    # 시작 시: 임베딩 모델 캐시 상태 확인
+    model_available = check_embedding_model_availability()
+
+    # 로컬 임베딩 사용 시 미리 로드 (Eager Loading)
+    if model_available and settings.USE_LOCAL_EMBEDDING:
+        logger.info("임베딩 모델을 미리 로드합니다...")
+        try:
+            get_local_model()
+            logger.info("임베딩 모델 로드 완료: %s", settings.LOCAL_EMBEDDING_MODEL)
+        except Exception as e:
+            logger.error("임베딩 모델 로드 실패: %s", e)
 
     yield
     # 종료 시: 정리 작업 (필요 시)

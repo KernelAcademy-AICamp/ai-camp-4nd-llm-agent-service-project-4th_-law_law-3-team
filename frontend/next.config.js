@@ -3,6 +3,11 @@ const nextConfig = {
   // Enable standalone output for Docker production builds
   output: 'standalone',
 
+  // 프록시 타임아웃 설정 (LLM 응답 대기)
+  experimental: {
+    proxyTimeout: 120000, // 120초
+  },
+
   async rewrites() {
     return [
       // storyboard는 API Route로 프록시 (Next.js rewrites 버그 우회)
