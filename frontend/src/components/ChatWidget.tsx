@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
 import { api } from '@/lib/api'
+import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
 import ChatActions, { ChatAction } from './ChatActions'
 
@@ -331,10 +332,27 @@ export default function ChatWidget() {
       setMessages((prev) => [...prev, assistantMsg])
     } catch (error) {
       console.error('Chat API error:', error)
+
+      let errorContent: string
+
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') {
+          errorContent = '서버에 연결할 수 없습니다. 서버가 시작 중일 수 있으니 잠시 후 다시 시도해주세요.'
+        } else if (error.code === 'ECONNABORTED') {
+          errorContent = '응답 시간이 초과되었습니다. 다시 시도해주세요.'
+        } else if (error.response?.status === 503) {
+          errorContent = '서비스가 준비 중입니다. 잠시 후 다시 시도해주세요.'
+        } else {
+          errorContent = '죄송합니다. 응답을 생성하는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+        }
+      } else {
+        errorContent = '죄송합니다. 알 수 없는 오류가 발생했습니다.'
+      }
+
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: '죄송합니다. 응답을 생성하는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+        content: errorContent,
       }
       setMessages((prev) => [...prev, errorMsg])
     } finally {
