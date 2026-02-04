@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Lawyer } from '../types'
 import { LawyerCard } from './LawyerCard'
 import { SEOUL_DISTRICTS, SPECIALTY_CATEGORIES } from '../constants'
@@ -149,68 +150,146 @@ export function SearchPanel({
       </div>
 
       {/* 결과 헤더 */}
-      <div className="px-4 py-2 bg-gray-50 border-b text-sm h-10 flex items-center">
+      <div className="px-4 py-2 bg-gray-50 border-b text-sm flex flex-col justify-center min-h-[2.5rem]">
         {loading ? (
           <span className="text-gray-600">검색 중...</span>
         ) : (
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2 text-gray-600">
-              {searchQuery && <span className="text-blue-600 font-semibold">&quot;{searchQuery}&quot;</span>}
-              <span>검색 결과</span>
-              <span className="text-gray-400">|</span>
-              <span className="text-gray-900 font-medium">{totalCount}명</span>
+          <>
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2 text-gray-600">
+                {searchQuery && <span className="text-blue-600 font-semibold">&quot;{searchQuery}&quot;</span>}
+                <span>검색 결과</span>
+                <span className="text-gray-400">|</span>
+                <span className="text-gray-900 font-medium">{totalCount}명</span>
+              </div>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded transition"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  검색 해제
+                </button>
+              )}
             </div>
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={handleReset}
-                className="flex items-center gap-1 px-2 py-0.5 text-xs text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded transition"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                검색 해제
-              </button>
+            {totalCount > lawyers.length && (
+              <p className="text-xs text-amber-600 mt-1">
+                {totalCount.toLocaleString()}건 중 {lawyers.length.toLocaleString()}건 표시 — 지도를 확대하거나 반경을 줄여보세요
+              </p>
             )}
-          </div>
+          </>
         )}
       </div>
 
-      {/* 변호사 목록 */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-          </div>
-        ) : lawyers.length > 0 ? (
-          lawyers.map((lawyer) => (
-            <LawyerCard
+      {/* 변호사 목록 (가상 스크롤) */}
+      <VirtualizedLawyerList
+        lawyers={lawyers}
+        loading={loading}
+        selectedLawyer={selectedLawyer}
+        onLawyerSelect={onLawyerSelect}
+        category={category}
+        specialty={specialty}
+        radius={radius}
+      />
+    </div>
+  )
+}
+
+/** 가상 스크롤 변호사 목록 (DOM 노드 최소화) */
+function VirtualizedLawyerList({
+  lawyers,
+  loading,
+  selectedLawyer,
+  onLawyerSelect,
+  category,
+  specialty,
+  radius,
+}: {
+  lawyers: Lawyer[]
+  loading: boolean
+  selectedLawyer: Lawyer | null
+  onLawyerSelect: (lawyer: Lawyer) => void
+  category: string
+  specialty?: string
+  radius: number
+}) {
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  const virtualizer = useVirtualizer({
+    count: lawyers.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 96,
+    overscan: 5,
+  })
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    )
+  }
+
+  if (lawyers.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-3">
+        <div className="text-center text-gray-500 py-8">
+          <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {specialty ? (
+            <>
+              <p className="font-medium text-gray-700 mb-1">
+                주변 {radius >= 1000 ? `${radius / 1000}km` : `${radius}m`} 내에
+              </p>
+              <p className="text-blue-600 font-semibold mb-2">&quot;{specialty}&quot; 전문 변호사</p>
+              <p className="text-gray-500">검색 결과가 없습니다</p>
+              <p className="text-xs text-gray-400 mt-2">반경을 넓히거나 다른 조건으로 검색해보세요</p>
+            </>
+          ) : (
+            <p>검색 결과가 없습니다</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div ref={parentRef} className="flex-1 overflow-y-auto p-3">
+      <div
+        style={{
+          height: virtualizer.getTotalSize(),
+          position: 'relative',
+          width: '100%',
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const lawyer = lawyers[virtualRow.index]
+          return (
+            <div
               key={lawyer.id}
-              lawyer={lawyer}
-              selected={selectedLawyer?.id === lawyer.id}
-              onClick={() => onLawyerSelect(lawyer)}
-              highlightCategory={category}
-            />
-          ))
-        ) : (
-          <div className="text-center text-gray-500 py-8">
-            <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            {specialty ? (
-              <>
-                <p className="font-medium text-gray-700 mb-1">
-                  주변 {radius >= 1000 ? `${radius / 1000}km` : `${radius}m`} 내에
-                </p>
-                <p className="text-blue-600 font-semibold mb-2">&quot;{specialty}&quot; 전문 변호사</p>
-                <p className="text-gray-500">검색 결과가 없습니다</p>
-                <p className="text-xs text-gray-400 mt-2">반경을 넓히거나 다른 조건으로 검색해보세요</p>
-              </>
-            ) : (
-              <p>검색 결과가 없습니다</p>
-            )}
-          </div>
-        )}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              <div className="pb-2">
+                <LawyerCard
+                  lawyer={lawyer}
+                  selected={selectedLawyer?.id === lawyer.id}
+                  onClick={() => onLawyerSelect(lawyer)}
+                  highlightCategory={category}
+                />
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

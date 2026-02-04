@@ -18,6 +18,7 @@ from app.core.database import Base
 from app.models import (
     LegalDocument,
     Law,
+    Lawyer,
     LegalReference,
     LawDocument,
     PrecedentDocument,

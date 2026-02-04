@@ -11,7 +11,7 @@ import { OfficeDetailPanel } from '@/features/lawyer-finder/components/OfficeDet
 import { useGeolocation } from '@/features/lawyer-finder/hooks/useGeolocation'
 import { lawyerFinderService } from '@/features/lawyer-finder/services'
 import { DISTRICT_COORDS } from '@/features/lawyer-finder/constants'
-import type { Lawyer, Office } from '@/features/lawyer-finder/types'
+import type { Lawyer, Office, ClusterData } from '@/features/lawyer-finder/types'
 
 const KakaoMap = dynamic(
   () => import('@/features/lawyer-finder/components/KakaoMap').then((m) => m.MemoizedKakaoMap),
@@ -29,6 +29,11 @@ const KakaoMap = dynamic(
 )
 
 const KAKAO_MAP_API_KEY = process.env.NEXT_PUBLIC_KAKAO_MAP_API_KEY
+
+// 카카오 줌 레벨: 숫자 클수록 줌아웃. 6 이상이면 클러스터 모드
+const CLUSTER_ZOOM_THRESHOLD = 6
+// 지도 드래그 디바운스 (ms)
+const DRAG_DEBOUNCE_MS = 400
 
 // Suspense boundary를 위한 wrapper
 export default function LawyerFinderPageWrapper() {
@@ -66,11 +71,18 @@ function LawyerFinderPage() {
   const [category, setCategory] = useState('')  // 선택된 전문분야 카테고리 ID
   const [specialty, setSpecialty] = useState('')  // 특정 전문분야 (예: "이혼") - category보다 우선
 
+  // Phase 4: 클러스터 모드 상태
+  const [zoomLevel, setZoomLevel] = useState(5)
+  const [mapBounds, setMapBounds] = useState<{ min_lat: number; max_lat: number; min_lng: number; max_lng: number } | null>(null)
+  const [clusters, setClusters] = useState<ClusterData[]>([])
+  const useClusterMode = zoomLevel >= CLUSTER_ZOOM_THRESHOLD
+
   const { isChatOpen, chatMode } = useUI()
   const searchParams = useSearchParams()
   const initialSearchDone = useRef(false)
   const urlSearchInProgress = useRef(false)  // URL 파라미터 검색 진행 중
   const lastSearchParamsKey = useRef('')  // 마지막으로 처리한 URL 파라미터 키
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const {
     getCurrentPosition,
@@ -218,6 +230,25 @@ function LawyerFinderPage() {
     }
   }, [fetchNearbyLawyers, mapReady, searchQuery, category, specialty])
 
+  // Phase 4: 줌아웃 시 클러스터 API 호출
+  useEffect(() => {
+    if (!useClusterMode || !mapBounds) {
+      setClusters([])
+      return
+    }
+
+    lawyerFinderService.getClusters(
+      mapBounds,
+      zoomLevel,
+      category || undefined,
+      specialty || undefined,
+    ).then((res) => {
+      setClusters(res.clusters)
+    }).catch(() => {
+      setClusters([])
+    })
+  }, [useClusterMode, mapBounds, zoomLevel, category, specialty])
+
   // 이름/사무소 검색
   const handleSearch = async (query: string) => {
     if (!query.trim()) return
@@ -302,9 +333,22 @@ function LawyerFinderPage() {
     getCurrentPosition()
   }, [getCurrentPosition])
 
-  // 지도 드래그 완료 시 중심 변경
+  // 지도 드래그 완료 시 중심 변경 (400ms 디바운스)
   const handleCenterChange = useCallback((newCenter: { lat: number; lng: number }) => {
-    setSearchCenter(newCenter)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      setSearchCenter(newCenter)
+    }, DRAG_DEBOUNCE_MS)
+  }, [])
+
+  // 줌 변경
+  const handleZoomChange = useCallback((zoom: number) => {
+    setZoomLevel(zoom)
+  }, [])
+
+  // 바운드 변경
+  const handleBoundsChange = useCallback((bounds: { min_lat: number; max_lat: number; min_lng: number; max_lng: number }) => {
+    setMapBounds(bounds)
   }, [])
 
   // 구 변경 (선택 시 자동으로 해당 지역으로 지도 이동)
@@ -430,7 +474,8 @@ function LawyerFinderPage() {
           <KakaoMap
             center={center}
             userLocation={userLocation}
-            lawyers={lawyers}
+            lawyers={useClusterMode ? [] : lawyers}
+            clusters={useClusterMode ? clusters : undefined}
             selectedLawyer={selectedLawyer}
             selectionTrigger={selectionTrigger}
             radius={radius}
@@ -439,6 +484,8 @@ function LawyerFinderPage() {
             onOfficeClick={handleOfficeClick}
             onMyLocationClick={handleMyLocation}
             onCenterChange={handleCenterChange}
+            onZoomChange={handleZoomChange}
+            onBoundsChange={handleBoundsChange}
             showRadius={true}
           />
         </div>

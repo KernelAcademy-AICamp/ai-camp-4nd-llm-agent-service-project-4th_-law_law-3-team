@@ -305,6 +305,44 @@ NEO4J_PASSWORD=password uv run python tests/integration/test_neo4j_graph.py
 
 ### 관련 문서
 - `.claude/skills/neo4j-graph-construction/SKILL.md` - 그래프 구축 스킬
+
+## Lawyer DB (PostgreSQL)
+
+변호사 데이터(17,326건)를 PostgreSQL `lawyers` 테이블에 저장하고, DB 기반으로 검색/통계를 수행합니다.
+
+### 활성화
+
+```bash
+# backend/.env
+USE_DB_LAWYERS=true
+
+# 마이그레이션 + 데이터 로드
+cd backend
+uv run alembic upgrade head
+uv run python scripts/load_lawyers_data.py
+uv run python scripts/load_lawyers_data.py --verify  # 검증
+```
+
+### 롤백
+
+`USE_DB_LAWYERS=false`로 설정하면 즉시 JSON 파일 모드로 복귀합니다.
+JSON 파일(`data/lawyers_with_coords.json`)은 변경하지 않으므로 데이터 손실 없음.
+
+### 관련 파일
+
+| 파일 | 설명 |
+|------|------|
+| `backend/app/models/lawyer.py` | Lawyer ORM 모델 |
+| `backend/alembic/versions/004_add_lawyers_table.py` | 마이그레이션 |
+| `backend/scripts/load_lawyers_data.py` | 데이터 로드 스크립트 |
+| `backend/app/services/service_function/lawyer_db_service.py` | DB 기반 검색 서비스 |
+| `backend/app/services/service_function/lawyer_stats_db_service.py` | DB 기반 통계 서비스 |
+| `backend/tests/integration/test_lawyer_db.py` | 통합 테스트 |
+
+### 관련 스킬
+- `.claude/skills/postgresql-migration/SKILL.md` - PostgreSQL 마이그레이션 패턴
+- `.claude/skills/spatial-query-patterns/SKILL.md` - 위치 기반 검색 패턴
+
 ## Modules
 
 ### lawyer-stats (변호사 통계 대시보드)

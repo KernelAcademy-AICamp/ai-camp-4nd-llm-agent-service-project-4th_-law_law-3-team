@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "password"
 
+    # 변호사 데이터 소스 (True: PostgreSQL, False: JSON 파일)
+    USE_DB_LAWYERS: bool = False
+
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []
 

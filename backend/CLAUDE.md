@@ -242,6 +242,7 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `LOCAL_EMBEDDING_MODEL` | 임베딩 모델 | `nlpai-lab/KURE-v1` |
 | `UPSTAGE_API_KEY` | Solar API 키 | - |
 | `UPSTAGE_MODEL` | Solar 모델명 | `solar-pro3-260126` |
+| `USE_DB_LAWYERS` | 변호사 데이터 소스 (true: PostgreSQL, false: JSON) | `false` |
 
 자세한 설정은 `.env.example` 참조.
 
@@ -477,6 +478,29 @@ app/models/
 |--------|------|-----------|
 | `law_documents` | 법령 원본 | law_id, law_name, content, raw_data |
 | `precedent_documents` | 판례 원본 | serial_number, case_name, ruling, reasoning |
+| `lawyers` | 변호사 정보 (17,326건) | name, address, specialties(ARRAY), latitude, longitude, region |
+
+### 변호사 데이터 (lawyers 테이블)
+
+`USE_DB_LAWYERS=true` 설정 시 JSON 대신 PostgreSQL에서 변호사 데이터를 조회합니다.
+
+```bash
+# 마이그레이션 + 데이터 로드
+uv run alembic upgrade head
+uv run python scripts/load_lawyers_data.py
+
+# 검증
+uv run python scripts/load_lawyers_data.py --verify
+```
+
+**주요 인덱스:**
+- `idx_lawyers_coords`: (latitude, longitude) B-tree - 바운딩 박스 검색
+- `idx_lawyers_specialties`: specialties GIN - ARRAY 포함/교집합 연산
+- `idx_lawyers_region`: region B-tree - 통계 GROUP BY
+
+**서비스 파일:**
+- `app/services/service_function/lawyer_db_service.py` - 검색/클러스터링
+- `app/services/service_function/lawyer_stats_db_service.py` - 통계 계산
 
 ### 데이터 조회 예시
 
