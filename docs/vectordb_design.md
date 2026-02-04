@@ -247,8 +247,24 @@ backend/
 
 ### 진행 예정
 - [ ] 검색 API 연동 (LanceDB → 프론트엔드)
-- [ ] 하이브리드 검색 (벡터 + 키워드) 구현
+- [ ] 하이브리드 검색 (벡터 + 키워드) 구현 로직 완성
 - [ ] 검색 결과 캐싱
+
+---
+
+## 6.5. 하이브리드 검색 전략 (Vector + FTS)
+
+법률 도메인의 특성상 의미 검색(Vector)뿐만 아니라 정확한 키워드 매칭(FTS)이 필수적입니다.
+
+### FTS (Full-Text Search) 설정
+- **대상 컬럼**: `content`
+- **엔진**: Tantivy (LanceDB 내장)
+- **생성 시점**: 대량 임베딩 작업 완료 후 `table.create_fts_index("content")` 호출
+
+### 검색 흐름 (Hybrid)
+1. **Vector Search**: 질문의 의도와 의미가 유사한 문서 추출
+2. **FTS Search**: 특정 조문번호, 판례번호, 고유 법률 용어 매칭 문서 추출
+3. **Reciprocal Rank Fusion (RRF)**: 두 검색 결과를 결합하여 최종 순위 산정
 
 ---
 
@@ -712,24 +728,14 @@ print_memory_status()
 
 ## 16. TODO / Known Issues
 
-### 판례 메타데이터 누락 필드
+### 판례 메타데이터 누락 필드 (해결됨)
 
-`PrecedentEmbeddingProcessor.extract_metadata()`에서 일부 필드가 추출되지 않음.
+2026-02-05 업데이트: `runpod_lancedb_embeddings.py` 및 `create_lancedb_embeddings.py` 수정으로 해결되었습니다.
 
 | 필드 | JSON 원본 | 상태 | 비고 |
 |------|-----------|------|------|
-| `judgment_type` | 판결유형 | ❌ 누락 | 스키마에 정의됨, 추출 코드 없음 |
-| `judgment_status` | - | ❌ 없음 | 스키마에 정의됨, JSON에 해당 필드 없음 |
-
-**수정 필요:**
-```python
-# runpod_lancedb_embeddings.py - PrecedentEmbeddingProcessor.extract_metadata()
-def extract_metadata(self, item: Dict[str, Any]) -> Dict[str, str]:
-    return {
-        ...
-        "judgment_type": item.get("판결유형", ""),  # 추가 필요
-    }
-```
+| `judgment_type` | 판결유형 | ✅ 완료 | `extract_metadata`에 추가됨 |
+| `judgment_status` | 판결상태 | ✅ 완료 | `extract_metadata`에 추가됨 |
 
 ### 판례 JSON 필드 중 미사용 필드
 

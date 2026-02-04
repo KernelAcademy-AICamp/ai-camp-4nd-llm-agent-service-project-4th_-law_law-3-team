@@ -460,6 +460,10 @@ class LanceDBStore:
         if self.table_name in self.db.table_names():
             self._table = self.db.open_table(self.table_name)
 
+    @property
+    def table(self):
+        return self._table
+
     def _ensure_table(self):
         if self._table is None:
             self._table = self.db.create_table(
@@ -467,6 +471,18 @@ class LanceDBStore:
                 schema=LEGAL_CHUNKS_SCHEMA,
             )
         return self._table
+
+    def create_fts_index(self, column: str = "content"):
+        """Full-Text Search 인덱스 생성 (Hybrid Search용)"""
+        if self._table is not None:
+            print(f"\n=== Creating FTS Index (Tantivy) on '{column}' ===")
+            try:
+                self._table.create_fts_index(column, replace=True)
+                print("[INFO] FTS Index created successfully!")
+            except Exception as e:
+                print(f"[ERROR] Failed to create FTS index: {e}")
+        else:
+            print("[WARN] Table does not exist. Run embedding first.")
 
     def add_law_documents(
         self,
@@ -1461,6 +1477,8 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor[PrecedentChunkConf
             "decision_date": item.get("선고일자", item.get("decision_date", "")),
             "court_name": item.get("법원명", item.get("court_name", "")),
             "case_type": item.get("사건종류명", item.get("case_type", "")),
+            "judgment_type": item.get("판결유형", item.get("judgment_type", "")),
+            "judgment_status": item.get("판결상태", item.get("judgment_status", "")),
             "reference_provisions": item.get("참조조문", item.get("reference_provisions", "")),
             "reference_cases": item.get("참조판례", item.get("reference_cases", "")),
         }
@@ -1476,6 +1494,8 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor[PrecedentChunkConf
             "total_chunks_list": [],
             "case_numbers": [],
             "case_types": [],
+            "judgment_types": [],
+            "judgment_statuses": [],
             "reference_provisions_list": [],
             "reference_cases_list": [],
         }
@@ -1498,6 +1518,8 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor[PrecedentChunkConf
         batch_data["total_chunks_list"].append(total_chunks)
         batch_data["case_numbers"].append(metadata["case_number"])
         batch_data["case_types"].append(metadata["case_type"])
+        batch_data["judgment_types"].append(metadata["judgment_type"])
+        batch_data["judgment_statuses"].append(metadata["judgment_status"])
         batch_data["reference_provisions_list"].append(metadata["reference_provisions"])
         batch_data["reference_cases_list"].append(metadata["reference_cases"])
 
@@ -1513,6 +1535,8 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor[PrecedentChunkConf
             total_chunks_list=batch_data["total_chunks_list"],
             case_numbers=batch_data["case_numbers"],
             case_types=batch_data["case_types"],
+            judgment_types=batch_data["judgment_types"],
+            judgment_statuses=batch_data["judgment_statuses"],
             reference_provisions_list=batch_data["reference_provisions_list"],
             reference_cases_list=batch_data["reference_cases_list"],
         )
@@ -1992,8 +2016,9 @@ def run_law_embedding(
     processor = LawEmbeddingProcessor()
     stats = processor.run(source_path, reset=reset, batch_size=batch_size)
 
-    # 통계 출력
+    # 통계 출력 및 인덱스 생성
     store = LanceDBStore()
+    store.create_fts_index("content")
     show_stats(store)
     del store
     clear_memory()
@@ -2026,8 +2051,9 @@ def run_precedent_embedding(
     processor = PrecedentEmbeddingProcessor()
     stats = processor.run(source_path, reset=reset, batch_size=batch_size)
 
-    # 통계 출력
+    # 통계 출력 및 인덱스 생성
     store = LanceDBStore()
+    store.create_fts_index("content")
     show_stats(store)
     del store
     clear_memory()
