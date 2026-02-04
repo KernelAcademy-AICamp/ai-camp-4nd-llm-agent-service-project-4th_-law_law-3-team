@@ -5,6 +5,7 @@ import type {
   Lawyer,
   StatsResponse,
   CategoriesResponse,
+  ClusterResponse,
 } from '../types'
 
 export const lawyerFinderService = {
@@ -77,6 +78,28 @@ export const lawyerFinderService = {
     if (params.limit) searchParams.append('limit', params.limit.toString())
 
     const response = await api.get(`${endpoints.lawyerFinder}/search?${searchParams}`)
+    return response.data
+  },
+
+  /**
+   * 줌아웃 시 클러스터 데이터 조회
+   */
+  getClusters: async (
+    bounds: { min_lat: number; max_lat: number; min_lng: number; max_lng: number },
+    zoom: number,
+    category?: string,
+    specialty?: string,
+  ): Promise<ClusterResponse> => {
+    const params = new URLSearchParams({
+      min_lat: bounds.min_lat.toString(),
+      max_lat: bounds.max_lat.toString(),
+      min_lng: bounds.min_lng.toString(),
+      max_lng: bounds.max_lng.toString(),
+      zoom: zoom.toString(),
+    })
+    if (specialty) params.append('specialty', specialty)
+    else if (category) params.append('category', category)
+    const response = await api.get(`${endpoints.lawyerFinder}/clusters?${params}`)
     return response.data
   },
 

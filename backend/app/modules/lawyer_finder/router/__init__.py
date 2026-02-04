@@ -52,7 +52,7 @@ async def get_nearby_lawyers(
     latitude: float = Query(..., ge=-90, le=90, description="위도"),
     longitude: float = Query(..., ge=-180, le=180, description="경도"),
     radius: int = Query(5000, ge=100, le=50000, description="반경 (미터)"),
-    limit: Optional[int] = Query(None, ge=1, description="최대 결과 수 (미지정 시 전체)"),
+    limit: int = Query(500, ge=1, le=5000, description="최대 결과 수 (기본 500)"),
     category: Optional[str] = Query(None, description="전문분야 카테고리 ID"),
     specialty: Optional[str] = Query(None, description="특정 전문분야 (예: 이혼, 형사법)"),
     db: AsyncSession = Depends(get_db),
@@ -63,7 +63,7 @@ async def get_nearby_lawyers(
     - **latitude**: 위도 (-90 ~ 90)
     - **longitude**: 경도 (-180 ~ 180)
     - **radius**: 검색 반경 (미터, 기본 5km)
-    - **limit**: 최대 결과 수 (미지정 시 전체 반환)
+    - **limit**: 최대 결과 수 (기본 500, 최대 5000)
     - **category**: 전문분야 카테고리 ID (예: "criminal", "civil-family")
     - **specialty**: 특정 전문분야 키워드 (예: "이혼", "형사법") - category보다 우선 적용
     """
@@ -71,7 +71,7 @@ async def get_nearby_lawyers(
         from app.services.service_function.lawyer_db_service import (
             find_nearby_lawyers_db,
         )
-        lawyers_data = await find_nearby_lawyers_db(
+        result = await find_nearby_lawyers_db(
             db=db,
             latitude=latitude,
             longitude=longitude,
@@ -80,8 +80,10 @@ async def get_nearby_lawyers(
             category=category,
             specialty=specialty,
         )
+        lawyers_data = result["lawyers"]
+        total_count = result["total_count"]
     else:
-        lawyers_data = find_nearby_lawyers(
+        result = find_nearby_lawyers(
             latitude=latitude,
             longitude=longitude,
             radius_m=radius,
@@ -89,11 +91,13 @@ async def get_nearby_lawyers(
             category=category,
             specialty=specialty,
         )
+        lawyers_data = result["lawyers"]
+        total_count = result["total_count"]
 
     lawyers = [LawyerResponse(**lawyer) for lawyer in lawyers_data]
     return NearbySearchResponse(
         lawyers=lawyers,
-        total_count=len(lawyers),
+        total_count=total_count,
         center={"lat": latitude, "lng": longitude},
         radius=radius,
     )
@@ -106,6 +110,8 @@ async def get_lawyer_clusters(
     min_lng: float = Query(..., description="최소 경도"),
     max_lng: float = Query(..., description="최대 경도"),
     zoom: int = Query(10, ge=1, le=21, description="줌 레벨"),
+    category: Optional[str] = Query(None, description="전문분야 카테고리 ID"),
+    specialty: Optional[str] = Query(None, description="특정 전문분야 (예: 이혼, 형사법)"),
     db: AsyncSession = Depends(get_db),
 ) -> ClusterResponse:
     """
@@ -117,9 +123,15 @@ async def get_lawyer_clusters(
 
     if settings.USE_DB_LAWYERS:
         from app.services.service_function.lawyer_db_service import get_clusters_db
-        clusters_data = await get_clusters_db(db, min_lat, max_lat, min_lng, max_lng, grid_size)
+        clusters_data = await get_clusters_db(
+            db, min_lat, max_lat, min_lng, max_lng, grid_size,
+            category=category, specialty=specialty,
+        )
     else:
-        clusters_data = get_clusters(min_lat, max_lat, min_lng, max_lng, grid_size)
+        clusters_data = get_clusters(
+            min_lat, max_lat, min_lng, max_lng, grid_size,
+            category=category, specialty=specialty,
+        )
 
     clusters = [ClusterItem(**c) for c in clusters_data]
     total_count = sum(c.count for c in clusters)
@@ -141,7 +153,7 @@ async def search_lawyers_endpoint(
     latitude: Optional[float] = Query(None, ge=-90, le=90, description="위치 필터 - 위도"),
     longitude: Optional[float] = Query(None, ge=-180, le=180, description="위치 필터 - 경도"),
     radius: int = Query(5000, ge=100, le=50000, description="위치 필터 - 반경 (미터)"),
-    limit: Optional[int] = Query(None, ge=1, description="최대 결과 수 (미지정 시 전체)"),
+    limit: int = Query(500, ge=1, le=5000, description="최대 결과 수 (기본 500)"),
     db: AsyncSession = Depends(get_db),
 ) -> SearchResponse:
     """
@@ -155,6 +167,7 @@ async def search_lawyers_endpoint(
     - **latitude**: 위치 필터 - 위도 (선택, longitude와 함께 사용)
     - **longitude**: 위치 필터 - 경도 (선택, latitude와 함께 사용)
     - **radius**: 위치 필터 - 반경 (미터, 기본 5km)
+    - **limit**: 최대 결과 수 (기본 500, 최대 5000)
     """
     if not any([name, office, district, category, specialty]):
         raise HTTPException(
@@ -167,7 +180,7 @@ async def search_lawyers_endpoint(
             from app.services.service_function.lawyer_db_service import (
                 search_lawyers_db,
             )
-            lawyers_data = await search_lawyers_db(
+            result = await search_lawyers_db(
                 db=db,
                 name=name,
                 office=office,
@@ -179,8 +192,10 @@ async def search_lawyers_endpoint(
                 radius_m=radius,
                 limit=limit,
             )
+            lawyers_data = result["lawyers"]
+            total_count = result["total_count"]
         else:
-            lawyers_data = search_lawyers(
+            result = search_lawyers(
                 name=name,
                 office=office,
                 district=district,
@@ -191,11 +206,13 @@ async def search_lawyers_endpoint(
                 radius_m=radius,
                 limit=limit,
             )
+            lawyers_data = result["lawyers"]
+            total_count = result["total_count"]
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     validated = [LawyerResponse(**lawyer) for lawyer in lawyers_data]
-    return SearchResponse(lawyers=validated, total_count=len(validated))
+    return SearchResponse(lawyers=validated, total_count=total_count)
 
 
 @router.get("/stats")

@@ -426,26 +426,26 @@ class LawyerFinderAgent(BaseChatAgent):
         category_id: str | None,
     ) -> tuple[list[dict[str, Any]], int, str]:
         """JSON 기반 3단계 반경 확장 검색."""
-        results = find_nearby_lawyers(
+        result = find_nearby_lawyers(
             latitude=latitude,
             longitude=longitude,
             radius_m=DEFAULT_SEARCH_RADIUS,
             category=category_id,
         )
-        if results:
-            return results, DEFAULT_SEARCH_RADIUS, "nearby"
+        if result["lawyers"]:
+            return result["lawyers"], DEFAULT_SEARCH_RADIUS, "nearby"
 
-        results = find_nearby_lawyers(
+        result = find_nearby_lawyers(
             latitude=latitude,
             longitude=longitude,
             radius_m=EXPANDED_SEARCH_RADIUS,
             category=category_id,
         )
-        if results:
-            return results, EXPANDED_SEARCH_RADIUS, "expanded"
+        if result["lawyers"]:
+            return result["lawyers"], EXPANDED_SEARCH_RADIUS, "expanded"
 
-        results = search_lawyers(category=category_id)
-        return results, EXPANDED_SEARCH_RADIUS, "all"
+        result = search_lawyers(category=category_id)
+        return result["lawyers"], EXPANDED_SEARCH_RADIUS, "all"
 
     async def _search_db(
         self,
@@ -461,28 +461,28 @@ class LawyerFinderAgent(BaseChatAgent):
         )
 
         async with async_session_factory() as db:
-            results = await find_nearby_lawyers_db(
+            result = await find_nearby_lawyers_db(
                 db=db,
                 latitude=latitude,
                 longitude=longitude,
                 radius_m=DEFAULT_SEARCH_RADIUS,
                 category=category_id,
             )
-            if results:
-                return results, DEFAULT_SEARCH_RADIUS, "nearby"
+            if result["lawyers"]:
+                return result["lawyers"], DEFAULT_SEARCH_RADIUS, "nearby"
 
-            results = await find_nearby_lawyers_db(
+            result = await find_nearby_lawyers_db(
                 db=db,
                 latitude=latitude,
                 longitude=longitude,
                 radius_m=EXPANDED_SEARCH_RADIUS,
                 category=category_id,
             )
-            if results:
-                return results, EXPANDED_SEARCH_RADIUS, "expanded"
+            if result["lawyers"]:
+                return result["lawyers"], EXPANDED_SEARCH_RADIUS, "expanded"
 
-            results = await search_lawyers_db(db=db, category=category_id)
-            return results, EXPANDED_SEARCH_RADIUS, "all"
+            result = await search_lawyers_db(db=db, category=category_id)
+            return result["lawyers"], EXPANDED_SEARCH_RADIUS, "all"
 
     def _build_response_message(
         self,

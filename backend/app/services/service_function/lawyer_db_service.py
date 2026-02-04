@@ -59,13 +59,16 @@ async def find_nearby_lawyers_db(
     limit: Optional[int] = None,
     category: Optional[str] = None,
     specialty: Optional[str] = None,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """
     반경 내 변호사 검색 (DB 기반).
 
     1단계: 바운딩 박스로 1차 필터링
     2단계: Haversine SQL로 정확한 거리 계산
     3단계: 전문분야 필터링
+
+    Returns:
+        {"lawyers": [...], "total_count": int} - total_count는 limit 적용 전 전체 건수
     """
     radius_km = radius_m / 1000
     min_lat, max_lat, min_lng, max_lng = get_bounding_box(latitude, longitude, radius_km)
@@ -73,7 +76,7 @@ async def find_nearby_lawyers_db(
     # 거리 표현식
     distance_expr = _haversine_distance_sql(latitude, longitude)
 
-    query = (
+    base_query = (
         select(Lawyer, distance_expr.label("distance"))
         .where(
             Lawyer.latitude.isnot(None),
@@ -85,20 +88,25 @@ async def find_nearby_lawyers_db(
     )
 
     # 전문분야 필터
-    query = _apply_specialty_filter(query, category, specialty)
+    base_query = _apply_specialty_filter(base_query, category, specialty)
+
+    # 전체 건수 조회 (limit 적용 전)
+    count_query = select(func.count()).select_from(base_query.subquery())
+    total_count = await db.scalar(count_query) or 0
 
     # 정렬 + 제한
-    query = query.order_by("distance")
+    query = base_query.order_by("distance")
     if limit:
         query = query.limit(limit)
 
     result = await db.execute(query)
     rows = result.all()
 
-    return [
+    lawyers = [
         {**_lawyer_to_dict(lawyer), "distance": round(distance, 2)}
         for lawyer, distance in rows
     ]
+    return {"lawyers": lawyers, "total_count": total_count}
 
 
 async def search_lawyers_db(
@@ -112,9 +120,12 @@ async def search_lawyers_db(
     longitude: Optional[float] = None,
     radius_m: int = 5000,
     limit: Optional[int] = None,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """
     이름/사무소/지역/전문분야로 검색 (DB 기반).
+
+    Returns:
+        {"lawyers": [...], "total_count": int} - total_count는 limit 적용 전 전체 건수
     """
     # 위치 필터링 입력 검증
     has_latitude = latitude is not None
@@ -127,7 +138,7 @@ async def search_lawyers_db(
             f"{provided}만 제공되었고 {missing}가 누락되었습니다."
         )
 
-    query = select(Lawyer)
+    base_query = select(Lawyer)
     has_location = has_latitude and has_longitude
 
     # 이름 또는 사무소 검색 (OR 조건)
@@ -139,14 +150,14 @@ async def search_lawyers_db(
             conditions.append(Lawyer.office_name.ilike(f"%{office}%"))
 
         from sqlalchemy import or_
-        query = query.where(or_(*conditions))
+        base_query = base_query.where(or_(*conditions))
 
     # 지역 검색 (AND 조건)
     if district:
-        query = query.where(Lawyer.address.ilike(f"%{district}%"))
+        base_query = base_query.where(Lawyer.address.ilike(f"%{district}%"))
 
     # 전문분야 필터
-    query = _apply_specialty_filter(query, category, specialty)
+    base_query = _apply_specialty_filter(base_query, category, specialty)
 
     # 위치 필터링
     distance_expr = None
@@ -157,24 +168,28 @@ async def search_lawyers_db(
         )
         distance_expr = _haversine_distance_sql(latitude, longitude)
 
-        query = query.where(
+        base_query = base_query.where(
             Lawyer.latitude.isnot(None),
             Lawyer.longitude.isnot(None),
             Lawyer.latitude.between(min_lat, max_lat),
             Lawyer.longitude.between(min_lng, max_lng),
         ).where(distance_expr <= radius_km)
 
+    # 전체 건수 조회 (limit 적용 전)
+    count_query = select(func.count()).select_from(base_query.subquery())
+    total_count = await db.scalar(count_query) or 0
+
     # 쿼리에 거리 컬럼 추가
     if distance_expr is not None:
-        query = query.add_columns(distance_expr.label("distance"))
-        query = query.order_by("distance")
+        base_query = base_query.add_columns(distance_expr.label("distance"))
+        base_query = base_query.order_by("distance")
     else:
-        query = query.add_columns(literal_column("NULL").label("distance"))
+        base_query = base_query.add_columns(literal_column("NULL").label("distance"))
 
     if limit:
-        query = query.limit(limit)
+        base_query = base_query.limit(limit)
 
-    result = await db.execute(query)
+    result = await db.execute(base_query)
     rows = result.all()
 
     results = []
@@ -184,7 +199,7 @@ async def search_lawyers_db(
             item["distance"] = round(distance, 2)
         results.append(item)
 
-    return results
+    return {"lawyers": results, "total_count": total_count}
 
 
 async def get_clusters_db(
@@ -194,6 +209,8 @@ async def get_clusters_db(
     min_lng: float,
     max_lng: float,
     grid_size: float = 0.01,
+    category: Optional[str] = None,
+    specialty: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """뷰포트 내 변호사를 그리드로 클러스터링 (DB 기반)."""
     grid_lat = func.round(
@@ -215,8 +232,12 @@ async def get_clusters_db(
             Lawyer.latitude.between(min_lat, max_lat),
             Lawyer.longitude.between(min_lng, max_lng),
         )
-        .group_by(grid_lat, grid_lng)
     )
+
+    # 전문분야 필터
+    query = _apply_specialty_filter(query, category, specialty)
+
+    query = query.group_by(grid_lat, grid_lng)
 
     result = await db.execute(query)
     rows = result.all()

@@ -229,7 +229,7 @@ def find_nearby_lawyers(
     limit: Optional[int] = None,
     category: Optional[str] = None,
     specialty: Optional[str] = None
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
     반경 내 변호사 검색
 
@@ -244,6 +244,9 @@ def find_nearby_lawyers(
         limit: 최대 결과 수 (None이면 제한 없음)
         specialty: 특정 전문분야 키워드 (예: "이혼", "형사법") - 정확히 일치하는 전문분야 필터
         category: 전문분야 카테고리 ID (예: "civil-family") - 카테고리 내 모든 전문분야 필터
+
+    Returns:
+        {"lawyers": [...], "total_count": int} - total_count는 limit 적용 전 전체 건수
     """
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
@@ -293,7 +296,9 @@ def find_nearby_lawyers(
     # 거리순 정렬
     results.sort(key=lambda x: x["distance"])
 
-    return results[:limit] if limit else results
+    total_count = len(results)
+    limited = results[:limit] if limit else results
+    return {"lawyers": limited, "total_count": total_count}
 
 
 def get_lawyer_by_id(lawyer_id: int) -> Optional[Dict[str, Any]]:
@@ -318,7 +323,7 @@ def search_lawyers(
     longitude: Optional[float] = None,
     radius_m: int = 5000,
     limit: Optional[int] = None
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
     이름/사무소/지역/전문분야로 검색
 
@@ -332,6 +337,9 @@ def search_lawyers(
         longitude: 위치 필터링 경도
         radius_m: 반경 (미터)
         limit: 최대 결과 수
+
+    Returns:
+        {"lawyers": [...], "total_count": int} - total_count는 limit 적용 전 전체 건수
 
     Raises:
         ValueError: latitude와 longitude 중 하나만 제공된 경우
@@ -416,7 +424,9 @@ def search_lawyers(
     if bbox:
         results.sort(key=lambda x: x.get("distance", float("inf")))
 
-    return results[:limit] if limit else results
+    total_count = len(results)
+    limited = results[:limit] if limit else results
+    return {"lawyers": limited, "total_count": total_count}
 
 
 # =============================================================================
@@ -427,13 +437,22 @@ def get_clusters(
     max_lat: float,
     min_lng: float,
     max_lng: float,
-    grid_size: float = 0.01
+    grid_size: float = 0.01,
+    category: Optional[str] = None,
+    specialty: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     뷰포트 내 변호사를 그리드로 클러스터링
+
+    Args:
+        category: 전문분야 카테고리 ID (예: "criminal")
+        specialty: 특정 전문분야 (예: "이혼") - category보다 우선
     """
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
+
+    # 카테고리에 해당하는 전문분야 목록
+    category_specs = get_specialties_by_category(category) if category and not specialty else set()
 
     # 그리드 집계
     grid: Dict[Tuple[float, float], Dict[str, Any]] = {}
@@ -448,6 +467,18 @@ def get_clusters(
         # 뷰포트 필터
         if not (min_lat <= lat <= max_lat and min_lng <= lng <= max_lng):
             continue
+
+        # 전문분야 필터
+        if specialty or category_specs:
+            lawyer_specs = lawyer.get("specialties", [])
+            if not isinstance(lawyer_specs, list):
+                lawyer_specs = []
+            if specialty:
+                if specialty not in lawyer_specs:
+                    continue
+            elif category_specs:
+                if not category_specs.intersection(lawyer_specs):
+                    continue
 
         # 그리드 셀 계산
         grid_lat = round(lat / grid_size) * grid_size

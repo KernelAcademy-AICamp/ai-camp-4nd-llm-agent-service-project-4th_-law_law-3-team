@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useMemo, memo } from 'react'
-import type { Lawyer, Office } from '../types'
+import { useEffect, useRef, memo } from 'react'
+import type { Lawyer, Office, ClusterData } from '../types'
 
 // HTML 이스케이프 함수 (XSS 방지)
 const HTML_ESCAPE_MAP: Record<string, string> = {
@@ -89,11 +89,14 @@ interface KakaoMapProps {
   selectedLawyer: Lawyer | null
   selectionTrigger?: number  // 선택 시점 timestamp (지도 이동 트리거)
   radius: number
+  clusters?: ClusterData[]  // 줌아웃 시 서버사이드 클러스터 데이터
   onMapReady?: (map: kakao.maps.Map) => void
   onLawyerClick?: (lawyer: Lawyer) => void
   onOfficeClick?: (office: Office) => void
   onMyLocationClick?: () => void
   onCenterChange?: (center: { lat: number; lng: number }) => void
+  onZoomChange?: (zoom: number) => void
+  onBoundsChange?: (bounds: { min_lat: number; max_lat: number; min_lng: number; max_lng: number }) => void
   showRadius?: boolean
 }
 
@@ -104,29 +107,43 @@ export function KakaoMap({
   selectedLawyer,
   selectionTrigger,
   radius,
+  clusters,
   onMapReady,
   onLawyerClick,
   onOfficeClick,
   onMyLocationClick,
   onCenterChange,
+  onZoomChange,
+  onBoundsChange,
   showRadius = true,
 }: KakaoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<kakao.maps.Map | null>(null)
   const clustererRef = useRef<kakao.maps.MarkerClusterer | null>(null)
   const markersRef = useRef<kakao.maps.Marker[]>([])
-  const overlaysRef = useRef<kakao.maps.CustomOverlay[]>([])
+  const clusterOverlaysRef = useRef<kakao.maps.CustomOverlay[]>([])
+  const activeOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null)
   const circleRef = useRef<kakao.maps.Circle | null>(null)
   const centerOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null)
   const onCenterChangeRef = useRef(onCenterChange)
+  const onZoomChangeRef = useRef(onZoomChange)
+  const onBoundsChangeRef = useRef(onBoundsChange)
   const prevCenterRef = useRef<{ lat: number; lng: number } | null>(null)
   const skipCenterPanRef = useRef(false)
-  const hideTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 콜백 ref 업데이트
   useEffect(() => {
     onCenterChangeRef.current = onCenterChange
   }, [onCenterChange])
+
+  useEffect(() => {
+    onZoomChangeRef.current = onZoomChange
+  }, [onZoomChange])
+
+  useEffect(() => {
+    onBoundsChangeRef.current = onBoundsChange
+  }, [onBoundsChange])
 
   // 지도 초기화
   useEffect(() => {
@@ -158,6 +175,20 @@ export function KakaoMap({
             lat: newCenter.getLat(),
             lng: newCenter.getLng(),
           })
+        })
+
+        // idle 이벤트: 줌/바운드 변경 알림
+        window.kakao.maps.event.addListener(map, 'idle', () => {
+          onZoomChangeRef.current?.(map.getLevel())
+          const bounds = map.getBounds()
+          if (bounds) {
+            onBoundsChangeRef.current?.({
+              min_lat: bounds.getSouthWest().getLat(),
+              max_lat: bounds.getNorthEast().getLat(),
+              min_lng: bounds.getSouthWest().getLng(),
+              max_lng: bounds.getNorthEast().getLng(),
+            })
+          }
         })
 
         onMapReady?.(map)
@@ -268,7 +299,19 @@ export function KakaoMap({
     }
   }, [center, radius, showRadius])
 
-  // 마커 및 클러스터 업데이트 (사무소 기반)
+  // 활성 오버레이 정리 헬퍼
+  const clearActiveOverlay = () => {
+    if (activeOverlayRef.current) {
+      activeOverlayRef.current.setMap(null)
+      activeOverlayRef.current = null
+    }
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current)
+      hideTimeoutRef.current = null
+    }
+  }
+
+  // 마커 및 클러스터 업데이트 (사무소 기반 + 서버사이드 클러스터)
   useEffect(() => {
     if (!mapRef.current || !window.kakao?.maps) return
 
@@ -279,24 +322,62 @@ export function KakaoMap({
       clustererRef.current.clear()
     }
 
-    // 기존 타임아웃 정리
-    hideTimeoutsRef.current.forEach(clearTimeout)
-    hideTimeoutsRef.current = []
-
-    // 기존 마커 및 오버레이 제거
+    // 기존 마커 제거
     markersRef.current.forEach((marker) => marker.setMap(null))
     markersRef.current = []
-    overlaysRef.current.forEach((overlay) => overlay.setMap(null))
-    overlaysRef.current = []
 
-    // 사무소별로 그룹화 (useMemo로 최적화할 수 없어 useEffect 내에서 직접 계산)
+    // 기존 클러스터 오버레이 제거
+    clusterOverlaysRef.current.forEach((overlay) => overlay.setMap(null))
+    clusterOverlaysRef.current = []
+
+    // 활성 오버레이 정리
+    clearActiveOverlay()
+
+    // 서버사이드 클러스터 모드
+    if (clusters && clusters.length > 0) {
+      const overlays: kakao.maps.CustomOverlay[] = []
+
+      clusters.forEach((c) => {
+        const position = new window.kakao.maps.LatLng(c.latitude, c.longitude)
+        const size = Math.min(24 + Math.log2(c.count + 1) * 12, 80)
+
+        const content = document.createElement('div')
+        content.style.cssText = `
+          width: ${size}px; height: ${size}px;
+          background: rgba(59, 130, 246, 0.85);
+          border-radius: 50%; color: #fff;
+          display: flex; align-items: center; justify-content: center;
+          font-size: ${Math.max(11, size / 4.5)}px; font-weight: bold;
+          border: 2px solid rgba(255,255,255,0.8);
+          box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+          cursor: default;
+        `
+        content.textContent = c.count.toLocaleString()
+
+        const overlay = new window.kakao.maps.CustomOverlay({
+          position,
+          content,
+          yAnchor: 0.5,
+          zIndex: 5,
+          map,
+        })
+
+        overlays.push(overlay)
+      })
+
+      clusterOverlaysRef.current = overlays
+
+      return () => {
+        overlays.forEach((o) => o.setMap(null))
+      }
+    }
+
+    // 개별 마커 모드
     const offices = groupLawyersByOffice(lawyers)
 
     if (offices.length === 0) return
 
-    // 사무소별 마커 생성
     const markers: kakao.maps.Marker[] = []
-    const overlays: kakao.maps.CustomOverlay[] = []
 
     // 커스텀 마커 이미지 생성 (기본: 파란색)
     const createMarkerSvg = (color: string) => `
@@ -334,50 +415,52 @@ export function KakaoMap({
         image: isSelected ? selectedMarkerImage : defaultMarkerImage,
       })
 
-      // 팝업 컨텐츠 생성
-      const popupContent = createPopupContent(office, () => onOfficeClick?.(office))
-
-      // 팝업 오버레이 생성
-      const overlay = new window.kakao.maps.CustomOverlay({
-        content: popupContent,
-        position,
-        yAnchor: 1.3,
-        zIndex: 10,
-      })
-
-      // 마우스 상태 관리 (마커 또는 팝업 위에 있으면 표시 유지)
+      // 마우스 상태 관리 (lazy overlay: hover 시에만 1개 생성)
       let isOverMarker = false
       let isOverPopup = false
-      let hideTimeout: ReturnType<typeof setTimeout> | null = null
 
       const showOverlay = () => {
-        if (hideTimeout) {
-          clearTimeout(hideTimeout)
-          hideTimeout = null
-        }
-        overlay.setMap(map)
+        // 기존 활성 오버레이 제거
+        clearActiveOverlay()
+
+        const popupContent = createPopupContent(office, () => onOfficeClick?.(office))
+
+        // 팝업에 마우스 이벤트 추가
+        popupContent.addEventListener('mouseenter', () => {
+          isOverPopup = true
+          if (hideTimeoutRef.current) {
+            clearTimeout(hideTimeoutRef.current)
+            hideTimeoutRef.current = null
+          }
+        })
+
+        popupContent.addEventListener('mouseleave', () => {
+          isOverPopup = false
+          scheduleHide()
+        })
+
+        const overlay = new window.kakao.maps.CustomOverlay({
+          content: popupContent,
+          position,
+          yAnchor: 1.3,
+          zIndex: 10,
+          map,
+        })
+
+        activeOverlayRef.current = overlay
       }
 
-      const hideOverlay = () => {
-        const timeout = setTimeout(() => {
+      const scheduleHide = () => {
+        if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
+        hideTimeoutRef.current = setTimeout(() => {
           if (!isOverMarker && !isOverPopup) {
-            overlay.setMap(null)
+            if (activeOverlayRef.current) {
+              activeOverlayRef.current.setMap(null)
+              activeOverlayRef.current = null
+            }
           }
         }, 100)
-        hideTimeout = timeout
-        hideTimeoutsRef.current.push(timeout)
       }
-
-      // 팝업에 마우스 이벤트 추가
-      popupContent.addEventListener('mouseenter', () => {
-        isOverPopup = true
-        showOverlay()
-      })
-
-      popupContent.addEventListener('mouseleave', () => {
-        isOverPopup = false
-        hideOverlay()
-      })
 
       // 마우스 오버 시 팝업 표시
       window.kakao.maps.event.addListener(marker, 'mouseover', () => {
@@ -388,7 +471,7 @@ export function KakaoMap({
       // 마우스 아웃 시 팝업 숨김 (딜레이 적용)
       window.kakao.maps.event.addListener(marker, 'mouseout', () => {
         isOverMarker = false
-        hideOverlay()
+        scheduleHide()
       })
 
       // 마커 클릭 시 첫 번째 변호사 선택
@@ -399,11 +482,9 @@ export function KakaoMap({
       })
 
       markers.push(marker)
-      overlays.push(overlay)
     })
 
     markersRef.current = markers
-    overlaysRef.current = overlays
 
     // 클러스터러 생성
     clustererRef.current = new window.kakao.maps.MarkerClusterer({
@@ -451,17 +532,13 @@ export function KakaoMap({
     })
 
     return () => {
-      // 타임아웃 정리
-      hideTimeoutsRef.current.forEach(clearTimeout)
-      hideTimeoutsRef.current = []
-
+      clearActiveOverlay()
       if (clustererRef.current) {
         clustererRef.current.clear()
       }
       markersRef.current.forEach((marker) => marker.setMap(null))
-      overlaysRef.current.forEach((overlay) => overlay.setMap(null))
     }
-  }, [lawyers, selectedLawyer, onLawyerClick, onOfficeClick])
+  }, [lawyers, clusters, selectedLawyer, onLawyerClick, onOfficeClick])
 
   // 선택된 변호사로 지도 이동 (selectionTrigger 변경 시 트리거)
   useEffect(() => {

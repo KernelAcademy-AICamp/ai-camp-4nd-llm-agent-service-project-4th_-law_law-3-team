@@ -34,10 +34,9 @@ export interface SearchResponse {
 }
 
 export interface ClusterData {
-  lat: number
-  lng: number
+  latitude: number
+  longitude: number
   count: number
-  lawyers: Lawyer[]
 }
 
 export interface ClusterResponse {
