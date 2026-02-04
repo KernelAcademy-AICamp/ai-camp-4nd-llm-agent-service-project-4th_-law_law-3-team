@@ -6,7 +6,7 @@ import ReactMarkdown from 'react-markdown'
 import { useChat } from '@/context/ChatContext'
 import type { ChatSource } from '../types'
 import { getLawTypeLogo, getLawTypeOrgName, getCourtLogo, getDocTypeLogo, DEFAULT_GOV_LOGO } from '../utils/lawTypeLogo'
-import { PrecedentDocumentViewer } from './PrecedentDocumentViewer'
+import { PrecedentFullTextViewer } from './PrecedentFullTextViewer'
 
 // 아코디언 섹션 컴포넌트
 function CollapsibleSection({
@@ -254,46 +254,15 @@ export function UserView() {
                     )}
 
                     {/* 더 보기 (접힘) - 판결문 전체 보기 */}
-                    <div className="pt-4">
-                      <details className="border border-gray-200 rounded-lg overflow-hidden">
-                        <summary className="w-full px-4 py-3 bg-gray-50 flex justify-between items-center hover:bg-gray-100 transition-colors cursor-pointer font-medium text-gray-700">
-                          📄 판결문 전체 보기
-                        </summary>
-                        <div className="p-4 bg-white">
-                          <PrecedentDocumentViewer
-                            courtName={selectedRef.court_name}
-                            caseNumber={selectedRef.case_number}
-                            caseName={selectedRef.case_name}
-                            decisionDate={selectedRef.decision_date}
-                            summary={selectedRef.summary}
-                            reasoning={selectedRef.reasoning}
-                            referenceProvisions={selectedRef.reference_provisions}
-                            referenceCases={selectedRef.reference_cases}
-                            ruling={selectedRef.ruling}
-                            claim={selectedRef.claim}
-                            fullReason={selectedRef.full_reason}
-                            fullText={selectedRef.full_text}
-                          />
-                        </div>
-                      </details>
-                    </div>
+                    <PrecedentFullTextViewer
+                      data={selectedRef}
+                      mode="accordion"
+                      title="📄 판결문 전체 보기"
+                    />
                   </>
                 ) : (
                   /* 변호사 모드: 판결문 전체 표시 */
-                  <PrecedentDocumentViewer
-                    courtName={selectedRef.court_name}
-                    caseNumber={selectedRef.case_number}
-                    caseName={selectedRef.case_name}
-                    decisionDate={selectedRef.decision_date}
-                    summary={selectedRef.summary}
-                    reasoning={selectedRef.reasoning}
-                    referenceProvisions={selectedRef.reference_provisions}
-                    referenceCases={selectedRef.reference_cases}
-                    ruling={selectedRef.ruling}
-                    claim={selectedRef.claim}
-                    fullReason={selectedRef.full_reason}
-                    fullText={selectedRef.full_text}
-                  />
+                  <PrecedentFullTextViewer data={selectedRef} mode="direct" />
                 )}
 
                 {/* 그래프 보강 정보 */}

@@ -24,6 +24,16 @@ export interface PrecedentDetail {
   date?: string
   content: string
   summary: string
+  // 판례 상세 필드 (PostgreSQL)
+  ruling?: string  // 주문
+  claim?: string  // 청구취지
+  reasoning?: string  // 판결요지
+  full_reason?: string  // 이유
+  full_text?: string  // 전문
+  reference_provisions?: string  // 참조조문
+  reference_cases?: string  // 참조판례
+  court_name?: string  // 법원명
+  decision_date?: string  // 선고일
 }
 
 export interface ChatSource {

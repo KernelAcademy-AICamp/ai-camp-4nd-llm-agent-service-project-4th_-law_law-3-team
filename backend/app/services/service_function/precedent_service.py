@@ -50,6 +50,9 @@ def fetch_precedent_details(source_ids: List[str]) -> Dict[str, Dict[str, str]]:
                     "summary": p.summary or "",  # 판시사항
                     "reference_provisions": p.reference_provisions or "",  # 참조조문
                     "reference_cases": p.reference_cases or "",  # 참조판례
+                    "court_name": p.court_name or "",  # 법원명
+                    "case_name": p.case_name or "",  # 사건명
+                    "case_number": p.case_number or "",  # 사건번호
                 }
                 for p in precedents
             }

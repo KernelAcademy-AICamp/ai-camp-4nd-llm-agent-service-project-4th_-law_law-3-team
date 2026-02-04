@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from app.common.chat_service import generate_chat_response
 from app.core.errors import EmbeddingModelNotFoundError
 from app.services.rag import search_relevant_documents
+from app.services.service_function.precedent_service import fetch_precedent_details
 from app.tools.vectorstore import get_vector_store
 
 
@@ -117,6 +118,16 @@ class PrecedentDetailResponse(BaseModel):
     date: Optional[str] = None
     content: str
     summary: str
+    # 판례 상세 필드 (PostgreSQL 조회)
+    ruling: Optional[str] = None  # 주문
+    claim: Optional[str] = None  # 청구취지
+    reasoning: Optional[str] = None  # 판결요지
+    full_reason: Optional[str] = None  # 이유
+    full_text: Optional[str] = None  # 전문
+    reference_provisions: Optional[str] = None  # 참조조문
+    reference_cases: Optional[str] = None  # 참조판례
+    court_name: Optional[str] = None  # 법원명
+    decision_date: Optional[str] = None  # 선고일
 
 
 class AskQuestionRequest(BaseModel):
@@ -297,6 +308,7 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
     판례 상세 정보 조회
 
     특정 판례의 전체 내용을 조회합니다.
+    LanceDB에서 기본 정보 조회 후, PostgreSQL에서 상세 필드를 보강합니다.
     """
     try:
         store = get_vector_store()
@@ -309,22 +321,48 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
         content = result.get("content", "")
 
         # LanceDB 필드명 → 표준 필드명 매핑
-        # LanceDB: title, data_type, source_name
-        # 표준: case_name, doc_type, court
         case_name = metadata.get("title", "") or metadata.get("case_name", "")
         doc_type = _map_data_type(metadata.get("data_type", "")) or metadata.get("doc_type", "")
         court = metadata.get("source_name", "") or metadata.get("court", "")
+        case_number = metadata.get("case_number", "")
 
-        return PrecedentDetailResponse(
-            id=precedent_id,
-            case_name=case_name,
-            case_number=metadata.get("case_number", ""),
-            doc_type=doc_type,
-            court=court,
-            date=metadata.get("date"),
-            content=content,
-            summary=content[:500] + "..." if len(content) > 500 else content,
-        )
+        # 기본 응답 데이터 (LanceDB 기반)
+        response_data = {
+            "id": precedent_id,
+            "case_name": case_name,
+            "case_number": case_number,
+            "doc_type": doc_type,
+            "court": court,
+            "date": metadata.get("date"),
+            "content": content,
+            "summary": "",  # PostgreSQL에서 가져옴 (LanceDB content 사용 안함)
+        }
+
+        # PostgreSQL에서 상세 필드 조회 (source_id가 serial_number에 매핑)
+        source_id = metadata.get("source_id", "")
+        if source_id:
+            details = fetch_precedent_details([source_id])
+            if source_id in details:
+                precedent = details[source_id]
+                response_data.update({
+                    "ruling": precedent.get("ruling") or None,
+                    "claim": precedent.get("claim") or None,
+                    "reasoning": precedent.get("reasoning") or None,
+                    "full_reason": precedent.get("full_reason") or None,
+                    "full_text": precedent.get("full_text") or None,
+                    "reference_provisions": precedent.get("reference_provisions") or None,
+                    "reference_cases": precedent.get("reference_cases") or None,
+                    "decision_date": precedent.get("decision_date") or None,
+                    "court_name": precedent.get("court_name") or None,
+                    # PostgreSQL 데이터로 기본 필드 보강
+                    "case_name": precedent.get("case_name") or case_name,
+                    "case_number": precedent.get("case_number") or case_number,
+                    "court": precedent.get("court_name") or court,
+                    # summary를 판시사항으로 대체 (PostgreSQL만 사용, LanceDB fallback 없음)
+                    "summary": precedent.get("summary") or "",
+                })
+
+        return PrecedentDetailResponse(**response_data)
     except HTTPException:
         raise
     except Exception as e:

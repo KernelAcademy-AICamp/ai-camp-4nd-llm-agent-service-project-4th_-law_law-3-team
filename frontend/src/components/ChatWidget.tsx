@@ -306,13 +306,22 @@ export default function ChatWidget() {
 
               const aiCase = {
                 id: 'ai-generated-' + Date.now(),
-                case_name: mainSource?.case_name || 'AI 법률 분석 결과',
-                case_number: mainSource?.case_number || 'AI Analysis',
-                doc_type: mainSource?.doc_type || 'interpretation',
-                content: cleanAIResponse(accumulatedContent),
-                summary: cleanAIResponse(accumulatedContent),
-                court: 'AI Legal Assistant',
-                date: new Date().toISOString().split('T')[0],
+                case_name: mainSource?.case_name || '',
+                case_number: mainSource?.case_number || '',
+                doc_type: mainSource?.doc_type || 'precedent',
+                content: mainSource?.content || cleanAIResponse(accumulatedContent),
+                summary: mainSource?.summary || '',
+                court: mainSource?.court_name || '',
+                court_name: mainSource?.court_name || '',
+                date: mainSource?.decision_date || '',
+                decision_date: mainSource?.decision_date || '',
+                reasoning: mainSource?.reasoning || '',
+                ruling: mainSource?.ruling || '',
+                claim: mainSource?.claim || '',
+                full_reason: mainSource?.full_reason || '',
+                full_text: mainSource?.full_text || '',
+                reference_provisions: mainSource?.reference_provisions || '',
+                reference_cases: mainSource?.reference_cases || '',
               }
 
               newSessionData.aiGeneratedCase = aiCase

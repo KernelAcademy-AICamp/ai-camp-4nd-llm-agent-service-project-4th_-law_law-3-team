@@ -17,7 +17,8 @@ interface PrecedentDocumentViewerProps {
 }
 
 /**
- * 판결문 원문을 문서 형태로 렌더링하는 컴포넌트
+ * 판결문 원문을 공식 문서 형태로 렌더링하는 컴포넌트
+ * 대법원 종합법률정보 스타일 적용
  */
 export function PrecedentDocumentViewer({
   courtName,
@@ -46,32 +47,64 @@ export function PrecedentDocumentViewer({
     return dateStr
   }
 
-  // 섹션 렌더링 컴포넌트
-  const Section = ({
-    title,
-    content,
-    bgColor = 'bg-white',
-    borderColor = 'border-gray-200'
-  }: {
-    title: string
-    content?: string
-    bgColor?: string
-    borderColor?: string
-  }) => {
-    if (!content?.trim()) return null
+  // 글자 사이에 공백 추가 (판 시 사 항)
+  const addLetterSpacing = (text: string) => {
+    return text.split('').join(' ')
+  }
 
+  // 항목 패턴 앞에 줄바꿈 추가
+  const formatListContent = (text: string) => {
+    // 패턴 정의 (줄바꿈 1번, 이미 줄바꿈이 있으면 적용 안함):
+    // 1. 한글 항목: 가., 나., 다., ... (앞에 공백이 있고 줄바꿈이 아닌 경우)
+    // 2. 숫자 항목: 1., 2., 3., ... (앞에 공백, 뒤에 숫자가 아닌 문자 - 날짜 제외)
+    // 3. 괄호 숫자: (1), (2), (3), ... (앞에 줄바꿈이 없는 경우)
+    // 4. 순서 표현: 첫째,, 둘째,, 셋째,, ... (앞에 줄바꿈이 없는 경우)
+    const singleLinePatterns = [
+      /(?<=\s)(?<!\n)([가나다라마바사아자차카타파하]\.\s)/g,  // 한글 항목
+      /(?<=\s)(?<!\n)(\d+\.\s)(?![\d선]|법률)/g,  // 숫자 항목 (뒤에 숫자, "선고", "법률" 오면 날짜로 간주하여 제외)
+      /(?<!\n)(\(\d+\)\s?)/g,  // 괄호 숫자
+      /(?<!\n)(첫째,|둘째,|셋째,|넷째,|다섯째,|여섯째,|일곱째,|여덟째,|아홉째,|열째,)/g,  // 순서 표현
+    ]
+
+    // 대괄호 패턴 (줄바꿈 2번): 【...】
+    // 이미 줄바꿈 2번이 있으면 적용 안함
+    const doubleLinePattern = /(?<!\n\n)(【[^】]+】)/g
+
+    let result = text
+
+    // 줄바꿈 1번 추가
+    for (const pattern of singleLinePatterns) {
+      result = result.replace(pattern, '\n$1')
+    }
+
+    // 대괄호는 줄바꿈 2번 추가
+    result = result.replace(doubleLinePattern, '\n\n$1')
+
+    // 문서 시작 부분의 불필요한 줄바꿈 제거
+    return result.replace(/^\n+/, '')
+  }
+
+  // 섹션 타이틀 렌더링
+  const SectionTitle = ({ title }: { title: string }) => (
+    <h3 className="text-center text-xl font-bold text-gray-900 tracking-[0.3em] py-8">
+      {addLetterSpacing(title)}
+    </h3>
+  )
+
+  // 섹션 구분선
+  const Divider = () => (
+    <hr className="border-t border-gray-200 my-4" />
+  )
+
+  // 섹션 콘텐츠
+  const SectionContent = ({ content }: { content?: string }) => {
+    if (!content?.trim()) return null
+    const formattedContent = formatListContent(content)
     return (
-      <div className={`rounded-lg border ${borderColor} overflow-hidden mb-4`}>
-        <div className={`px-4 py-2.5 ${bgColor} border-b ${borderColor}`}>
-          <h3 className="font-bold text-slate-700 tracking-wide text-sm">
-            【{title}】
-          </h3>
-        </div>
-        <div className="px-4 py-3 bg-white">
-          <p className="text-slate-700 leading-relaxed whitespace-pre-wrap text-[15px]">
-            {content}
-          </p>
-        </div>
+      <div className="px-8 pb-8">
+        <p className="text-gray-800 leading-loose whitespace-pre-wrap text-[15px]">
+          {formattedContent}
+        </p>
       </div>
     )
   }
@@ -86,114 +119,97 @@ export function PrecedentDocumentViewer({
     )
   }
 
+  // 헤더 타이틀 생성 (서울중앙지방법원 1995. 9. 28. 선고 95노1985 판결)
+  const headerTitle = `${courtName || '대법원'} ${formatDate(decisionDate)} 선고 ${caseNumber || ''} 판결`
+
   return (
-    <div className="bg-white rounded-lg shadow-lg overflow-hidden max-w-4xl mx-auto">
+    <div className="bg-gray-50 py-6">
       {/* 문서 헤더 */}
-      <div className="bg-gradient-to-b from-slate-800 to-slate-700 text-white py-6 px-6 text-center">
-        <div className="text-sm tracking-[0.3em] text-slate-300 mb-1">
-          {courtName || '대 법 원'}
-        </div>
-        <div className="text-2xl font-bold tracking-[0.2em] mb-3">
-          판 결
-        </div>
-        <div className="w-16 h-0.5 bg-slate-500 mx-auto" />
+      <div className="text-center mb-6">
+        <h1 className="text-xl font-bold text-gray-900 mb-2">
+          {headerTitle}
+        </h1>
+        {caseName && (
+          <p className="text-gray-600 mb-1">[{caseName}]</p>
+        )}
+        <p className="text-sm text-gray-400">대법원 종합법률정보</p>
       </div>
 
-      {/* 사건 정보 */}
-      <div className="bg-slate-100 px-6 py-4 border-b border-slate-300">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-          {caseNumber && (
-            <div className="flex">
-              <span className="text-slate-500 w-20 shrink-0">사건번호</span>
-              <span className="font-semibold text-slate-800">{caseNumber}</span>
-            </div>
-          )}
-          {caseName && (
-            <div className="flex">
-              <span className="text-slate-500 w-20 shrink-0">사 건 명</span>
-              <span className="font-semibold text-slate-800">{caseName}</span>
-            </div>
-          )}
-          {decisionDate && (
-            <div className="flex">
-              <span className="text-slate-500 w-20 shrink-0">선고일자</span>
-              <span className="font-semibold text-slate-800">{formatDate(decisionDate)}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 본문 */}
-      <div className="p-6">
+      {/* 본문 카드 */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 max-w-4xl mx-auto">
         {/* 판시사항 */}
-        <Section
-          title="판시사항"
-          content={summary}
-          bgColor="bg-amber-50"
-          borderColor="border-amber-200"
-        />
+        {summary?.trim() && (
+          <>
+            <SectionTitle title="판시사항" />
+            <SectionContent content={summary} />
+            <Divider />
+          </>
+        )}
 
         {/* 판결요지 */}
-        <Section
-          title="판결요지"
-          content={reasoning}
-          bgColor="bg-blue-50"
-          borderColor="border-blue-200"
-        />
+        {reasoning?.trim() && (
+          <>
+            <SectionTitle title="판결요지" />
+            <SectionContent content={reasoning} />
+            <Divider />
+          </>
+        )}
 
         {/* 참조조문 */}
-        <Section
-          title="참조조문"
-          content={referenceProvisions}
-          bgColor="bg-gray-50"
-          borderColor="border-gray-200"
-        />
+        {referenceProvisions?.trim() && (
+          <>
+            <SectionTitle title="참조조문" />
+            <SectionContent content={referenceProvisions} />
+            <Divider />
+          </>
+        )}
 
         {/* 참조판례 */}
-        <Section
-          title="참조판례"
-          content={referenceCases}
-          bgColor="bg-gray-50"
-          borderColor="border-gray-200"
-        />
+        {referenceCases?.trim() && (
+          <>
+            <SectionTitle title="참조판례" />
+            <SectionContent content={referenceCases} />
+            <Divider />
+          </>
+        )}
 
         {/* 주문 */}
-        <Section
-          title="주    문"
-          content={ruling}
-          bgColor="bg-green-50"
-          borderColor="border-green-200"
-        />
+        {ruling?.trim() && (
+          <>
+            <SectionTitle title="주문" />
+            <SectionContent content={ruling} />
+            <Divider />
+          </>
+        )}
 
         {/* 청구취지 */}
-        <Section
-          title="청구취지"
-          content={claim}
-          bgColor="bg-gray-50"
-          borderColor="border-gray-200"
-        />
+        {claim?.trim() && (
+          <>
+            <SectionTitle title="청구취지" />
+            <SectionContent content={claim} />
+            <Divider />
+          </>
+        )}
 
         {/* 이유 */}
-        <Section
-          title="이    유"
-          content={fullReason}
-          bgColor="bg-slate-50"
-          borderColor="border-slate-200"
-        />
+        {fullReason?.trim() && (
+          <>
+            <SectionTitle title="이유" />
+            <SectionContent content={fullReason} />
+          </>
+        )}
 
-        {/* 판례내용 전문 (있는 경우) */}
-        {fullText && fullText.length > 100 && (
-          <Section
-            title="전    문"
-            content={fullText}
-            bgColor="bg-gray-50"
-            borderColor="border-gray-300"
-          />
+        {/* 판례내용 전문 (fullReason이 없고 fullText가 있는 경우만) */}
+        {!fullReason?.trim() && fullText?.trim() && fullText.length > 100 && (
+          <>
+            <SectionTitle title="전문" />
+            <SectionContent content={fullText} />
+          </>
         )}
       </div>
 
-      {/* 문서 푸터 */}
-      <div className="bg-slate-100 px-6 py-3 text-center text-xs text-slate-500 border-t border-slate-300">
+      {/* 푸터 */}
+      <div className="text-center mt-6 text-xs text-gray-400">
         본 문서는 법률 정보 제공 목적으로만 사용됩니다
       </div>
     </div>

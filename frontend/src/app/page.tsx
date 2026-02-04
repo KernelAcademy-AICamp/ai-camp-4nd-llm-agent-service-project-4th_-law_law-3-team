@@ -5,30 +5,35 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getEnabledModules } from '@/lib/modules'
 import { useUI } from '@/context/UIContext'
+import { useChat, UserRole } from '@/context/ChatContext'
 
 function HomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const role = searchParams.get('role') as 'lawyer' | 'user' | null
-  
+
   const { isChatOpen, setChatOpen } = useUI()
+  const { setUserRole } = useChat()
   const enabledModules = useMemo(() => getEnabledModules(role || undefined), [role])
 
-  // Manage chat state based on role
+  // URL role과 ChatContext 동기화
   useEffect(() => {
     if (!role) {
       setChatOpen(false)
     } else {
-      setChatOpen(true) // Auto-open chat when entering dashboard
+      setChatOpen(true)
+      setUserRole(role as UserRole)
     }
-  }, [role, setChatOpen])
+  }, [role, setChatOpen, setUserRole])
 
   const handleRoleSelect = (selectedRole: 'lawyer' | 'user') => {
+    setUserRole(selectedRole)
     setChatOpen(true)
     router.push(`/?role=${selectedRole}`)
   }
 
   const handleResetRole = () => {
+    setUserRole('user')
     setChatOpen(false)
     router.push('/')
   }
