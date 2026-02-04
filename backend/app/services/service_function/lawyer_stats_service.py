@@ -11,7 +11,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from app.services.service_function.lawyer_service import SPECIALTY_CATEGORIES, load_lawyers_data
+from app.services.service_function.lawyer_service import (
+    SPECIALTY_CATEGORIES,
+    load_lawyers_data,
+)
 
 # =============================================================================
 # 상수 정의
@@ -61,6 +64,13 @@ PROVINCE_NORMALIZE_MAP: dict[str, str] = {
     "제주특별자치도": "제주",
     "제주도": "제주",
     "제주시": "제주",
+}
+
+# 시군구 명칭 정규화 매핑 (행정구역 통합/개칭 반영)
+DISTRICT_NORMALIZE_MAP: dict[str, str] = {
+    "경남 창원시": "경남 통합창원시",
+    "인천 남구": "인천 미추홀구",
+    "충북 청주시": "충북 통합청주시",
 }
 
 # 인구 데이터 캐시
@@ -132,11 +142,20 @@ def extract_region(address: str | None) -> str | None:
     """
     if not address:
         return None
+
+    # 세종시 특별 처리 (하위 구/시/군 행정구역 없음)
+    first_token = address.split()[0] if address.split() else ""
+    normalized_first = normalize_province(first_token)
+    if normalized_first == "세종":
+        return "세종"
+
     match = REGION_PATTERN.match(address)
     if match:
         province = normalize_province(match.group(1))
         district = match.group(2)
-        return f"{province} {district}"
+        region = f"{province} {district}"
+        # 행정구역 통합/개칭 반영
+        return DISTRICT_NORMALIZE_MAP.get(region, region)
     return None
 
 
