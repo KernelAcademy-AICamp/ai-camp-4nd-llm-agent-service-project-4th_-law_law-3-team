@@ -56,9 +56,7 @@ export function SearchPanel({
         {isSearching ? (
           <span>검색 중...</span>
         ) : results.length > 0 ? (
-          <span>
-            검색 결과 <strong className="text-gray-900">{totalResults}</strong>건
-          </span>
+          <span>관련 문서</span>
         ) : filters.keyword ? (
           <span>검색 결과가 없습니다</span>
         ) : (

@@ -85,7 +85,16 @@ export function UserView() {
   useEffect(() => {
     // 세션 데이터에서 챗봇 참조 자료를 로드합니다.
     if (sessionData.aiReferences && Array.isArray(sessionData.aiReferences)) {
-      setReferences(sessionData.aiReferences as ChatSource[])
+      const raw = sessionData.aiReferences as ChatSource[]
+      // 중복 제거: case_number(판례) 또는 law_name(법령) 기준
+      const seen = new Set<string>()
+      const unique = raw.filter((ref) => {
+        const key = ref.doc_type === 'law' ? ref.law_name : ref.case_number
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      setReferences(unique)
     }
   }, [sessionData.aiReferences])
 

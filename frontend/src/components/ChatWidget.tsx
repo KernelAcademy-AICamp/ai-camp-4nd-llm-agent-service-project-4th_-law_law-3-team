@@ -325,7 +325,15 @@ export default function ChatWidget() {
               }
 
               newSessionData.aiGeneratedCase = aiCase
-              newSessionData.aiReferences = receivedSources || []
+              // 중복 제거: case_number(판례) 또는 law_name(법령) 기준
+              const seen = new Set<string>()
+              const uniqueSources = (receivedSources || []).filter((ref) => {
+                const key = ref.doc_type === 'law' ? ref.law_name : ref.case_number
+                if (!key || seen.has(key)) return false
+                seen.add(key)
+                return true
+              })
+              newSessionData.aiReferences = uniqueSources
 
               setSessionData({ ...sessionData, ...newSessionData })
 
