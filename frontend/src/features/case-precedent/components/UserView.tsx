@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown'
 import { useChat } from '@/context/ChatContext'
 import type { ChatSource } from '../types'
 import { getLawTypeLogo, getLawTypeOrgName, getCourtLogo, getDocTypeLogo, DEFAULT_GOV_LOGO } from '../utils/lawTypeLogo'
+import { PrecedentFullTextViewer } from './PrecedentFullTextViewer'
 
 // 아코디언 섹션 컴포넌트
 function CollapsibleSection({
@@ -252,22 +253,16 @@ export function UserView() {
                       </div>
                     )}
 
-                    {/* 더 보기 (접힘) */}
-                    <div className="pt-4">
-                      <p className="text-sm text-gray-500 mb-3">▼ 더 자세한 내용</p>
-                      <CollapsibleSection title="청구취지" content={selectedRef.claim} />
-                      <CollapsibleSection title="검색된 원문" content={selectedRef.content} />
-                    </div>
+                    {/* 더 보기 (접힘) - 판결문 전체 보기 */}
+                    <PrecedentFullTextViewer
+                      data={selectedRef}
+                      mode="accordion"
+                      title="📄 판결문 전체 보기"
+                    />
                   </>
                 ) : (
-                  /* 변호사 모드: 전체 표시 */
-                  <>
-                    <CollapsibleSection title="판결요지" content={selectedRef.reasoning} defaultOpen />
-                    <CollapsibleSection title="주문" content={selectedRef.ruling} defaultOpen />
-                    <CollapsibleSection title="청구취지" content={selectedRef.claim} defaultOpen />
-                    <CollapsibleSection title="이유 (상세)" content={selectedRef.full_reason} />
-                    <CollapsibleSection title="검색된 원문" content={selectedRef.content} />
-                  </>
+                  /* 변호사 모드: 판결문 전체 표시 */
+                  <PrecedentFullTextViewer data={selectedRef} mode="direct" />
                 )}
 
                 {/* 그래프 보강 정보 */}

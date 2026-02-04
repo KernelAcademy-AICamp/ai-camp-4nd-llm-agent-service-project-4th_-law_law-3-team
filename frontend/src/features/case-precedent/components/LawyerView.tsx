@@ -12,15 +12,10 @@ export function LawyerView() {
     selectedCase,
     isLoadingDetail,
     detailError,
-    aiResponse,
-    isAskingAI,
-    aiError,
     filters,
     setFilters,
     search,
     selectCase,
-    askAI,
-    clearAIResponse,
   } = useCaseSearch()
 
   return (
@@ -43,11 +38,6 @@ export function LawyerView() {
         case_={selectedCase}
         isLoading={isLoadingDetail}
         error={detailError}
-        aiResponse={aiResponse}
-        isAskingAI={isAskingAI}
-        aiError={aiError}
-        onAsk={askAI}
-        onClearAI={clearAIResponse}
       />
     </div>
   )

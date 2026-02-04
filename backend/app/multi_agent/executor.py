@@ -5,11 +5,12 @@
 """
 
 import time
+from collections.abc import AsyncGenerator
 from typing import Any, Dict, Optional
 
+from app.core.context import ChatContext
 from app.multi_agent.agents.base_chat import BaseChatAgent
 from app.multi_agent.schemas.plan import AgentPlan, AgentResult
-from app.core.context import ChatContext
 
 
 class AgentExecutor:
@@ -84,6 +85,60 @@ class AgentExecutor:
 
         return result
 
+    async def execute_stream(
+        self,
+        plan: AgentPlan,
+        context: ChatContext,
+    ) -> AsyncGenerator[tuple[str, Any], None]:
+        """
+        스트리밍 에이전트 실행
+
+        Args:
+            plan: 에이전트 실행 계획
+            context: 채팅 컨텍스트
+
+        Yields:
+            (event_type, data) 튜플
+        """
+        # 에이전트 선택
+        agent = self.get_agent(plan.agent_type)
+
+        if agent is None:
+            # 기본 에이전트로 폴백
+            default_agent = self._get_default_agent()
+            if default_agent is None:
+                yield ("error", {"message": "에이전트를 찾을 수 없습니다."})
+                return
+            agent = default_agent
+
+        # 스트리밍 지원 여부에 따라 분기
+        if agent.supports_streaming:
+            # 스트리밍 지원: process_stream 사용
+            async for event_type, data in agent.process_stream(
+                message=context.message,
+                history=context.history,
+                session_data=context.session_data,
+                user_location=context.user_location,
+            ):
+                yield (event_type, data)
+        else:
+            # 스트리밍 미지원: 일반 process 후 단일 청크
+            result = await agent.process(
+                message=context.message,
+                history=context.history,
+                session_data=context.session_data,
+                user_location=context.user_location,
+            )
+            # 토큰 먼저, sources는 나중에
+            yield ("token", {"content": result.message})
+            yield ("sources", {"sources": result.sources})
+            yield ("metadata", {
+                "agent_used": result.agent_used or agent.name,
+                "actions": result.actions,
+                "session_data": result.session_data,
+            })
+            yield ("done", {})
+
     def _get_default_agent(self) -> Optional[BaseChatAgent]:
         """기본 에이전트 반환"""
         # legal_answer를 기본으로 사용
@@ -104,10 +159,10 @@ def get_agent_executor() -> AgentExecutor:
     global _executor
     if _executor is None:
         from app.multi_agent.agents import (
-            LegalAnswerAgent,
             LawyerFinderAgent,
-            SmallClaimsAgent,
+            LegalAnswerAgent,
             SimpleChatAgent,
+            SmallClaimsAgent,
         )
 
         agents: Dict[str, BaseChatAgent] = {

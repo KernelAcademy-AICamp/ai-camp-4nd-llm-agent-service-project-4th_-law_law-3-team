@@ -68,14 +68,34 @@ export function useCaseSearch(): UseCaseSearchReturn {
   // Filters
   const [filters, setFiltersState] = useState<SearchFilters>(DEFAULT_FILTERS)
 
-  // Handle AI Generated Case from Chat
+  // Handle AI Generated Cases from Chat
   useEffect(() => {
-    if (sessionData.aiGeneratedCase) {
+    const refs = sessionData.aiReferences as PrecedentDetail[] | undefined
+    if (refs && Array.isArray(refs) && refs.length > 0) {
+      // aiReferences에서 모든 판례를 검색 결과 목록에 추가
+      const newResults: PrecedentItem[] = refs.map((ref, idx) => ({
+        id: ref.id || `ai-ref-${idx}-${Date.now()}`,
+        case_name: ref.case_name || '',
+        case_number: ref.case_number || '',
+        doc_type: ref.doc_type || 'precedent',
+        court: ref.court || ref.court_name || '',
+        date: ref.date || ref.decision_date || '',
+        summary: ref.summary || '',
+        similarity: 100 - idx,
+      }))
+      setSearchResults(newResults)
+      setTotalResults(newResults.length)
+      // 첫 번째 판례를 자동 선택
+      const firstCase = refs[0] as PrecedentDetail
+      setSelectedCase({
+        ...firstCase,
+        id: firstCase.id || newResults[0].id,
+      })
+    } else if (sessionData.aiGeneratedCase) {
+      // aiReferences가 없으면 기존 방식으로 단일 판례 처리
       const aiCase = sessionData.aiGeneratedCase as PrecedentDetail
       setSelectedCase(aiCase)
-      // Also add to search results so it appears in the list
       setSearchResults((prev) => {
-        // Prevent duplicates
         if (prev.some((item) => item.id === aiCase.id)) return prev
         return [
           {
@@ -92,7 +112,7 @@ export function useCaseSearch(): UseCaseSearchReturn {
         ]
       })
     }
-  }, [sessionData.aiGeneratedCase])
+  }, [sessionData.aiReferences, sessionData.aiGeneratedCase])
 
   const setFilters = useCallback((newFilters: Partial<SearchFilters>) => {
     setFiltersState((prev) => ({ ...prev, ...newFilters }))
@@ -124,6 +144,23 @@ export function useCaseSearch(): UseCaseSearchReturn {
     setDetailError(null)
     setAiResponse(null)
 
+    // aiReferences에서 먼저 검색 (채팅에서 전달받은 판례)
+    const refs = sessionData.aiReferences as PrecedentDetail[] | undefined
+    if (refs && Array.isArray(refs)) {
+      // searchResults에서 해당 ID의 case_number를 찾아 aiReferences와 매칭
+      const matchedResult = searchResults.find((r) => r.id === id)
+      if (matchedResult) {
+        const found = refs.find(
+          (ref) => ref.case_number === matchedResult.case_number
+        )
+        if (found) {
+          setSelectedCase({ ...found, id } as PrecedentDetail)
+          setIsLoadingDetail(false)
+          return
+        }
+      }
+    }
+
     try {
       const detail = await casePrecedentService.getPrecedentDetail(id)
       setSelectedCase(detail)
@@ -133,7 +170,7 @@ export function useCaseSearch(): UseCaseSearchReturn {
     } finally {
       setIsLoadingDetail(false)
     }
-  }, [])
+  }, [sessionData.aiReferences, searchResults])
 
   const clearSelection = useCallback(() => {
     setSelectedCase(null)

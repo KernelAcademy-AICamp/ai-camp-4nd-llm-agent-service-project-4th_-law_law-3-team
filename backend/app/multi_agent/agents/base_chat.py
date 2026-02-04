@@ -5,6 +5,7 @@
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from enum import Enum
 from typing import Any, Optional
 
@@ -81,6 +82,47 @@ class BaseChatAgent(ABC):
         """
         return False
 
+    @property
+    def supports_streaming(self) -> bool:
+        """에이전트가 스트리밍을 지원하는지 여부"""
+        return False
+
+    async def process_stream(
+        self,
+        message: str,
+        history: list[dict[str, str]] | None = None,
+        session_data: dict[str, Any] | None = None,
+        user_location: dict[str, float] | None = None,
+    ) -> AsyncGenerator[tuple[str, Any], None]:
+        """
+        스트리밍 메시지 처리
+
+        기본 구현: 스트리밍 미지원 시 단일 청크 반환
+
+        Args:
+            message: 사용자 메시지
+            history: 대화 기록
+            session_data: 세션 데이터
+            user_location: 사용자 위치
+
+        Yields:
+            (event_type, data) 튜플
+            - token: 응답 토큰
+            - sources: 참조 자료
+            - metadata: 에이전트 정보
+            - done: 완료 신호
+        """
+        result = await self.process(message, history, session_data, user_location)
+        # 토큰 먼저, sources는 나중에 (큰 데이터 청킹 문제 방지)
+        yield ("token", {"content": result.message})
+        yield ("sources", {"sources": result.sources})
+        yield ("metadata", {
+            "agent_used": result.agent_used,
+            "actions": result.actions,
+            "session_data": result.session_data,
+        })
+        yield ("done", {})
+
 
 class SimpleChatAgent(BaseChatAgent):
     """
@@ -100,6 +142,11 @@ class SimpleChatAgent(BaseChatAgent):
     @property
     def description(self) -> str:
         return self._description
+
+    @property
+    def supports_streaming(self) -> bool:
+        """SimpleChatAgent는 스트리밍 지원"""
+        return True
 
     async def process(
         self,
@@ -131,3 +178,39 @@ class SimpleChatAgent(BaseChatAgent):
             session_data={"active_agent": self.name},
             agent_used=self.name,
         )
+
+    async def process_stream(
+        self,
+        message: str,
+        history: list[dict[str, str]] | None = None,
+        session_data: dict[str, Any] | None = None,
+        user_location: dict[str, float] | None = None,
+    ) -> AsyncGenerator[tuple[str, Any], None]:
+        """스트리밍 LLM 응답 생성"""
+        from app.tools.llm import get_chat_model
+
+        model = get_chat_model()
+
+        # 대화 기록 구성
+        messages = []
+        if history:
+            for h in history:
+                messages.append((h.get("role", "user"), h.get("content", "")))
+
+        messages.append(("user", message))
+
+        # LLM 스트리밍 호출
+        async for chunk in model.astream(messages):
+            if chunk.content:
+                yield ("token", {"content": chunk.content})
+
+        # sources 전송 (토큰 스트리밍 완료 후)
+        yield ("sources", {"sources": []})
+
+        # 메타데이터 전송
+        yield ("metadata", {
+            "agent_used": self.name,
+            "actions": [],
+            "session_data": {"active_agent": self.name},
+        })
+        yield ("done", {})

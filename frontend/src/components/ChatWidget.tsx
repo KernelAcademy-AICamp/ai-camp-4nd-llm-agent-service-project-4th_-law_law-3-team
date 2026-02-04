@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
+import { useStreamingChat } from '@/hooks/useStreamingChat'
 import { api } from '@/lib/api'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
@@ -135,6 +136,10 @@ export default function ChatWidget() {
 
   const [messages, setMessages] = useState<Message[]>([getInitialMessage(null)])
 
+  // 스트리밍 관련 상태
+  const { sendStreamingMessage, isStreaming, abortStream } = useStreamingChat()
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
+
   // agent 파라미터 변경 시 채팅 초기화
   const prevAgentRef = useRef<string | null>(null)
   useEffect(() => {
@@ -185,7 +190,7 @@ export default function ChatWidget() {
 
   const handleSend = async (overrideMessage?: string, overrideLocation?: { latitude: number; longitude: number } | null) => {
     const messageToSend = overrideMessage || input
-    if (!messageToSend.trim() || isLoading) return
+    if (!messageToSend.trim() || isLoading || isStreaming) return
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -199,148 +204,190 @@ export default function ChatWidget() {
     }
     setIsLoading(true)
 
+    // 대화 기록 준비 (최근 10개)
+    const history = messages.slice(-10).map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }))
+
+    // 위치 정보: override > context
+    const locationToSend = overrideLocation !== undefined ? overrideLocation : userLocation
+
+    // 스트리밍 메시지 ID 생성
+    const streamingMsgId = (Date.now() + 1).toString()
+    setStreamingMessageId(streamingMsgId)
+
+    // 빈 어시스턴트 메시지 추가 (스트리밍 응답용)
+    const initialAssistantMsg: Message = {
+      id: streamingMsgId,
+      role: 'assistant',
+      content: '',
+    }
+    setMessages((prev) => [...prev, initialAssistantMsg])
+
+    // 스트리밍 결과 저장용
+    let accumulatedContent = ''
+    let receivedSources: ChatSource[] = []
+    let receivedActions: ChatAction[] = []
+    let receivedSessionData: Record<string, unknown> = {}
+    let agentUsed = ''
+
+    // Helper to clean AI response for case detail view
+    const cleanAIResponse = (text: string) => {
+      let cleaned = text
+        .replace(/^(안녕하세요|반갑습니다).*?(\n|$)/g, '')
+        .replace(/^.*?AI.*?입니다.*?(\n|$)/g, '')
+        .replace(/^무엇을 도와드릴까요.*?(\n|$)/g, '')
+        .trim()
+      return cleaned
+    }
+
     try {
-      // 대화 기록 준비 (최근 10개)
-      const history = messages.slice(-10).map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      }))
-
-      // 위치 정보: override > context
-      const locationToSend = overrideLocation !== undefined ? overrideLocation : userLocation
-
-      // 통합 채팅 API 호출
-      const response = await api.post<MultiAgentChatResponse>(
-        '/chat',
+      await sendStreamingMessage(
         {
           message: messageToSend,
           user_role: userRole,
           history: history,
           session_data: sessionData,
           user_location: locationToSend,
-          agent: agentFromUrl || undefined,  // URL에서 지정된 에이전트 사용
-        }
-      )
+          agent: agentFromUrl || undefined,
+        },
+        {
+          onToken: (content) => {
+            accumulatedContent += content
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === streamingMsgId
+                  ? { ...msg, content: accumulatedContent }
+                  : msg
+              )
+            )
+          },
+          onSources: (sources) => {
+            receivedSources = sources
+            // sources가 오면 메시지에 추가
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === streamingMsgId
+                  ? { ...msg, sources: sources }
+                  : msg
+              )
+            )
+          },
+          onMetadata: (metadata) => {
+            agentUsed = metadata.agent_used
+            receivedActions = metadata.actions
+            receivedSessionData = metadata.session_data
+            // 메타데이터 업데이트
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === streamingMsgId
+                  ? { ...msg, agentUsed: metadata.agent_used, actions: metadata.actions }
+                  : msg
+              )
+            )
+          },
+          onDone: () => {
+            // 스트리밍 완료
+            setStreamingMessageId(null)
+            setIsLoading(false)
 
-      // 세션 데이터 업데이트
-      const newSessionData = response.data.session_data || {}
-      
-      // Helper to clean AI response for case detail view
-      const cleanAIResponse = (text: string) => {
-        // Remove common greeting patterns at the start
-        let cleaned = text
-          .replace(/^(안녕하세요|반갑습니다).*?(\n|$)/g, '')
-          .replace(/^.*?AI.*?입니다.*?(\n|$)/g, '')
-          .replace(/^무엇을 도와드릴까요.*?(\n|$)/g, '')
-          .trim()
+            // 세션 데이터 업데이트
+            const newSessionData = { ...receivedSessionData }
 
-        // If the text starts with a header or bullet point after cleaning, it's good.
-        // If it still has some conversational filler, try to find the first comprehensive section.
-        // Strategy: Look for the first line that looks like a header or list item, or "요약", "판단".
-        const contentStartIndex = cleaned.search(/(^#|^\*\*|^\d+\.|^-\s|요약|판단|결론|판례)/m)
-        
-        if (contentStartIndex > 0) {
-           // If we found a clear start of content, take from there, but allow some context if it's close to start
-           // actually, let's just strip known greetings and return the rest to be safe.
-           // The Regex replacements above should cover most "Chatbotty" intros.
-        }
-        
-        return cleaned
-      }
+            // 판례 검색이나 법률 질문인 경우 페이지 이동
+            if (
+              (receivedSources && receivedSources.length > 0) ||
+              agentUsed === 'legal_search' ||
+              agentUsed === 'case_search' ||
+              agentUsed === 'legal_answer'
+            ) {
+              const mainSource = receivedSources?.[0]
 
-      // 판례 검색이나 법률 질문인 경우 (sources가 있거나 agent가 legal_search인 경우)
-      // 메인 화면인 판례 검색 페이지로 이동하여 결과를 보여줍니다.
-      if (
-        (response.data.sources && response.data.sources.length > 0) ||
-        response.data.agent_used === 'legal_search' ||
-        response.data.agent_used === 'case_search'
-      ) {
-        // AI 응답을 판례 상세 데이터 형식으로 변환 (기존 로직 유지)
-        const mainSource = response.data.sources?.[0]
-        
-        const aiCase = {
-          id: 'ai-generated-' + Date.now(),
-          case_name: mainSource?.case_name || 'AI 법률 분석 결과',
-          case_number: mainSource?.case_number || 'AI Analysis',
-          doc_type: mainSource?.doc_type || 'interpretation',
-          content: cleanAIResponse(response.data.response), // 인사말 제거된 정제된 내용 사용
-          summary: cleanAIResponse(response.data.response),
-          court: 'AI Legal Assistant',
-          date: new Date().toISOString().split('T')[0],
-        }
-        
-        // 세션 데이터에 추가하여 페이지 이동 후 사용할 수 있게 함
-        newSessionData.aiGeneratedCase = aiCase
-        // 모든 참조 자료를 저장 (일반인 모드용)
-        newSessionData.aiReferences = response.data.sources || []
-        
-        setSessionData({ ...sessionData, ...newSessionData })
-        
-        // 판례 검색 페이지로 이동
-        if (pathname !== '/case-precedent') {
-          router.push('/case-precedent')
-        }
-      } else if (response.data.session_data) {
-        setSessionData(response.data.session_data)
-      }
+              const aiCase = {
+                id: 'ai-generated-' + Date.now(),
+                case_name: mainSource?.case_name || '',
+                case_number: mainSource?.case_number || '',
+                doc_type: mainSource?.doc_type || 'precedent',
+                content: mainSource?.content || cleanAIResponse(accumulatedContent),
+                summary: mainSource?.summary || '',
+                court: mainSource?.court_name || '',
+                court_name: mainSource?.court_name || '',
+                date: mainSource?.decision_date || '',
+                decision_date: mainSource?.decision_date || '',
+                reasoning: mainSource?.reasoning || '',
+                ruling: mainSource?.ruling || '',
+                claim: mainSource?.claim || '',
+                full_reason: mainSource?.full_reason || '',
+                full_text: mainSource?.full_text || '',
+                reference_provisions: mainSource?.reference_provisions || '',
+                reference_cases: mainSource?.reference_cases || '',
+              }
 
-      // NAVIGATE 액션이 있으면 자동으로 페이지 이동
-      const navigateAction = response.data.actions?.find(
-        (action) => action.type === 'navigate' && action.url
-      )
+              newSessionData.aiGeneratedCase = aiCase
+              newSessionData.aiReferences = receivedSources || []
 
-      if (navigateAction && navigateAction.url) {
-        // 응답 메시지 먼저 표시
-        const assistantMsg: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: response.data.response,
-          agentUsed: response.data.agent_used,
-        }
-        setMessages((prev) => [...prev, assistantMsg])
+              setSessionData({ ...sessionData, ...newSessionData })
 
-        // URL 파라미터 구성 후 자동 이동
-        const params = navigateAction.params as Record<string, string | number | boolean> | undefined
-        let fullUrl = navigateAction.url
-        if (params && Object.keys(params).length > 0) {
-          const searchParams = new URLSearchParams()
-          Object.entries(params).forEach(([key, value]) => {
-            if (value !== undefined && value !== null) {
-              searchParams.set(key, String(value))
+              if (pathname !== '/case-precedent') {
+                router.push('/case-precedent')
+              }
+            } else if (receivedSessionData) {
+              setSessionData(receivedSessionData)
             }
-          })
-          fullUrl = `${navigateAction.url}?${searchParams.toString()}`
+
+            // NAVIGATE 액션 처리
+            const navigateAction = receivedActions?.find(
+              (action) => action.type === 'navigate' && action.url
+            )
+
+            if (navigateAction && navigateAction.url) {
+              const params = navigateAction.params as Record<string, string | number | boolean> | undefined
+              let fullUrl = navigateAction.url
+              if (params && Object.keys(params).length > 0) {
+                const urlSearchParams = new URLSearchParams()
+                Object.entries(params).forEach(([key, value]) => {
+                  if (value !== undefined && value !== null) {
+                    urlSearchParams.set(key, String(value))
+                  }
+                })
+                fullUrl = `${navigateAction.url}?${urlSearchParams.toString()}`
+              }
+              router.push(fullUrl)
+            }
+          },
+          onError: (errorMessage) => {
+            console.error('Streaming error:', errorMessage)
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === streamingMsgId
+                  ? { ...msg, content: '죄송합니다. 응답을 생성하는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' }
+                  : msg
+              )
+            )
+            setStreamingMessageId(null)
+            setIsLoading(false)
+          },
         }
-
-        // Next.js router를 사용하여 페이지 이동 (SPA 네비게이션)
-        router.push(fullUrl)
-
-        return // 여기서 종료
-      }
-
-      // 응답 메시지 생성 (참고 자료는 판례 검색 화면에서 표시)
-      const assistantContent = response.data.response
-
-      const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: assistantContent,
-        actions: response.data.actions,
-        agentUsed: response.data.agent_used,
-        sources: response.data.sources,  // 참조 자료 추가
-      }
-      setMessages((prev) => [...prev, assistantMsg])
+      )
     } catch (error) {
       console.error('Chat API error:', error)
 
       let errorContent: string
 
       if (axios.isAxiosError(error)) {
-        if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') {
+        const status = error.response?.status
+        const isNetworkError =
+          error.code === 'ECONNREFUSED' ||
+          error.code === 'ERR_NETWORK' ||
+          status === 502 ||
+          (status === 500 && !error.response?.data)
+
+        if (isNetworkError) {
           errorContent = '서버에 연결할 수 없습니다. 서버가 시작 중일 수 있으니 잠시 후 다시 시도해주세요.'
         } else if (error.code === 'ECONNABORTED') {
           errorContent = '응답 시간이 초과되었습니다. 다시 시도해주세요.'
-        } else if (error.response?.status === 503) {
+        } else if (status === 503) {
           errorContent = '서비스가 준비 중입니다. 잠시 후 다시 시도해주세요.'
         } else {
           errorContent = '죄송합니다. 응답을 생성하는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
@@ -349,13 +396,14 @@ export default function ChatWidget() {
         errorContent = '죄송합니다. 알 수 없는 오류가 발생했습니다.'
       }
 
-      const errorMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: errorContent,
-      }
-      setMessages((prev) => [...prev, errorMsg])
-    } finally {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === streamingMsgId
+            ? { ...msg, content: errorContent }
+            : msg
+        )
+      )
+      setStreamingMessageId(null)
       setIsLoading(false)
     }
   }
@@ -698,6 +746,10 @@ export default function ChatWidget() {
                   >
                     {msg.content}
                   </ReactMarkdown>
+                  {/* 스트리밍 중일 때 깜빡이는 커서 표시 */}
+                  {msg.id === streamingMessageId && (
+                    <span className="inline-block w-2 h-4 bg-current animate-pulse ml-0.5" />
+                  )}
                   {msg.actions && msg.actions.length > 0 && (
                     <ChatActions
                       actions={msg.actions}
@@ -713,8 +765,8 @@ export default function ChatWidget() {
             </div>
           </div>
         ))}
-        {/* Loading indicator */}
-        {isLoading && (
+        {/* Loading indicator (스트리밍 중이 아닐 때만 표시) */}
+        {isLoading && !streamingMessageId && (
           <div className="flex justify-start">
             <div className={`max-w-[85%] p-4 rounded-2xl rounded-tl-none ${themeClasses.messageBot}`}>
               <div className="flex items-center gap-2">
@@ -746,17 +798,17 @@ export default function ChatWidget() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSend()}
-            placeholder={isLoading ? '응답을 기다리는 중...' : '법률 질문을 입력하세요...'}
-            disabled={isLoading}
-            className={`flex-1 rounded-xl px-4 py-3 md:px-6 md:py-4 text-sm md:text-base focus:outline-none transition-all shadow-sm ${themeClasses.input} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            onKeyDown={(e) => e.key === 'Enter' && !isLoading && !isStreaming && handleSend()}
+            placeholder={isLoading || isStreaming ? '응답을 기다리는 중...' : '법률 질문을 입력하세요...'}
+            disabled={isLoading || isStreaming}
+            className={`flex-1 rounded-xl px-4 py-3 md:px-6 md:py-4 text-sm md:text-base focus:outline-none transition-all shadow-sm ${themeClasses.input} ${isLoading || isStreaming ? 'opacity-50 cursor-not-allowed' : ''}`}
           />
           <button
             onClick={() => handleSend()}
-            disabled={isLoading || !input.trim()}
-            className={`p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors shadow-lg active:scale-95 ${isLoading || !input.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={isLoading || isStreaming || !input.trim()}
+            className={`p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors shadow-lg active:scale-95 ${isLoading || isStreaming || !input.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            {isLoading ? (
+            {isLoading || isStreaming ? (
               <svg className="w-5 h-5 md:w-6 md:h-6 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle
                   className="opacity-25"

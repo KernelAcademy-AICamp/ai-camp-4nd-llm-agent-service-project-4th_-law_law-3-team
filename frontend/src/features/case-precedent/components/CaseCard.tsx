@@ -68,10 +68,6 @@ function CaseCardComponent({ case_, selected, onClick }: CaseCardProps) {
       </div>
 
       <p className="text-sm text-gray-600 line-clamp-2">{case_.summary}</p>
-
-      <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
-        <span>유사도: {Math.round(case_.similarity * 100)}%</span>
-      </div>
     </button>
   )
 }

@@ -1,29 +1,18 @@
 'use client'
 
-import ReactMarkdown from 'react-markdown'
-import type { PrecedentDetail, AIQuestionResponse } from '../types'
-import { AIChatSection } from './AIChatSection'
+import type { PrecedentDetail } from '../types'
+import { PrecedentFullTextViewer } from './PrecedentFullTextViewer'
 
 interface CaseDetailPanelProps {
   case_: PrecedentDetail | null
   isLoading: boolean
   error: string | null
-  aiResponse: AIQuestionResponse | null
-  isAskingAI: boolean
-  aiError: string | null
-  onAsk: (question: string) => void
-  onClearAI: () => void
 }
 
 export function CaseDetailPanel({
   case_,
   isLoading,
   error,
-  aiResponse,
-  isAskingAI,
-  aiError,
-  onAsk,
-  onClearAI,
 }: CaseDetailPanelProps) {
   const getDocTypeLabel = (docType: string) => {
     const labels: Record<string, string> = {
@@ -122,24 +111,10 @@ export function CaseDetailPanel({
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="prose prose-sm max-w-none">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">판결 내용</h3>
-          <div className="bg-gray-50 rounded-lg p-4 text-gray-700 leading-relaxed">
-            <ReactMarkdown>{case_.content}</ReactMarkdown>
-          </div>
-        </div>
+      {/* Content - 판례 원문 뷰어 */}
+      <div className="flex-1 overflow-y-auto">
+        <PrecedentFullTextViewer data={case_} mode="direct" />
       </div>
-
-      {/* AI Chat Section */}
-      <AIChatSection
-        response={aiResponse}
-        isLoading={isAskingAI}
-        error={aiError}
-        onAsk={onAsk}
-        onClear={onClearAI}
-      />
     </div>
   )
 }
