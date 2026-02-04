@@ -1,29 +1,18 @@
 'use client'
 
-import type { PrecedentDetail, AIQuestionResponse } from '../types'
-import { AIChatSection } from './AIChatSection'
+import type { PrecedentDetail } from '../types'
 import { PrecedentFullTextViewer } from './PrecedentFullTextViewer'
 
 interface CaseDetailPanelProps {
   case_: PrecedentDetail | null
   isLoading: boolean
   error: string | null
-  aiResponse: AIQuestionResponse | null
-  isAskingAI: boolean
-  aiError: string | null
-  onAsk: (question: string) => void
-  onClearAI: () => void
 }
 
 export function CaseDetailPanel({
   case_,
   isLoading,
   error,
-  aiResponse,
-  isAskingAI,
-  aiError,
-  onAsk,
-  onClearAI,
 }: CaseDetailPanelProps) {
   const getDocTypeLabel = (docType: string) => {
     const labels: Record<string, string> = {
@@ -126,15 +115,6 @@ export function CaseDetailPanel({
       <div className="flex-1 overflow-y-auto">
         <PrecedentFullTextViewer data={case_} mode="direct" />
       </div>
-
-      {/* AI Chat Section */}
-      <AIChatSection
-        response={aiResponse}
-        isLoading={isAskingAI}
-        error={aiError}
-        onAsk={onAsk}
-        onClear={onClearAI}
-      />
     </div>
   )
 }
