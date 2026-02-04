@@ -455,29 +455,154 @@ async def process_laws(reset: bool, batch_size: int = None):
 
 
 def show_stats():
+
+
     store = LanceDBStore()
+
+
     print("\n=== LanceDB Statistics ===")
+
+
     print(f"Total Chunks: {store.count():,}")
+
+
     print(f"Law Chunks: {store.count_by_type('법령'):,}")
+
+
     print(f"Precedent Chunks: {store.count_by_type('판례'):,}")
 
 
+
+
+
+
+
+
+def create_fts_index():
+
+
+    """Full-Text Search 인덱스 생성 (Hybrid Search용)"""
+
+
+    store = LanceDBStore()
+
+
+    if store.table is not None:
+
+
+        print("\n=== Creating FTS Index (Tantivy) ===")
+
+
+        print("[INFO] Indexing 'content' column for keyword search...")
+
+
+        try:
+
+
+            # Tantivy 엔진을 사용하여 FTS 인덱스 생성
+
+
+            store.table.create_fts_index("content", replace=True)
+
+
+            print("[INFO] FTS Index created successfully!")
+
+
+        except Exception as e:
+
+
+            print(f"[ERROR] Failed to create FTS index: {e}")
+
+
+            print("[HINT] 'pip install tantivy' might be required.")
+
+
+    else:
+
+
+        print("[WARN] Table does not exist. Run embedding first.")
+
+
+
+
+
+
+
+
 if __name__ == "__main__":
+
+
     parser = argparse.ArgumentParser()
+
+
     parser.add_argument("--type", choices=["precedent", "law", "all"], default="all")
+
+
     parser.add_argument("--reset", action="store_true")
+
+
     parser.add_argument("--stats", action="store_true")
+
+
+    parser.add_argument("--fts", action="store_true", help="FTS 인덱스만 생성")
+
+
     parser.add_argument("--batch-size", type=int)
+
+
     args = parser.parse_args()
 
+
+
+
+
     if args.stats:
+
+
         show_stats()
+
+
         sys.exit(0)
 
+
+
+
+
+    if args.fts:
+
+
+        create_fts_index()
+
+
+        sys.exit(0)
+
+
+
+
+
     if args.type in ["precedent", "all"]:
+
+
         asyncio.run(process_precedents(args.reset, args.batch_size))
+
+
     
+
+
     if args.type in ["law", "all"]:
+
+
         asyncio.run(process_laws(args.reset, args.batch_size))
+
+
         
+
+
+    # 전체 작업 완료 후 FTS 인덱스 생성 (권장)
+
+
+    create_fts_index()
+
+
     show_stats()
+

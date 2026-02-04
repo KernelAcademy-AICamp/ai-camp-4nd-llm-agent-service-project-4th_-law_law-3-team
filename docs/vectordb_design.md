@@ -247,8 +247,24 @@ backend/
 
 ### 진행 예정
 - [ ] 검색 API 연동 (LanceDB → 프론트엔드)
-- [ ] 하이브리드 검색 (벡터 + 키워드) 구현
+- [ ] 하이브리드 검색 (벡터 + 키워드) 구현 로직 완성
 - [ ] 검색 결과 캐싱
+
+---
+
+## 6.5. 하이브리드 검색 전략 (Vector + FTS)
+
+법률 도메인의 특성상 의미 검색(Vector)뿐만 아니라 정확한 키워드 매칭(FTS)이 필수적입니다.
+
+### FTS (Full-Text Search) 설정
+- **대상 컬럼**: `content`
+- **엔진**: Tantivy (LanceDB 내장)
+- **생성 시점**: 대량 임베딩 작업 완료 후 `table.create_fts_index("content")` 호출
+
+### 검색 흐름 (Hybrid)
+1. **Vector Search**: 질문의 의도와 의미가 유사한 문서 추출
+2. **FTS Search**: 특정 조문번호, 판례번호, 고유 법률 용어 매칭 문서 추출
+3. **Reciprocal Rank Fusion (RRF)**: 두 검색 결과를 결합하여 최종 순위 산정
 
 ---
 

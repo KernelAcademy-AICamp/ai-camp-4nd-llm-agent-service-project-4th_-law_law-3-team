@@ -460,6 +460,10 @@ class LanceDBStore:
         if self.table_name in self.db.table_names():
             self._table = self.db.open_table(self.table_name)
 
+    @property
+    def table(self):
+        return self._table
+
     def _ensure_table(self):
         if self._table is None:
             self._table = self.db.create_table(
@@ -467,6 +471,18 @@ class LanceDBStore:
                 schema=LEGAL_CHUNKS_SCHEMA,
             )
         return self._table
+
+    def create_fts_index(self, column: str = "content"):
+        """Full-Text Search 인덱스 생성 (Hybrid Search용)"""
+        if self._table is not None:
+            print(f"\n=== Creating FTS Index (Tantivy) on '{column}' ===")
+            try:
+                self._table.create_fts_index(column, replace=True)
+                print("[INFO] FTS Index created successfully!")
+            except Exception as e:
+                print(f"[ERROR] Failed to create FTS index: {e}")
+        else:
+            print("[WARN] Table does not exist. Run embedding first.")
 
     def add_law_documents(
         self,
@@ -2000,8 +2016,9 @@ def run_law_embedding(
     processor = LawEmbeddingProcessor()
     stats = processor.run(source_path, reset=reset, batch_size=batch_size)
 
-    # 통계 출력
+    # 통계 출력 및 인덱스 생성
     store = LanceDBStore()
+    store.create_fts_index("content")
     show_stats(store)
     del store
     clear_memory()
@@ -2034,8 +2051,9 @@ def run_precedent_embedding(
     processor = PrecedentEmbeddingProcessor()
     stats = processor.run(source_path, reset=reset, batch_size=batch_size)
 
-    # 통계 출력
+    # 통계 출력 및 인덱스 생성
     store = LanceDBStore()
+    store.create_fts_index("content")
     show_stats(store)
     del store
     clear_memory()
