@@ -288,6 +288,51 @@ for _, row in results.iterrows():
 
 ---
 
+## 변호사 데이터 PostgreSQL 로드 (load_lawyers_data.py)
+
+`data/lawyers_with_coords.json` (17,326건)을 PostgreSQL `lawyers` 테이블로 로드합니다.
+
+### 사전 조건
+
+```bash
+# 1. 마이그레이션 실행 (lawyers 테이블 생성)
+cd backend
+uv run alembic upgrade head
+```
+
+### 사용법
+
+```bash
+cd backend
+
+# 데이터 로드
+uv run python scripts/load_lawyers_data.py
+
+# 기존 데이터 삭제 후 재로드
+uv run python scripts/load_lawyers_data.py --reset
+
+# 검증만 (로드 없이)
+uv run python scripts/load_lawyers_data.py --verify
+```
+
+### 주요 동작
+
+1. `data/lawyers_with_coords.json` 읽기
+2. 각 레코드에 `extract_region()` 적용 → province, district, region 계산
+3. `ON CONFLICT (detail_id) DO UPDATE`로 멱등성 보장
+4. 1,000건 단위 배치 insert
+5. 로드 후 통계 출력 (총 건수, 좌표/전문분야 비율, 상위 지역)
+
+### 환경 변수
+
+```bash
+# backend/.env
+DATABASE_URL=postgresql://lawuser:lawpassword@localhost:5432/lawdb
+USE_DB_LAWYERS=true  # DB 모드 활성화
+```
+
+---
+
 ## 변호사 지오코딩 (geocode_lawyers.py)
 
 변호사 주소를 카카오 API로 좌표 변환합니다.

@@ -6,9 +6,13 @@
 
 from typing import Any
 
+from app.core.config import settings
 from app.multi_agent.agents.base_chat import ActionType, BaseChatAgent, ChatAction
 from app.multi_agent.schemas.plan import AgentResult
-from app.services.service_function.lawyer_service import find_nearby_lawyers, search_lawyers
+from app.services.service_function.lawyer_service import (
+    find_nearby_lawyers,
+    search_lawyers,
+)
 
 # 검색 반경 (미터)
 DEFAULT_SEARCH_RADIUS = 3000  # 3km
@@ -351,28 +355,14 @@ class LawyerFinderAgent(BaseChatAgent):
         # 5. 3단계 반경 확장 검색
         assert latitude is not None and longitude is not None
 
-        search_results = find_nearby_lawyers(
-            latitude=latitude,
-            longitude=longitude,
-            radius_m=DEFAULT_SEARCH_RADIUS,
-            category=category_id,
-        )
-        actual_radius = DEFAULT_SEARCH_RADIUS
-        search_mode = "nearby"
-
-        if not search_results:
-            search_results = find_nearby_lawyers(
-                latitude=latitude,
-                longitude=longitude,
-                radius_m=EXPANDED_SEARCH_RADIUS,
-                category=category_id,
+        if settings.USE_DB_LAWYERS:
+            search_results, actual_radius, search_mode = await self._search_db(
+                latitude, longitude, category_id,
             )
-            actual_radius = EXPANDED_SEARCH_RADIUS
-            search_mode = "expanded"
-
-        if not search_results:
-            search_results = search_lawyers(category=category_id)
-            search_mode = "all"
+        else:
+            search_results, actual_radius, search_mode = self._search_json(
+                latitude, longitude, category_id,
+            )
 
         # 6. 네비게이션 파라미터 구성
         nav_params: dict[str, Any] = {}
@@ -428,6 +418,71 @@ class LawyerFinderAgent(BaseChatAgent):
             },
             agent_used=self.name,
         )
+
+    def _search_json(
+        self,
+        latitude: float,
+        longitude: float,
+        category_id: str | None,
+    ) -> tuple[list[dict[str, Any]], int, str]:
+        """JSON 기반 3단계 반경 확장 검색."""
+        results = find_nearby_lawyers(
+            latitude=latitude,
+            longitude=longitude,
+            radius_m=DEFAULT_SEARCH_RADIUS,
+            category=category_id,
+        )
+        if results:
+            return results, DEFAULT_SEARCH_RADIUS, "nearby"
+
+        results = find_nearby_lawyers(
+            latitude=latitude,
+            longitude=longitude,
+            radius_m=EXPANDED_SEARCH_RADIUS,
+            category=category_id,
+        )
+        if results:
+            return results, EXPANDED_SEARCH_RADIUS, "expanded"
+
+        results = search_lawyers(category=category_id)
+        return results, EXPANDED_SEARCH_RADIUS, "all"
+
+    async def _search_db(
+        self,
+        latitude: float,
+        longitude: float,
+        category_id: str | None,
+    ) -> tuple[list[dict[str, Any]], int, str]:
+        """DB 기반 3단계 반경 확장 검색."""
+        from app.core.database import async_session_factory
+        from app.services.service_function.lawyer_db_service import (
+            find_nearby_lawyers_db,
+            search_lawyers_db,
+        )
+
+        async with async_session_factory() as db:
+            results = await find_nearby_lawyers_db(
+                db=db,
+                latitude=latitude,
+                longitude=longitude,
+                radius_m=DEFAULT_SEARCH_RADIUS,
+                category=category_id,
+            )
+            if results:
+                return results, DEFAULT_SEARCH_RADIUS, "nearby"
+
+            results = await find_nearby_lawyers_db(
+                db=db,
+                latitude=latitude,
+                longitude=longitude,
+                radius_m=EXPANDED_SEARCH_RADIUS,
+                category=category_id,
+            )
+            if results:
+                return results, EXPANDED_SEARCH_RADIUS, "expanded"
+
+            results = await search_lawyers_db(db=db, category=category_id)
+            return results, EXPANDED_SEARCH_RADIUS, "all"
 
     def _build_response_message(
         self,

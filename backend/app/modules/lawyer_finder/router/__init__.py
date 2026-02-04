@@ -5,8 +5,11 @@
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.database import get_db
 from app.services.service_function.lawyer_service import (
     find_nearby_lawyers,
     get_categories,
@@ -52,6 +55,7 @@ async def get_nearby_lawyers(
     limit: Optional[int] = Query(None, ge=1, description="최대 결과 수 (미지정 시 전체)"),
     category: Optional[str] = Query(None, description="전문분야 카테고리 ID"),
     specialty: Optional[str] = Query(None, description="특정 전문분야 (예: 이혼, 형사법)"),
+    db: AsyncSession = Depends(get_db),
 ) -> NearbySearchResponse:
     """
     사용자 위치 기반 주변 변호사 검색
@@ -63,14 +67,28 @@ async def get_nearby_lawyers(
     - **category**: 전문분야 카테고리 ID (예: "criminal", "civil-family")
     - **specialty**: 특정 전문분야 키워드 (예: "이혼", "형사법") - category보다 우선 적용
     """
-    lawyers_data = find_nearby_lawyers(
-        latitude=latitude,
-        longitude=longitude,
-        radius_m=radius,
-        limit=limit,
-        category=category,
-        specialty=specialty
-    )
+    if settings.USE_DB_LAWYERS:
+        from app.services.service_function.lawyer_db_service import (
+            find_nearby_lawyers_db,
+        )
+        lawyers_data = await find_nearby_lawyers_db(
+            db=db,
+            latitude=latitude,
+            longitude=longitude,
+            radius_m=radius,
+            limit=limit,
+            category=category,
+            specialty=specialty,
+        )
+    else:
+        lawyers_data = find_nearby_lawyers(
+            latitude=latitude,
+            longitude=longitude,
+            radius_m=radius,
+            limit=limit,
+            category=category,
+            specialty=specialty,
+        )
 
     lawyers = [LawyerResponse(**lawyer) for lawyer in lawyers_data]
     return NearbySearchResponse(
@@ -88,6 +106,7 @@ async def get_lawyer_clusters(
     min_lng: float = Query(..., description="최소 경도"),
     max_lng: float = Query(..., description="최대 경도"),
     zoom: int = Query(10, ge=1, le=21, description="줌 레벨"),
+    db: AsyncSession = Depends(get_db),
 ) -> ClusterResponse:
     """
     줌 레벨에 따른 클러스터 데이터 반환
@@ -95,7 +114,12 @@ async def get_lawyer_clusters(
     지도 뷰포트 내의 변호사들을 그리드로 묶어 클러스터 정보 제공
     """
     grid_size = get_zoom_grid_size(zoom)
-    clusters_data = get_clusters(min_lat, max_lat, min_lng, max_lng, grid_size)
+
+    if settings.USE_DB_LAWYERS:
+        from app.services.service_function.lawyer_db_service import get_clusters_db
+        clusters_data = await get_clusters_db(db, min_lat, max_lat, min_lng, max_lng, grid_size)
+    else:
+        clusters_data = get_clusters(min_lat, max_lat, min_lng, max_lng, grid_size)
 
     clusters = [ClusterItem(**c) for c in clusters_data]
     total_count = sum(c.count for c in clusters)
@@ -118,6 +142,7 @@ async def search_lawyers_endpoint(
     longitude: Optional[float] = Query(None, ge=-180, le=180, description="위치 필터 - 경도"),
     radius: int = Query(5000, ge=100, le=50000, description="위치 필터 - 반경 (미터)"),
     limit: Optional[int] = Query(None, ge=1, description="최대 결과 수 (미지정 시 전체)"),
+    db: AsyncSession = Depends(get_db),
 ) -> SearchResponse:
     """
     변호사 검색 (이름/사무소/지역/전문분야 + 선택적 위치 필터)
@@ -138,17 +163,34 @@ async def search_lawyers_endpoint(
         )
 
     try:
-        lawyers_data = search_lawyers(
-            name=name,
-            office=office,
-            district=district,
-            category=category,
-            specialty=specialty,
-            latitude=latitude,
-            longitude=longitude,
-            radius_m=radius,
-            limit=limit
-        )
+        if settings.USE_DB_LAWYERS:
+            from app.services.service_function.lawyer_db_service import (
+                search_lawyers_db,
+            )
+            lawyers_data = await search_lawyers_db(
+                db=db,
+                name=name,
+                office=office,
+                district=district,
+                category=category,
+                specialty=specialty,
+                latitude=latitude,
+                longitude=longitude,
+                radius_m=radius,
+                limit=limit,
+            )
+        else:
+            lawyers_data = search_lawyers(
+                name=name,
+                office=office,
+                district=district,
+                category=category,
+                specialty=specialty,
+                latitude=latitude,
+                longitude=longitude,
+                radius_m=radius,
+                limit=limit,
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -157,8 +199,12 @@ async def search_lawyers_endpoint(
 
 
 @router.get("/stats")
-async def get_stats() -> dict[str, Any]:
+async def get_stats(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
     """데이터 통계 조회"""
+    if settings.USE_DB_LAWYERS:
+        from app.services.service_function.lawyer_db_service import get_lawyer_stats_db
+        return await get_lawyer_stats_db(db)
+
     data = load_lawyers_data()
     lawyers = data.get("lawyers", [])
     metadata = data.get("metadata", {})
@@ -185,13 +231,20 @@ async def get_stats() -> dict[str, Any]:
 
 
 @router.get("/{lawyer_id}", response_model=LawyerResponse)
-async def get_lawyer_detail(lawyer_id: int) -> LawyerResponse:
+async def get_lawyer_detail(
+    lawyer_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> LawyerResponse:
     """
     변호사 상세 정보 조회
 
     - **lawyer_id**: 변호사 ID (인덱스)
     """
-    lawyer = get_lawyer_by_id(lawyer_id)
+    if settings.USE_DB_LAWYERS:
+        from app.services.service_function.lawyer_db_service import get_lawyer_by_id_db
+        lawyer = await get_lawyer_by_id_db(db, lawyer_id)
+    else:
+        lawyer = get_lawyer_by_id(lawyer_id)
 
     if not lawyer:
         raise HTTPException(status_code=404, detail="변호사를 찾을 수 없습니다")
