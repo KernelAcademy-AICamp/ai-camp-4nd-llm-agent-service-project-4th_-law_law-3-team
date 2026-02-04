@@ -712,24 +712,14 @@ print_memory_status()
 
 ## 16. TODO / Known Issues
 
-### 판례 메타데이터 누락 필드
+### 판례 메타데이터 누락 필드 (해결됨)
 
-`PrecedentEmbeddingProcessor.extract_metadata()`에서 일부 필드가 추출되지 않음.
+2026-02-05 업데이트: `runpod_lancedb_embeddings.py` 및 `create_lancedb_embeddings.py` 수정으로 해결되었습니다.
 
 | 필드 | JSON 원본 | 상태 | 비고 |
 |------|-----------|------|------|
-| `judgment_type` | 판결유형 | ❌ 누락 | 스키마에 정의됨, 추출 코드 없음 |
-| `judgment_status` | - | ❌ 없음 | 스키마에 정의됨, JSON에 해당 필드 없음 |
-
-**수정 필요:**
-```python
-# runpod_lancedb_embeddings.py - PrecedentEmbeddingProcessor.extract_metadata()
-def extract_metadata(self, item: Dict[str, Any]) -> Dict[str, str]:
-    return {
-        ...
-        "judgment_type": item.get("판결유형", ""),  # 추가 필요
-    }
-```
+| `judgment_type` | 판결유형 | ✅ 완료 | `extract_metadata`에 추가됨 |
+| `judgment_status` | 판결상태 | ✅ 완료 | `extract_metadata`에 추가됨 |
 
 ### 판례 JSON 필드 중 미사용 필드
 
