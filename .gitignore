@@ -33,6 +33,7 @@ ENV/
 .idea/
 .vscode/
 .claude/settings.local.json
+.mcp.json
 *.swp
 *.swo
 .DS_Store
