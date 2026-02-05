@@ -70,8 +70,18 @@ export function useCaseSearch(): UseCaseSearchReturn {
 
   // Handle AI Generated Cases from Chat
   useEffect(() => {
-    const refs = sessionData.aiReferences as PrecedentDetail[] | undefined
-    if (refs && Array.isArray(refs) && refs.length > 0) {
+    const rawRefs = sessionData.aiReferences as PrecedentDetail[] | undefined
+    if (rawRefs && Array.isArray(rawRefs) && rawRefs.length > 0) {
+      // 중복 제거: case_number(판례) 또는 law_name(법령) 기준
+      const seen = new Set<string>()
+      const refs = rawRefs.filter((ref) => {
+        const key = ref.doc_type === 'law'
+          ? (ref as Record<string, unknown>).law_name as string
+          : ref.case_number
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
       // aiReferences에서 모든 판례를 검색 결과 목록에 추가
       const newResults: PrecedentItem[] = refs.map((ref, idx) => ({
         id: ref.id || `ai-ref-${idx}-${Date.now()}`,

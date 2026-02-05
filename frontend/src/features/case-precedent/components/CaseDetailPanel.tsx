@@ -84,31 +84,34 @@ export function CaseDetailPanel({
     )
   }
 
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return ''
+    const cleaned = String(dateStr).replace(/-/g, '')
+    if (cleaned.length === 8) {
+      const year = cleaned.slice(0, 4)
+      const month = parseInt(cleaned.slice(4, 6), 10)
+      const day = parseInt(cleaned.slice(6, 8), 10)
+      return `${year}. ${month}. ${day}.`
+    }
+    return dateStr
+  }
+
+  const court = case_.court_name || case_.court || '대법원'
+  const date = formatDate(case_.decision_date || case_.date)
+  const caseNumber = case_.case_number || ''
+  const caseName = case_.case_name || ''
+
   return (
     <div className="flex-1 flex flex-col bg-white overflow-hidden">
-      {/* Header */}
-      <div className="p-6 border-b border-gray-200 bg-white">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 rounded">
-                {getDocTypeLabel(case_.doc_type)}
-              </span>
-              {case_.court && (
-                <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
-                  {case_.court}
-                </span>
-              )}
-            </div>
-            <h2 className="text-xl font-bold text-gray-900">{case_.case_name || '제목 없음'}</h2>
-            <div className="mt-2 text-sm text-gray-500 space-x-3">
-              {case_.case_number && (
-                <span className="font-mono">{case_.case_number}</span>
-              )}
-              {case_.date && <span>| {case_.date}</span>}
-            </div>
-          </div>
-        </div>
+      {/* 얇은 헤더바 */}
+      <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 text-sm text-gray-700 truncate">
+        <span className="font-medium">
+          {court} {date} 선고 {caseNumber} 판결
+        </span>
+        {caseName && (
+          <span className="ml-1">[{caseName}]</span>
+        )}
+        <span className="text-gray-400 ml-3">| 대법원 종합법률정보</span>
       </div>
 
       {/* Content - 판례 원문 뷰어 */}

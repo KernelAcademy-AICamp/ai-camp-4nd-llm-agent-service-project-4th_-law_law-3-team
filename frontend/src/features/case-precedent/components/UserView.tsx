@@ -78,6 +78,7 @@ export function UserView() {
   const { sessionData, userRole, highlightedCaseNumber, setHighlightedCaseNumber } = useChat()
   const [references, setReferences] = useState<ChatSource[]>([])
   const [selectedRef, setSelectedRef] = useState<ChatSource | null>(null)
+  const [isProvisionsOpen, setIsProvisionsOpen] = useState(true)
   const isLawyer = userRole === 'lawyer'
   const cardRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const listContainerRef = useRef<HTMLDivElement>(null)
@@ -85,7 +86,16 @@ export function UserView() {
   useEffect(() => {
     // 세션 데이터에서 챗봇 참조 자료를 로드합니다.
     if (sessionData.aiReferences && Array.isArray(sessionData.aiReferences)) {
-      setReferences(sessionData.aiReferences as ChatSource[])
+      const raw = sessionData.aiReferences as ChatSource[]
+      // 중복 제거: case_number(판례) 또는 law_name(법령) 기준
+      const seen = new Set<string>()
+      const unique = raw.filter((ref) => {
+        const key = ref.doc_type === 'law' ? ref.law_name : ref.case_number
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      setReferences(unique)
     }
   }, [sessionData.aiReferences])
 
@@ -233,7 +243,7 @@ export function UserView() {
                     {selectedRef.reasoning && (
                       <div className="bg-blue-50 p-5 rounded-xl border border-blue-100">
                         <h3 className="font-bold text-blue-800 mb-3 flex items-center gap-2">
-                          <span>📋</span> 판결 요지 (핵심 내용)
+                          <span>📋</span> 법원 판단의 핵심 (판결요지)
                         </h3>
                         <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
                           {selectedRef.reasoning}
@@ -245,13 +255,58 @@ export function UserView() {
                     {selectedRef.ruling && (
                       <div className="bg-green-50 p-5 rounded-xl border border-green-100">
                         <h3 className="font-bold text-green-800 mb-3 flex items-center gap-2">
-                          <span>⚖️</span> 주문 (판결 결과)
+                          <span>⚖️</span> 처벌·판결 결과 (주문)
                         </h3>
                         <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
                           {selectedRef.ruling}
                         </p>
                       </div>
                     )}
+
+                    {/* 참조 조문 */}
+                    {(() => {
+                      const provisions = selectedRef.reference_provisions
+                        ? selectedRef.reference_provisions
+                            .split(',')
+                            .map((s) => s.trim())
+                            .filter(Boolean)
+                        : []
+                      if (provisions.length === 0) return null
+                      return (
+                        <div className="border border-gray-200 rounded-xl overflow-hidden">
+                          <button
+                            onClick={() => setIsProvisionsOpen(!isProvisionsOpen)}
+                            className="w-full flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors"
+                          >
+                            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                            </svg>
+                            <span className="text-sm font-medium text-gray-700">참조 조문</span>
+                            <span className="text-xs text-gray-400">{provisions.length}</span>
+                            <svg
+                              className={`w-4 h-4 text-gray-400 ml-auto transition-transform ${isProvisionsOpen ? 'rotate-180' : ''}`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                            </svg>
+                          </button>
+                          {isProvisionsOpen && (
+                            <ul className="px-4 pb-3 space-y-1 max-h-48 overflow-y-auto">
+                              {provisions.map((provision, idx) => (
+                                <li
+                                  key={idx}
+                                  className="text-sm text-gray-700 py-1.5 px-3 rounded hover:bg-gray-50 cursor-default"
+                                >
+                                  {provision}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )
+                    })()}
 
                     {/* 더 보기 (접힘) - 판결문 전체 보기 */}
                     <PrecedentFullTextViewer

@@ -29,6 +29,7 @@ export function LawyerView() {
         error={searchError}
         filters={filters}
         selectedCaseId={selectedCase?.id || null}
+        selectedCase={selectedCase}
         onFilterChange={setFilters}
         onSearch={search}
         onCaseSelect={selectCase}

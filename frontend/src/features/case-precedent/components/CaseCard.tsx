@@ -1,7 +1,9 @@
 'use client'
 
 import { memo } from 'react'
+import Image from 'next/image'
 import type { PrecedentItem } from '../types'
+import { getCourtLogo, getDocTypeLogo, DEFAULT_GOV_LOGO } from '../utils/lawTypeLogo'
 
 interface CaseCardProps {
   case_: PrecedentItem
@@ -30,6 +32,11 @@ function CaseCardComponent({ case_, selected, onClick }: CaseCardProps) {
     return colors[docType] || 'bg-gray-100 text-gray-800'
   }
 
+  const isLaw = case_.doc_type === 'law'
+  const logoPath = isLaw
+    ? null
+    : getCourtLogo(case_.court) || getDocTypeLogo(case_.doc_type)
+
   return (
     <button
       onClick={onClick}
@@ -39,35 +46,28 @@ function CaseCardComponent({ case_, selected, onClick }: CaseCardProps) {
           : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
       }`}
     >
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <h3 className="font-medium text-gray-900 line-clamp-2 flex-1">
-          {case_.case_name || '제목 없음'}
-        </h3>
-        <span
-          className={`shrink-0 px-2 py-0.5 text-xs font-medium rounded ${getDocTypeColor(
-            case_.doc_type
-          )}`}
-        >
-          {getDocTypeLabel(case_.doc_type)}
-        </span>
-      </div>
+      <div className="flex items-start gap-3">
+        {/* 로고 */}
+        <div className="shrink-0 w-10 h-10 flex items-center justify-center bg-gray-50 rounded-lg">
+          <Image
+            src={logoPath || DEFAULT_GOV_LOGO}
+            alt={case_.court || '대한민국 정부'}
+            width={32}
+            height={32}
+            className="object-contain"
+            unoptimized
+          />
+        </div>
 
-      <div className="text-sm text-gray-500 mb-2 space-y-1">
-        {case_.case_number && (
-          <p className="font-mono text-xs">{case_.case_number}</p>
-        )}
-        <div className="flex items-center gap-2 text-xs">
-          {case_.court && <span>{case_.court}</span>}
+        <div className="flex-1 min-w-0">
+          <h3 className="font-medium text-gray-900 line-clamp-2">
+            {[case_.court, case_.case_number].filter(Boolean).join(' ') || '제목 없음'}
+          </h3>
           {case_.date && (
-            <>
-              {case_.court && <span>|</span>}
-              <span>{case_.date}</span>
-            </>
+            <p className="text-xs text-gray-400 mt-1">{case_.date}</p>
           )}
         </div>
       </div>
-
-      <p className="text-sm text-gray-600 line-clamp-2">{case_.summary}</p>
     </button>
   )
 }
