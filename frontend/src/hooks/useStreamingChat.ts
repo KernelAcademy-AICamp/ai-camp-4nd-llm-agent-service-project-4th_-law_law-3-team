@@ -5,6 +5,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react'
+import type { ChatAction } from '@/components/ChatActions'
 
 interface ChatSource {
   case_name?: string
@@ -17,14 +18,8 @@ interface ChatSource {
   law_type?: string
   cited_statutes?: string[]
   similar_cases?: string[]
-}
-
-interface ChatAction {
-  type: string
-  label: string
-  action?: string
-  url?: string
-  params?: Record<string, unknown>
+  court_name?: string
+  decision_date?: string
 }
 
 interface ChatMetadata {

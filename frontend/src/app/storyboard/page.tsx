@@ -2,13 +2,11 @@
 
 import { useState, useCallback } from 'react'
 import { BackButton } from '@/components/ui/BackButton'
-import {
-  MultiInputPanel,
-  TimelineView,
-  TimelineToolbar,
-  TimelineItemEditor,
-  VideoGenerationModal,
-} from '@/features/storyboard/components'
+import { MultiInputPanel } from '@/features/storyboard/components/MultiInputPanel'
+import { TimelineView } from '@/features/storyboard/components/TimelineView'
+import { TimelineToolbar } from '@/features/storyboard/components/TimelineToolbar'
+import { TimelineItemEditor } from '@/features/storyboard/components/TimelineItemEditor'
+import { VideoGenerationModal } from '@/features/storyboard/components/VideoGenerationModal'
 import { useTimelineState } from '@/features/storyboard/hooks'
 import type { TimelineItem, VideoSettings } from '@/features/storyboard/types'
 

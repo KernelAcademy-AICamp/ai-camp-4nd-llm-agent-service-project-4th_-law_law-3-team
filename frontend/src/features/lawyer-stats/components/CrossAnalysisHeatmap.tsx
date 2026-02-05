@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchCrossAnalysisByRegions, fetchRegionStats } from '../services'
 import { RegionSelector } from './RegionSelector'
@@ -99,9 +99,9 @@ export function CrossAnalysisHeatmap() {
     }
   }, [crossAnalysisQuery.data])
 
-  const getValue = (region: string, category: string) => {
+  const getValue = useCallback((region: string, category: string) => {
     return matrix.get(`${region}-${category}`) ?? 0
-  }
+  }, [matrix])
 
   const data = crossAnalysisQuery.data
 

@@ -75,6 +75,16 @@ interface ChatSource {
   // 법령용 필드
   law_name?: string
   law_type?: string
+  // 판례 메타 정보
+  court_name?: string
+  decision_date?: string
+  reasoning?: string
+  ruling?: string
+  claim?: string
+  full_reason?: string
+  full_text?: string
+  reference_provisions?: string
+  reference_cases?: string
   // 그래프 보강 정보
   cited_statutes?: string[]
   similar_cases?: string[]
