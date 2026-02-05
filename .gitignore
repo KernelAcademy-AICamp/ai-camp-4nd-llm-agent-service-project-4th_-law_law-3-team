@@ -67,3 +67,7 @@ lancedb_data/
 # Docker
 .env.docker
 docker-compose.override.yml
+
+# bkit local state files
+docs/.bkit-memory.json
+docs/.pdca-status.json
