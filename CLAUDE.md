@@ -6,6 +6,69 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 법률 서비스 플랫폼 - 모듈형 아키텍처로 기능을 유연하게 추가/삭제할 수 있는 법률 서비스 플랫폼입니다.
 
+## Primary Languages
+
+| 언어 | 용도 | 타입 검증 |
+|------|------|----------|
+| **TypeScript** | Frontend (Next.js), 프론트엔드 컴포넌트 | `npm run build` (tsc + ESLint) |
+| **Python** | Backend (FastAPI), 멀티에이전트, RAG | `ruff check` + `mypy` |
+
+양쪽 모두 **타입 어노테이션 필수**. 타입 미지정 코드 작성 금지.
+
+## Long-Running Tasks
+
+보안 감사, 대규모 리팩토링, 아키텍처 분석 등 장시간 작업 시:
+
+1. 작업 시작 전 **단계별 체크리스트**를 TaskCreate로 생성
+2. 각 단계 완료 시 **중간 결과를 파일로 저장** (세션 중단 시 유실 방지)
+3. 3개 이상 파일을 수정하는 작업은 반드시 단계별 추적
+
+### 세션 범위 원칙
+
+- **하나의 세션에 하나의 목적**을 유지
+- 디버깅 도중 보안 감사 등 관련 없는 작업을 혼합하지 않음
+- 목적이 다르면 별도 세션으로 분리
+
+## Claude Code Hooks 설정 (팀원 필수)
+
+프로젝트에 `Edit`/`Write` 후 자동 린트 검증 훅이 포함되어 있습니다.
+훅 스크립트(`.claude/hooks/post-write-verify.sh`)는 git에 포함되지만, 활성화 설정은 **각자 로컬에서** 해야 합니다.
+
+### 설정 방법
+
+`.claude/settings.local.json` 파일에 아래 내용을 추가하세요 (파일이 없으면 새로 생성):
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-write-verify.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### 동작 방식
+
+| 파일 타입 | 검증 도구 | 실패 시 |
+|-----------|----------|---------|
+| `*.py` (backend/) | `uv run ruff check` | 수정 후 재검증 |
+| `*.ts, *.tsx` (frontend/) | `npx tsc --noEmit` | 수정 후 재검증 |
+
+### 참고
+- `.claude/settings.local.json`은 `.gitignore`에 포함되어 있으므로 커밋되지 않습니다
+- 훅이 실패하면 Claude가 자동으로 코드를 수정하고 재검증합니다
+- `jq`가 설치되어 있어야 합니다 (`brew install jq`)
+
 ## Commands
 
 ### Backend (uv + FastAPI)

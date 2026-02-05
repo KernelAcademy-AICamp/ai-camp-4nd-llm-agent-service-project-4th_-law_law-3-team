@@ -71,3 +71,4 @@ docker-compose.override.yml
 # bkit local state files
 docs/.bkit-memory.json
 docs/.pdca-status.json
+docs/.pdca-snapshots/
