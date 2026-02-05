@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, KeyboardEvent } from 'react'
-import type { PrecedentItem, SearchFilters } from '../types'
+import type { PrecedentItem, PrecedentDetail, SearchFilters } from '../types'
 import { CaseCard } from './CaseCard'
 
 interface SearchPanelProps {
@@ -11,6 +11,7 @@ interface SearchPanelProps {
   error: string | null
   filters: SearchFilters
   selectedCaseId: string | null
+  selectedCase?: PrecedentDetail | null
   onFilterChange: (filters: Partial<SearchFilters>) => void
   onSearch: () => void
   onCaseSelect: (id: string) => void
@@ -37,17 +38,26 @@ export function SearchPanel({
   error,
   filters,
   selectedCaseId,
+  selectedCase,
   onFilterChange,
   onSearch,
   onCaseSelect,
 }: SearchPanelProps) {
   const [isFilterOpen, setIsFilterOpen] = useState(false)
+  const [isProvisionsOpen, setIsProvisionsOpen] = useState(true)
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       onSearch()
     }
   }
+
+  const provisions = selectedCase?.reference_provisions
+    ? selectedCase.reference_provisions
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : []
 
   return (
     <div className="w-96 bg-white border-r border-gray-200 flex flex-col h-full">
@@ -124,6 +134,42 @@ export function SearchPanel({
           </div>
         )}
       </div>
+
+      {/* 참조 조문 */}
+      {provisions.length > 0 && (
+        <div className="border-t border-gray-200">
+          <button
+            onClick={() => setIsProvisionsOpen(!isProvisionsOpen)}
+            className="w-full flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors"
+          >
+            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+            </svg>
+            <span className="text-sm font-medium text-gray-700">참조 조문</span>
+            <span className="text-xs text-gray-400">{provisions.length}</span>
+            <svg
+              className={`w-4 h-4 text-gray-400 ml-auto transition-transform ${isProvisionsOpen ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
+          {isProvisionsOpen && (
+            <ul className="px-4 pb-3 space-y-1 max-h-48 overflow-y-auto">
+              {provisions.map((provision, idx) => (
+                <li
+                  key={idx}
+                  className="text-sm text-gray-700 py-1.5 px-3 rounded hover:bg-gray-50 cursor-default"
+                >
+                  {provision}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   )
 }
