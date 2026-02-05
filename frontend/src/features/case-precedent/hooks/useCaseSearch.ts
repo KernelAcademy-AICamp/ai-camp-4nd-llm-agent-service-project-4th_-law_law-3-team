@@ -76,7 +76,7 @@ export function useCaseSearch(): UseCaseSearchReturn {
       const seen = new Set<string>()
       const refs = rawRefs.filter((ref) => {
         const key = ref.doc_type === 'law'
-          ? (ref as Record<string, unknown>).law_name as string
+          ? (ref as unknown as Record<string, unknown>).law_name as string
           : ref.case_number
         if (!key || seen.has(key)) return false
         seen.add(key)
