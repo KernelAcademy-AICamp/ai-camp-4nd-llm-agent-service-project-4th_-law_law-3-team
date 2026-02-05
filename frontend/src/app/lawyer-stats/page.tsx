@@ -2,12 +2,43 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { CrossAnalysisHeatmap } from '@/features/lawyer-stats/components/CrossAnalysisHeatmap'
-import { RegionDetailList } from '@/features/lawyer-stats/components/RegionDetailList'
-import { RegionGeoMap } from '@/features/lawyer-stats/components/RegionGeoMap'
-import { SpecialtyBarChart } from '@/features/lawyer-stats/components/SpecialtyBarChart'
 import { StickyTabNav, type TabType } from '@/features/lawyer-stats/components/StickyTabNav'
+
+// Inline loading component for dynamic imports
+const DynamicLoadingFallback = () => (
+  <div className="flex h-40 items-center justify-center">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+  </div>
+)
+
+const MapLoadingFallback = () => (
+  <div className="flex h-[500px] items-center justify-center">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+  </div>
+)
+
+// Dynamic imports for heavy chart components (reduces initial bundle size)
+const RegionGeoMap = dynamic(
+  () => import('@/features/lawyer-stats/components/RegionGeoMap').then(m => m.RegionGeoMap),
+  { ssr: false, loading: MapLoadingFallback }
+)
+
+const RegionDetailList = dynamic(
+  () => import('@/features/lawyer-stats/components/RegionDetailList').then(m => m.RegionDetailList),
+  { loading: DynamicLoadingFallback }
+)
+
+const CrossAnalysisHeatmap = dynamic(
+  () => import('@/features/lawyer-stats/components/CrossAnalysisHeatmap').then(m => m.CrossAnalysisHeatmap),
+  { loading: DynamicLoadingFallback }
+)
+
+const SpecialtyBarChart = dynamic(
+  () => import('@/features/lawyer-stats/components/SpecialtyBarChart').then(m => m.SpecialtyBarChart),
+  { loading: DynamicLoadingFallback }
+)
 import {
   fetchDensityStats,
   fetchOverview,

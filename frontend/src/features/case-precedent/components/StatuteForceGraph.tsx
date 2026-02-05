@@ -2,6 +2,7 @@
 
 import { useRef, useCallback, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
+import NextImage from 'next/image'
 import { casePrecedentService, type GraphNode, type GraphLink } from '../services'
 import { getLawTypeLogo, DEFAULT_GOV_LOGO } from '../utils/lawTypeLogo'
 import { forceCollide, forceManyBody, forceRadial } from 'd3-force'
@@ -568,15 +569,15 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
             <span>헌법 (태양/중심)</span>
           </div>
           <div className="flex items-center gap-2">
-            <img src="/data/logo/National_Assembly.png" alt="국회" className="w-5 h-5 object-contain bg-white rounded-full p-0.5" />
+            <NextImage src="/data/logo/National_Assembly.png" alt="국회" width={20} height={20} className="object-contain bg-white rounded-full p-0.5" />
             <span>법률</span>
           </div>
           <div className="flex items-center gap-2">
-            <img src="/data/logo/president.svg" alt="대통령" className="w-5 h-5 object-contain bg-white rounded-full p-0.5" />
+            <NextImage src="/data/logo/president.svg" alt="대통령" width={20} height={20} className="object-contain bg-white rounded-full p-0.5" />
             <span>대통령령</span>
           </div>
           <div className="flex items-center gap-2">
-            <img src="/data/logo/government_of_Korea.svg" alt="정부" className="w-5 h-5 object-contain bg-white rounded-full p-0.5" />
+            <NextImage src="/data/logo/government_of_Korea.svg" alt="정부" width={20} height={20} className="object-contain bg-white rounded-full p-0.5" />
             <span>총리령/부령/규칙</span>
           </div>
         </div>
