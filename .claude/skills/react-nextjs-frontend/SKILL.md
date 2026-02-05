@@ -1,6 +1,6 @@
 ---
 name: react-nextjs-frontend
-description: Comprehensive React/Next.js frontend development with Tailwind CSS. Use when creating new components, refactoring existing code, improving UI/UX, ensuring accessibility, or building modern web applications. Supports FastAPI and other backend integrations with flexible architecture patterns.
+description: React/Next.js 프론트엔드 개발 가이드. 컴포넌트 생성, 리팩토링, UI/UX 개선, 접근성 확보, Tailwind CSS 스타일링. FastAPI 백엔드 연동 패턴 포함. 새 컴포넌트 작성, 기존 코드 개선, 접근성 검토 시 사용.
 ---
 
 # React Next.js Frontend Development

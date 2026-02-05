@@ -1,6 +1,6 @@
 ---
 name: korean-legal-domain
-description: 한국 법령/판례 RAG 시스템 개발을 위한 도메인 지식과 데이터 구조 가이드입니다.
+description: 한국 법령/판례 RAG 시스템 도메인 지식. 법령 XML 계층 구조, 판례 데이터 구조, 참조 관계 유형, Graph DB 스키마(Neo4j), 청킹 전략. 법령/판례 데이터 처리, 참조 관계 추출, 법률 RAG 시스템 개발 시 사용.
 ---
 # Korean Legal Domain Skill
 

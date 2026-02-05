@@ -1,6 +1,6 @@
 ---
 name: legal-rag-experiment-tracking
-description: 한국 법령/판례 RAG 시스템의 검색 성능 실험을 체계적으로 추적하고 기록하기 위한 스킬입니다.
+description: 한국 법령/판례 RAG 시스템 검색 성능 실험 추적 가이드. 실험 메타데이터 템플릿, 쿼리 유형별 평가, 성능 지표(Recall, MRR, NDCG), 비용 지표, 비교 실험 요약. RAG 성능 개선 실험 설계, 결과 기록, A/B 테스트 시 사용.
 ---
 
 # Legal RAG Experiment Tracking Skill
