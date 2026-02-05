@@ -1,21 +1,22 @@
 # Development Docker Compose - PostgreSQL + Neo4j
 # Usage: docker-compose up -d postgres neo4j
+# 환경변수: 루트 .env 파일에서 로드 (cp .env.example .env 후 편집)
 
 services:
   postgres:
     image: postgres:15-alpine
     container_name: law-platform-db
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
-      POSTGRES_USER: lawuser
-      POSTGRES_PASSWORD: lawpassword
-      POSTGRES_DB: lawdb
+      POSTGRES_USER: ${POSTGRES_USER:-lawuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-lawdb}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lawuser -d lawdb"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lawuser} -d ${POSTGRES_DB:-lawdb}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,10 +26,10 @@ services:
     image: neo4j:5.15.0
     container_name: neo4j-law-graph
     ports:
-      - "7474:7474"  # Browser UI
-      - "7687:7687"  # Bolt Protocol
+      - "127.0.0.1:7474:7474"  # Browser UI
+      - "127.0.0.1:7687:7687"  # Bolt Protocol
     environment:
-      - NEO4J_AUTH=neo4j/password1234
+      - NEO4J_AUTH=${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set in .env}
       - NEO4J_PLUGINS=["apoc"]
       - NEO4J_dbms_memory_heap_initial__size=1G
       - NEO4J_dbms_memory_heap_max__size=2G
