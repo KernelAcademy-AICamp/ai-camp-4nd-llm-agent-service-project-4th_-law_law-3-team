@@ -469,7 +469,9 @@ app/models/
 ├── law_document.py        # 법령 원본 (LanceDB 연동)
 ├── precedent_document.py  # 판례 원본 (LanceDB 연동)
 ├── legal_document.py      # 법률 문서 (일반)
-└── legal_reference.py     # 참조 정보
+├── legal_reference.py     # 참조 정보
+├── lawyer.py              # 변호사 정보
+└── trial_statistics.py    # 재판 통계
 ```
 
 ### 테이블 구조
@@ -479,6 +481,7 @@ app/models/
 | `law_documents` | 법령 원본 | law_id, law_name, content, raw_data |
 | `precedent_documents` | 판례 원본 | serial_number, case_name, ruling, reasoning |
 | `lawyers` | 변호사 정보 (17,326건) | name, address, specialties(ARRAY), latitude, longitude, region |
+| `trial_statistics` | 재판 통계 | category, court_name, court_type, parent_court, year, case_count |
 
 ### 변호사 데이터 (lawyers 테이블)
 

@@ -14,16 +14,17 @@ from alembic import context
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 설정 및 모델 임포트
-from app.core.database import Base
-from app.models import (
-    LegalDocument,
-    Law,
-    Lawyer,
-    LegalReference,
-    LawDocument,
-    PrecedentDocument,
-)  # 모델 임포트 (테이블 등록)
 from app.core.config import settings
+from app.core.database import Base
+from app.models import (  # noqa: F401  # 모델 임포트 (테이블 등록)
+    Law,
+    LawDocument,
+    Lawyer,
+    LegalDocument,
+    LegalReference,
+    PrecedentDocument,
+    TrialStatistics,
+)
 
 # Alembic Config 객체
 config = context.config
