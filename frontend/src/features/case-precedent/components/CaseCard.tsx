@@ -1,6 +1,6 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useCallback } from 'react'
 import Image from 'next/image'
 import type { PrecedentItem } from '../types'
 import { getCourtLogo, getDocTypeLogo, DEFAULT_GOV_LOGO } from '../utils/lawTypeLogo'
@@ -8,10 +8,14 @@ import { getCourtLogo, getDocTypeLogo, DEFAULT_GOV_LOGO } from '../utils/lawType
 interface CaseCardProps {
   case_: PrecedentItem
   selected: boolean
-  onClick: () => void
+  onSelect: (id: string) => void  // Changed: receives id as callback parameter
 }
 
-function CaseCardComponent({ case_, selected, onClick }: CaseCardProps) {
+function CaseCardComponent({ case_, selected, onSelect }: CaseCardProps) {
+  // Memoized click handler to avoid creating new function on each render
+  const handleClick = useCallback(() => {
+    onSelect(case_.id)
+  }, [onSelect, case_.id])
   const getDocTypeLabel = (docType: string) => {
     const labels: Record<string, string> = {
       precedent: '판례',
@@ -39,7 +43,7 @@ function CaseCardComponent({ case_, selected, onClick }: CaseCardProps) {
 
   return (
     <button
-      onClick={onClick}
+      onClick={handleClick}
       className={`w-full text-left p-4 rounded-lg border transition-all ${
         selected
           ? 'border-blue-500 bg-blue-50 shadow-md'

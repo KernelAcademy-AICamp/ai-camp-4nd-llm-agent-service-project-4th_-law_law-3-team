@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
@@ -54,6 +54,67 @@ function CaseNumberLink({
       })}
     </>
   )
+}
+
+// Memoized markdown components factory to prevent recreation on every render
+function useMarkdownComponents(
+  onCaseClick: (caseNumber: string) => void,
+  isLightTheme: boolean
+) {
+  return useMemo(() => ({
+    p: ({ children }: { children?: React.ReactNode }) => (
+      <p>
+        {typeof children === 'string' ? (
+          <CaseNumberLink
+            text={children}
+            onCaseClick={onCaseClick}
+            isLightTheme={isLightTheme}
+          />
+        ) : Array.isArray(children) ? (
+          children.map((child, i) =>
+            typeof child === 'string' ? (
+              <CaseNumberLink
+                key={i}
+                text={child}
+                onCaseClick={onCaseClick}
+                isLightTheme={isLightTheme}
+              />
+            ) : (
+              <span key={i}>{child}</span>
+            )
+          )
+        ) : (
+          children
+        )}
+      </p>
+    ),
+    li: ({ children }: { children?: React.ReactNode }) => (
+      <li>
+        {typeof children === 'string' ? (
+          <CaseNumberLink
+            text={children}
+            onCaseClick={onCaseClick}
+            isLightTheme={isLightTheme}
+          />
+        ) : Array.isArray(children) ? (
+          children.map((child, i) =>
+            typeof child === 'string' ? (
+              <CaseNumberLink
+                key={i}
+                text={child}
+                onCaseClick={onCaseClick}
+                isLightTheme={isLightTheme}
+              />
+            ) : (
+              <span key={i}>{child}</span>
+            )
+          )
+        ) : (
+          children
+        )}
+      </li>
+    ),
+  }), [onCaseClick, isLightTheme])
 }
 
 interface Message {
@@ -514,6 +575,9 @@ export default function ChatWidget() {
   // Theme configuration (map page uses light theme, others use dark)
   const isLightTheme = isMapPage
 
+  // Memoized markdown components for ReactMarkdown
+  const markdownComponents = useMarkdownComponents(setHighlightedCaseNumber, isLightTheme)
+
   // Styles based on theme
   const themeClasses = isLightTheme
     ? {
@@ -705,63 +769,7 @@ export default function ChatWidget() {
             >
               {msg.role === 'assistant' ? (
                 <div className={`prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit ${!isLightTheme ? 'prose-invert' : ''}`}>
-                  <ReactMarkdown
-                    components={{
-                      // 텍스트 노드에서 판례번호를 클릭 가능하게 변환
-                      p: ({ children }) => (
-                        <p>
-                          {typeof children === 'string' ? (
-                            <CaseNumberLink
-                              text={children}
-                              onCaseClick={setHighlightedCaseNumber}
-                              isLightTheme={isLightTheme}
-                            />
-                          ) : Array.isArray(children) ? (
-                            children.map((child, i) =>
-                              typeof child === 'string' ? (
-                                <CaseNumberLink
-                                  key={i}
-                                  text={child}
-                                  onCaseClick={setHighlightedCaseNumber}
-                                  isLightTheme={isLightTheme}
-                                />
-                              ) : (
-                                <span key={i}>{child}</span>
-                              )
-                            )
-                          ) : (
-                            children
-                          )}
-                        </p>
-                      ),
-                      li: ({ children }) => (
-                        <li>
-                          {typeof children === 'string' ? (
-                            <CaseNumberLink
-                              text={children}
-                              onCaseClick={setHighlightedCaseNumber}
-                              isLightTheme={isLightTheme}
-                            />
-                          ) : Array.isArray(children) ? (
-                            children.map((child, i) =>
-                              typeof child === 'string' ? (
-                                <CaseNumberLink
-                                  key={i}
-                                  text={child}
-                                  onCaseClick={setHighlightedCaseNumber}
-                                  isLightTheme={isLightTheme}
-                                />
-                              ) : (
-                                <span key={i}>{child}</span>
-                              )
-                            )
-                          ) : (
-                            children
-                          )}
-                        </li>
-                      ),
-                    }}
-                  >
+                  <ReactMarkdown components={markdownComponents}>
                     {msg.content}
                   </ReactMarkdown>
                   {/* 스트리밍 중일 때 깜빡이는 커서 표시 */}

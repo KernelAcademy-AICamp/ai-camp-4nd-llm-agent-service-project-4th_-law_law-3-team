@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { casePrecedentService } from '../services'
 import { useChat } from '@/context/ChatContext'
 import type {
@@ -48,6 +48,10 @@ const DEFAULT_FILTERS: SearchFilters = {
 
 export function useCaseSearch(): UseCaseSearchReturn {
   const { sessionData } = useChat()
+
+  // Refs for stable callback access (avoids stale closure issues)
+  const sessionDataRef = useRef(sessionData)
+  const searchResultsRef = useRef<PrecedentItem[]>([])
 
   // Search state
   const [searchResults, setSearchResults] = useState<PrecedentItem[]>([])
@@ -124,6 +128,15 @@ export function useCaseSearch(): UseCaseSearchReturn {
     }
   }, [sessionData.aiReferences, sessionData.aiGeneratedCase])
 
+  // Keep refs updated for stable callback access
+  useEffect(() => {
+    sessionDataRef.current = sessionData
+  }, [sessionData])
+
+  useEffect(() => {
+    searchResultsRef.current = searchResults
+  }, [searchResults])
+
   const setFilters = useCallback((newFilters: Partial<SearchFilters>) => {
     setFiltersState((prev) => ({ ...prev, ...newFilters }))
   }, [])
@@ -154,11 +167,14 @@ export function useCaseSearch(): UseCaseSearchReturn {
     setDetailError(null)
     setAiResponse(null)
 
+    // Use refs for latest values (avoids stale closure)
+    const refs = sessionDataRef.current.aiReferences as PrecedentDetail[] | undefined
+    const currentSearchResults = searchResultsRef.current
+
     // aiReferences에서 먼저 검색 (채팅에서 전달받은 판례)
-    const refs = sessionData.aiReferences as PrecedentDetail[] | undefined
     if (refs && Array.isArray(refs)) {
       // searchResults에서 해당 ID의 case_number를 찾아 aiReferences와 매칭
-      const matchedResult = searchResults.find((r) => r.id === id)
+      const matchedResult = currentSearchResults.find((r) => r.id === id)
       if (matchedResult) {
         const found = refs.find(
           (ref) => ref.case_number === matchedResult.case_number
@@ -180,7 +196,7 @@ export function useCaseSearch(): UseCaseSearchReturn {
     } finally {
       setIsLoadingDetail(false)
     }
-  }, [sessionData.aiReferences, searchResults])
+  }, []) // No dependencies needed - uses refs
 
   const clearSelection = useCallback(() => {
     setSelectedCase(null)

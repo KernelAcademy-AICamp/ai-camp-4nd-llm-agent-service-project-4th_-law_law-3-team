@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, KeyboardEvent } from 'react'
+import { useState, useMemo, useCallback, KeyboardEvent } from 'react'
 import type { PrecedentItem, PrecedentDetail, SearchFilters } from '../types'
 import { CaseCard } from './CaseCard'
 
@@ -52,12 +52,19 @@ export function SearchPanel({
     }
   }
 
-  const provisions = selectedCase?.reference_provisions
-    ? selectedCase.reference_provisions
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-    : []
+  // Memoized case select handler to prevent CaseCard re-renders
+  const handleCaseSelect = useCallback((id: string) => {
+    onCaseSelect(id)
+  }, [onCaseSelect])
+
+  const provisions = useMemo(() =>
+    selectedCase?.reference_provisions
+      ? selectedCase.reference_provisions
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : []
+  , [selectedCase?.reference_provisions])
 
   return (
     <div className="w-96 bg-white border-r border-gray-200 flex flex-col h-full">
@@ -93,7 +100,7 @@ export function SearchPanel({
               key={case_.id}
               case_={case_}
               selected={selectedCaseId === case_.id}
-              onClick={() => onCaseSelect(case_.id)}
+              onSelect={handleCaseSelect}
             />
           ))
         ) : filters.keyword ? (
