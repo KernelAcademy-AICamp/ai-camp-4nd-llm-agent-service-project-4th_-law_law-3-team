@@ -70,6 +70,9 @@ export function PrecedentDocumentViewer({
     // 이미 줄바꿈 2번이 있으면 적용 안함
     const doubleLinePattern = /(?<!\n\n)(【[^】]+】)/g
 
+    // 판사/대법관 서명 패턴 (줄바꿈 2번)
+    const judgePattern = /(?<!\n\n)((?:대법관|대법원장|판사)\s)/g
+
     let result = text
 
     // 줄바꿈 1번 추가
@@ -79,6 +82,9 @@ export function PrecedentDocumentViewer({
 
     // 대괄호는 줄바꿈 2번 추가
     result = result.replace(doubleLinePattern, '\n\n$1')
+
+    // 판사/대법관 서명은 줄바꿈 2번 추가
+    result = result.replace(judgePattern, '\n\n$1')
 
     // 문서 시작 부분의 불필요한 줄바꿈 제거
     return result.replace(/^\n+/, '')
@@ -102,7 +108,7 @@ export function PrecedentDocumentViewer({
     const formattedContent = formatListContent(content)
     return (
       <div className="px-8 pb-8">
-        <p className="text-gray-800 leading-loose whitespace-pre-wrap text-[15px]">
+        <p className="text-gray-800 leading-loose whitespace-pre-wrap text-base">
           {formattedContent}
         </p>
       </div>
@@ -123,16 +129,16 @@ export function PrecedentDocumentViewer({
   const headerTitle = `${courtName || '대법원'} ${formatDate(decisionDate)} 선고 ${caseNumber || ''} 판결`
 
   return (
-    <div className="bg-gray-50 py-6">
+    <div className="bg-white py-6">
       {/* 문서 헤더 */}
-      <div className="text-center mb-6">
-        <h1 className="text-xl font-bold text-gray-900 mb-2">
+      <div className="text-center mb-10 mt-10">
+        <h1 className="text-2xl font-bold text-gray-900 mb-3">
           {headerTitle}
         </h1>
         {caseName && (
-          <p className="text-gray-600 mb-1">[{caseName}]</p>
+          <p className="text-lg text-gray-600 mb-2">[{caseName}]</p>
         )}
-        <p className="text-sm text-gray-400">대법원 종합법률정보</p>
+        <p className="text-base text-gray-400">대법원 종합법률정보</p>
       </div>
 
       {/* 본문 카드 */}
