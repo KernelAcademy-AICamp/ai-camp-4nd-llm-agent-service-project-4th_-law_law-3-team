@@ -374,25 +374,32 @@ grep -r "변경전_경로" .claude/skills/ .claude/agents/
 - 스킬의 코드 예시는 실제 동작하는 코드여야 한다
 - 스킬이 더 이상 프로젝트와 관련 없으면 삭제한다
 
-## 11. 대규모 분석 시 외부 AI CLI 위임
+## 11. 외부 AI CLI 위임
 
 ### 규칙
-다음 상황에서는 Gemini CLI(`gemini`)를 활용하여 요약 결과를 먼저 확보한 후 작업한다:
+다음 상황에서는 외부 AI CLI(Gemini CLI, Codex CLI)를 활용하여 작업을 효율화한다:
 
-- **많은 파일 동시 파악** (10개 이상 파일의 패턴/구조 분석)
-- **프로젝트 전체 분석** (아키텍처 파악, 의존관계 분석)
-- **대규모 리팩토링 설계** (영향 범위 분석, 변경 계획 수립)
-- **보안 코드 리뷰** (다수 파일에 걸친 보안 취약점 분석)
-- **마이그레이션 영향도 분석** (라이브러리/프레임워크 업그레이드 시 영향 파악)
-- **코드 품질 감사** (프로젝트 전반의 안티패턴, 중복 코드 탐지)
+- **많은 파일 동시 파악** (10개 이상 파일의 패턴/구조 분석) → Gemini CLI
+- **프로젝트 전체 분석** (아키텍처 파악, 의존관계 분석) → Gemini CLI
+- **대규모 리팩토링 설계** (영향 범위 분석, 변경 계획 수립) → Gemini CLI
+- **보안 코드 리뷰** (다수 파일에 걸친 보안 취약점 분석) → Gemini CLI
+- **마이그레이션 영향도 분석** (라이브러리/프레임워크 업그레이드 시 영향 파악) → Gemini CLI
+- **코드 품질 감사** (프로젝트 전반의 안티패턴, 중복 코드 탐지) → Gemini CLI
+- **코드 리뷰** (PR/커밋 diff 분석) → Codex CLI
+- **샌드박스 실행** (격리 환경에서 코드 실행 검증) → Codex CLI
+- **웹 검색 연동 코딩** (외부 정보 기반 코드 작성) → Codex CLI
 
 ### 사용 조건
-1. `where gemini` (Windows) 또는 `which gemini` (Unix)로 설치 여부 먼저 확인
-2. 설치되어 있지 않으면 Claude가 직접 분석 수행 (fallback)
-3. Gemini의 출력은 참고 자료로만 활용하며, 최종 판단과 코드 작성은 Claude가 수행
+1. `which gemini`, `which codex`로 설치 여부 먼저 확인
+2. 설치되어 있지 않으면 Claude가 직접 수행 (Fallback)
+3. 외부 CLI의 출력은 참고 자료로만 활용하며, 최종 판단과 코드 작성은 Claude가 수행
+4. **CLI 도구 선택 기준**: `.claude/rules/cli-tool-routing.md` 참조
 
 ### 상세 가이드
-구체적인 명령어 패턴과 활용법은 `.claude/skills/gemini-cli-delegation/SKILL.md` 참조.
+- **Gemini CLI**: `.claude/skills/gemini-cli-delegation/SKILL.md`
+- **Codex CLI**: `.claude/skills/codex-cli-delegation/SKILL.md`
+- **CLI 조합**: `.claude/skills/multi-cli-integration/SKILL.md`
+- **오케스트레이션**: `.claude/agents/ai-orchestrator.md`
 
 ## 12. 정보 검색 시 최신 날짜 기준
 
