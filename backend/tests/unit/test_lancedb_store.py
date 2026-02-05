@@ -135,6 +135,46 @@ class TestAddDocuments:
         assert result["metadatas"][0]["data_type"] == "판례"
         assert result["metadatas"][0]["case_number"] == "2023다12345"
 
+    def test_add_law_documents_with_content_tokenized(
+        self,
+        lancedb_store: LanceDBStore,
+        make_random_vector: Callable[[int], list[float]],
+    ) -> None:
+        """content_tokenized_list가 법령 문서에 저장되는지 검증"""
+        lancedb_store.add_law_documents(
+            source_ids=["CT_LAW_001"],
+            chunk_indices=[0],
+            embeddings=[make_random_vector(0)],
+            titles=["민법"],
+            contents=["[법령] 민법 제750조"],
+            enforcement_dates=["2023-08-08"],
+            departments=["법무부"],
+            content_tokenized_list=["법령 민법 제 750 조"],
+        )
+        result = lancedb_store.get_by_ids(["CT_LAW_001_0"])
+        assert len(result["ids"]) == 1
+        assert result["metadatas"][0].get("content_tokenized") == "법령 민법 제 750 조"
+
+    def test_add_precedent_documents_with_content_tokenized(
+        self,
+        lancedb_store: LanceDBStore,
+        make_random_vector: Callable[[int], list[float]],
+    ) -> None:
+        """content_tokenized_list가 판례 문서에 저장되는지 검증"""
+        lancedb_store.add_precedent_documents(
+            source_ids=["CT_PREC_001"],
+            chunk_indices=[0],
+            embeddings=[make_random_vector(10)],
+            titles=["손해배상"],
+            contents=["[판례] 손해배상 판결"],
+            decision_dates=["2023-05-15"],
+            court_names=["대법원"],
+            content_tokenized_list=["판례 손해 배상 판결"],
+        )
+        result = lancedb_store.get_by_ids(["CT_PREC_001_0"])
+        assert len(result["ids"]) == 1
+        assert result["metadatas"][0].get("content_tokenized") == "판례 손해 배상 판결"
+
 
 # ============================================================================
 # 검색 테스트 (FR-08, FR-09, FR-19)

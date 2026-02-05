@@ -302,8 +302,8 @@ class TestSchemaConstants:
     """스키마 상수 및 컬럼 그룹 검증"""
 
     def test_schema_column_count(self) -> None:
-        """LEGAL_CHUNKS_SCHEMA가 정확히 20개 컬럼인지 확인"""
-        assert len(LEGAL_CHUNKS_SCHEMA) == 20
+        """LEGAL_CHUNKS_SCHEMA가 정확히 21개 컬럼인지 확인"""
+        assert len(LEGAL_CHUNKS_SCHEMA) == 21
 
     def test_vector_dimension(self) -> None:
         """VECTOR_DIM이 1024인지 확인"""
@@ -311,8 +311,64 @@ class TestSchemaConstants:
 
     def test_column_groups(self) -> None:
         """컬럼 그룹 개수가 올바른지 확인"""
-        assert len(COMMON_COLUMNS) == 10
+        assert len(COMMON_COLUMNS) == 11
         assert len(LAW_COLUMNS) == 4
         assert len(PRECEDENT_COLUMNS) == 6
-        assert len(ALL_COLUMNS) == 20
+        assert len(ALL_COLUMNS) == 21
         assert ALL_COLUMNS == COMMON_COLUMNS + LAW_COLUMNS + PRECEDENT_COLUMNS
+
+    def test_content_tokenized_in_schema(self) -> None:
+        """content_tokenized 컬럼이 스키마에 존재하는지 확인"""
+        field_names = [f.name for f in LEGAL_CHUNKS_SCHEMA]
+        assert "content_tokenized" in field_names
+
+    def test_content_tokenized_in_common_columns(self) -> None:
+        """content_tokenized가 COMMON_COLUMNS에 포함되는지 확인"""
+        assert "content_tokenized" in COMMON_COLUMNS
+
+    def test_create_law_chunk_with_content_tokenized(
+        self, _sample_vector: list[float]
+    ) -> None:
+        """법령 청크 생성 시 content_tokenized 필드가 포함되는지 확인"""
+        result = create_law_chunk(
+            source_id="010719",
+            chunk_index=0,
+            title="민법",
+            content="[법령] 민법 제750조",
+            vector=_sample_vector,
+            enforcement_date="2023-08-08",
+            department="법무부",
+            content_tokenized="법령 민법 제 750 조",
+        )
+        assert result["content_tokenized"] == "법령 민법 제 750 조"
+
+    def test_create_precedent_chunk_with_content_tokenized(
+        self, _sample_vector: list[float]
+    ) -> None:
+        """판례 청크 생성 시 content_tokenized 필드가 포함되는지 확인"""
+        result = create_precedent_chunk(
+            source_id="76396",
+            chunk_index=0,
+            title="손해배상",
+            content="[판례] 손해배상 판결",
+            vector=_sample_vector,
+            decision_date="2023-05-15",
+            court_name="대법원",
+            content_tokenized="판례 손해 배상 판결",
+        )
+        assert result["content_tokenized"] == "판례 손해 배상 판결"
+
+    def test_content_tokenized_default_none(
+        self, _sample_vector: list[float]
+    ) -> None:
+        """content_tokenized 미지정 시 None인지 확인"""
+        result = create_law_chunk(
+            source_id="010719",
+            chunk_index=0,
+            title="민법",
+            content="내용",
+            vector=_sample_vector,
+            enforcement_date="2023-08-08",
+            department="법무부",
+        )
+        assert result["content_tokenized"] is None

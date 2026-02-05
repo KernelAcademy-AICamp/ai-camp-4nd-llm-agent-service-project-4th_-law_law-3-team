@@ -63,19 +63,18 @@ import gc
 import json
 import os
 import re
-from pathlib import Path
-from datetime import datetime
-from typing import List, Optional, Dict, Any, Iterator, Union, TypeVar, Generic
-from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Generic, List, Optional, TypeVar
+
+import pyarrow as pa
+import torch
+from tqdm import tqdm
 
 # 청크 설정 타입 변수
 ChunkConfigT = TypeVar("ChunkConfigT", bound="BaseChunkConfig")
-
-import pyarrow as pa
-from tqdm import tqdm
-import torch
-from torch.utils.data import IterableDataset, DataLoader
 
 try:
     import ijson
@@ -302,7 +301,7 @@ def print_device_info():
     print(f"  Name: {device_info.name}")
     print(f"  Memory: {device_info.vram_gb:.1f} GB")
     if device_info.is_laptop:
-        print(f"  Type: Laptop/Mobile")
+        print("  Type: Laptop/Mobile")
     if device_info.compute_capability:
         cc = device_info.compute_capability
         print(f"  Compute Capability: {cc[0]}.{cc[1]}")
@@ -338,6 +337,7 @@ LEGAL_CHUNKS_SCHEMA = pa.schema([
     pa.field("data_type", pa.utf8()),
     pa.field("title", pa.utf8()),
     pa.field("content", pa.utf8()),
+    pa.field("content_tokenized", pa.utf8()),  # MeCab 사전 토크나이징 (FTS용)
     pa.field("vector", pa.list_(pa.float32(), VECTOR_DIM)),
     pa.field("date", pa.utf8()),
     pa.field("source_name", pa.utf8()),
@@ -373,6 +373,7 @@ def create_law_chunk(
     promulgation_no: Optional[str] = None,
     law_type: Optional[str] = None,
     article_no: Optional[str] = None,
+    content_tokenized: Optional[str] = None,
 ) -> Dict[str, Any]:
     """법령 청크 레코드 생성"""
     return {
@@ -381,6 +382,7 @@ def create_law_chunk(
         "data_type": "법령",
         "title": title,
         "content": content,
+        "content_tokenized": content_tokenized,
         "vector": vector,
         "date": enforcement_date,
         "source_name": department,
@@ -414,6 +416,7 @@ def create_precedent_chunk(
     judgment_status: Optional[str] = None,
     reference_provisions: Optional[str] = None,
     reference_cases: Optional[str] = None,
+    content_tokenized: Optional[str] = None,
 ) -> Dict[str, Any]:
     """판례 청크 레코드 생성"""
     return {
@@ -422,6 +425,7 @@ def create_precedent_chunk(
         "data_type": "판례",
         "title": title,
         "content": content,
+        "content_tokenized": content_tokenized,
         "vector": vector,
         "date": decision_date,
         "source_name": court_name,
@@ -498,6 +502,7 @@ class LanceDBStore:
         promulgation_nos: List[str],
         law_types: List[str],
         article_nos: List[str],
+        content_tokenized_list: Optional[List[str]] = None,
     ) -> None:
         """법령 문서 배치 추가"""
         if not source_ids:
@@ -520,6 +525,7 @@ class LanceDBStore:
                 promulgation_no=promulgation_nos[i] if promulgation_nos else None,
                 law_type=law_types[i] if law_types else None,
                 article_no=article_nos[i] if article_nos else None,
+                content_tokenized=content_tokenized_list[i] if content_tokenized_list else None,
             )
             data.append(chunk)
 
@@ -540,6 +546,7 @@ class LanceDBStore:
         case_types: Optional[List[str]] = None,
         reference_provisions_list: Optional[List[str]] = None,
         reference_cases_list: Optional[List[str]] = None,
+        content_tokenized_list: Optional[List[str]] = None,
     ) -> None:
         """판례 문서 배치 추가"""
         if not source_ids:
@@ -562,6 +569,7 @@ class LanceDBStore:
                 case_type=case_types[i] if case_types else None,
                 reference_provisions=reference_provisions_list[i] if reference_provisions_list else None,
                 reference_cases=reference_cases_list[i] if reference_cases_list else None,
+                content_tokenized=content_tokenized_list[i] if content_tokenized_list else None,
             )
             data.append(chunk)
 
@@ -720,6 +728,7 @@ def set_seed(seed: int = 42, deterministic: bool = False) -> None:
         deterministic: 결정론적 모드 활성화 (성능 저하 있음)
     """
     import random
+
     import numpy as np
 
     random.seed(seed)
@@ -985,6 +994,208 @@ class EmbeddingStats:
         }
 
 
+
+# ============================================================================
+# 데이터 로딩 헬퍼
+# ============================================================================
+
+def detect_json_format(file_path: str) -> str:
+    """JSON 파일 형식 감지 (array 또는 object)"""
+    with open(file_path, "rb") as f:
+        first_char = f.read(1).decode("utf-8").strip()
+        while first_char in ("\ufeff", " ", "\n", "\r", "\t", ""):
+            first_char = f.read(1).decode("utf-8")
+    return "array" if first_char == "[" else "object"
+
+
+def load_json_streaming(file_path: str, items_path: Optional[str] = None) -> Optional[tuple]:
+    """JSON 스트리밍 로드 (ijson 사용)"""
+    if not IJSON_AVAILABLE:
+        return None
+
+    json_format = detect_json_format(file_path)
+    f = open(file_path, "rb")
+
+    if json_format == "array":
+        return f, ijson.items(f, "item")
+    else:
+        path = items_path or "items.item"
+        return f, ijson.items(f, path)
+
+
+def load_json_full(file_path: str) -> List[Dict]:
+    """JSON 전체 로드"""
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    if isinstance(data, list):
+        return data
+    return data.get("items", data.get("precedents", []))
+
+
+# ============================================================================
+# 청킹 설정 베이스 클래스
+# ============================================================================
+
+@dataclass
+class BaseChunkConfig:
+    """청킹 설정 베이스 클래스"""
+    pass
+
+
+# ============================================================================
+# 판례 청킹
+# ============================================================================
+
+@dataclass
+class PrecedentChunkConfig(BaseChunkConfig):
+    """판례 청킹 설정"""
+    chunk_size: int = CONFIG["PRECEDENT_CHUNK_SIZE"]
+    chunk_overlap: int = CONFIG["PRECEDENT_CHUNK_OVERLAP"]
+    min_chunk_size: int = CONFIG["PRECEDENT_MIN_CHUNK_SIZE"]
+
+
+def chunk_precedent_text(text: str, config: PrecedentChunkConfig) -> List[tuple]:
+    """판례 텍스트를 청크로 분할"""
+    if not text or len(text) < config.min_chunk_size:
+        return [(0, text)] if text else []
+
+    chunks = []
+    start = 0
+    chunk_index = 0
+
+    while start < len(text):
+        end = min(start + config.chunk_size, len(text))
+
+        if end < len(text):
+            for sep in ['. ', '.\n', '\n\n', '\n', ' ']:
+                sep_pos = text.rfind(sep, start + config.min_chunk_size, end)
+                if sep_pos > start:
+                    end = sep_pos + len(sep)
+                    break
+
+        chunk_content = text[start:end].strip()
+        if chunk_content and len(chunk_content) >= config.min_chunk_size:
+            chunks.append((chunk_index, chunk_content))
+            chunk_index += 1
+
+        # 다음 시작 위치 계산
+        new_start = end - config.chunk_overlap
+
+        # 무한 루프 방지: start가 진행하지 않으면 종료
+        if new_start <= start:
+            break
+
+        start = new_start
+
+        # 남은 텍스트가 min_chunk_size보다 작으면 종료
+        if start >= len(text) - config.min_chunk_size:
+            break
+
+    return chunks
+
+
+# ============================================================================
+# 법령 청킹
+# ============================================================================
+
+@dataclass
+class LawChunkConfig(BaseChunkConfig):
+    """법령 청킹 설정"""
+    max_tokens: int = CONFIG["LAW_MAX_TOKENS"]
+    min_tokens: int = CONFIG["LAW_MIN_TOKENS"]
+
+
+PARAGRAPH_PATTERN = re.compile(r"([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])")
+
+
+def estimate_tokens(text: str) -> int:
+    """토큰 수 추정"""
+    if not text:
+        return 0
+    korean_chars = len(re.findall(r"[가-힣]", text))
+    other_chars = len(text) - korean_chars
+    return int(korean_chars / 1.5 + other_chars / 4)
+
+
+def split_by_paragraphs(article_text: str) -> List[str]:
+    """조문을 항 단위로 분리"""
+    parts = PARAGRAPH_PATTERN.split(article_text)
+    if len(parts) <= 1:
+        return [article_text]
+
+    result = []
+    if parts[0].strip():
+        result.append(parts[0].strip())
+
+    for i in range(1, len(parts), 2):
+        if i + 1 < len(parts):
+            paragraph = parts[i] + parts[i + 1]
+            if paragraph.strip():
+                result.append(paragraph.strip())
+        elif parts[i].strip():
+            result.append(parts[i].strip())
+
+    return result
+
+
+def chunk_law_content(content: str, config: LawChunkConfig) -> List[tuple]:
+    """법령 내용을 청크로 분할"""
+    if not content:
+        return []
+
+    articles = content.split("\n\n")
+    chunks = []
+    chunk_index = 0
+    article_no_pattern = re.compile(r"^(제\d+조(?:의\d+)?)")
+
+    for article in articles:
+        article = article.strip()
+        if not article:
+            continue
+
+        match = article_no_pattern.match(article)
+        article_no = match.group(1) if match else None
+        tokens = estimate_tokens(article)
+
+        if tokens <= config.max_tokens:
+            if tokens >= config.min_tokens:
+                chunks.append((chunk_index, article, article_no))
+                chunk_index += 1
+            elif chunks:
+                prev_idx, prev_text, prev_article_no = chunks[-1]
+                chunks[-1] = (prev_idx, prev_text + "\n\n" + article, prev_article_no)
+            else:
+                chunks.append((chunk_index, article, article_no))
+                chunk_index += 1
+        else:
+            paragraphs = split_by_paragraphs(article)
+            current_chunk = ""
+            current_article_no = article_no
+
+            for para in paragraphs:
+                if not current_chunk:
+                    current_chunk = para
+                elif estimate_tokens(current_chunk + "\n" + para) <= config.max_tokens:
+                    current_chunk += "\n" + para
+                else:
+                    if estimate_tokens(current_chunk) >= config.min_tokens:
+                        chunks.append((chunk_index, current_chunk, current_article_no))
+                        chunk_index += 1
+                    current_chunk = para
+
+            if current_chunk:
+                if estimate_tokens(current_chunk) >= config.min_tokens:
+                    chunks.append((chunk_index, current_chunk, current_article_no))
+                    chunk_index += 1
+                elif chunks:
+                    prev_idx, prev_text, prev_article_no = chunks[-1]
+                    chunks[-1] = (prev_idx, prev_text + "\n" + current_chunk, prev_article_no)
+
+    return chunks
+
+
+
 class StreamingEmbeddingProcessor(ABC, Generic[ChunkConfigT]):
     """
     스트리밍 방식 임베딩 프로세서 (베이스 클래스)
@@ -1004,6 +1215,26 @@ class StreamingEmbeddingProcessor(ABC, Generic[ChunkConfigT]):
         self.optimal_config = get_optimal_config(self.device_info)
         self.store = LanceDBStore()
         self.stats = EmbeddingStats(device=str(self.device_info))
+
+        # MeCab 토크나이저 초기화 (FTS content_tokenized용)
+        self._mecab_tokenizer = None
+        try:
+            import importlib.util
+            module_path = Path(__file__).parent.parent / "app" / "tools" / "vectorstore" / "mecab_tokenizer.py"
+            spec = importlib.util.spec_from_file_location("mecab_tokenizer", str(module_path))
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                tokenizer = mod.MeCabTokenizer()
+                if tokenizer.is_available:
+                    self._mecab_tokenizer = tokenizer
+                    print("[INFO] MeCab tokenizer initialized for FTS pre-tokenization")
+                else:
+                    print("[WARN] MeCab not available. content_tokenized will be None.")
+            else:
+                print("[WARN] MeCab tokenizer module not found. content_tokenized will be None.")
+        except Exception as e:
+            print(f"[WARN] MeCab tokenizer init failed: {e}. content_tokenized will be None.")
 
     @abstractmethod
     def get_chunk_config(self) -> ChunkConfigT:
@@ -1101,7 +1332,7 @@ class StreamingEmbeddingProcessor(ABC, Generic[ChunkConfigT]):
 
         print(f"  Device: {self.device_info}")
         print(f"  Batch size: {batch_size}")
-        print(f"  GC interval: every batch")
+        print("  GC interval: every batch")
         print(f"  Source: {source_path}")
         print(f"  Reset: {reset}")
 
@@ -1167,7 +1398,8 @@ class StreamingEmbeddingProcessor(ABC, Generic[ChunkConfigT]):
             metadata = self.extract_metadata(item)
 
             # 배치에 추가
-            for chunk_idx, chunk_content in chunks:
+            for chunk_data in chunks:
+                chunk_idx, chunk_content = chunk_data[0], chunk_data[1]
                 self.add_to_batch(
                     batch_data, source_id, chunk_idx, chunk_content, total_chunks, metadata
                 )
@@ -1305,7 +1537,8 @@ class StreamingEmbeddingProcessor(ABC, Generic[ChunkConfigT]):
             metadata = self.extract_metadata(item)
 
             # 배치에 추가
-            for chunk_idx, chunk_content in chunks:
+            for chunk_data in chunks:
+                chunk_idx, chunk_content = chunk_data[0], chunk_data[1]
                 self.add_to_batch(
                     batch_data, source_id, chunk_idx, chunk_content, total_chunks, metadata
                 )
@@ -1388,6 +1621,7 @@ class LawEmbeddingProcessor(StreamingEmbeddingProcessor[LawChunkConfig]):
             "source_ids": [],
             "chunk_indices": [],
             "contents": [],
+            "content_tokenized_list": [],
             "titles": [],
             "enforcement_dates": [],
             "departments": [],
@@ -1410,6 +1644,9 @@ class LawEmbeddingProcessor(StreamingEmbeddingProcessor[LawChunkConfig]):
         batch_data["source_ids"].append(source_id)
         batch_data["chunk_indices"].append(chunk_idx)
         batch_data["contents"].append(chunk_content)
+        # MeCab 사전 토크나이징
+        tokenized = self._mecab_tokenizer.tokenize(chunk_content) if self._mecab_tokenizer else None
+        batch_data["content_tokenized_list"].append(tokenized)
         batch_data["titles"].append(metadata["title"])
         batch_data["enforcement_dates"].append(metadata["enforcement_date"])
         batch_data["departments"].append(metadata["department"])
@@ -1433,6 +1670,7 @@ class LawEmbeddingProcessor(StreamingEmbeddingProcessor[LawChunkConfig]):
             promulgation_nos=batch_data["promulgation_nos"],
             law_types=batch_data["law_types"],
             article_nos=batch_data["article_nos"],
+            content_tokenized_list=batch_data["content_tokenized_list"],
         )
         return len(batch_data["source_ids"])
 
@@ -1488,6 +1726,7 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor[PrecedentChunkConf
             "source_ids": [],
             "chunk_indices": [],
             "contents": [],
+            "content_tokenized_list": [],
             "titles": [],
             "decision_dates": [],
             "court_names": [],
@@ -1512,6 +1751,9 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor[PrecedentChunkConf
         batch_data["source_ids"].append(source_id)
         batch_data["chunk_indices"].append(chunk_idx)
         batch_data["contents"].append(chunk_content)
+        # MeCab 사전 토크나이징
+        tokenized = self._mecab_tokenizer.tokenize(chunk_content) if self._mecab_tokenizer else None
+        batch_data["content_tokenized_list"].append(tokenized)
         batch_data["titles"].append(metadata["case_name"])
         batch_data["decision_dates"].append(metadata["decision_date"])
         batch_data["court_names"].append(metadata["court_name"])
@@ -1539,6 +1781,7 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor[PrecedentChunkConf
             judgment_statuses=batch_data["judgment_statuses"],
             reference_provisions_list=batch_data["reference_provisions_list"],
             reference_cases_list=batch_data["reference_cases_list"],
+            content_tokenized_list=batch_data["content_tokenized_list"],
         )
         return len(batch_data["source_ids"])
 
@@ -1791,205 +2034,6 @@ def _split_laws_full_load(
     return part_files
 
 
-# ============================================================================
-# 데이터 로딩 헬퍼
-# ============================================================================
-
-def detect_json_format(file_path: str) -> str:
-    """JSON 파일 형식 감지 (array 또는 object)"""
-    with open(file_path, "rb") as f:
-        first_char = f.read(1).decode("utf-8").strip()
-        while first_char in ("\ufeff", " ", "\n", "\r", "\t", ""):
-            first_char = f.read(1).decode("utf-8")
-    return "array" if first_char == "[" else "object"
-
-
-def load_json_streaming(file_path: str, items_path: Optional[str] = None) -> Optional[tuple]:
-    """JSON 스트리밍 로드 (ijson 사용)"""
-    if not IJSON_AVAILABLE:
-        return None
-
-    json_format = detect_json_format(file_path)
-    f = open(file_path, "rb")
-
-    if json_format == "array":
-        return f, ijson.items(f, "item")
-    else:
-        path = items_path or "items.item"
-        return f, ijson.items(f, path)
-
-
-def load_json_full(file_path: str) -> List[Dict]:
-    """JSON 전체 로드"""
-    with open(file_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    if isinstance(data, list):
-        return data
-    return data.get("items", data.get("precedents", []))
-
-
-# ============================================================================
-# 청킹 설정 베이스 클래스
-# ============================================================================
-
-@dataclass
-class BaseChunkConfig:
-    """청킹 설정 베이스 클래스"""
-    pass
-
-
-# ============================================================================
-# 판례 청킹
-# ============================================================================
-
-@dataclass
-class PrecedentChunkConfig(BaseChunkConfig):
-    """판례 청킹 설정"""
-    chunk_size: int = CONFIG["PRECEDENT_CHUNK_SIZE"]
-    chunk_overlap: int = CONFIG["PRECEDENT_CHUNK_OVERLAP"]
-    min_chunk_size: int = CONFIG["PRECEDENT_MIN_CHUNK_SIZE"]
-
-
-def chunk_precedent_text(text: str, config: PrecedentChunkConfig) -> List[tuple]:
-    """판례 텍스트를 청크로 분할"""
-    if not text or len(text) < config.min_chunk_size:
-        return [(0, text)] if text else []
-
-    chunks = []
-    start = 0
-    chunk_index = 0
-
-    while start < len(text):
-        end = min(start + config.chunk_size, len(text))
-
-        if end < len(text):
-            for sep in ['. ', '.\n', '\n\n', '\n', ' ']:
-                sep_pos = text.rfind(sep, start + config.min_chunk_size, end)
-                if sep_pos > start:
-                    end = sep_pos + len(sep)
-                    break
-
-        chunk_content = text[start:end].strip()
-        if chunk_content and len(chunk_content) >= config.min_chunk_size:
-            chunks.append((chunk_index, chunk_content))
-            chunk_index += 1
-
-        # 다음 시작 위치 계산
-        new_start = end - config.chunk_overlap
-
-        # 무한 루프 방지: start가 진행하지 않으면 종료
-        if new_start <= start:
-            break
-
-        start = new_start
-
-        # 남은 텍스트가 min_chunk_size보다 작으면 종료
-        if start >= len(text) - config.min_chunk_size:
-            break
-
-    return chunks
-
-
-# ============================================================================
-# 법령 청킹
-# ============================================================================
-
-@dataclass
-class LawChunkConfig(BaseChunkConfig):
-    """법령 청킹 설정"""
-    max_tokens: int = CONFIG["LAW_MAX_TOKENS"]
-    min_tokens: int = CONFIG["LAW_MIN_TOKENS"]
-
-
-PARAGRAPH_PATTERN = re.compile(r"([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])")
-
-
-def estimate_tokens(text: str) -> int:
-    """토큰 수 추정"""
-    if not text:
-        return 0
-    korean_chars = len(re.findall(r"[가-힣]", text))
-    other_chars = len(text) - korean_chars
-    return int(korean_chars / 1.5 + other_chars / 4)
-
-
-def split_by_paragraphs(article_text: str) -> List[str]:
-    """조문을 항 단위로 분리"""
-    parts = PARAGRAPH_PATTERN.split(article_text)
-    if len(parts) <= 1:
-        return [article_text]
-
-    result = []
-    if parts[0].strip():
-        result.append(parts[0].strip())
-
-    for i in range(1, len(parts), 2):
-        if i + 1 < len(parts):
-            paragraph = parts[i] + parts[i + 1]
-            if paragraph.strip():
-                result.append(paragraph.strip())
-        elif parts[i].strip():
-            result.append(parts[i].strip())
-
-    return result
-
-
-def chunk_law_content(content: str, config: LawChunkConfig) -> List[tuple]:
-    """법령 내용을 청크로 분할"""
-    if not content:
-        return []
-
-    articles = content.split("\n\n")
-    chunks = []
-    chunk_index = 0
-    article_no_pattern = re.compile(r"^(제\d+조(?:의\d+)?)")
-
-    for article in articles:
-        article = article.strip()
-        if not article:
-            continue
-
-        match = article_no_pattern.match(article)
-        article_no = match.group(1) if match else None
-        tokens = estimate_tokens(article)
-
-        if tokens <= config.max_tokens:
-            if tokens >= config.min_tokens:
-                chunks.append((chunk_index, article, article_no))
-                chunk_index += 1
-            elif chunks:
-                prev_idx, prev_text, prev_article_no = chunks[-1]
-                chunks[-1] = (prev_idx, prev_text + "\n\n" + article, prev_article_no)
-            else:
-                chunks.append((chunk_index, article, article_no))
-                chunk_index += 1
-        else:
-            paragraphs = split_by_paragraphs(article)
-            current_chunk = ""
-            current_article_no = article_no
-
-            for para in paragraphs:
-                if not current_chunk:
-                    current_chunk = para
-                elif estimate_tokens(current_chunk + "\n" + para) <= config.max_tokens:
-                    current_chunk += "\n" + para
-                else:
-                    if estimate_tokens(current_chunk) >= config.min_tokens:
-                        chunks.append((chunk_index, current_chunk, current_article_no))
-                        chunk_index += 1
-                    current_chunk = para
-
-            if current_chunk:
-                if estimate_tokens(current_chunk) >= config.min_tokens:
-                    chunks.append((chunk_index, current_chunk, current_article_no))
-                    chunk_index += 1
-                elif chunks:
-                    prev_idx, prev_text, prev_article_no = chunks[-1]
-                    chunks[-1] = (prev_idx, prev_text + "\n" + current_chunk, prev_article_no)
-
-    return chunks
-
 
 # ============================================================================
 # 법령 임베딩 생성
@@ -2016,9 +2060,9 @@ def run_law_embedding(
     processor = LawEmbeddingProcessor()
     stats = processor.run(source_path, reset=reset, batch_size=batch_size)
 
-    # 통계 출력 및 인덱스 생성
+    # 통계 출력 및 인덱스 생성 (MeCab 사전 토크나이징된 컬럼에 FTS 인덱스)
     store = LanceDBStore()
-    store.create_fts_index("content")
+    store.create_fts_index("content_tokenized")
     show_stats(store)
     del store
     clear_memory()
@@ -2051,9 +2095,9 @@ def run_precedent_embedding(
     processor = PrecedentEmbeddingProcessor()
     stats = processor.run(source_path, reset=reset, batch_size=batch_size)
 
-    # 통계 출력 및 인덱스 생성
+    # 통계 출력 및 인덱스 생성 (MeCab 사전 토크나이징된 컬럼에 FTS 인덱스)
     store = LanceDBStore()
-    store.create_fts_index("content")
+    store.create_fts_index("content_tokenized")
     show_stats(store)
     del store
     clear_memory()
@@ -2247,7 +2291,7 @@ def show_stats(store: Optional[LanceDBStore] = None) -> None:
         law_count = store.count_by_type("법령")
         precedent_count = store.count_by_type("판례")
 
-        print(f"\nBy data_type:")
+        print("\nBy data_type:")
         print(f"  - 법령: {law_count:,}")
         print(f"  - 판례: {precedent_count:,}")
 

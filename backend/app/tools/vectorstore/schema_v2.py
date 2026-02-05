@@ -11,8 +11,8 @@ LanceDB 스키마 v2 - 단일 테이블 + NULL 허용 (메모리 최적화)
 - data_type = "법령": 법률, 시행령, 시행규칙 등
 - data_type = "판례": 대법원, 고등법원, 지방법원 판결
 
-컬럼 그룹 (총 20개):
-- 공통: 10개 (id, source_id, data_type, title, content, vector, date, source_name, chunk_index, total_chunks)
+컬럼 그룹 (총 21개):
+- 공통: 11개 (id, source_id, data_type, title, content, content_tokenized, vector, date, source_name, chunk_index, total_chunks)
 - 법령 전용: 4개 (promulgation_date, promulgation_no, law_type, article_no)
 - 판례 전용: 6개 (case_number, case_type, judgment_type, judgment_status, reference_provisions, reference_cases)
 
@@ -21,10 +21,10 @@ LanceDB 스키마 v2 - 단일 테이블 + NULL 허용 (메모리 최적화)
 2. PostgreSQL에서 원본 조회 (ruling, claim, reasoning 등)
 """
 
-import pyarrow as pa
-from pydantic import BaseModel
 from typing import Optional
 
+import pyarrow as pa
+from pydantic import BaseModel
 
 # =============================================================================
 # 상수
@@ -45,6 +45,7 @@ LEGAL_CHUNKS_SCHEMA = pa.schema([
     pa.field("data_type", pa.utf8()),       # "법령" | "판례"
     pa.field("title", pa.utf8()),           # 제목 (법령명 / 사건명)
     pa.field("content", pa.utf8()),         # 청크 텍스트 (prefix 포함)
+    pa.field("content_tokenized", pa.utf8()),  # MeCab 사전 토크나이징 텍스트 (FTS용)
     pa.field("vector", pa.list_(pa.float32(), VECTOR_DIM)),  # 임베딩 벡터
     pa.field("date", pa.utf8()),            # 날짜 (법령: 시행일, 판례: 선고일)
     pa.field("source_name", pa.utf8()),     # 출처 (법령: 소관부처, 판례: 법원명)
@@ -72,7 +73,7 @@ LEGAL_CHUNKS_SCHEMA = pa.schema([
 # =============================================================================
 
 COMMON_COLUMNS = [
-    "id", "source_id", "data_type", "title", "content",
+    "id", "source_id", "data_type", "title", "content", "content_tokenized",
     "vector", "date", "source_name", "chunk_index", "total_chunks"
 ]
 
@@ -101,6 +102,7 @@ class LegalChunk(BaseModel):
     data_type: str                          # "법령" | "판례"
     title: str                              # 제목
     content: str                            # 청크 텍스트
+    content_tokenized: Optional[str] = None # MeCab 사전 토크나이징 (FTS용)
     vector: list[float]                     # 임베딩 벡터
     date: str                               # 날짜
     source_name: str                        # 출처
@@ -121,7 +123,7 @@ class LegalChunk(BaseModel):
     reference_provisions: Optional[str] = None  # 참조 조문
     reference_cases: Optional[str] = None   # 참조 판례
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, object]:
         """LanceDB 삽입용 딕셔너리 변환"""
         return self.model_dump()
 
@@ -163,7 +165,8 @@ def create_law_chunk(
     promulgation_no: Optional[str] = None,
     law_type: Optional[str] = None,
     article_no: Optional[str] = None,
-) -> dict:
+    content_tokenized: Optional[str] = None,
+) -> dict[str, object]:
     """
     법령 청크 생성
 
@@ -180,6 +183,7 @@ def create_law_chunk(
         promulgation_no: 공포번호
         law_type: 법령 유형 (법률/시행령/시행규칙)
         article_no: 조문 번호
+        content_tokenized: MeCab 사전 토크나이징 텍스트 (FTS용)
 
     Returns:
         LanceDB 삽입용 딕셔너리
@@ -191,6 +195,7 @@ def create_law_chunk(
         "data_type": "법령",
         "title": title,
         "content": content,
+        "content_tokenized": content_tokenized,
         "vector": vector,
         "date": enforcement_date,
         "source_name": department,
@@ -226,7 +231,8 @@ def create_precedent_chunk(
     judgment_status: Optional[str] = None,
     reference_provisions: Optional[str] = None,
     reference_cases: Optional[str] = None,
-) -> dict:
+    content_tokenized: Optional[str] = None,
+) -> dict[str, object]:
     """
     판례 청크 생성
 
@@ -245,6 +251,7 @@ def create_precedent_chunk(
         judgment_status: 판결 상태 (확정/미확정)
         reference_provisions: 참조 조문
         reference_cases: 참조 판례
+        content_tokenized: MeCab 사전 토크나이징 텍스트 (FTS용)
 
     Returns:
         LanceDB 삽입용 딕셔너리
@@ -256,6 +263,7 @@ def create_precedent_chunk(
         "data_type": "판례",
         "title": title,
         "content": content,
+        "content_tokenized": content_tokenized,
         "vector": vector,
         "date": decision_date,
         "source_name": court_name,
