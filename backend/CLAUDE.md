@@ -348,12 +348,16 @@ backend/tests/
 ├── integration/                     # 통합 테스트 (DB, 외부 서비스 연동)
 │   ├── __init__.py
 │   ├── test_lancedb_search.py       # LanceDB 벡터 검색 테스트
+│   ├── test_lancedb_integration.py  # LanceDB E2E + FTS + 하이브리드 (15개)
 │   ├── test_postgresql_data.py      # PostgreSQL 데이터 확인
 │   ├── test_neo4j_graph.py          # Neo4j 그래프 검증 테스트 (27개)
 │   ├── test_evaluation_runner.py    # 평가 실행기 테스트
 │   └── test_evaluation_search.py    # 평가 검색 테스트
 ├── unit/                            # 단위 테스트 (개별 함수/클래스)
 │   ├── __init__.py
+│   ├── test_vectorstore_schema.py   # 스키마 v2 단위 테스트 (15개)
+│   ├── test_lancedb_store.py        # LanceDBStore CRUD 테스트 (21개)
+│   ├── test_mecab_tokenizer.py      # MeCab 토크나이저 테스트 (13개)
 │   ├── test_evaluation_metrics.py   # 메트릭 계산 테스트 (31개)
 │   ├── test_evaluation_schemas.py   # 스키마 검증 테스트 (21개)
 │   └── test_evaluation_dataset_builder.py  # 데이터셋 빌더 테스트 (14개)
@@ -388,6 +392,11 @@ uv run pytest -v tests/integration/
 uv run pytest -m "not slow"              # 느린 테스트 제외
 uv run pytest -m "not requires_lancedb"  # LanceDB 없이 실행
 uv run pytest -m "not requires_postgres" # PostgreSQL 없이 실행
+uv run pytest -m "not requires_mecab"    # MeCab 없이 실행
+uv run pytest -m "not requires_fts"      # FTS 없이 실행
+
+# LanceDB 벡터 DB 테스트만 실행
+uv run pytest tests/unit/test_vectorstore_schema.py tests/unit/test_lancedb_store.py tests/unit/test_mecab_tokenizer.py tests/integration/test_lancedb_integration.py -v
 ```
 
 ### 테스트 작성 규칙
