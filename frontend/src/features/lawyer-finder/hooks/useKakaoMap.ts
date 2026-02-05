@@ -22,7 +22,20 @@ export function useKakaoMap({
   const [map, setMap] = useState<kakao.maps.Map | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
 
-  // 지도 초기화
+  // Use refs to store latest callbacks (avoids stale closure issues)
+  const onBoundsChangeRef = useRef(onBoundsChange)
+  const onZoomChangeRef = useRef(onZoomChange)
+
+  // Keep refs updated
+  useEffect(() => {
+    onBoundsChangeRef.current = onBoundsChange
+  }, [onBoundsChange])
+
+  useEffect(() => {
+    onZoomChangeRef.current = onZoomChange
+  }, [onZoomChange])
+
+  // 지도 초기화 (only once with initial center/level)
   useEffect(() => {
     if (!mapRef.current || typeof window === 'undefined' || !window.kakao?.maps) {
       return
@@ -46,7 +59,7 @@ export function useKakaoMap({
         const sw = bounds.getSouthWest()
         const ne = bounds.getNorthEast()
 
-        onBoundsChange?.({
+        onBoundsChangeRef.current?.({
           sw: { lat: sw.getLat(), lng: sw.getLng() },
           ne: { lat: ne.getLat(), lng: ne.getLng() },
         })
@@ -54,9 +67,10 @@ export function useKakaoMap({
 
       // 줌 변경 이벤트
       window.kakao.maps.event.addListener(kakaoMap, 'zoom_changed', () => {
-        onZoomChange?.(kakaoMap.getLevel())
+        onZoomChangeRef.current?.(kakaoMap.getLevel())
       })
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Initial setup only, callbacks accessed via refs
   }, [])
 
   // 중심 좌표 변경

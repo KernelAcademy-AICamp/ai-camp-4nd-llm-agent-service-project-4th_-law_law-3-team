@@ -16,6 +16,25 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => HTML_ESCAPE_MAP[char])
 }
 
+// 마커 SVG 생성 함수 (모듈 레벨)
+function createMarkerSvg(color: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">
+    <defs>
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.3"/>
+      </filter>
+    </defs>
+    <path fill="${color}" filter="url(%23shadow)" d="M16 0C7.163 0 0 7.163 0 16c0 8.837 16 24 16 24s16-15.163 16-24C32 7.163 24.837 0 16 0z"/>
+    <circle fill="#fff" cx="16" cy="14" r="6"/>
+  </svg>`
+}
+
+/** 캐시된 마커 SVG 데이터 URL (성능 최적화) */
+const MARKER_SVG_CACHE = {
+  blue: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(createMarkerSvg('#3B82F6'))}`,
+  orange: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(createMarkerSvg('#F97316'))}`,
+} as const
+
 // 변호사를 사무소별로 그룹화하는 함수
 function groupLawyersByOffice(lawyers: Lawyer[]): Office[] {
   const officeMap = new Map<string, Office>()
@@ -131,6 +150,8 @@ export function KakaoMap({
   const prevCenterRef = useRef<{ lat: number; lng: number } | null>(null)
   const skipCenterPanRef = useRef(false)
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 이벤트 핸들러 refs (클린업용)
+  const eventHandlersRef = useRef<{ dragend?: () => void; idle?: () => void }>({})
 
   // 콜백 ref 업데이트
   useEffect(() => {
@@ -168,17 +189,16 @@ export function KakaoMap({
         const map = new window.kakao.maps.Map(containerRef.current, options)
         mapRef.current = map
 
-        // 드래그 완료 시 중심 좌표 변경 콜백
-        window.kakao.maps.event.addListener(map, 'dragend', () => {
+        // 이벤트 핸들러 생성 및 refs에 저장 (클린업용)
+        eventHandlersRef.current.dragend = () => {
           const newCenter = map.getCenter()
           onCenterChangeRef.current?.({
             lat: newCenter.getLat(),
             lng: newCenter.getLng(),
           })
-        })
+        }
 
-        // idle 이벤트: 줌/바운드 변경 알림
-        window.kakao.maps.event.addListener(map, 'idle', () => {
+        eventHandlersRef.current.idle = () => {
           onZoomChangeRef.current?.(map.getLevel())
           const bounds = map.getBounds()
           if (bounds) {
@@ -189,16 +209,37 @@ export function KakaoMap({
               max_lng: bounds.getNorthEast().getLng(),
             })
           }
-        })
+        }
+
+        // 드래그 완료 시 중심 좌표 변경 콜백
+        window.kakao.maps.event.addListener(map, 'dragend', eventHandlersRef.current.dragend)
+
+        // idle 이벤트: 줌/바운드 변경 알림
+        window.kakao.maps.event.addListener(map, 'idle', eventHandlersRef.current.idle)
 
         onMapReady?.(map)
       })
     }
 
     const cleanup = loadMap()
+    // 클린업용 참조 복사 (lint 경고 해결)
+    const handlers = eventHandlersRef.current
+    const map = mapRef.current
+
     return () => {
       if (typeof cleanup === 'function') cleanup()
+      // 이벤트 리스너 클린업
+      if (map && window.kakao?.maps) {
+        const { dragend, idle } = handlers
+        if (dragend) {
+          window.kakao.maps.event.removeListener(map, 'dragend', dragend)
+        }
+        if (idle) {
+          window.kakao.maps.event.removeListener(map, 'idle', idle)
+        }
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 컨테이너 크기 변경 감지 및 map.relayout() 호출
@@ -379,28 +420,15 @@ export function KakaoMap({
 
     const markers: kakao.maps.Marker[] = []
 
-    // 커스텀 마커 이미지 생성 (기본: 파란색)
-    const createMarkerSvg = (color: string) => `
-      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">
-        <defs>
-          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.3"/>
-          </filter>
-        </defs>
-        <path fill="${color}" filter="url(%23shadow)" d="M16 0C7.163 0 0 7.163 0 16c0 8.837 16 24 16 24s16-15.163 16-24C32 7.163 24.837 0 16 0z"/>
-        <circle fill="#fff" cx="16" cy="14" r="6"/>
-      </svg>
-    `
+    // 캐시된 마커 이미지 사용 (성능 최적화)
     const markerImageSize = new window.kakao.maps.Size(32, 40)
     const markerImageOption = { offset: new window.kakao.maps.Point(16, 40) }
 
-    // 기본 마커 (파란색)
-    const defaultMarkerSrc = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(createMarkerSvg('#3B82F6'))}`
-    const defaultMarkerImage = new window.kakao.maps.MarkerImage(defaultMarkerSrc, markerImageSize, markerImageOption)
+    // 기본 마커 (파란색) - 캐시 사용
+    const defaultMarkerImage = new window.kakao.maps.MarkerImage(MARKER_SVG_CACHE.blue, markerImageSize, markerImageOption)
 
-    // 선택된 마커 (주황색)
-    const selectedMarkerSrc = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(createMarkerSvg('#F97316'))}`
-    const selectedMarkerImage = new window.kakao.maps.MarkerImage(selectedMarkerSrc, markerImageSize, markerImageOption)
+    // 선택된 마커 (주황색) - 캐시 사용
+    const selectedMarkerImage = new window.kakao.maps.MarkerImage(MARKER_SVG_CACHE.orange, markerImageSize, markerImageOption)
 
     offices.forEach((office) => {
       const position = new window.kakao.maps.LatLng(office.lat, office.lng)

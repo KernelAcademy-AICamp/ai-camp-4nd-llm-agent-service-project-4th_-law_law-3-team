@@ -1,6 +1,7 @@
 'use client'
 
-import { SearchPanel, CaseDetailPanel } from '@/features/case-precedent/components'
+import { SearchPanel } from '@/features/case-precedent/components/SearchPanel'
+import { CaseDetailPanel } from '@/features/case-precedent/components/CaseDetailPanel'
 import { useCaseSearch } from '@/features/case-precedent/hooks/useCaseSearch'
 
 export function LawyerView() {

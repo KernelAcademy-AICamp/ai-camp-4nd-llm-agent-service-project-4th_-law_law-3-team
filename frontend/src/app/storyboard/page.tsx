@@ -1,16 +1,32 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { BackButton } from '@/components/ui/BackButton'
-import {
-  MultiInputPanel,
-  TimelineView,
-  TimelineToolbar,
-  TimelineItemEditor,
-  VideoGenerationModal,
-} from '@/features/storyboard/components'
+import { TimelineToolbar } from '@/features/storyboard/components/TimelineToolbar'
 import { useTimelineState } from '@/features/storyboard/hooks'
 import type { TimelineItem, VideoSettings } from '@/features/storyboard/types'
+
+// Dynamic imports for heavy components (reduces initial bundle size)
+const MultiInputPanel = dynamic(
+  () => import('@/features/storyboard/components/MultiInputPanel').then(m => m.MultiInputPanel),
+  { loading: () => <div className="flex h-full items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" /></div> }
+)
+
+const TimelineView = dynamic(
+  () => import('@/features/storyboard/components/TimelineView').then(m => m.TimelineView),
+  { loading: () => <div className="flex h-full items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" /></div> }
+)
+
+const TimelineItemEditor = dynamic(
+  () => import('@/features/storyboard/components/TimelineItemEditor').then(m => m.TimelineItemEditor),
+  { ssr: false }
+)
+
+const VideoGenerationModal = dynamic(
+  () => import('@/features/storyboard/components/VideoGenerationModal').then(m => m.VideoGenerationModal),
+  { ssr: false }
+)
 
 export default function StoryboardPage() {
   // 입력 패널 접기/펼치기 상태

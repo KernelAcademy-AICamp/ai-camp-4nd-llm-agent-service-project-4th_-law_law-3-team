@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, memo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { PredictionYear, ViewMode } from '@/app/lawyer-stats/page'
 import type { DensityStat, RegionStat, SpecialtyStat } from '../types'
@@ -15,9 +15,16 @@ interface RegionDetailListProps {
   mapSelectedRegion?: string | null
 }
 
-function SpecialtyItem({ spec, maxCount }: { spec: SpecialtyStat; maxCount: number }) {
+/** viewMode별 색상 매핑 (렌더링 외부에서 정의) */
+const VIEW_MODE_COLORS = {
+  count: { bar: 'bg-blue-500', text: 'text-blue-600' },
+  density: { bar: 'bg-emerald-500', text: 'text-emerald-600' },
+  prediction: { bar: 'bg-violet-500', text: 'text-violet-600' },
+} as const
+
+const SpecialtyItem = memo(function SpecialtyItem({ spec, maxCount }: { spec: SpecialtyStat; maxCount: number }) {
   const [expanded, setExpanded] = useState(false)
-  const barWidth = (spec.count / maxCount) * 100
+  const barWidth = useMemo(() => (spec.count / maxCount) * 100, [spec.count, maxCount])
 
   return (
     <div className="border-b border-gray-100 last:border-0">
@@ -61,7 +68,7 @@ function SpecialtyItem({ spec, maxCount }: { spec: SpecialtyStat; maxCount: numb
       )}
     </div>
   )
-}
+})
 
 type SortOrder = 'desc' | 'asc'
 
@@ -79,27 +86,37 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
     setSelectedRegion(null)
   }, [selectedProvince])
 
-  const filteredRegions = selectedProvince
-    ? regions.filter((r) => r.region.startsWith(selectedProvince))
-    : regions
+  const filteredRegions = useMemo(
+    () => selectedProvince
+      ? regions.filter((r) => r.region.startsWith(selectedProvince))
+      : regions,
+    [regions, selectedProvince]
+  )
 
   // viewMode와 sortOrder에 따라 정렬
-  const sortedRegions = [...filteredRegions].sort((a, b) => {
-    const multiplier = sortOrder === 'desc' ? 1 : -1
-    if (viewMode === 'density' || viewMode === 'prediction') {
-      const aDensity = 'density' in a ? a.density : 0
-      const bDensity = 'density' in b ? b.density : 0
-      return (bDensity - aDensity) * multiplier
-    }
-    return (b.count - a.count) * multiplier
-  })
+  const sortedRegions = useMemo(() => {
+    return [...filteredRegions].sort((a, b) => {
+      const multiplier = sortOrder === 'desc' ? 1 : -1
+      if (viewMode === 'density' || viewMode === 'prediction') {
+        const aDensity = 'density' in a ? a.density : 0
+        const bDensity = 'density' in b ? b.density : 0
+        return (bDensity - aDensity) * multiplier
+      }
+      return (b.count - a.count) * multiplier
+    })
+  }, [filteredRegions, sortOrder, viewMode])
 
-  const displayRegions = selectedProvince ? sortedRegions : sortedRegions.slice(0, 15)
+  const displayRegions = useMemo(
+    () => selectedProvince ? sortedRegions : sortedRegions.slice(0, 15),
+    [selectedProvince, sortedRegions]
+  )
 
   // viewMode에 따라 최대값 결정 (바 그래프용 - 정렬 순서 무관하게 최대값)
-  const maxValue = (viewMode === 'density' || viewMode === 'prediction')
-    ? Math.max(...displayRegions.map(r => 'density' in r ? r.density : 0), 1)
-    : Math.max(...displayRegions.map(r => r.count), 1)
+  const maxValue = useMemo(() => {
+    return (viewMode === 'density' || viewMode === 'prediction')
+      ? Math.max(...displayRegions.map(r => 'density' in r ? r.density : 0), 1)
+      : Math.max(...displayRegions.map(r => r.count), 1)
+  }, [displayRegions, viewMode])
 
   // 선택된 지역의 전문분야 데이터 조회
   const specialtiesQuery = useQuery({
@@ -326,16 +343,7 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
           const displayValue = isDensityMode && 'density' in region
             ? `${region.density.toFixed(1)}명/10만`
             : `${region.count.toLocaleString()}명`
-          const barColor = viewMode === 'prediction'
-            ? 'bg-violet-500'
-            : viewMode === 'density'
-              ? 'bg-emerald-500'
-              : 'bg-blue-500'
-          const textColor = viewMode === 'prediction'
-            ? 'text-violet-600'
-            : viewMode === 'density'
-              ? 'text-emerald-600'
-              : 'text-blue-600'
+          const { bar: barColor, text: textColor } = VIEW_MODE_COLORS[viewMode]
 
           // 예측 모드에서 변화율 표시
           const changePercent = 'change_percent' in region ? region.change_percent : undefined
