@@ -14,7 +14,6 @@ export const endpoints = {
   lawyerFinder: '/lawyer-finder',
   lawyerStat: '/lawyer-stats',
   casePrecedent: '/case-precedent',
-  reviewPrice: '/review-price',
   storyboard: '/storyboard',
   lawStudy: '/law-study',
   smallClaims: '/small-claims',

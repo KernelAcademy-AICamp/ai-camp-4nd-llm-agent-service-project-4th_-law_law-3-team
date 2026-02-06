@@ -51,15 +51,6 @@ export const modules: Module[] = [
     roles: ['lawyer', 'user'],
   },
   {
-    id: 'review-price',
-    name: '후기/가격 비교',
-    description: '다른 사용자들의 상담 후기와 가격을 비교해보세요',
-    href: '/review-price',
-    icon: '💰',
-    enabled: true,
-    roles: ['user'],
-  },
-  {
     id: 'storyboard',
     name: '스토리보드',
     description: '사건 타임라인을 시각화합니다',

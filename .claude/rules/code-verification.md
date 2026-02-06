@@ -55,7 +55,6 @@ API 스키마(요청/응답)를 변경할 때 양쪽을 함께 확인한다.
 | `modules/case_precedent/schema/` | `features/case-precedent/types/` |
 | `modules/small_claims/schema/` | `features/small-claims/types/` |
 | `modules/storyboard/schema/` | `features/storyboard/types/` |
-| `modules/review_price/schema/` | `features/review-price/types/` (존재 시) |
 | `modules/law_study/schema/` | `features/law-study/types/` (존재 시) |
 
 ---
@@ -78,7 +77,6 @@ API 스키마(요청/응답)를 변경할 때 양쪽을 함께 확인한다.
 | `case_precedent` | `case-precedent` ✅ | `casePrecedent` ✅ | `/api/case-precedent` ✅ |
 | `small_claims` | `small-claims` ✅ | `smallClaims` ✅ | `/api/small-claims` ✅ |
 | `storyboard` | `storyboard` ✅ | `storyboard` ✅ | API Route 프록시 |
-| `review_price` | `review-price` ✅ | `reviewPrice` ✅ | `/api/review-price` ✅ |
 | `law_study` | `law-study` ✅ | `lawStudy` ✅ | `/api/law-study` ✅ |
 
 **핵심**: Frontend `enabled: true`인 모듈은 Backend에 **동작하는** 라우터가 있어야 한다.

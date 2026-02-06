@@ -41,7 +41,6 @@ law-3-team/
 │   │   │   ├── lawyer_finder/       # 위치 기반 변호사 추천
 │   │   │   ├── lawyer_stats/        # 변호사 통계 대시보드
 │   │   │   ├── case_precedent/      # 판례 검색 및 추천
-│   │   │   ├── review_price/        # 후기/가격 비교
 │   │   │   ├── storyboard/          # 타임라인 스토리보드
 │   │   │   ├── law_study/           # 로스쿨 학습
 │   │   │   └── small_claims/        # 소액 소송 에이전트
@@ -57,7 +56,6 @@ law-3-team/
     │   │   ├── lawyer-finder/
     │   │   ├── lawyer-stats/
     │   │   ├── case-precedent/
-    │   │   ├── review-price/
     │   │   ├── storyboard/
     │   │   ├── law-study/
     │   │   └── small-claims/
@@ -65,7 +63,6 @@ law-3-team/
     │   │   ├── lawyer-finder/
     │   │   ├── lawyer-stats/
     │   │   ├── case-precedent/
-    │   │   ├── review-price/
     │   │   ├── storyboard/
     │   │   ├── law-study/
     │   │   └── small-claims/
@@ -85,7 +82,6 @@ law-3-team/
 | **lawyer_finder** | 카카오맵 API를 활용한 위치 기반 변호사 검색 | 지도 기반 검색, 반경 설정, 변호사 상세 정보 |
 | **lawyer_stats** | 지역별·전문분야별 변호사 분포 및 시장 분석 | 지역별 밀도, 향후 예측(2030/2035/2040), 히트맵 |
 | **case_precedent** | RAG 기반 판례 검색 및 AI 질문 | Split View 검색, 필터(문서유형/법원), AI 판례 분석 |
-| **review_price** | 상담 후기 및 가격 정보 비교 | 후기 검색, 가격 비교, 필터링 |
 | **storyboard** | AI 이미지 생성을 활용한 사건 타임라인 시각화 | 타임라인 생성, 이미지 생성 |
 | **law_study** | 로스쿨 학생용 학습 자료, 퀴즈 제공 | 학습 자료, 퀴즈, 오답 노트 |
 | **small_claims** | 소액 소송 나홀로 소송 지원 | 4단계 위자드, 증거 체크리스트, AI 서류 생성 |
