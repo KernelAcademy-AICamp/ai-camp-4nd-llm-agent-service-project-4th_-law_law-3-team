@@ -11,14 +11,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import asyncio
-from typing import Callable, Generator
+import asyncio  # noqa: E402
+import tempfile  # noqa: E402
+from typing import Callable, Generator  # noqa: E402
 
-import numpy as np
-import pytest
-import pytest_asyncio
-import tempfile
-
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
 
 # ============================================================================
 # Async 테스트용 이벤트 루프 설정
@@ -188,6 +187,10 @@ def lancedb_store(tmp_path, monkeypatch):
     테스트 종료 후 tmp_path가 자동 삭제됨.
     """
     from app.core.config import settings
+    from app.tools.vectorstore import reset_vector_store_cache
+
+    # 싱글톤 캐시 초기화 (테스트 격리)
+    reset_vector_store_cache()
 
     lancedb_dir = tmp_path / "lancedb_test"
     lancedb_dir.mkdir()
@@ -199,6 +202,7 @@ def lancedb_store(tmp_path, monkeypatch):
     store = LanceDBStore()
     yield store
     store.reset()
+    reset_vector_store_cache()
 
 
 @pytest.fixture

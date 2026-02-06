@@ -4,6 +4,7 @@ RAG 검색 서비스
 VectorStore에서 관련 문서를 검색
 """
 
+import asyncio
 import logging
 import warnings
 from typing import Any, Dict, List, Optional
@@ -37,9 +38,10 @@ def _get_chunk_content(store: Any, chunk_id: str, source_id: Optional[str] = Non
 
     if source_id:
         try:
+            from sqlalchemy import select
+
             from app.core.database import sync_session_factory
             from app.models.legal_document import LegalDocument
-            from sqlalchemy import select
 
             with sync_session_factory() as session:
                 result = session.execute(
@@ -92,6 +94,9 @@ def search_relevant_documents(
     if not results or not results.get("ids") or not results["ids"][0]:
         return []
 
+    # 검색 결과에서 documents가 이미 포함되어 있으면 직접 사용 (N+1 제거)
+    result_documents = results.get("documents", [[]])[0] if results.get("documents") else []
+
     documents = []
     for i, chunk_id in enumerate(results["ids"][0]):
         raw_metadata = results["metadatas"][0][i] if results.get("metadatas") else {}
@@ -107,8 +112,13 @@ def search_relevant_documents(
             "total_chunks": raw_metadata.get("total_chunks", 1),
         }
 
-        source_id = raw_metadata.get("source_id")
-        content = _get_chunk_content(store, chunk_id, source_id)
+        # SearchResult에 content가 포함되어 있으면 직접 사용 (N+1 쿼리 방지)
+        content = ""
+        if i < len(result_documents) and result_documents[i]:
+            content = result_documents[i]
+        else:
+            source_id = raw_metadata.get("source_id")
+            content = _get_chunk_content(store, chunk_id, source_id)
 
         doc = {
             "id": chunk_id,
@@ -119,6 +129,29 @@ def search_relevant_documents(
         documents.append(doc)
 
     return documents
+
+
+async def search_relevant_documents_async(
+    query: str,
+    n_results: int = 5,
+    doc_type: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    관련 법률 문서 비동기 검색
+
+    sync 함수를 별도 스레드에서 실행하여 FastAPI 이벤트 루프 블로킹 방지.
+
+    Args:
+        query: 검색 쿼리
+        n_results: 반환할 결과 수
+        doc_type: 문서 유형 필터 (precedent, law, constitutional)
+
+    Returns:
+        관련 문서 목록
+    """
+    return await asyncio.to_thread(
+        search_relevant_documents, query, n_results, doc_type
+    )
 
 
 # =============================================================================

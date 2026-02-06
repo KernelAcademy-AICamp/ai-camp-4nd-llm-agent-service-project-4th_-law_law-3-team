@@ -21,10 +21,17 @@ from typing import Optional
 from app.core.config import settings
 from app.tools.vectorstore.base import SearchResult, VectorStoreBase
 
+# 싱글톤 캐시 (기본 collection_name에 대해서만)
+_default_store: Optional[VectorStoreBase] = None
+
 
 def get_vector_store(collection_name: Optional[str] = None) -> VectorStoreBase:
     """
     환경 설정에 따라 적절한 벡터 저장소 인스턴스 반환
+
+    기본 collection_name(None)으로 호출 시 싱글톤 인스턴스를 반환하여
+    매 호출마다 DB 연결을 반복하지 않습니다.
+    커스텀 collection_name 지정 시 새 인스턴스를 생성합니다.
 
     Args:
         collection_name: 컬렉션 이름 (기본값: settings에서)
@@ -35,6 +42,23 @@ def get_vector_store(collection_name: Optional[str] = None) -> VectorStoreBase:
     환경 변수:
         VECTOR_DB: 사용할 벡터 DB (chroma, qdrant, lancedb)
     """
+    global _default_store
+
+    # 기본 collection_name이면 싱글톤 반환
+    if collection_name is None and _default_store is not None:
+        return _default_store
+
+    store = _create_vector_store(collection_name)
+
+    # 기본 collection_name이면 캐싱
+    if collection_name is None:
+        _default_store = store
+
+    return store
+
+
+def _create_vector_store(collection_name: Optional[str] = None) -> VectorStoreBase:
+    """벡터 저장소 인스턴스 생성 (내부용)"""
     vector_db = getattr(settings, "VECTOR_DB", "chroma").lower()
 
     if vector_db == "lancedb":
@@ -47,6 +71,12 @@ def get_vector_store(collection_name: Optional[str] = None) -> VectorStoreBase:
         # 기본값: ChromaDB
         from app.tools.vectorstore.chroma import ChromaVectorStore
         return ChromaVectorStore(collection_name=collection_name)
+
+
+def reset_vector_store_cache() -> None:
+    """싱글톤 캐시 초기화 (테스트용)"""
+    global _default_store
+    _default_store = None
 
 
 # 하위 호환성을 위한 별칭
@@ -88,6 +118,7 @@ __all__ = [
     "SearchResult",
     "VectorStore",
     "get_vector_store",
+    "reset_vector_store_cache",
     # LanceDB v2 Schema
     "LEGAL_CHUNKS_SCHEMA",
     "TABLE_NAME",
