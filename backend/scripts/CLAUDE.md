@@ -6,19 +6,86 @@
 
 | 스크립트 | 용도 |
 |----------|------|
-| `runpod_lancedb_embeddings.py` | 메인 임베딩 스크립트 (로컬/RunPod/Colab) |
+| `runpod_lancedb_embeddings.py` | 메인 임베딩 스크립트 (RunPod/클라우드 GPU) |
+| `local_lancedb_embeddings.py` | 로컬 임베딩 스크립트 (멀티 하드웨어 지원) |
 | `colab_lancedb_embeddings.py` | Google Colab 전용 |
 | `test_precedent_embedding.py` | 임베딩 테스트 |
 
+### 공통 모듈 (`embedding_common/`)
+
+| 모듈 | 설명 |
+|------|------|
+| `device.py` | GPU/CPU/MPS 디바이스 감지, DeviceInfo |
+| `config.py` | 하드웨어 프로필, 배치 크기 최적 설정 |
+| `model.py` | 임베딩 모델 로딩 (KURE-v1) |
+| `store.py` | LanceDB 테이블 생성/연결 |
+| `chunking.py` | 텍스트 청킹 (법령/판례) |
+| `schema.py` | 스키마 v2 re-export + 검증 유틸 |
+| `cache.py` | MD5 기반 임베딩 캐시 |
+| `temperature.py` | GPU 온도 모니터링 (nvidia-smi) |
+| `memory.py` | GPU/시스템 메모리 모니터링 |
+
+### Jupyter Notebook (`../notebooks/`)
+
+| 노트북 | 환경 | 설명 |
+|--------|------|------|
+| `runpod_lancedb_embeddings.ipynb` | RunPod (A100/H100) | 클라우드 GPU 임베딩 |
+| `colab_lancedb_embeddings.ipynb` | Google Colab (T4) | Drive 저장, 분할 처리 |
+
 ## 빠른 시작
 
-### 로컬 실행 (GPU)
+### 로컬 실행 (권장: `local_lancedb_embeddings.py`)
 
 ```bash
 cd backend
 
-# PyTorch CUDA 설치 (환경에 맞게)
-uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+# PyTorch 설치 (환경에 맞게)
+uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128  # CUDA
+# uv pip install --reinstall torch torchvision torchaudio  # CPU/MPS
+
+# 전체 임베딩 (하드웨어 자동 감지)
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --reset
+
+# 판례만
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type precedent
+
+# 법령만
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type law
+
+# 프로필 수동 지정
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --profile laptop  # 발열 보호
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --profile mac     # MPS 백엔드
+
+# 통계 / 검증
+uv run --no-sync python scripts/local_lancedb_embeddings.py --stats
+uv run --no-sync python scripts/local_lancedb_embeddings.py --verify
+```
+
+### 하드웨어 프로필
+
+| 프로필 | batch_size | 온도 모니터링 | 비고 |
+|--------|-----------|--------------|------|
+| desktop | 128 | OFF | 5060Ti 등 데스크톱 GPU |
+| laptop | 50 | ON (85°C) | 3060 Laptop 등 발열 보호 |
+| mac | 50 | OFF | Apple Silicon MPS |
+| cpu | 20 | OFF | CPU 전용 |
+
+### 체크포인트/재개
+
+중단 시 자동으로 체크포인트를 저장합니다. 재실행 시 이어서 처리합니다.
+
+```bash
+# 재개 (기본 동작)
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type precedent
+
+# 처음부터 다시
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type precedent --no-resume
+```
+
+### RunPod/클라우드 실행
+
+```bash
+cd backend
 
 # 판례 임베딩
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py \
@@ -285,6 +352,8 @@ for _, row in results.iterrows():
 
 - `docs/vectordb_design.md` - 전체 설계 문서
 - `docs/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
+- `notebooks/runpod_lancedb_embeddings.ipynb` - RunPod 노트북
+- `notebooks/colab_lancedb_embeddings.ipynb` - Colab 노트북
 
 ---
 

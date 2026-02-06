@@ -229,14 +229,40 @@ POST /api/chat
 ```bash
 cd backend
 
-# PyTorch CUDA 설치 (GPU 사용 시)
+# PyTorch 설치 (환경에 맞게)
 uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 
-# 임베딩 생성 (--no-sync 필수)
+# 로컬 임베딩 (권장 - 하드웨어 자동 감지, 체크포인트 지원)
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --reset
+
+# RunPod/클라우드 임베딩
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all --reset
 
 # 통계 확인
-uv run --no-sync python scripts/runpod_lancedb_embeddings.py --stats
+uv run --no-sync python scripts/local_lancedb_embeddings.py --stats
+```
+
+### 임베딩 인프라 구조
+
+```
+backend/scripts/
+├── local_lancedb_embeddings.py       # 로컬 임베딩 (데스크톱/노트북/Mac)
+├── runpod_lancedb_embeddings.py      # 클라우드 GPU 임베딩 (RunPod)
+├── embedding_common/                  # 공통 모듈 패키지
+│   ├── device.py                      # GPU/CPU/MPS 감지
+│   ├── config.py                      # 하드웨어 프로필 설정
+│   ├── model.py                       # 임베딩 모델 로딩
+│   ├── store.py                       # LanceDB 연결/테이블
+│   ├── chunking.py                    # 텍스트 청킹
+│   ├── schema.py                      # 스키마 검증
+│   ├── cache.py                       # 임베딩 캐시
+│   ├── temperature.py                 # GPU 온도 모니터링
+│   └── memory.py                      # 메모리 모니터링
+└── CLAUDE.md                          # 스크립트 상세 가이드
+
+backend/notebooks/
+├── runpod_lancedb_embeddings.ipynb    # RunPod 환경 노트북
+└── colab_lancedb_embeddings.ipynb     # Google Colab 노트북
 ```
 
 ### 저장 위치
