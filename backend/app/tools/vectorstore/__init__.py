@@ -4,7 +4,7 @@
 환경 변수 VECTOR_DB에 따라 적절한 벡터 DB 구현체를 선택합니다.
 - chroma (기본값): ChromaDB 사용
 - qdrant: Qdrant 사용
-- lancedb: LanceDB 사용 (디스크 기반, 메모리 효율적)
+- lancedb: LanceDB 사용 (디스크 기반, 메모리 효율적, FTS/하이브리드 검색 지원)
 
 Usage:
     from app.tools.vectorstore import get_vector_store, VectorStore
@@ -18,8 +18,8 @@ Usage:
 
 from typing import Optional
 
-from app.tools.vectorstore.base import SearchResult, VectorStoreBase
 from app.core.config import settings
+from app.tools.vectorstore.base import SearchResult, VectorStoreBase
 
 
 def get_vector_store(collection_name: Optional[str] = None) -> VectorStoreBase:
@@ -66,21 +66,20 @@ class VectorStore(VectorStoreBase):
 
 
 # LanceDB v2 스키마 export
-from app.tools.vectorstore.schema_v2 import (
-    LEGAL_CHUNKS_SCHEMA,
-    TABLE_NAME,
-    VECTOR_DIM,
+from app.tools.vectorstore.schema_v2 import (  # noqa: E402
+    ALL_COLUMNS,
     COMMON_COLUMNS,
     LAW_COLUMNS,
+    LEGAL_CHUNKS_SCHEMA,
     PRECEDENT_COLUMNS,
-    ALL_COLUMNS,
+    TABLE_NAME,
+    VECTOR_DIM,
     LegalChunk,
     create_law_chunk,
     create_precedent_chunk,
     get_law_columns,
     get_precedent_columns,
 )
-
 
 # 직접 import할 수 있도록 export
 __all__ = [

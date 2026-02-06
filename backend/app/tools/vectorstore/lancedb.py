@@ -5,27 +5,26 @@ LanceDB 벡터 저장소 구현체 (v2)
 - 단일 테이블 + NULL 허용 방식
 - 법령과 판례를 data_type 컬럼으로 구분
 - 해당하지 않는 필드는 NULL
+- content_tokenized 컬럼으로 MeCab 사전 토크나이징 기반 FTS 지원
 
 디스크 기반 벡터 DB로 메모리 효율적인 대용량 데이터 처리 지원
 """
 
+import logging
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 import lancedb
-import pyarrow as pa
 
 from app.core.config import settings
-from app.tools.vectorstore.base import VectorStoreBase, SearchResult
+from app.tools.vectorstore.base import SearchResult, VectorStoreBase
 from app.tools.vectorstore.schema_v2 import (
     LEGAL_CHUNKS_SCHEMA,
-    TABLE_NAME,
-    COMMON_COLUMNS,
-    LAW_COLUMNS,
-    PRECEDENT_COLUMNS,
     create_law_chunk,
     create_precedent_chunk,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class LanceDBStore(VectorStoreBase):
@@ -108,6 +107,7 @@ class LanceDBStore(VectorStoreBase):
         promulgation_nos: Optional[List[str]] = None,
         law_types: Optional[List[str]] = None,
         article_nos: Optional[List[str]] = None,
+        content_tokenized_list: Optional[List[str]] = None,
     ) -> None:
         """법령 문서 배치 추가"""
         if not source_ids:
@@ -130,6 +130,7 @@ class LanceDBStore(VectorStoreBase):
                 promulgation_no=promulgation_nos[i] if promulgation_nos else None,
                 law_type=law_types[i] if law_types else None,
                 article_no=article_nos[i] if article_nos else None,
+                content_tokenized=content_tokenized_list[i] if content_tokenized_list else None,
             )
             data.append(chunk)
 
@@ -152,6 +153,7 @@ class LanceDBStore(VectorStoreBase):
         judgment_statuses: Optional[List[str]] = None,
         reference_provisions_list: Optional[List[str]] = None,
         reference_cases_list: Optional[List[str]] = None,
+        content_tokenized_list: Optional[List[str]] = None,
     ) -> None:
         """판례 문서 배치 추가"""
         if not source_ids:
@@ -176,6 +178,7 @@ class LanceDBStore(VectorStoreBase):
                 judgment_status=judgment_statuses[i] if judgment_statuses else None,
                 reference_provisions=reference_provisions_list[i] if reference_provisions_list else None,
                 reference_cases=reference_cases_list[i] if reference_cases_list else None,
+                content_tokenized=content_tokenized_list[i] if content_tokenized_list else None,
             )
             data.append(chunk)
 
@@ -206,6 +209,8 @@ class LanceDBStore(VectorStoreBase):
             source_id = parts[0] if len(parts) > 1 else doc_id
             chunk_index = int(parts[1]) if len(parts) > 1 else 0
 
+            content_tokenized = meta.get("content_tokenized")
+
             if data_type == "법령":
                 record = create_law_chunk(
                     source_id=source_id,
@@ -220,6 +225,7 @@ class LanceDBStore(VectorStoreBase):
                     promulgation_no=meta.get("promulgation_no"),
                     law_type=meta.get("law_type"),
                     article_no=meta.get("article_no"),
+                    content_tokenized=content_tokenized,
                 )
             else:
                 record = create_precedent_chunk(
@@ -237,6 +243,7 @@ class LanceDBStore(VectorStoreBase):
                     judgment_status=meta.get("judgment_status"),
                     reference_provisions=meta.get("reference_provisions"),
                     reference_cases=meta.get("reference_cases"),
+                    content_tokenized=content_tokenized,
                 )
 
             # id 덮어쓰기 (원래 전달된 id 사용)
@@ -404,11 +411,11 @@ class LanceDBStore(VectorStoreBase):
                 conditions.append(f"{key} IN ({formatted})")
         return conditions
 
-    def _extract_metadatas(self, df) -> List[Dict[str, Any]]:
+    def _extract_metadatas(self, df: Any) -> List[Dict[str, Any]]:
         """DataFrame에서 메타데이터 추출"""
         metadatas = []
         for _, row in df.iterrows():
-            meta = {
+            meta: Dict[str, Any] = {
                 "source_id": row.get("source_id"),
                 "data_type": row.get("data_type"),
                 "title": row.get("title"),
@@ -417,6 +424,11 @@ class LanceDBStore(VectorStoreBase):
                 "chunk_index": row.get("chunk_index"),
                 "total_chunks": row.get("total_chunks"),
             }
+
+            # content_tokenized 포함 (값이 있을 때만)
+            ct = row.get("content_tokenized")
+            if ct is not None:
+                meta["content_tokenized"] = ct
 
             # data_type에 따라 해당 필드만 추가
             if row.get("data_type") == "법령":
@@ -438,6 +450,180 @@ class LanceDBStore(VectorStoreBase):
 
             metadatas.append(meta)
         return metadatas
+
+    # =========================================================================
+    # FTS (Full-Text Search) 메서드
+    # =========================================================================
+
+    def create_fts_index(self, field: str = "content_tokenized") -> None:
+        """
+        FTS 인덱스 생성
+
+        Args:
+            field: FTS 인덱스를 생성할 컬럼 (기본: content_tokenized)
+        """
+        table = self._ensure_table()
+        table.create_fts_index(field, replace=True)
+
+    def search_fts(
+        self,
+        query: str,
+        n_results: int = 10,
+        where: Optional[Dict[str, Any]] = None,
+    ) -> SearchResult:
+        """
+        MeCab 사전 토크나이징 기반 FTS 검색
+
+        쿼리를 MeCab으로 토크나이징한 후 content_tokenized 컬럼에서 FTS 검색.
+        MeCab 미설치 시 공백 분리 fallback.
+
+        Args:
+            query: 검색 쿼리 (원본 텍스트, 내부에서 토크나이징)
+            n_results: 반환할 결과 수
+            where: 필터 조건 (예: {"data_type": "판례"})
+
+        Returns:
+            SearchResult (distances 대신 _score 기반 값 반환)
+        """
+        if self._table is None:
+            return SearchResult(ids=[[]], distances=[[]], metadatas=[[]], documents=[[]])
+
+        # MeCab 토크나이징
+        from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
+        tokenizer = MeCabTokenizer()
+        tokenized_query = tokenizer.tokenize_query(query)
+
+        if not tokenized_query.strip():
+            return SearchResult(ids=[[]], distances=[[]], metadatas=[[]], documents=[[]])
+
+        # FTS 검색
+        fts_query = self._table.search(tokenized_query, query_type="fts").limit(n_results)
+
+        if where:
+            filter_conditions = self._build_filter_conditions(where)
+            if filter_conditions:
+                fts_query = fts_query.where(" AND ".join(filter_conditions))
+
+        try:
+            df = fts_query.to_pandas()
+        except Exception as e:
+            logger.warning("FTS 검색 실패 (인덱스 미생성일 수 있음): %s", e)
+            return SearchResult(ids=[[]], distances=[[]], metadatas=[[]], documents=[[]])
+
+        if df.empty:
+            return SearchResult(ids=[[]], distances=[[]], metadatas=[[]], documents=[[]])
+
+        ids_list = df["id"].tolist()
+        # FTS는 _score (높을수록 관련도 높음), distance로 변환 (1 - score)
+        scores = df["_score"].tolist()
+        distances_list = [1.0 - s for s in scores]
+        documents_list = df["content"].tolist()
+        metadatas_list = self._extract_metadatas(df)
+
+        return SearchResult(
+            ids=[ids_list],
+            distances=[distances_list],
+            documents=[documents_list],
+            metadatas=[metadatas_list],
+        )
+
+    # =========================================================================
+    # 하이브리드 검색 (RRF)
+    # =========================================================================
+
+    def hybrid_search(
+        self,
+        query_embedding: List[float],
+        query_text: str,
+        n_results: int = 10,
+        where: Optional[Dict[str, Any]] = None,
+        rrf_k: int = 60,
+    ) -> SearchResult:
+        """
+        벡터 + FTS 하이브리드 검색 (RRF 결합)
+
+        벡터 검색과 FTS 검색을 각각 실행한 후 Reciprocal Rank Fusion으로
+        결과를 결합합니다. FTS 결과가 없으면 벡터 결과만 반환 (fallback).
+
+        Args:
+            query_embedding: 쿼리 임베딩 벡터
+            query_text: 쿼리 원본 텍스트 (FTS용, 내부에서 토크나이징)
+            n_results: 반환할 결과 수
+            where: 필터 조건
+            rrf_k: RRF 파라미터 k (기본: 60)
+
+        Returns:
+            SearchResult (RRF 점수 기반 정렬)
+        """
+        # 벡터 검색 (2배 가져와서 RRF 후 n_results만큼 반환)
+        fetch_k = n_results * 2
+        vector_result = self.search(query_embedding, n_results=fetch_k, where=where)
+
+        # FTS 검색
+        fts_result = self.search_fts(query_text, n_results=fetch_k, where=where)
+
+        vector_ids = vector_result.ids[0] if vector_result.ids[0] else []
+        fts_ids = fts_result.ids[0] if fts_result.ids[0] else []
+
+        # FTS 결과가 없으면 벡터 결과만 반환 (fallback)
+        if not fts_ids:
+            return self.search(query_embedding, n_results=n_results, where=where)
+
+        # RRF 결합
+        rrf_ranked_ids = self._reciprocal_rank_fusion(
+            vector_ids, fts_ids, k=rrf_k
+        )
+
+        # 상위 n_results만
+        final_ids = rrf_ranked_ids[:n_results]
+
+        if not final_ids:
+            return SearchResult(ids=[[]], distances=[[]], metadatas=[[]], documents=[[]])
+
+        # ID 기반 문서 조회
+        doc_result = self.get_by_ids(final_ids)
+
+        # RRF 순위 기반 거리 할당 (순위가 높을수록 0에 가까움)
+        rrf_distances = [i / len(final_ids) for i in range(len(final_ids))]
+
+        return SearchResult(
+            ids=[doc_result["ids"]],
+            distances=[rrf_distances[:len(doc_result["ids"])]],
+            documents=[doc_result.get("documents", [])],
+            metadatas=[doc_result.get("metadatas", [])],
+        )
+
+    @staticmethod
+    def _reciprocal_rank_fusion(
+        vector_ids: List[str],
+        fts_ids: List[str],
+        k: int = 60,
+    ) -> List[str]:
+        """
+        Reciprocal Rank Fusion (RRF) 알고리즘
+
+        두 랭킹 리스트의 결과를 결합합니다.
+        RRF 점수 = sum(1 / (k + rank_i)) for each ranking list
+
+        Args:
+            vector_ids: 벡터 검색 결과 ID 리스트 (순위순)
+            fts_ids: FTS 검색 결과 ID 리스트 (순위순)
+            k: RRF 파라미터 (기본: 60)
+
+        Returns:
+            RRF 점수 기준 내림차순 정렬된 ID 리스트
+        """
+        scores: Dict[str, float] = {}
+
+        for rank, doc_id in enumerate(vector_ids):
+            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank + 1)
+
+        for rank, doc_id in enumerate(fts_ids):
+            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank + 1)
+
+        # 점수 내림차순 정렬
+        sorted_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+        return sorted_ids
 
     # ChromaDB 호환성을 위한 collection 속성
     @property
