@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from app.multi_agent.agents.base_chat import BaseChatAgent
 from app.multi_agent.schemas.plan import AgentResult
-from app.services.rag import search_relevant_documents
+from app.services.rag import search_relevant_documents_async
 from app.services.service_function import (
     PrecedentService,
     get_precedent_service,
@@ -79,14 +79,14 @@ class LegalAnswerAgent(BaseChatAgent):
         law_results = []
 
         if self.n_precedents > 0:
-            precedent_results = search_relevant_documents(
+            precedent_results = await search_relevant_documents_async(
                 query=message,
                 n_results=self.n_precedents,
                 doc_type="precedent",
             )
 
         if self.n_laws > 0:
-            law_results = search_relevant_documents(
+            law_results = await search_relevant_documents_async(
                 query=message,
                 n_results=self.n_laws,
                 doc_type="law",
@@ -364,14 +364,14 @@ class LegalAnswerAgent(BaseChatAgent):
         law_results = []
 
         if self.n_precedents > 0:
-            precedent_results = search_relevant_documents(
+            precedent_results = await search_relevant_documents_async(
                 query=message,
                 n_results=self.n_precedents,
                 doc_type="precedent",
             )
 
         if self.n_laws > 0:
-            law_results = search_relevant_documents(
+            law_results = await search_relevant_documents_async(
                 query=message,
                 n_results=self.n_laws,
                 doc_type="law",
