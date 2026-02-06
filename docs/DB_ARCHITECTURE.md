@@ -171,6 +171,49 @@ CREATE TABLE legal_references (
 );
 ```
 
+### 2.4 legal_terms (법률 용어 사전 테이블)
+
+MeCab 토크나이저의 법률 복합명사 인식을 보강하기 위한 용어 사전입니다.
+
+```sql
+CREATE TABLE legal_terms (
+    id SERIAL PRIMARY KEY,
+
+    -- 용어 정보
+    term VARCHAR(200) NOT NULL UNIQUE,   -- 법령용어명 한글
+    term_hanja VARCHAR(200),             -- 한자
+    definition TEXT,                     -- 정의
+    source TEXT,                         -- 출처 법령명
+    source_code VARCHAR(20),             -- 사전유형 (법령정의사전/법령한영사전)
+    serial_number VARCHAR(20),           -- 일련번호
+
+    -- 토크나이저 필터링용
+    term_length INTEGER NOT NULL,        -- 글자 수
+    is_korean_only BOOLEAN NOT NULL,     -- 한글 전용 여부
+    priority INTEGER DEFAULT 0,          -- 토크나이저 로드 우선순위
+
+    -- 메타
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+```
+
+#### 토크나이저 로드 필터
+
+앱 시작 시 다음 조건으로 필터링하여 메모리(frozenset)에 로드:
+- `is_korean_only = true`
+- `term_length BETWEEN 2 AND 10`
+
+#### 인덱스
+
+| 인덱스 | 컬럼 | 용도 |
+|--------|------|------|
+| `idx_legal_terms_term` | term (UNIQUE) | 용어 조회 |
+| `idx_legal_terms_source_code` | source_code | 사전유형별 필터 |
+| `idx_legal_terms_length` | term_length | 길이 범위 필터 |
+| `idx_legal_terms_korean` | is_korean_only | 한글 전용 필터 |
+| `idx_legal_terms_priority` | priority | 우선순위 정렬 |
+
 ---
 
 ## 3. ChromaDB (Vector Store)

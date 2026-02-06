@@ -473,6 +473,58 @@ JSON 파일(`data/lawyers_with_coords.json`)은 변경하지 않으므로 데이
 | `backend/app/models/trial_statistics.py` | TrialStatistics ORM 모델 |
 | `backend/alembic/versions/005_add_trial_statistics_table.py` | 마이그레이션 |
 
+## Legal Terms DB (법률 용어 사전)
+
+법률 용어 데이터(`lawterms_full.json`)를 PostgreSQL `legal_terms` 테이블에 저장하고, MeCab 토크나이저의 법률 복합명사 보강에 활용합니다.
+
+### 활성화
+
+```bash
+# backend/.env
+USE_LEGAL_TERM_DICT=true
+
+# 마이그레이션 + 데이터 로드
+cd backend
+uv run alembic upgrade head
+uv run python scripts/load_legal_terms_data.py
+uv run python scripts/load_legal_terms_data.py --verify  # 검증
+```
+
+### 동작 방식
+
+앱 시작(lifespan) 시 PostgreSQL에서 법률 용어를 메모리(frozenset)에 로드하고, MeCab 토크나이징 결과에 법률 복합명사를 추가 토큰으로 삽입합니다.
+
+```
+"손해배상청구권의 소멸시효"
+  → MeCab:  [손해, 배상, 청구, 권, 의, 소멸, 시효]
+  → 보강:   [손해, 배상, 청구, 권, 의, 소멸, 시효] + [배상청구권, 배상청구, 소멸시효]
+```
+
+### 데이터 현황
+
+| 항목 | 수치 |
+|------|------|
+| 전체 고유 용어 | 36,797개 |
+| 토크나이저 로드 (한글 2-10자) | 33,430개 |
+| 사전유형 | 법령정의사전(24,716) + 법령한영사전(12,026) + 기타(55) |
+
+> **참고**: 현재 데이터는 부분 수집 상태(약 3.7만건). 전체 7만건+ 수집 완료 시 `--reset`으로 교체 가능.
+
+### 롤백
+
+`USE_LEGAL_TERM_DICT=false`로 설정하면 기존 MeCab 동작으로 즉시 복귀합니다.
+
+### 관련 파일
+
+| 파일 | 설명 |
+|------|------|
+| `backend/app/models/legal_term.py` | LegalTerm ORM 모델 |
+| `backend/alembic/versions/006_add_legal_terms_table.py` | 마이그레이션 |
+| `backend/scripts/load_legal_terms_data.py` | 데이터 로드 스크립트 |
+| `backend/app/tools/vectorstore/legal_term_dict.py` | 메모리 사전 (frozenset O(1) lookup) |
+| `backend/app/tools/vectorstore/mecab_tokenizer.py` | MeCab 토크나이저 (보강 로직) |
+| `backend/tests/unit/test_legal_term_dict.py` | 사전 단위 테스트 |
+
 ## Modules
 
 ### lawyer-stats (변호사 통계 대시보드)

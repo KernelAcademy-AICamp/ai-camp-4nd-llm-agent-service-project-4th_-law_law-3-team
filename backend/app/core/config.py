@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     # 변호사 데이터 소스 (True: PostgreSQL, False: JSON 파일)
     USE_DB_LAWYERS: bool = False
 
+    # 법률 용어 사전 (MeCab 토크나이저 법률 복합명사 보강)
+    USE_LEGAL_TERM_DICT: bool = False
+
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []
 

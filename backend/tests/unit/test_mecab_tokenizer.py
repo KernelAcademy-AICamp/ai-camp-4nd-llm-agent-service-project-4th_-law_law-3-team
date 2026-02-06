@@ -5,10 +5,12 @@ MeCab 한국어 형태소 분석기 단위 테스트
 - MeCabTokenizer: 초기화, morphs(), tokenize(), tokenize_query()
 - is_mecab_available(): 설치 여부 확인
 - Fallback: MeCab 미설치 시 공백 분리
+- 법률 용어 사전 보강 (LegalTermDictionary 연동)
 """
 
 import pytest
 
+from app.tools.vectorstore.legal_term_dict import LegalTermDictionary
 from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer, is_mecab_available
 
 # ============================================================================
@@ -117,3 +119,96 @@ class TestMeCabFallback:
         """MeCabTokenizer.is_available 프로퍼티 동작 확인"""
         tokenizer = MeCabTokenizer()
         assert isinstance(tokenizer.is_available, bool)
+
+
+# ============================================================================
+# 법률 용어 사전 보강 테스트
+# ============================================================================
+
+
+class TestLegalTermAugmentation:
+    """법률 용어 사전 보강 동작 테스트 (MeCab 설치 불필요)"""
+
+    @pytest.fixture
+    def legal_dict(self) -> LegalTermDictionary:
+        """테스트용 법률 용어 사전"""
+        d = LegalTermDictionary()
+        d.load_from_terms({
+            "손해배상",
+            "손해배상청구",
+            "소멸시효",
+            "불법행위",
+        })
+        return d
+
+    def test_no_dict_returns_base_morphs(self) -> None:
+        """사전 없으면 기존 동작 (하위 호환)"""
+        tokenizer = MeCabTokenizer(legal_dict=None)
+        tokenizer._tagger = None  # fallback 모드
+        result = tokenizer.morphs("손해 배상 청구")
+        assert result == ["손해", "배상", "청구"]
+
+    def test_empty_dict_returns_base_morphs(self) -> None:
+        """빈 사전이면 기존 동작"""
+        d = LegalTermDictionary()  # 로드 안 함
+        tokenizer = MeCabTokenizer(legal_dict=d)
+        tokenizer._tagger = None
+        result = tokenizer.morphs("손해 배상 청구")
+        assert result == ["손해", "배상", "청구"]
+
+    def test_augmentation_adds_legal_terms(
+        self, legal_dict: LegalTermDictionary,
+    ) -> None:
+        """법률 용어 보강: 추가 토큰 삽입"""
+        tokenizer = MeCabTokenizer(legal_dict=legal_dict)
+        tokenizer._tagger = None  # fallback으로 공백 분리
+
+        # "손해배상청구" → fallback이므로 ["손해배상청구"]
+        # 사전 매칭: "손해배상청구", "손해배상" 발견
+        result = tokenizer.morphs("손해배상청구")
+        # base: ["손해배상청구"] (공백 분리 결과)
+        # additional: "손해배상" (base에 없는 것)
+        # "손해배상청구"는 이미 base에 있으므로 추가 안 됨
+        assert "손해배상청구" in result
+        assert "손해배상" in result
+
+    def test_augmentation_no_duplicates(
+        self, legal_dict: LegalTermDictionary,
+    ) -> None:
+        """사전 보강 시 기존 토큰과 중복 안 됨"""
+        tokenizer = MeCabTokenizer(legal_dict=legal_dict)
+        tokenizer._tagger = None
+
+        result = tokenizer.morphs("불법행위")
+        # base: ["불법행위"]
+        # 사전에 "불법행위" 있지만 base에 이미 존재 → 추가 안 함
+        assert result.count("불법행위") == 1
+
+    def test_augmentation_tokenize_output(
+        self, legal_dict: LegalTermDictionary,
+    ) -> None:
+        """tokenize()가 보강된 결과를 공백 구분 문자열로 반환"""
+        tokenizer = MeCabTokenizer(legal_dict=legal_dict)
+        tokenizer._tagger = None
+
+        result = tokenizer.tokenize("손해배상청구의 소멸시효")
+        assert isinstance(result, str)
+        # "손해배상"이 추가 토큰으로 포함되어야 함
+        tokens = result.split()
+        assert "손해배상" in tokens
+
+    @pytest.mark.requires_mecab
+    def test_augmentation_with_real_mecab(
+        self, legal_dict: LegalTermDictionary,
+    ) -> None:
+        """MeCab + 법률 용어 사전 통합"""
+        tokenizer = MeCabTokenizer(legal_dict=legal_dict)
+        if not tokenizer.is_available:
+            pytest.skip("MeCab이 설치되지 않았습니다")
+
+        result = tokenizer.morphs("손해배상청구권의 소멸시효")
+        # MeCab이 "손해", "배상", "청구", "권", "의", "소멸", "시효" 등으로 분해
+        # 사전 보강으로 "손해배상", "손해배상청구", "소멸시효" 등 추가
+        assert "손해" in result or "손해배상" in result
+        # 법률 복합명사가 추가되었는지 확인
+        assert "손해배상" in result

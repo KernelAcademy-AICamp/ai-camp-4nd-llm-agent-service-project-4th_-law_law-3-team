@@ -166,6 +166,8 @@ app/
 │   ├── lawyer_stats/
 │   └── small_claims/
 ├── models/              # SQLAlchemy ORM 모델
+│   ├── legal_term.py    # 법률 용어 사전
+│   └── ...
 └── common/              # (deprecated) 레거시 코드
     └── chat_service.py  # → services/rag/로 이전됨
 ```
@@ -243,6 +245,7 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `UPSTAGE_API_KEY` | Solar API 키 | - |
 | `UPSTAGE_MODEL` | Solar 모델명 | `solar-pro3-260126` |
 | `USE_DB_LAWYERS` | 변호사 데이터 소스 (true: PostgreSQL, false: JSON) | `false` |
+| `USE_LEGAL_TERM_DICT` | 법률 용어 사전 사용 (true: MeCab 토큰 보강) | `false` |
 
 자세한 설정은 `.env.example` 참조.
 
@@ -357,7 +360,8 @@ backend/tests/
 │   ├── __init__.py
 │   ├── test_vectorstore_schema.py   # 스키마 v2 단위 테스트 (15개)
 │   ├── test_lancedb_store.py        # LanceDBStore CRUD 테스트 (21개)
-│   ├── test_mecab_tokenizer.py      # MeCab 토크나이저 테스트 (13개)
+│   ├── test_mecab_tokenizer.py      # MeCab 토크나이저 테스트 (19개, 보강 포함)
+│   ├── test_legal_term_dict.py      # 법률 용어 사전 테스트 (18개)
 │   ├── test_evaluation_metrics.py   # 메트릭 계산 테스트 (31개)
 │   ├── test_evaluation_schemas.py   # 스키마 검증 테스트 (21개)
 │   └── test_evaluation_dataset_builder.py  # 데이터셋 빌더 테스트 (14개)
@@ -480,6 +484,7 @@ app/models/
 ├── legal_document.py      # 법률 문서 (일반)
 ├── legal_reference.py     # 참조 정보
 ├── lawyer.py              # 변호사 정보
+├── legal_term.py          # 법률 용어 사전 (MeCab 보강용)
 └── trial_statistics.py    # 재판 통계
 ```
 
@@ -490,6 +495,7 @@ app/models/
 | `law_documents` | 법령 원본 | law_id, law_name, content, raw_data |
 | `precedent_documents` | 판례 원본 | serial_number, case_name, ruling, reasoning |
 | `lawyers` | 변호사 정보 (17,326건) | name, address, specialties(ARRAY), latitude, longitude, region |
+| `legal_terms` | 법률 용어 사전 (36,797건) | term(UNIQUE), definition, source_code, term_length, is_korean_only |
 | `trial_statistics` | 재판 통계 | category, court_name, court_type, parent_court, year, case_count |
 
 ### 변호사 데이터 (lawyers 테이블)
@@ -513,6 +519,42 @@ uv run python scripts/load_lawyers_data.py --verify
 **서비스 파일:**
 - `app/services/service_function/lawyer_db_service.py` - 검색/클러스터링
 - `app/services/service_function/lawyer_stats_db_service.py` - 통계 계산
+
+### 법률 용어 사전 (legal_terms 테이블)
+
+`USE_LEGAL_TERM_DICT=true` 설정 시 앱 시작(lifespan)에서 PostgreSQL → 메모리(frozenset)로 법률 용어를 로드하여 MeCab 토크나이징을 보강합니다.
+
+```bash
+# 마이그레이션 + 데이터 로드
+uv run alembic upgrade head
+uv run python scripts/load_legal_terms_data.py
+uv run python scripts/load_legal_terms_data.py --verify  # 검증
+```
+
+**동작 원리:**
+1. `legal_terms` 테이블에서 한글 전용 + 2-10자 용어 로드 → `frozenset` (O(1) lookup)
+2. MeCab 기본 형태소 분석 결과에 법률 복합명사를 추가 토큰으로 삽입
+3. 예: "손해배상청구" → MeCab ["손해","배상","청구"] + 사전 ["손해배상","손해배상청구"]
+
+**데이터 현황:**
+- 총 엔트리: 36,797개 (lawterms_full.json 기준, 추후 ~73K+ 확대 예정)
+- 필터 후 로드: 33,430개 (한글 전용 + 2-10자)
+
+**주요 인덱스:**
+- `idx_legal_terms_term`: term UNIQUE - 용어 조회
+- `idx_legal_terms_source_code`: source_code B-tree - 사전유형별 필터
+- `idx_legal_terms_length`: term_length B-tree - 길이 필터
+- `idx_legal_terms_korean`: is_korean_only B-tree - 한글 전용 필터
+- `idx_legal_terms_priority`: priority B-tree - 우선순위 정렬
+
+**관련 파일:**
+- `app/models/legal_term.py` - ORM 모델
+- `app/tools/vectorstore/legal_term_dict.py` - 메모리 사전 (frozenset 기반)
+- `app/tools/vectorstore/mecab_tokenizer.py` - MeCab 보강 토크나이저
+- `alembic/versions/006_add_legal_terms_table.py` - 마이그레이션
+- `scripts/load_legal_terms_data.py` - 데이터 로드 스크립트
+
+**롤백:** `USE_LEGAL_TERM_DICT=false` (기본값)로 설정하면 기존 MeCab 동작 100% 유지
 
 ### 데이터 조회 예시
 

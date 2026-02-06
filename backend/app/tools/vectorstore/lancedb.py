@@ -501,9 +501,15 @@ class LanceDBStore(VectorStoreBase):
         if self._table is None:
             return SearchResult(ids=[[]], distances=[[]], metadatas=[[]], documents=[[]])
 
-        # MeCab 토크나이징
+        # MeCab 토크나이징 (법률 용어 사전 보강)
         from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
-        tokenizer = MeCabTokenizer()
+
+        legal_dict = None
+        if settings.USE_LEGAL_TERM_DICT:
+            from app.tools.vectorstore.legal_term_dict import get_legal_term_dict
+            legal_dict = get_legal_term_dict()
+
+        tokenizer = MeCabTokenizer(legal_dict=legal_dict)
         tokenized_query = tokenizer.tokenize_query(query)
 
         if not tokenized_query.strip():

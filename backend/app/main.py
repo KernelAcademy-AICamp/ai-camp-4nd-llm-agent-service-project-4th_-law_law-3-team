@@ -35,6 +35,16 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error("임베딩 모델 로드 실패: %s", e)
 
+    # 법률 용어 사전 초기화 (USE_LEGAL_TERM_DICT=true 시)
+    if settings.USE_LEGAL_TERM_DICT:
+        from app.tools.vectorstore.legal_term_dict import init_legal_term_dict_from_db
+
+        try:
+            count = await init_legal_term_dict_from_db()
+            logger.info("법률 용어 사전 로드 완료: %d개", count)
+        except Exception as e:
+            logger.error("법률 용어 사전 로드 실패: %s", e)
+
     yield
     # 종료 시: 정리 작업 (필요 시)
 

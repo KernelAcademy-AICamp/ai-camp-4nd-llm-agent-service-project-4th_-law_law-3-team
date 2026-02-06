@@ -357,6 +357,64 @@ for _, row in results.iterrows():
 
 ---
 
+## 법률 용어 PostgreSQL 로드 (load_legal_terms_data.py)
+
+`data/law_data/lawterms_full.json` (36,797건)을 PostgreSQL `legal_terms` 테이블로 로드합니다.
+MeCab 토크나이저에서 법률 복합명사를 보강하기 위한 용어 사전 데이터입니다.
+
+### 사전 조건
+
+```bash
+# 1. 마이그레이션 실행 (legal_terms 테이블 생성)
+cd backend
+uv run alembic upgrade head
+```
+
+### 사용법
+
+```bash
+cd backend
+
+# 데이터 로드
+uv run python scripts/load_legal_terms_data.py
+
+# 기존 데이터 삭제 후 재로드
+uv run python scripts/load_legal_terms_data.py --reset
+
+# 검증만 (로드 없이)
+uv run python scripts/load_legal_terms_data.py --verify
+
+# 통계만 확인
+uv run python scripts/load_legal_terms_data.py --stats
+```
+
+### 주요 동작
+
+1. `data/law_data/lawterms_full.json` 읽기
+2. 각 레코드에서 `term_length`, `is_korean_only` 자동 계산
+3. `ON CONFLICT (term) DO UPDATE`로 멱등성 보장
+4. 1,000건 단위 배치 insert
+5. 로드 후 통계 출력 (총 건수, 한글 전용 비율, 길이 분포)
+
+### 환경 변수
+
+```bash
+# backend/.env
+DATABASE_URL=postgresql://lawuser:lawpassword@localhost:5432/lawdb
+USE_LEGAL_TERM_DICT=true  # 앱에서 사전 사용 활성화
+```
+
+### 데이터 현황
+
+| 항목 | 수치 |
+|------|------|
+| 총 엔트리 | 36,797개 |
+| 고유 용어 | 36,797개 |
+| 한글 전용 (2-10자) | 33,430개 (MeCab 로드 대상) |
+| 추후 확대 예정 | ~73,000개+ |
+
+---
+
 ## 변호사 데이터 PostgreSQL 로드 (load_lawyers_data.py)
 
 `data/lawyers_with_coords.json` (17,326건)을 PostgreSQL `lawyers` 테이블로 로드합니다.
