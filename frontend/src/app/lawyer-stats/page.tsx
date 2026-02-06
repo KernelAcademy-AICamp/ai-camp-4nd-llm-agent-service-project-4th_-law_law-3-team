@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
+import { useUI } from '@/context/UIContext'
 import { StickyTabNav, type TabType } from '@/features/lawyer-stats/components/StickyTabNav'
 
 // Inline loading component for dynamic imports
@@ -96,6 +97,7 @@ const PROVINCES = [
 ]
 
 export default function LawyerStatPage() {
+  const { isChatOpen, chatMode } = useUI()
   const [activeTab, setActiveTab] = useState<TabType>('region')
   const [viewMode, setViewMode] = useState<ViewMode>('count')
   const [predictionYear, setPredictionYear] = useState<PredictionYear>(2030)
@@ -212,7 +214,11 @@ export default function LawyerStatPage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div
+      className={`min-h-screen bg-gray-50 transition-all duration-500 ease-in-out ${
+        isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-gray-200' : 'w-full'
+      }`}
+    >
       <header className="border-b border-gray-200 bg-white shadow-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-4">

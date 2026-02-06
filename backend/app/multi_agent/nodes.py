@@ -13,12 +13,14 @@ from langgraph.types import Command, StreamWriter
 
 from app.multi_agent.agents.base_chat import BaseChatAgent
 from app.multi_agent.router import (
+    INTENT_OVERRIDE_CONFIDENCE,
     ROLE_AGENTS,
     AgentType,
     RulesRouter,
     UserRole,
     detect_search_type,
 )
+from app.multi_agent.schemas.plan import AgentPlan
 from app.multi_agent.state import ChatState
 
 logger = logging.getLogger(__name__)
@@ -176,6 +178,7 @@ def router_node(state: ChatState) -> Command[str]:
     user_role = state.get("user_role", "user")
     session_data = state.get("session_data", {})
     agent_override = state.get("agent_override")
+    router = _get_rules_router()
 
     # agent_override ROLE_AGENTS 검증 (#2)
     if agent_override:
@@ -191,6 +194,28 @@ def router_node(state: ChatState) -> Command[str]:
                 agent_override = None
         except ValueError:
             pass  # 하위호환 키(legal_answer 등) → 검증 스킵
+
+    # 규칙 기반 라우팅 (1회만 호출)
+    plan: AgentPlan | None = None
+
+    # 강한 명시 의도는 URL agent_override보다 우선
+    if agent_override:
+        plan = router.route(
+            message=message,
+            user_role=user_role,
+            session_data={},
+        )
+        if (
+            plan.confidence >= INTENT_OVERRIDE_CONFIDENCE
+            and plan.agent_type != agent_override
+        ):
+            logger.info(
+                "Agent override released: %s -> %s (confidence: %.2f)",
+                agent_override,
+                plan.agent_type,
+                plan.confidence,
+            )
+            agent_override = None
 
     # 에이전트 직접 지정
     if agent_override:
@@ -218,15 +243,15 @@ def router_node(state: ChatState) -> Command[str]:
             goto=target_node,
         )
 
-    # 규칙 기반 라우팅
-    router = _get_rules_router()
-    plan = router.route(
-        message=message,
-        user_role=user_role,
-        session_data=session_data,
-    )
+    # override가 없었으면 여기서 라우팅
+    if plan is None:
+        plan = router.route(
+            message=message,
+            user_role=user_role,
+            session_data=session_data,
+        )
 
-    # search_focus 결정 (B+C 방식)
+    # search_focus 결정
     search_focus = ""
     if plan.agent_type in ("legal_search", "case_search", "law_search"):
         if plan.agent_type == "case_search":

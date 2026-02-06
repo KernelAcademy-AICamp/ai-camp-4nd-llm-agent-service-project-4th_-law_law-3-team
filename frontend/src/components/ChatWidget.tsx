@@ -159,11 +159,68 @@ interface MultiAgentChatResponse {
   session_data: Record<string, unknown>
 }
 
+// pathname → agent 매핑 (페이지 진입 시 자동 선택)
+const PATHNAME_AGENT_MAP: Record<string, string> = {
+  '/lawyer-finder': 'lawyer_finder',
+  '/storyboard': 'storyboard',
+  '/lawyer-stats': 'lawyer_stats',
+  '/law-study': 'law_study',
+  '/small-claims': 'small_claims',
+  // /case-precedent는 기존 ?agent= URL 파라미터 사용
+}
+
+// agent → 이동할 페이지 매핑 (에이전트 선택 시 자동 이동)
+const AGENT_PAGE_MAP: Record<string, string> = {
+  'lawyer_finder': '/lawyer-finder',
+  'case_search': '/case-precedent?agent=case_search',
+  'law_search': '/case-precedent?agent=law_search',
+  'legal_search': '/case-precedent',
+  'legal_answer': '/case-precedent',
+  'storyboard': '/storyboard',
+  'lawyer_stats': '/lawyer-stats',
+  'law_study': '/law-study',
+  'small_claims': '/small-claims',
+}
+
+// agent 한글명 (헤더 표시용)
+const AGENT_DISPLAY_NAMES: Record<string, string> = {
+  'lawyer_finder': '변호사 찾기',
+  'case_search': '판례 검색',
+  'law_search': '법령 검색',
+  'legal_search': '법률 검색',
+  'storyboard': '스토리보드',
+  'lawyer_stats': '변호사 통계',
+  'law_study': '로스쿨 학습',
+  'small_claims': '소액소송',
+  'general': '일반 채팅',
+}
+
+// 에이전트별 초기 인사 메시지
+const AGENT_GREETINGS: Record<string, string> = {
+  'case_search': '안녕하세요! 판례 검색 AI입니다.\n\n**판례에 대해 질문해주세요.**\n- 관련 판례 검색\n- 법률 상담',
+  'law_search': '안녕하세요! 법령 검색 AI입니다.\n\n**법령에 대해 질문해주세요.**\n- 관련 법령 조항 검색\n- 법령 해석 및 적용 사례',
+  'lawyer_finder': '안녕하세요! 변호사 찾기 AI입니다.\n\n**주변 변호사를 찾아드릴게요.**\n- 위치 기반 변호사 검색\n- 전문분야별 추천',
+  'storyboard': '안녕하세요! 스토리보드 AI입니다.\n\n**사건 타임라인을 정리해드릴게요.**\n- 사건 경위 정리\n- 시간순 타임라인 생성',
+  'lawyer_stats': '안녕하세요! 변호사 통계 AI입니다.\n\n**변호사 통계 정보를 안내해드릴게요.**\n- 지역별 변호사 현황\n- 전문분야별 분포',
+  'law_study': '안녕하세요! 법학 학습 AI입니다.\n\n**법학 공부를 도와드릴게요.**\n- 법령 학습 자료\n- 학습 가이드',
+  'small_claims': '안녕하세요! 소액소송 가이드 AI입니다.\n\n**소액소송 절차를 안내해드릴게요.**\n- 내용증명 작성\n- 지급명령 신청\n- 소액심판 절차',
+}
+
+// floating 모드 기본 적용 페이지
+const FLOATING_MODE_PATHS = new Set([
+  '/lawyer-finder',
+  '/small-claims',
+  '/lawyer-stats',
+  '/storyboard',
+  '/statute-hierarchy',
+])
+
 export default function ChatWidget() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const agentFromUrl = searchParams.get('agent')
+  const effectiveAgent = agentFromUrl || PATHNAME_AGENT_MAP[pathname] || null
   const { isChatOpen, toggleChat, setChatOpen, chatMode, setChatMode } = useUI()
   const {
     userRole,
@@ -178,25 +235,14 @@ export default function ChatWidget() {
 
   // Determine if we are on pages that support floating mode
   const isMapPage = pathname === '/lawyer-finder'
-  const isStatuteHierarchyPage = pathname === '/statute-hierarchy'
-  const supportsFloatingMode = isMapPage || isStatuteHierarchyPage
+  const supportsFloatingMode = FLOATING_MODE_PATHS.has(pathname)
 
   // Global state for view mode is now handled by UIContext
 
   // agent 타입에 따른 초기 메시지 생성
   const getInitialMessage = useCallback((agent: string | null): Message => {
-    if (agent === 'law_search') {
-      return {
-        id: '1',
-        role: 'assistant',
-        content: '안녕하세요! 법령 검색 AI입니다.\n\n**법령에 대해 질문해주세요.**\n- 관련 법령 조항 검색\n- 법령 해석 및 적용 사례',
-      }
-    } else if (agent === 'case_search') {
-      return {
-        id: '1',
-        role: 'assistant',
-        content: '안녕하세요! 판례 검색 AI입니다.\n\n**판례에 대해 질문해주세요.**\n- 관련 판례 검색\n- 법률 상담',
-      }
+    if (agent && AGENT_GREETINGS[agent]) {
+      return { id: '1', role: 'assistant', content: AGENT_GREETINGS[agent] }
     }
     return {
       id: '1',
@@ -205,36 +251,22 @@ export default function ChatWidget() {
     }
   }, [])
 
-  const [messages, setMessages] = useState<Message[]>([getInitialMessage(null)])
+  const [messages, setMessages] = useState<Message[]>([getInitialMessage(effectiveAgent)])
 
   // 스트리밍 관련 상태
   const { sendStreamingMessage, isStreaming, abortStream } = useStreamingChat()
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
+  const [requestStartedAt, setRequestStartedAt] = useState<number | null>(null)
+  const [loadingElapsedSeconds, setLoadingElapsedSeconds] = useState(0)
+  const [hasReceivedFirstToken, setHasReceivedFirstToken] = useState(false)
+  const hasReceivedFirstTokenRef = useRef(false)
 
-  // agent 파라미터 변경 시 채팅 초기화
-  const prevAgentRef = useRef<string | null>(null)
-  useEffect(() => {
-    // 첫 렌더링이 아니고 agent가 변경된 경우에만 초기화
-    if (prevAgentRef.current !== null && prevAgentRef.current !== agentFromUrl) {
-      setMessages([getInitialMessage(agentFromUrl)])
-      resetSession()
-    }
-    prevAgentRef.current = agentFromUrl
-  }, [agentFromUrl, getInitialMessage, resetSession])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // 페이지 변경 시 초기화 및 모드 설정
+  // 페이지 변경 시 모드 설정
   const prevPathnameRef = useRef<string | null>(null)
-
-  // 페이지 변경 시 채팅 초기화
-  useEffect(() => {
-    if (prevPathnameRef.current !== null && prevPathnameRef.current !== pathname) {
-      // 다른 페이지로 이동 시 채팅 초기화
-      setMessages([getInitialMessage(agentFromUrl)])
-    }
-  }, [pathname, agentFromUrl, getInitialMessage])
 
   useEffect(() => {
     // 같은 페이지에서는 모드 변경 안 함 (사용자가 토글한 상태 유지)
@@ -244,20 +276,83 @@ export default function ChatWidget() {
     if (supportsFloatingMode) {
       // floating 모드 지원 페이지 첫 진입 시 floating 모드로 시작
       setChatMode('floating')
-      if (isMapPage) {
-        setChatOpen(true)
-      }
+      setChatOpen(true)
     } else {
       // 다른 페이지 진입 시 Split 모드 사용
       setChatMode('split')
     }
-  }, [pathname, setChatMode, setChatOpen, isMapPage, supportsFloatingMode])
+  }, [pathname, setChatMode, setChatOpen, supportsFloatingMode])
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages, isChatOpen, chatMode, isLoading])
+
+  useEffect(() => {
+    if (!(isLoading || isStreaming) || requestStartedAt === null) {
+      setLoadingElapsedSeconds(0)
+      return
+    }
+
+    const tick = () => {
+      setLoadingElapsedSeconds(Math.floor((Date.now() - requestStartedAt) / 1000))
+    }
+
+    tick()
+    const intervalId = window.setInterval(tick, 1000)
+    return () => window.clearInterval(intervalId)
+  }, [isLoading, isStreaming, requestStartedAt])
+
+  const loadingStatus = useMemo(() => {
+    const elapsedText = `${loadingElapsedSeconds}초 경과`
+
+    if (hasReceivedFirstToken) {
+      return {
+        title: '답변을 작성하고 있습니다...',
+        detail: elapsedText,
+      }
+    }
+
+    if (loadingElapsedSeconds < 6) {
+      return {
+        title: '질문을 분석하고 있습니다...',
+        detail: elapsedText,
+      }
+    }
+
+    if (loadingElapsedSeconds < 14) {
+      return {
+        title: 'AI 모델을 호출하고 있습니다...',
+        detail: `${elapsedText} · 응답 준비에 시간이 걸릴 수 있습니다`,
+      }
+    }
+
+    if (loadingElapsedSeconds < 25) {
+      return {
+        title: '서버 응답이 지연되고 있습니다...',
+        detail: `${elapsedText} · 연결 재시도를 진행 중일 수 있습니다`,
+      }
+    }
+
+    return {
+      title: '응답을 계속 기다리는 중입니다...',
+      detail: `${elapsedText} · 잠시만 더 기다려 주세요`,
+    }
+  }, [hasReceivedFirstToken, loadingElapsedSeconds])
+
+  const handleResetChat = useCallback(() => {
+    abortStream()
+    setIsLoading(false)
+    setStreamingMessageId(null)
+    setRequestStartedAt(null)
+    setLoadingElapsedSeconds(0)
+    setHasReceivedFirstToken(false)
+    hasReceivedFirstTokenRef.current = false
+    setInput('')
+    resetSession()
+    setMessages([getInitialMessage(effectiveAgent)])
+  }, [abortStream, effectiveAgent, getInitialMessage, resetSession])
 
   const handleSend = async (overrideMessage?: string, overrideLocation?: { latitude: number; longitude: number } | null) => {
     const messageToSend = overrideMessage || input
@@ -274,6 +369,10 @@ export default function ChatWidget() {
       setInput('')
     }
     setIsLoading(true)
+    setRequestStartedAt(Date.now())
+    setLoadingElapsedSeconds(0)
+    setHasReceivedFirstToken(false)
+    hasReceivedFirstTokenRef.current = false
 
     // 대화 기록 준비 (최근 10개)
     const history = messages.slice(-10).map((msg) => ({
@@ -321,10 +420,14 @@ export default function ChatWidget() {
           history: history,
           session_data: sessionData,
           user_location: locationToSend,
-          agent: agentFromUrl || undefined,
+          agent: effectiveAgent || undefined,
         },
         {
           onToken: (content) => {
+            if (content && !hasReceivedFirstTokenRef.current) {
+              hasReceivedFirstTokenRef.current = true
+              setHasReceivedFirstToken(true)
+            }
             accumulatedContent += content
             setMessages((prev) =>
               prev.map((msg) =>
@@ -362,18 +465,18 @@ export default function ChatWidget() {
             // 스트리밍 완료
             setStreamingMessageId(null)
             setIsLoading(false)
+            setRequestStartedAt(null)
+            setLoadingElapsedSeconds(0)
+            setHasReceivedFirstToken(false)
+            hasReceivedFirstTokenRef.current = false
 
             // 세션 데이터 업데이트
             const newSessionData = { ...receivedSessionData }
 
-            // 판례 검색이나 법률 질문인 경우 페이지 이동
-            if (
-              (receivedSources && receivedSources.length > 0) ||
-              agentUsed === 'legal_search' ||
-              agentUsed === 'case_search' ||
-              agentUsed === 'legal_answer'
-            ) {
-              const mainSource = receivedSources?.[0]
+            // 판례/법령 검색 결과 → aiCase 데이터 구성
+            const searchAgents = ['legal_search', 'case_search', 'legal_answer', 'law_search']
+            if (receivedSources?.length > 0 && searchAgents.includes(agentUsed)) {
+              const mainSource = receivedSources[0]
 
               const aiCase = {
                 id: 'ai-generated-' + Date.now(),
@@ -405,34 +508,46 @@ export default function ChatWidget() {
                 return true
               })
               newSessionData.aiReferences = uniqueSources
+            }
 
+            // 세션 데이터 업데이트
+            if (Object.keys(newSessionData).length > 0) {
               setSessionData({ ...sessionData, ...newSessionData })
-
-              if (pathname !== '/case-precedent') {
-                router.push('/case-precedent')
-              }
             } else if (receivedSessionData) {
               setSessionData(receivedSessionData)
             }
 
-            // NAVIGATE 액션 처리
-            const navigateAction = receivedActions?.find(
-              (action) => action.type === 'navigate' && action.url
-            )
-
-            if (navigateAction && navigateAction.url) {
-              const params = navigateAction.params as Record<string, string | number | boolean> | undefined
-              let fullUrl = navigateAction.url
-              if (params && Object.keys(params).length > 0) {
-                const urlSearchParams = new URLSearchParams()
-                Object.entries(params).forEach(([key, value]) => {
-                  if (value !== undefined && value !== null) {
-                    urlSearchParams.set(key, String(value))
-                  }
-                })
-                fullUrl = `${navigateAction.url}?${urlSearchParams.toString()}`
+            // 에이전트 → 페이지 자동 이동 (일반화)
+            let hasNavigated = false
+            if (agentUsed && AGENT_PAGE_MAP[agentUsed]) {
+              const targetPage = AGENT_PAGE_MAP[agentUsed]
+              const targetPathname = targetPage.split('?')[0]
+              if (pathname !== targetPathname) {
+                router.push(targetPage)
+                hasNavigated = true
               }
-              router.push(fullUrl)
+            }
+
+            // NAVIGATE 액션 처리 (에이전트 네비게이션이 없을 때만)
+            if (!hasNavigated) {
+              const navigateAction = receivedActions?.find(
+                (action) => action.type === 'navigate' && action.url
+              )
+
+              if (navigateAction && navigateAction.url) {
+                const params = navigateAction.params as Record<string, string | number | boolean> | undefined
+                let fullUrl = navigateAction.url
+                if (params && Object.keys(params).length > 0) {
+                  const urlSearchParams = new URLSearchParams()
+                  Object.entries(params).forEach(([key, value]) => {
+                    if (value !== undefined && value !== null) {
+                      urlSearchParams.set(key, String(value))
+                    }
+                  })
+                  fullUrl = `${navigateAction.url}?${urlSearchParams.toString()}`
+                }
+                router.push(fullUrl)
+              }
             }
           },
           onError: (errorMessage) => {
@@ -446,6 +561,10 @@ export default function ChatWidget() {
             )
             setStreamingMessageId(null)
             setIsLoading(false)
+            setRequestStartedAt(null)
+            setLoadingElapsedSeconds(0)
+            setHasReceivedFirstToken(false)
+            hasReceivedFirstTokenRef.current = false
           },
         }
       )
@@ -484,6 +603,10 @@ export default function ChatWidget() {
       )
       setStreamingMessageId(null)
       setIsLoading(false)
+      setRequestStartedAt(null)
+      setLoadingElapsedSeconds(0)
+      setHasReceivedFirstToken(false)
+      hasReceivedFirstTokenRef.current = false
     }
   }
 
@@ -492,15 +615,7 @@ export default function ChatWidget() {
     switch (action) {
       case 'reset_search':
       case 'reset_session':
-        resetSession()
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            role: 'assistant',
-            content: '세션을 초기화했습니다. 새로운 질문을 해주세요.',
-          },
-        ])
+        handleResetChat()
         break
 
       case 'expand_search':
@@ -660,7 +775,7 @@ export default function ChatWidget() {
             <h3 className={`font-bold text-lg ${themeClasses.headerTitle}`}>AI 법률 상담</h3>
             <p className={`text-xs font-bold uppercase tracking-widest ${themeClasses.headerSubtitle}`}>
               {sessionData.active_agent
-                ? `${sessionData.active_agent === 'lawyer_finder' ? '변호사 찾기' : sessionData.active_agent === 'small_claims' ? '소액소송' : '판례 검색'}`
+                ? AGENT_DISPLAY_NAMES[sessionData.active_agent as string] || 'Active Now'
                 : 'Active Now'}
             </p>
           </div>
@@ -691,6 +806,15 @@ export default function ChatWidget() {
               변호사
             </button>
           </div>
+
+          {/* Reset Button */}
+          <button
+            onClick={handleResetChat}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${themeClasses.closeBtn}`}
+            title="대화 초기화"
+          >
+            초기화
+          </button>
 
           {/* Toggle View Mode Button (floating mode 지원 페이지에서만) */}
           {supportsFloatingMode && (
@@ -768,23 +892,43 @@ export default function ChatWidget() {
               }`}
             >
               {msg.role === 'assistant' ? (
-                <div className={`prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit ${!isLightTheme ? 'prose-invert' : ''}`}>
-                  <ReactMarkdown components={markdownComponents}>
-                    {msg.content}
-                  </ReactMarkdown>
-                  {/* 스트리밍 중일 때 깜빡이는 커서 표시 */}
-                  {msg.id === streamingMessageId && (
-                    <span className="inline-block w-2 h-4 bg-current animate-pulse ml-0.5" />
-                  )}
-                  {msg.actions && msg.actions.length > 0 && (
-                    <ChatActions
-                      actions={msg.actions}
-                      onAction={handleAction}
-                      onRequestLocation={handleRequestLocation}
-                      isLightTheme={isLightTheme}
-                    />
-                  )}
-                </div>
+                msg.id === streamingMessageId && !msg.content.trim() ? (
+                  <div className="space-y-3 min-w-[260px]">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-1.5 flex h-3 w-3">
+                        <span className="relative inline-flex h-3 w-3">
+                          <span className="absolute inline-flex h-full w-full rounded-full bg-blue-500 opacity-75 animate-ping" />
+                          <span className="relative inline-flex h-3 w-3 rounded-full bg-blue-500" />
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold">{loadingStatus.title}</p>
+                        <p className="text-xs opacity-70 mt-1">{loadingStatus.detail}</p>
+                      </div>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-blue-500/20 overflow-hidden">
+                      <div className="h-full w-1/3 rounded-full bg-blue-500 animate-pulse" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit ${!isLightTheme ? 'prose-invert' : ''}`}>
+                    <ReactMarkdown components={markdownComponents}>
+                      {msg.content}
+                    </ReactMarkdown>
+                    {/* 스트리밍 중일 때 깜빡이는 커서 표시 */}
+                    {msg.id === streamingMessageId && (
+                      <span className="inline-block w-2 h-4 bg-current animate-pulse ml-0.5" />
+                    )}
+                    {msg.actions && msg.actions.length > 0 && (
+                      <ChatActions
+                        actions={msg.actions}
+                        onAction={handleAction}
+                        onRequestLocation={handleRequestLocation}
+                        isLightTheme={isLightTheme}
+                      />
+                    )}
+                  </div>
+                )
               ) : (
                 <span className="whitespace-pre-wrap">{msg.content}</span>
               )}
@@ -808,7 +952,7 @@ export default function ChatWidget() {
                   className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
                   style={{ animationDelay: '300ms' }}
                 />
-                <span className="ml-2 text-sm opacity-70">응답을 생성하고 있습니다...</span>
+                <span className="ml-2 text-sm opacity-70">{loadingStatus.title}</span>
               </div>
             </div>
           </div>
@@ -825,7 +969,7 @@ export default function ChatWidget() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !isLoading && !isStreaming && handleSend()}
-            placeholder={isLoading || isStreaming ? '응답을 기다리는 중...' : '법률 질문을 입력하세요...'}
+            placeholder={isLoading || isStreaming ? loadingStatus.title : '법률 질문을 입력하세요...'}
             disabled={isLoading || isStreaming}
             className={`flex-1 rounded-xl px-4 py-3 md:px-6 md:py-4 text-sm md:text-base focus:outline-none transition-all shadow-sm ${themeClasses.input} ${isLoading || isStreaming ? 'opacity-50 cursor-not-allowed' : ''}`}
           />
@@ -867,6 +1011,11 @@ export default function ChatWidget() {
             )}
           </button>
         </div>
+        {(isLoading || isStreaming) && (
+          <p className={`mt-2 text-xs ${isLightTheme ? 'text-gray-500' : 'text-white/60'}`}>
+            {loadingStatus.detail}
+          </p>
+        )}
       </div>
     </div>
   )

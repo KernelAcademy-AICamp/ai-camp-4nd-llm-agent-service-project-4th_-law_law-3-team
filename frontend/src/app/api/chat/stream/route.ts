@@ -7,10 +7,41 @@
 
 import { NextRequest } from 'next/server'
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000'
+const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
+const MAX_RETRIES = 3
+const INITIAL_DELAY_MS = 2000
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+function isConnectionError(error: unknown): boolean {
+  if (error instanceof TypeError && error.cause) {
+    const cause = error.cause as { code?: string }
+    return cause.code === 'ETIMEDOUT' || cause.code === 'ECONNREFUSED'
+  }
+  return false
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries: number = MAX_RETRIES
+): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetch(url, options)
+    } catch (error) {
+      if (attempt < retries && isConnectionError(error)) {
+        const delay = INITIAL_DELAY_MS * Math.pow(2, attempt)
+        console.log(`[SSE Proxy] 재시도 ${attempt + 1}/${retries} (${delay}ms 후)`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+      throw error
+    }
+  }
+  throw new Error('Unreachable')
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     console.log('[SSE Proxy] Forwarding request to backend:', `${BACKEND_URL}/api/chat/stream`)
 
-    const backendResponse = await fetch(`${BACKEND_URL}/api/chat/stream`, {
+    const backendResponse = await fetchWithRetry(`${BACKEND_URL}/api/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -46,8 +77,6 @@ export async function POST(request: NextRequest) {
 
     // ReadableStream을 사용하여 청크 단위로 전달
     const reader = backendResponse.body.getReader()
-    const encoder = new TextEncoder()
-    const decoder = new TextDecoder()
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -81,9 +110,16 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('[SSE Proxy] Error:', error)
+    const isConnErr = isConnectionError(error)
     return new Response(
-      JSON.stringify({ error: 'Proxy error', detail: String(error) }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        error: isConnErr ? 'Backend not ready' : 'Proxy error',
+        detail: String(error),
+      }),
+      {
+        status: isConnErr ? 503 : 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
     )
   }
 }

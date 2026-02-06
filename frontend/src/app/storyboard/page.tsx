@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { BackButton } from '@/components/ui/BackButton'
+import { useUI } from '@/context/UIContext'
 import { TimelineToolbar } from '@/features/storyboard/components/TimelineToolbar'
 import { useTimelineState } from '@/features/storyboard/hooks'
 import type { TimelineItem, VideoSettings } from '@/features/storyboard/types'
@@ -29,6 +30,7 @@ const VideoGenerationModal = dynamic(
 )
 
 export default function StoryboardPage() {
+  const { isChatOpen, chatMode } = useUI()
   // 입력 패널 접기/펼치기 상태
   const [isInputPanelOpen, setIsInputPanelOpen] = useState(true)
   const {
@@ -136,7 +138,11 @@ export default function StoryboardPage() {
   )
 
   return (
-    <div className="h-screen flex flex-col bg-slate-950 overflow-hidden relative">
+    <div
+      className={`h-screen flex flex-col bg-slate-950 overflow-hidden relative transition-all duration-500 ease-in-out ${
+        isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-slate-800' : 'w-full'
+      }`}
+    >
       {/* Background Gradients (Global Effect) */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-600/10 rounded-full blur-[120px] pointer-events-none" />

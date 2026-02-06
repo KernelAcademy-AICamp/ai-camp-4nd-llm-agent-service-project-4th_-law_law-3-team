@@ -126,6 +126,8 @@ INTENT_PATTERNS: dict[AgentType, list[tuple[str, float]]] = {
 
 # 법령 키워드 (detect_search_type 헬퍼용)
 _LAW_KEYWORDS = ("법령", "법률", "조문", "시행령", "시행규칙", "법 제")
+# 세션 고정/agent_override를 해제할 최소 신뢰도
+INTENT_OVERRIDE_CONFIDENCE = 0.9
 
 
 def detect_search_type(message: str) -> str:
@@ -144,6 +146,26 @@ def detect_search_type(message: str) -> str:
 
 class RulesRouter:
     """규칙 기반 라우터"""
+
+    @staticmethod
+    def _find_best_keyword_match(
+        message_nospace: str,
+        allowed_agents: list[AgentType],
+    ) -> tuple[AgentType, float] | None:
+        """허용된 에이전트 범위에서 최고 점수 키워드 매치 탐색"""
+        best_match: tuple[AgentType, float] | None = None
+
+        for agent_type, patterns in INTENT_PATTERNS.items():
+            if agent_type not in allowed_agents:
+                continue
+
+            for pattern, score in patterns:
+                pattern_nospace = pattern.replace(" ", "")
+                if pattern_nospace in message_nospace:
+                    if best_match is None or score > best_match[1]:
+                        best_match = (agent_type, score)
+
+        return best_match
 
     def route(
         self,
@@ -170,12 +192,43 @@ class RulesRouter:
         except ValueError:
             role = UserRole.USER
 
+        # 공백 제거 버전: "소액 소송" → "소액소송" 등 띄어쓰기 변형 대응
+        message_nospace = message.lower().replace(" ", "")
+        allowed_agents = ROLE_AGENTS.get(role, [AgentType.GENERAL])
+        best_match = self._find_best_keyword_match(
+            message_nospace=message_nospace,
+            allowed_agents=allowed_agents,
+        )
+
         # 1. 진행 중인 세션이 있으면 해당 에이전트 유지
         if session_data.get("active_agent"):
             active_agent = session_data.get("active_agent")
             try:
                 agent_type = AgentType(active_agent)
-                if agent_type in ROLE_AGENTS.get(role, []):
+                if agent_type in allowed_agents:
+                    # 명시적 의도가 매우 강하면(active와 다를 때) 세션 고정 해제
+                    if (
+                        best_match
+                        and best_match[1] >= INTENT_OVERRIDE_CONFIDENCE
+                        and best_match[0] != agent_type
+                    ):
+                        matched_agent, confidence = best_match
+                        use_rag = matched_agent in (
+                            AgentType.CASE_SEARCH,
+                            AgentType.LEGAL_SEARCH,
+                            AgentType.LAW_SEARCH,
+                            AgentType.LAW_STUDY,
+                        )
+                        return AgentPlan(
+                            agent_type=matched_agent.value,
+                            use_rag=use_rag,
+                            confidence=confidence,
+                            reason=(
+                                "세션 전환: 명시적 의도 감지 "
+                                f"(신뢰도: {confidence})"
+                            ),
+                        )
+
                     return AgentPlan(
                         agent_type=agent_type.value,
                         use_rag=agent_type
@@ -192,20 +245,6 @@ class RulesRouter:
                 pass
 
         # 2. 키워드 기반 Intent 감지 (신뢰도 점수 포함)
-        message_lower = message.lower()
-        allowed_agents = ROLE_AGENTS.get(role, [AgentType.GENERAL])
-
-        best_match: tuple[AgentType, float] | None = None
-
-        for agent_type, patterns in INTENT_PATTERNS.items():
-            if agent_type not in allowed_agents:
-                continue
-
-            for pattern, score in patterns:
-                if pattern in message_lower:
-                    if best_match is None or score > best_match[1]:
-                        best_match = (agent_type, score)
-
         if best_match:
             agent_type, confidence = best_match
             use_rag = agent_type in (
@@ -237,6 +276,7 @@ __all__ = [
     # 상수
     "ROLE_AGENTS",
     "INTENT_PATTERNS",
+    "INTENT_OVERRIDE_CONFIDENCE",
     # 클래스
     "RulesRouter",
     # 함수

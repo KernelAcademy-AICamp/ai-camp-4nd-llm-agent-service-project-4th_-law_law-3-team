@@ -7,6 +7,7 @@ import { DisputeTypeStep } from '@/features/small-claims/components/DisputeTypeS
 import { useWizardState } from '@/features/small-claims/hooks/useWizardState'
 import { DISPUTE_TYPE_OPTIONS } from '@/features/small-claims/types'
 import { BackButton } from '@/components/ui/BackButton'
+import { useUI } from '@/context/UIContext'
 
 const CaseInfoStep = dynamic(
   () => import('@/features/small-claims/components/CaseInfoStep').then((m) => m.CaseInfoStep),
@@ -38,6 +39,7 @@ function StepSkeleton() {
 }
 
 export default function SmallClaimsPage() {
+  const { isChatOpen, chatMode } = useUI()
   const {
     currentStep,
     goToStep,
@@ -109,7 +111,11 @@ export default function SmallClaimsPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-100">
+    <div
+      className={`h-screen flex flex-col bg-gray-100 transition-all duration-500 ease-in-out ${
+        isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-gray-200' : 'w-full'
+      }`}
+    >
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">

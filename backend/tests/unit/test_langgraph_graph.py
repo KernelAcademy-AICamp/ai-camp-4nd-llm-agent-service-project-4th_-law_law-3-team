@@ -126,13 +126,14 @@ class TestRouterNode:
         message: str = "테스트",
         user_role: str = "user",
         agent_override: str | None = None,
+        session_data: dict | None = None,
     ) -> ChatState:
         """테스트용 상태 생성 헬퍼"""
         state: ChatState = {
             "message": message,
             "user_role": user_role,
             "history": [],
-            "session_data": {},
+            "session_data": session_data or {},
             "user_location": None,
             "agent_override": agent_override,
             "selected_agent": "",
@@ -178,6 +179,17 @@ class TestRouterNode:
         assert result.goto == "legal_search_node"
         assert result.update["search_focus"] == "law"
 
+    def test_agent_override_released_by_explicit_small_claims_intent(self) -> None:
+        """case_search override 중에도 명시적 소액소송 의도면 전환"""
+        state = self._make_state(
+            message="소액 소송 가이드해줘",
+            agent_override="case_search",
+        )
+        result = router_node(state)
+
+        assert result.goto == "small_claims_subgraph"
+        assert result.update["selected_agent"] == "small_claims"
+
     def test_legal_keyword_routes_to_legal_search(self) -> None:
         """'판례' 키워드 → legal_search_node"""
         state = self._make_state(message="손해배상 판례 검색해줘")
@@ -201,6 +213,19 @@ class TestRouterNode:
         result = router_node(state)
 
         assert result.goto == "small_claims_subgraph"
+
+    def test_session_active_agent_released_by_explicit_small_claims_intent(
+        self,
+    ) -> None:
+        """세션이 case_search여도 명시적 소액소송 의도면 전환"""
+        state = self._make_state(
+            message="소액 소송 가이드해줘",
+            session_data={"active_agent": "case_search"},
+        )
+        result = router_node(state)
+
+        assert result.goto == "small_claims_subgraph"
+        assert result.update["selected_agent"] == "small_claims"
 
     def test_storyboard_keyword(self) -> None:
         """'타임라인' 키워드 → storyboard_node"""
