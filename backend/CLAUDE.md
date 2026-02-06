@@ -128,17 +128,21 @@ app/
 │   ├── logging.py       # 로깅 유틸리티
 │   ├── policies/        # 법률 안전정책
 │   └── state/           # 세션 저장소
-├── multi_agent/         # 멀티 에이전트 시스템
-│   ├── orchestrator.py  # 전체 흐름 조율
-│   ├── executor.py      # 에이전트 실행
-│   ├── routing/         # 라우팅 로직
-│   │   ├── rules_router.py   # 키워드 기반 라우팅
-│   │   └── router_agent.py   # 라우터 에이전트
-│   ├── agents/          # 에이전트 구현
-│   │   ├── base_chat.py           # 베이스 클래스
-│   │   ├── case_precedent_agent.py # 판례 검색
-│   │   ├── lawyer_finder_agent.py  # 변호사 찾기
-│   │   └── small_claims_agent.py   # 소액소송
+├── multi_agent/         # LangGraph 멀티 에이전트 시스템
+│   ├── graph.py         # LangGraph StateGraph 빌드/컴파일
+│   ├── nodes.py         # router_node + 에이전트 노드 함수
+│   ├── router.py        # RulesRouter, AgentType, UserRole, ROLE_AGENTS
+│   ├── state.py         # ChatState TypedDict, 변환 함수
+│   ├── agents/          # 에이전트 구현 (BaseChatAgent 상속)
+│   │   ├── base_chat.py              # 베이스 클래스
+│   │   ├── legal_search_agent.py     # 판례/법령 RAG 검색
+│   │   ├── lawyer_finder_agent.py    # 변호사 찾기
+│   │   ├── small_claims_agent.py     # 소액소송
+│   │   ├── storyboard_agent.py       # 사건 타임라인
+│   │   ├── lawyer_stats_agent.py     # 변호사 통계
+│   │   └── law_study_agent.py        # 로스쿨 학습
+│   ├── subgraphs/       # 서브그래프
+│   │   └── small_claims.py           # 소액소송 서브그래프
 │   └── schemas/         # 스키마
 │       ├── plan.py      # AgentPlan, AgentResult
 │       └── messages.py  # 메시지 타입
@@ -200,24 +204,28 @@ app/modules/<module_name>/
 - `lawyer_finder` → `/api/lawyer-finder`
 - `small_claims` → `/api/small-claims`
 
-### Multi-Agent 시스템
+### Multi-Agent 시스템 (LangGraph)
 
 ```
-POST /api/chat → Orchestrator → Router → Agent → Response
-                      ↓            ↓         ↓
-                 SessionStore  RulesRouter  LegalAnswerAgent
-                                           LawyerFinderAgent
-                                           SmallClaimsAgent
-                                           SimpleChatAgent
+START → router_node ──(Command)──→ legal_search_node ───→ END
+                      ├──────────→ lawyer_finder_node ──→ END
+                      ├──────────→ small_claims_subgraph ─→ END
+                      ├──────────→ storyboard_node ─────→ END
+                      ├──────────→ lawyer_stats_node ───→ END
+                      ├──────────→ law_study_node ──────→ END
+                      └──────────→ simple_chat_node ────→ END
 ```
 
 **에이전트 목록:**
-| 에이전트 | 역할 | RAG | LLM |
-|---------|------|-----|-----|
-| `LegalAnswerAgent` | 판례/법령 검색 + 법률 상담 | ✅ | ✅ |
-| `LawyerFinderAgent` | 위치 기반 변호사 추천 | ❌ | ❌ |
-| `SmallClaimsAgent` | 소액소송 단계별 가이드 | ✅ | ❌ |
-| `SimpleChatAgent` | 일반 LLM 채팅 | ❌ | ✅ |
+| 에이전트 | 역할 | 노드 | RAG | LLM |
+|---------|------|------|-----|-----|
+| `LegalSearchAgent` | 판례/법령 RAG 검색 (search_focus 분기) | `legal_search_node` | ✅ | ✅ |
+| `LawyerFinderAgent` | 위치 기반 변호사 추천 | `lawyer_finder_node` | ❌ | ❌ |
+| `SmallClaimsAgent` | 소액소송 단계별 가이드 | `small_claims_subgraph` | ✅ | ❌ |
+| `StoryboardAgent` | 사건 타임라인 생성 | `storyboard_node` | ❌ | ✅ |
+| `LawyerStatsAgent` | 변호사 통계 안내 | `lawyer_stats_node` | ❌ | ❌ |
+| `LawStudyAgent` | 로스쿨 학습 가이드 | `law_study_node` | ✅ | ✅ |
+| `SimpleChatAgent` | 일반 LLM 채팅 (폴백) | `simple_chat_node` | ❌ | ✅ |
 
 ### 설정
 

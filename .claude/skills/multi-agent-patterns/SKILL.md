@@ -1,11 +1,11 @@
 ---
 name: multi-agent-patterns
-description: 멀티 에이전트 시스템 구현 패턴. BaseChatAgent 상속, 오케스트레이터, Intent 라우팅, 세션 관리 등. 에이전트 추가, 수정, 라우팅 로직 작업 시 사용.
+description: LangGraph 기반 멀티 에이전트 시스템 구현 패턴. BaseChatAgent 상속, StateGraph 라우팅, Command 기반 노드 이동, 세션 관리 등. 에이전트 추가, 수정, 라우팅 로직 작업 시 사용.
 ---
 
-# Multi-Agent Patterns
+# Multi-Agent Patterns (LangGraph)
 
-멀티 에이전트 시스템 구현을 위한 패턴과 가이드라인.
+LangGraph StateGraph 기반 멀티 에이전트 시스템 구현 패턴과 가이드라인.
 
 ## 1. 아키텍처 개요
 
@@ -13,27 +13,34 @@ description: 멀티 에이전트 시스템 구현 패턴. BaseChatAgent 상속, 
 사용자 메시지 (POST /api/chat)
      │
      ▼
-┌─────────────────┐
-│  Orchestrator   │  ← process(ChatRequest) → ChatResponse
-└────────┬────────┘
+┌─────────────────────┐
+│  request_to_state() │  ← ChatRequest → ChatState 변환
+└────────┬────────────┘
          │
          ▼
-┌─────────────────┐
-│  RouterAgent    │  ← route(ChatContext) → AgentPlan
-│  (RulesRouter)  │     키워드 매칭 + confidence 점수
-└────────┬────────┘
+┌─────────────────────┐
+│  LangGraph          │  ← graph.ainvoke(state) / graph.astream(state)
+│  StateGraph         │
+└────────┬────────────┘
          │
          ▼
-┌─────────────────┐
-│ AgentExecutor   │  ← execute(AgentPlan, ChatContext) → AgentResult
-└────────┬────────┘
+┌─────────────────────┐
+│  router_node        │  ← RulesRouter.route() → Command(goto=target_node)
+│                     │     키워드 매칭 + confidence 점수 + ROLE_AGENTS 검증
+└────────┬────────────┘
          │
-    ┌────┴────┬────────────┬──────────────┐
-    ▼         ▼            ▼              ▼
-┌────────┐ ┌────────┐ ┌───────────┐ ┌──────────┐
-│Legal   │ │Lawyer  │ │SmallClaims│ │Simple    │
-│Answer  │ │Finder  │ │Agent      │ │ChatAgent │
-└────────┘ └────────┘ └───────────┘ └──────────┘
+    ┌────┴────┬──────────┬───────────┬───────────┬──────────┬──────────┐
+    ▼         ▼          ▼           ▼           ▼          ▼          ▼
+┌────────┐┌────────┐┌─────────┐┌──────────┐┌────────┐┌────────┐┌────────┐
+│Legal   ││Lawyer  ││Small    ││Storyboard││Lawyer  ││Law     ││Simple  │
+│Search  ││Finder  ││Claims   ││          ││Stats   ││Study   ││Chat    │
+│Node    ││Node    ││Subgraph ││Node      ││Node    ││Node    ││Node    │
+└────────┘└────────┘└─────────┘└──────────┘└────────┘└────────┘└────────┘
+    │         │          │           │           │          │          │
+    └─────────┴──────────┴───────────┴───────────┴──────────┴──────────┘
+                                     │
+                                     ▼
+                                    END
 ```
 
 ## 2. 핵심 클래스
@@ -41,16 +48,22 @@ description: 멀티 에이전트 시스템 구현 패턴. BaseChatAgent 상속, 
 ### 2.1 위치
 ```
 backend/app/multi_agent/
-├── __init__.py              # 패키지 export (Orchestrator, AgentExecutor 등)
-├── orchestrator.py          # Orchestrator (process → route → execute)
-├── executor.py              # AgentExecutor (에이전트 선택/실행)
-├── router.py                # RouterAgent, RulesRouter, AgentType, UserRole
+├── __init__.py              # 패키지 export (get_graph, ChatState 등)
+├── graph.py                 # build_graph(), get_graph() 싱글톤
+├── nodes.py                 # router_node + 에이전트 노드 함수 + AGENT_NODE_MAP
+├── router.py                # RulesRouter, AgentType, UserRole, ROLE_AGENTS, detect_search_type
+├── state.py                 # ChatState(TypedDict), request_to_state, state_to_response
 ├── agents/
 │   ├── __init__.py          # Export all agents
 │   ├── base_chat.py         # BaseChatAgent, SimpleChatAgent, ActionType, ChatAction
-│   ├── legal_answer_agent.py    # LegalAnswerAgent (RAG 기반)
+│   ├── legal_search_agent.py    # LegalSearchAgent (RAG 기반, search_focus)
 │   ├── lawyer_finder_agent.py   # LawyerFinderAgent
-│   └── small_claims_agent.py    # SmallClaimsAgent
+│   ├── small_claims_agent.py    # SmallClaimsAgent
+│   ├── storyboard_agent.py      # StoryboardAgent (LLM 타임라인)
+│   ├── lawyer_stats_agent.py    # LawyerStatsAgent (통계 안내)
+│   └── law_study_agent.py       # LawStudyAgent (학습 가이드)
+├── subgraphs/
+│   └── small_claims.py      # 소액소송 interrupt 서브그래프
 └── schemas/
     ├── __init__.py          # Export all schemas
     ├── plan.py              # AgentPlan, AgentResult (dataclass)
@@ -61,14 +74,19 @@ backend/app/multi_agent/
 ```python
 # 에이전트 구현 시
 from app.multi_agent.agents.base_chat import BaseChatAgent, ActionType, ChatAction
-from app.multi_agent.schemas.plan import AgentPlan, AgentResult
+from app.multi_agent.schemas.plan import AgentResult
 
 # 라우터 사용 시
-from app.multi_agent.router import AgentType, UserRole, RulesRouter, RouterAgent
+from app.multi_agent.router import AgentType, UserRole, RulesRouter, detect_search_type
 
-# 오케스트레이터 사용 시
-from app.multi_agent import get_orchestrator
-from app.multi_agent.orchestrator import Orchestrator
+# 그래프 사용 시
+from app.multi_agent.graph import get_graph, build_graph
+
+# State 사용 시
+from app.multi_agent.state import ChatState, request_to_state, state_to_response
+
+# 노드 함수 사용 시
+from app.multi_agent.nodes import router_node, AGENT_NODE_MAP
 
 # 스키마 사용 시
 from app.multi_agent.schemas import AgentPlan, AgentResult, ChatRequest, ChatResponse, ChatMessage
@@ -104,7 +122,7 @@ class MyAgent(BaseChatAgent):
         user_location: dict[str, float] | None = None,
     ) -> AgentResult:
         """
-        메시지 처리 메인 로직
+        메시지 처리 메인 로직 (비스트리밍)
 
         Args:
             message: 사용자 메시지
@@ -118,27 +136,38 @@ class MyAgent(BaseChatAgent):
         # 구현
         pass
 
-    def can_handle(self, message: str) -> bool:
-        """키워드 기반 처리 가능 여부 (선택적 오버라이드, 기본: False)"""
-        keywords = ["키워드1", "키워드2"]
-        return any(kw in message for kw in keywords)
+    async def process_stream(
+        self,
+        message: str,
+        history: list[dict[str, str]] | None = None,
+        session_data: dict[str, Any] | None = None,
+        user_location: dict[str, float] | None = None,
+    ):
+        """
+        스트리밍 메시지 처리 (AsyncGenerator)
+
+        Yields:
+            str 또는 dict (토큰 또는 이벤트)
+        """
+        # 구현 (스트리밍 에이전트만)
+        pass
 ```
 
 ### 3.2 AgentResult 구조 (dataclass)
 ```python
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 @dataclass
 class AgentResult:
-    """에이전트가 반환하여 Orchestrator가 응답으로 변환"""
+    """각 에이전트 노드가 반환하여 state_to_response()로 변환"""
     message: str                                            # AI 응답 메시지
-    sources: List[Dict[str, Any]] = field(default_factory=list)  # 참조 문서
-    actions: List[Dict[str, Any]] = field(default_factory=list)  # 액션 버튼
-    session_data: Dict[str, Any] = field(default_factory=dict)   # 다음 턴 세션
-    agent_used: Optional[str] = None                        # 사용된 에이전트명
+    sources: list[dict[str, Any]] = field(default_factory=list)  # 참조 문서
+    actions: list[dict[str, Any]] = field(default_factory=list)  # 액션 버튼
+    session_data: dict[str, Any] = field(default_factory=dict)   # 다음 턴 세션
+    agent_used: str | None = None                           # 사용된 에이전트명
     confidence: float = 1.0                                 # 라우팅 신뢰도
-    processing_time_ms: Optional[float] = None              # 처리 시간
+    processing_time_ms: float | None = None                 # 처리 시간
 ```
 
 ### 3.3 ChatAction 패턴
@@ -181,14 +210,18 @@ ChatAction(
 
 class AgentType(str, Enum):
     """에이전트 타입"""
+    # 일반인 전용
     LAWYER_FINDER = "lawyer_finder"
-    CASE_SEARCH = "case_search"
     SMALL_CLAIMS = "small_claims"
+    # 공통
+    LEGAL_SEARCH = "legal_search"       # 판례+법령 통합
+    CASE_SEARCH = "case_search"         # 판례 명시 (agent_override용)
+    LAW_SEARCH = "law_search"           # 법령 명시 (agent_override용)
+    STORYBOARD = "storyboard"
     # 변호사 전용
-    CASE_ANALYSIS = "case_analysis"
-    CLIENT_MANAGEMENT = "client_management"
-    DOCUMENT_DRAFTING = "document_drafting"
-    # 기본
+    LAWYER_STATS = "lawyer_stats"
+    LAW_STUDY = "law_study"
+    # 폴백
     GENERAL = "general"
 ```
 
@@ -197,17 +230,28 @@ class AgentType(str, Enum):
 # backend/app/multi_agent/router.py
 
 # 키워드 + confidence 점수 쌍
-INTENT_PATTERNS: Dict[AgentType, List[tuple[str, float]]] = {
+INTENT_PATTERNS: dict[AgentType, list[tuple[str, float]]] = {
     AgentType.LAWYER_FINDER: [
         ("변호사 찾", 0.9),
         ("변호사 추천", 0.9),
         ("근처 변호사", 0.85),
-        # ...
     ],
     AgentType.SMALL_CLAIMS: [
         ("소액소송", 0.95),
         ("소액심판", 0.9),
-        # ...
+    ],
+    AgentType.STORYBOARD: [
+        ("타임라인", 0.9),
+        ("스토리보드", 0.95),
+        ("사건 경위", 0.85),
+    ],
+    AgentType.LAWYER_STATS: [
+        ("변호사 통계", 0.95),
+        ("변호사 현황", 0.9),
+    ],
+    AgentType.LAW_STUDY: [
+        ("로스쿨", 0.9),
+        ("법학", 0.8),
     ],
     # 새 에이전트 추가 시 여기에 패턴 추가
 }
@@ -221,18 +265,23 @@ class UserRole(str, Enum):
     USER = "user"      # 일반 사용자
     LAWYER = "lawyer"  # 변호사
 
-ROLE_AGENTS: Dict[UserRole, List[AgentType]] = {
+ROLE_AGENTS: dict[UserRole, list[AgentType]] = {
     UserRole.USER: [
         AgentType.LAWYER_FINDER,
-        AgentType.CASE_SEARCH,
         AgentType.SMALL_CLAIMS,
+        AgentType.LEGAL_SEARCH,
+        AgentType.CASE_SEARCH,
+        AgentType.LAW_SEARCH,
+        AgentType.STORYBOARD,
         AgentType.GENERAL,
     ],
     UserRole.LAWYER: [
-        AgentType.CASE_ANALYSIS,
-        AgentType.CLIENT_MANAGEMENT,
-        AgentType.DOCUMENT_DRAFTING,
+        AgentType.LAWYER_STATS,
+        AgentType.LAW_STUDY,
+        AgentType.LEGAL_SEARCH,
         AgentType.CASE_SEARCH,
+        AgentType.LAW_SEARCH,
+        AgentType.STORYBOARD,
         AgentType.GENERAL,
     ],
 }
@@ -247,7 +296,7 @@ class RulesRouter:
         self,
         message: str,
         user_role: str = "user",
-        session_data: Optional[Dict[str, Any]] = None,
+        session_data: dict[str, Any] | None = None,
     ) -> AgentPlan:
         """
         우선순위:
@@ -257,142 +306,177 @@ class RulesRouter:
         """
 ```
 
-### 4.5 RouterAgent (하이브리드 라우터)
+### 4.5 search_focus 결정 (detect_search_type)
 ```python
-class RouterAgent:
-    """
-    규칙 기반 라우팅 + LLM 기반 보완 (임계값 0.6)
-    """
-    LLM_ROUTING_THRESHOLD = 0.6
+# backend/app/multi_agent/router.py
 
-    def route(self, context: ChatContext) -> AgentPlan:
-        """
-        1. RulesRouter로 라우팅
-        2. confidence >= 0.6이면 반환
-        3. 미만이면 LLM 라우팅 (향후 확장)
-        """
-
-    def route_simple(
-        self,
-        message: str,
-        user_role: str = "user",
-        session_data: Optional[Dict[str, Any]] = None,
-    ) -> AgentPlan:
-        """ChatContext 없이 간단 라우팅"""
+def detect_search_type(message: str) -> str:
+    """메시지에서 법령/판례 검색 타입을 분류한다."""
+    law_keywords = ["법령", "법률", "조문", "시행령", "시행규칙", "법 제"]
+    if any(kw in message for kw in law_keywords):
+        return "law"
+    return "precedent"  # 기본값: 판례
 ```
 
-## 5. 오케스트레이터
+`router_node`에서 search_focus 결정 로직:
+- `agent_override=case_search` → `search_focus="precedent"`
+- `agent_override=law_search` → `search_focus="law"`
+- `legal_search`로 라우팅 → `detect_search_type(message)`로 2차 분류
+- 결정된 값은 `ChatState.search_focus`에 저장
 
-### 5.1 구조
+## 5. LangGraph StateGraph
+
+### 5.1 그래프 구조
 ```python
-# backend/app/multi_agent/orchestrator.py
+# backend/app/multi_agent/graph.py
 
-class Orchestrator:
-    """멀티 에이전트 오케스트레이터 - 라우팅 → 실행 → 응답 변환 관리"""
+def build_graph() -> StateGraph:
+    builder = StateGraph(ChatState)
 
-    def __init__(
-        self,
-        router: Optional[RouterAgent] = None,
-        executor: Optional[AgentExecutor] = None,
-        session_store: Optional[SessionStore] = None,
-    ) -> None:
-        # Lazy 초기화: 각 컴포넌트는 처음 접근 시 생성
+    # 노드 등록
+    builder.add_node("router_node", router_node)
+    builder.add_node("legal_search_node", legal_search_node)
+    builder.add_node("lawyer_finder_node", lawyer_finder_node)
+    builder.add_node("small_claims_subgraph", build_small_claims_subgraph())
+    builder.add_node("storyboard_node", storyboard_node)
+    builder.add_node("lawyer_stats_node", lawyer_stats_node)
+    builder.add_node("law_study_node", law_study_node)
+    builder.add_node("simple_chat_node", simple_chat_node)
 
-    async def process(self, request: ChatRequest) -> ChatResponse:
-        """
-        전체 플로우:
-        1. ChatRequest → ChatContext 변환
-        2. request.agent 있으면 직접 지정, 아니면 RouterAgent로 라우팅
-        3. AgentExecutor로 에이전트 실행
-        4. 세션 데이터 저장
-        5. AgentResult → ChatResponse 변환
-        """
+    # 엣지
+    builder.add_edge(START, "router_node")
+    # router_node는 Command(goto=...)로 라우팅하므로 conditional edge 불필요
+    for node in ("legal_search_node", "lawyer_finder_node", "small_claims_subgraph",
+                 "storyboard_node", "lawyer_stats_node", "law_study_node", "simple_chat_node"):
+        builder.add_edge(node, END)
+
+    return builder
 ```
 
 ### 5.2 싱글톤 패턴
 ```python
-from app.multi_agent import get_orchestrator
+from app.multi_agent.graph import get_graph
 
-orchestrator = get_orchestrator()  # 싱글톤 인스턴스
-
-# 하위 호환 별칭
-AgentOrchestrator = Orchestrator
+graph = get_graph()  # 컴파일된 StateGraph 싱글톤 (InMemorySaver 체크포인터)
 ```
 
 ### 5.3 사용 예시 (API Router)
 ```python
-from app.multi_agent import get_orchestrator
+from app.multi_agent.graph import get_graph
+from app.multi_agent.state import request_to_state, state_to_response
 from app.multi_agent.schemas import ChatRequest, ChatResponse
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    orchestrator = get_orchestrator()
-    response = await orchestrator.process(request)
-    return response
+    graph = get_graph()
+    initial_state = request_to_state(request)
+    final_state = await graph.ainvoke(initial_state, config={"configurable": {"thread_id": thread_id}})
+    return state_to_response(final_state)
 ```
 
-### 5.4 AgentExecutor (에이전트 레지스트리)
+### 5.4 AGENT_NODE_MAP (에이전트→노드 매핑)
 ```python
-# backend/app/multi_agent/executor.py
+# backend/app/multi_agent/nodes.py
 
-class AgentExecutor:
-    """에이전트 실행기 - AgentPlan을 받아 해당 에이전트 실행"""
-
-    def __init__(self, agents: Dict[str, BaseChatAgent]):
-        """agents: agent_name → agent_instance 매핑"""
-
-    async def execute(self, plan: AgentPlan, context: ChatContext) -> AgentResult:
-        """
-        1. plan.agent_type으로 에이전트 선택
-        2. agent.process() 실행
-        3. 처리 시간 기록
-        4. AgentResult 반환
-        """
-
-# 기본 에이전트 레지스트리 (get_agent_executor에서 생성):
-# {
-#     "legal_answer": LegalAnswerAgent(focus="precedent"),
-#     "case_search":  LegalAnswerAgent(focus="precedent"),  # 하위 호환
-#     "law_search":   LegalAnswerAgent(focus="law"),
-#     "lawyer_finder": LawyerFinderAgent(),
-#     "small_claims":  SmallClaimsAgent(),
-#     "general":       SimpleChatAgent(),
-# }
+AGENT_NODE_MAP: dict[str, str] = {
+    # 공통
+    "legal_search": "legal_search_node",
+    "case_search": "legal_search_node",   # agent_override 호환
+    "law_search": "legal_search_node",    # agent_override 호환
+    "storyboard": "storyboard_node",
+    # 일반인
+    "lawyer_finder": "lawyer_finder_node",
+    "small_claims": "small_claims_subgraph",
+    # 변호사
+    "lawyer_stats": "lawyer_stats_node",
+    "law_study": "law_study_node",
+    # 폴백
+    "general": "simple_chat_node",
+    # 하위호환
+    "legal_answer": "legal_search_node",
+}
 ```
 
-## 6. 스키마
-
-### 6.1 AgentPlan (dataclass)
+### 5.5 router_node (Command 기반 라우팅)
 ```python
-@dataclass
-class AgentPlan:
-    """라우터가 생성하여 Executor에 전달"""
-    agent_type: str              # "legal_answer", "lawyer_finder" 등
-    use_rag: bool = True         # RAG 사용 여부
-    confidence: float = 1.0      # 라우팅 신뢰도
-    reason: Optional[str] = None # 라우팅 사유
-    metadata: Dict[str, Any] = field(default_factory=dict)
+# backend/app/multi_agent/nodes.py
+
+def router_node(state: ChatState) -> Command:
+    """라우터 노드 — RulesRouter로 에이전트 결정, Command(goto=...)로 이동"""
+    message = state["message"]
+    user_role = state.get("user_role", "user")
+    agent_override = state.get("agent_override")
+
+    # 1. agent_override가 있으면 직접 지정 (ROLE_AGENTS 검증)
+    # 2. 없으면 RulesRouter.route()로 결정
+    # 3. search_focus 결정 (case_search→precedent, law_search→law, legal_search→detect_search_type)
+
+    return Command(
+        update={
+            "selected_agent": plan.agent_type,
+            "search_focus": search_focus,
+            "routing_confidence": plan.confidence,
+            "routing_reason": plan.reason or "",
+        },
+        goto=target_node,
+    )
 ```
 
-### 6.2 ChatRequest / ChatResponse (Pydantic)
+### 5.6 노드 함수 헬퍼
 ```python
-class ChatRequest(BaseModel):
-    """POST /api/chat 요청"""
+# backend/app/multi_agent/nodes.py
+
+async def _run_streaming_node(
+    state: ChatState,
+    writer: StreamWriter,
+    agent: BaseChatAgent,
+) -> dict[str, Any]:
+    """스트리밍 에이전트 노드 공통 로직"""
+    # process_stream() → writer로 토큰 전송 → state 업데이트 반환
+
+async def _run_nonstreaming_node(
+    state: ChatState,
+    writer: StreamWriter,
+    agent: BaseChatAgent,
+) -> dict[str, Any]:
+    """비스트리밍 에이전트 노드 공통 로직"""
+    # process() → 결과를 한번에 writer로 전송 → state 업데이트 반환
+```
+
+## 6. ChatState (TypedDict)
+
+### 6.1 구조
+```python
+# backend/app/multi_agent/state.py
+
+class ChatState(TypedDict):
+    # 입력
     message: str
-    user_role: str = "user"
-    history: List[ChatMessage] = []
-    session_data: Dict[str, Any] = {}
-    user_location: Optional[Dict[str, float]] = None  # {"latitude", "longitude"}
-    agent: Optional[str] = None  # 에이전트 직접 지정 (라우팅 건너뜀)
-
-class ChatResponse(BaseModel):
-    """API 응답"""
+    user_role: str
+    history: list[dict[str, str]]
+    session_data: dict[str, Any]
+    user_location: dict[str, float] | None
+    agent_override: str | None
+    # 라우팅 결과 (router_node가 설정)
+    selected_agent: str
+    search_focus: str           # "precedent" | "law" | ""
+    routing_confidence: float
+    routing_reason: str
+    # 출력 (에이전트 노드가 설정)
     response: str
+    sources: list[dict[str, Any]]
+    actions: list[dict[str, Any]]
+    output_session_data: dict[str, Any]
     agent_used: str
-    sources: List[Dict[str, Any]] = []
-    actions: List[Dict[str, Any]] = []
-    session_data: Dict[str, Any] = {}
-    confidence: float = 1.0
+```
+
+### 6.2 변환 함수
+```python
+def request_to_state(request: ChatRequest) -> ChatState:
+    """ChatRequest → ChatState 변환"""
+
+def state_to_response(state: ChatState) -> ChatResponse:
+    """ChatState → ChatResponse 변환"""
 ```
 
 ## 7. 세션 상태 관리
@@ -463,27 +547,45 @@ class AgentType(str, Enum):
 ### Step 3: Intent 패턴 추가
 ```python
 # backend/app/multi_agent/router.py
-INTENT_PATTERNS: Dict[AgentType, List[tuple[str, float]]] = {
-    AgentType.MY_AGENT: [
-        ("키워드1", 0.9),
-        ("키워드2", 0.85),
-    ],
-}
+INTENT_PATTERNS[AgentType.MY_AGENT] = [
+    ("키워드1", 0.9),
+    ("키워드2", 0.85),
+]
 ```
 
-### Step 4: 에이전트 레지스트리에 등록
+### Step 4: ROLE_AGENTS에 추가
 ```python
-# backend/app/multi_agent/executor.py
-# get_agent_executor() 함수 내 agents dict에 추가
-from app.multi_agent.agents.my_agent import MyAgent
-
-agents = {
-    # ... 기존 에이전트 ...
-    "my_agent": MyAgent(),
-}
+# backend/app/multi_agent/router.py
+# 해당 역할의 ROLE_AGENTS 리스트에 추가
+ROLE_AGENTS[UserRole.USER].append(AgentType.MY_AGENT)
 ```
 
-### Step 5: Export 추가
+### Step 5: AGENT_NODE_MAP에 매핑 추가
+```python
+# backend/app/multi_agent/nodes.py
+AGENT_NODE_MAP["my_agent"] = "my_agent_node"
+```
+
+### Step 6: 노드 함수 작성
+```python
+# backend/app/multi_agent/nodes.py
+
+async def my_agent_node(state: ChatState, writer: StreamWriter) -> dict[str, Any]:
+    """내 에이전트 노드"""
+    from app.multi_agent.agents.my_agent import MyAgent
+    agent = MyAgent()
+    # 스트리밍이면 _run_streaming_node, 비스트리밍이면 _run_nonstreaming_node 사용
+    return await _run_streaming_node(state, writer, agent)
+```
+
+### Step 7: graph.py에 노드 등록
+```python
+# backend/app/multi_agent/graph.py
+builder.add_node("my_agent_node", my_agent_node)
+builder.add_edge("my_agent_node", END)
+```
+
+### Step 8: Export 추가
 ```python
 # backend/app/multi_agent/agents/__init__.py
 from app.multi_agent.agents.my_agent import MyAgent
@@ -493,7 +595,7 @@ __all__ = [..., "MyAgent"]
 
 ## 9. 에이전트 구현 패턴
 
-### 9.1 RAG 연동 에이전트
+### 9.1 RAG 연동 에이전트 (스트리밍)
 ```python
 from app.services.rag.retrieval import search_relevant_documents
 from app.tools.llm import get_chat_model
@@ -502,22 +604,29 @@ from app.multi_agent.schemas.plan import AgentResult
 
 
 class RagAgent(BaseChatAgent):
-    async def process(self, message: str, history: list | None = None, ...) -> AgentResult:
+    async def process_stream(self, message: str, history: list | None = None, ...):
         # 1. 문서 검색
         docs = search_relevant_documents(message, n_results=5)
 
-        # 2. 컨텍스트 구성 + LLM 호출
+        # 2. 컨텍스트 구성 + LLM 스트리밍 호출
         llm = get_chat_model(temperature=0.7)
-        response = llm.invoke(messages)
+        async for chunk in llm.astream(messages):
+            yield chunk.content
+
+    async def process(self, message: str, history: list | None = None, ...) -> AgentResult:
+        # 비스트리밍 폴백
+        chunks = []
+        async for chunk in self.process_stream(message, history, ...):
+            chunks.append(chunk)
 
         return AgentResult(
-            message=response.content,
+            message="".join(chunks),
             sources=[...],
             session_data={"active_agent": self.name},
         )
 ```
 
-### 9.2 단계별 가이드 에이전트
+### 9.2 단계별 가이드 에이전트 (비스트리밍)
 ```python
 STEP_MESSAGES = {
     "init": "첫 번째 안내 메시지...",
@@ -596,19 +705,59 @@ def test_my_agent_can_handle():
     assert not agent.can_handle("관련 없는 메시지")
 ```
 
-### 10.2 오케스트레이터 통합 테스트
+### 10.2 라우팅 테스트
 ```python
-from app.multi_agent import get_orchestrator
-from app.multi_agent.schemas import ChatRequest
+from app.multi_agent.nodes import router_node, AGENT_NODE_MAP
+from app.multi_agent.state import ChatState
 
-@pytest.mark.asyncio
-async def test_orchestrator_routing():
-    orchestrator = get_orchestrator()
-    response = await orchestrator.process(
-        ChatRequest(message="변호사 찾아줘", user_role="user")
-    )
+def test_router_my_agent_keyword():
+    """키워드 매칭 → 올바른 노드로 라우팅"""
+    state: ChatState = {
+        "message": "키워드1 포함 메시지",
+        "user_role": "user",
+        "history": [],
+        "session_data": {},
+        "user_location": None,
+        "agent_override": None,
+        "selected_agent": "",
+        "search_focus": "",
+        "routing_confidence": 0.0,
+        "routing_reason": "",
+        "response": "",
+        "sources": [],
+        "actions": [],
+        "output_session_data": {},
+        "agent_used": "",
+    }
+    result = router_node(state)
+    assert result.goto == "my_agent_node"
 
-    assert response.agent_used == "lawyer_finder"
+def test_agent_override_respects_role():
+    """agent_override 시 ROLE_AGENTS 검증"""
+    state = {
+        ...,
+        "user_role": "user",
+        "agent_override": "lawyer_stats",
+    }
+    result = router_node(state)
+    assert result.goto != "lawyer_stats_node"  # user에게 차단
+```
+
+### 10.3 그래프 구조 테스트
+```python
+from app.multi_agent.graph import build_graph
+
+def test_graph_has_all_nodes():
+    """모든 노드가 등록되어 있는지 확인"""
+    builder = build_graph()
+    compiled = builder.compile()
+    node_names = set(compiled.nodes.keys())
+    expected = {
+        "router_node", "legal_search_node", "lawyer_finder_node",
+        "small_claims_subgraph", "storyboard_node", "lawyer_stats_node",
+        "law_study_node", "simple_chat_node",
+    }
+    assert expected.issubset(node_names)
 ```
 
 ## 11. 주의사항
@@ -636,3 +785,13 @@ async def process(self, message: str, ...) -> AgentResult:
             session_data={"active_agent": self.name},
         )
 ```
+
+### 11.4 Command 기반 라우팅
+- `router_node`는 `Command(goto=target_node, update={...})` 반환
+- `conditional_edge` 대신 `Command`를 사용하여 동적 라우팅
+- 에이전트 노드는 일반 `dict` 반환 (state 업데이트)
+
+### 11.5 스트리밍 vs 비스트리밍
+- **스트리밍**: `process_stream()` + `_run_streaming_node()` (LegalSearch, Storyboard, LawStudy, SimpleChat)
+- **비스트리밍**: `process()` + `_run_nonstreaming_node()` (LawyerFinder, LawyerStats)
+- StreamWriter로 SSE 이벤트 전송: `writer({"type": "token", "content": chunk})`

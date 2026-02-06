@@ -324,38 +324,40 @@ docs = search_with_rewrite("임대차", use_llm=True)
 
 ## 7. 전체 RAG 응답 생성 플로우
 
-현재 시스템은 멀티 에이전트 아키텍처를 사용합니다.
-RAG 기반 응답은 `LegalAnswerAgent`가 담당합니다.
+현재 시스템은 LangGraph StateGraph 기반 멀티 에이전트 아키텍처를 사용합니다.
+RAG 기반 응답은 `LegalSearchAgent`가 담당합니다.
 
 ```
 POST /api/chat (ChatRequest)
     ↓
-Orchestrator.process(request)
+request_to_state(request) → ChatState
     ↓
-RouterAgent.route(context)  → AgentPlan
+graph.ainvoke(state) → LangGraph StateGraph 실행
     ↓
-AgentExecutor.execute(plan, context)
+router_node(state) → Command(goto="legal_search_node")
     ↓
-LegalAnswerAgent.process(message, history, session_data)
+legal_search_node(state, writer)
     │
-    ├─ 1. 하이브리드 검색 (판례 + 법령)
-    │     search_relevant_documents(query, doc_type="precedent")
-    │     search_relevant_documents(query, doc_type="law")
+    ├─ 1. state에서 search_focus 읽기 ("precedent" | "law")
+    │     focus = state.get("search_focus", "precedent")
     │
-    ├─ 2. 판례 상세 조회
+    ├─ 2. 하이브리드 검색 (판례 + 법령)
+    │     search_relevant_documents(query, doc_type=focus)
+    │
+    ├─ 3. 판례 상세 조회
     │     precedent_service.get_precedent_detail(case_id)
     │
-    ├─ 3. 법령 조회 (참조조문 기반)
+    ├─ 4. 법령 조회 (참조조문 기반)
     │     law_service.fetch_laws_by_names(law_names)
     │
-    ├─ 4. 그래프 컨텍스트 보강
+    ├─ 5. 그래프 컨텍스트 보강
     │     graph_service.enrich_case_context(case_number)
     │
-    ├─ 5. LLM 응답 생성
-    │     get_chat_model().invoke(messages)
+    ├─ 6. LLM 스트리밍 응답 생성
+    │     agent.process_stream(message, ...) → StreamWriter
     │
-    └─ 6. AgentResult 반환
-          AgentResult(message=..., sources=..., actions=...)
+    └─ 7. state 업데이트 반환
+          {"response": ..., "sources": ..., "agent_used": ...}
 ```
 
 ## 8. 상수 및 설정

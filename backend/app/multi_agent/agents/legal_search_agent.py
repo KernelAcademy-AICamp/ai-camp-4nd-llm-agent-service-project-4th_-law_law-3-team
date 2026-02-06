@@ -1,5 +1,5 @@
 """
-법률 답변 에이전트
+법률 검색 에이전트
 
 RAG 기반 판례/법령 검색 및 법률 상담 제공
 focus 파라미터로 검색 비율 조절
@@ -28,8 +28,8 @@ SEARCH_CONFIG = {
 }
 
 
-class LegalAnswerAgent(BaseChatAgent):
-    """법률 답변 에이전트 (판례/법령 통합 검색)"""
+class LegalSearchAgent(BaseChatAgent):
+    """법률 검색 에이전트 (판례/법령 통합 검색)"""
 
     def __init__(
         self,
@@ -53,7 +53,7 @@ class LegalAnswerAgent(BaseChatAgent):
 
     @property
     def name(self) -> str:
-        return "legal_answer"
+        return "legal_search"
 
     @property
     def description(self) -> str:
@@ -63,7 +63,7 @@ class LegalAnswerAgent(BaseChatAgent):
 
     @property
     def supports_streaming(self) -> bool:
-        """LegalAnswerAgent는 스트리밍 지원"""
+        """LegalSearchAgent는 스트리밍 지원"""
         return True
 
     async def process(
@@ -285,11 +285,11 @@ class LegalAnswerAgent(BaseChatAgent):
                 source_item["reasoning"] = detail.get("reasoning", "")
                 source_item["decision_date"] = detail.get("decision_date", "")
                 source_item["case_type"] = detail.get("case_type", "")
-                source_item["summary"] = detail.get("summary", "")  # 판시사항
-                source_item["full_reason"] = detail.get("full_reason", "")  # 이유
-                source_item["full_text"] = detail.get("full_text", "")  # 판례내용 전문
-                source_item["reference_provisions"] = detail.get("reference_provisions", "")  # 참조조문
-                source_item["reference_cases"] = detail.get("reference_cases", "")  # 참조판례
+                source_item["summary"] = detail.get("summary", "")
+                source_item["full_reason"] = detail.get("full_reason", "")
+                source_item["full_text"] = detail.get("full_text", "")
+                source_item["reference_provisions"] = detail.get("reference_provisions", "")
+                source_item["reference_cases"] = detail.get("reference_cases", "")
 
             # 그래프 컨텍스트 추가
             if case_number in graph_contexts:
