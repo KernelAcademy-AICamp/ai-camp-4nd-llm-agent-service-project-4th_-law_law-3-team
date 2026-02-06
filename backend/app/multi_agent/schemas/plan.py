@@ -5,23 +5,23 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
 class AgentPlan:
-    """
-    에이전트 실행 계획
+    """에이전트 실행 계획
 
-    라우터가 생성하여 Executor에 전달
+    RulesRouter가 생성하여 router_node의 Command.update로 전달
     """
+
     agent_type: str
     use_rag: bool = True
     confidence: float = 1.0
-    reason: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    reason: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """딕셔너리로 변환"""
         return {
             "agent_type": self.agent_type,
@@ -34,20 +34,20 @@ class AgentPlan:
 
 @dataclass
 class AgentResult:
-    """
-    에이전트 실행 결과
+    """에이전트 실행 결과
 
-    에이전트가 반환하여 Orchestrator가 응답으로 변환
+    각 에이전트 노드가 반환하여 state_to_response()로 변환
     """
+
     message: str
-    sources: List[Dict[str, Any]] = field(default_factory=list)
-    actions: List[Dict[str, Any]] = field(default_factory=list)
-    session_data: Dict[str, Any] = field(default_factory=dict)
-    agent_used: Optional[str] = None
+    sources: list[dict[str, Any]] = field(default_factory=list)
+    actions: list[dict[str, Any]] = field(default_factory=list)
+    session_data: dict[str, Any] = field(default_factory=dict)
+    agent_used: str | None = None
     confidence: float = 1.0
-    processing_time_ms: Optional[float] = None
+    processing_time_ms: float | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """딕셔너리로 변환"""
         return {
             "message": self.message,
