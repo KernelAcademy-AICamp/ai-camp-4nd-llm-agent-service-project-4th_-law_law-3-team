@@ -19,9 +19,15 @@ Claude는 외부 AI CLI 도구(Gemini CLI, Codex CLI)를 활용할 때 이 규�
 | **프로젝트 아키텍처 파악** | Gemini CLI | Claude (Task/Explore) | 전체 구조 이해 필요 여부 |
 | **보안 감사** (다수 파일) | Gemini CLI | Claude (순차 분석) | 분석 범위 |
 | **마이그레이션 영향 분석** | Gemini CLI | Claude (Grep/Read) | 변경 영향 범위 |
-| **코드 리뷰** (PR/커밋) | Codex CLI | Claude (git diff 분석) | 리뷰 대상 존재 여부 |
+| **멀티모달 분석** (이미지/스크린샷) | Gemini CLI | 대체 불가 | 이미지 입력 존재 여부 |
+| **Deep Think 추론** (복잡 논리) | Gemini CLI | Claude (제한적) | GPQA 수준 추론 필요 여부 |
+| **빠른 프로토타이핑** (PoC) | Gemini CLI | Claude (직접) | 실험적 코드 + 속도 우선 |
+| **팩트 체크/최신 정보** | Gemini CLI | Codex CLI (--search) | 실시간 검증 필요 여부 |
+| **코드 리뷰** (PR/커밋) | Codex CLI (/review) | Claude (git diff 분석) | 리뷰 대상 존재 여부 |
 | **샌드박스 실행 테스트** | Codex CLI | Claude (코드 설명만) | 실행 필요 여부 |
-| **웹 검색 + 코딩** | Codex CLI | Claude (WebSearch) | 외부 정보 필요 여부 |
+| **웹 검색 + 코딩** | Codex CLI (--search) | Claude (WebSearch) | 외부 정보 필요 여부 |
+| **수학/논리 추론** (수식 검증) | Codex CLI | Claude (AIME 92.8%) | 수학적 정확성 필요 여부 |
+| **CI/CD 자동화** (비대화형) | Codex CLI (exec) | 대체 불가 | 자동화 파이프라인 여부 |
 | **정밀 코드 작성** | Claude | - | 항상 Claude |
 | **단일 파일 분석** | Claude | - | 항상 Claude |
 | **5개 이하 파일 분석** | Claude | - | 항상 Claude |
@@ -31,21 +37,39 @@ Claude는 외부 AI CLI 도구(Gemini CLI, Codex CLI)를 활용할 때 이 규�
 ```
 사용자 요청 수신
     │
+    ├─ 이미지/스크린샷/다이어그램 입력?
+    │   ├─ YES → Gemini CLI (멀티모달, 대체 불가)
+    │   └─ NO → 다음 판단으로
+    │
     ├─ 파일 10개 이상 OR 컨텍스트 100K+ 토큰?
     │   ├─ YES → Gemini CLI 설치 확인
     │   │         ├─ 설치됨 → Gemini CLI 실행
     │   │         └─ 미설치 → Claude (Task/Explore + Glob/Grep)
     │   └─ NO → 다음 판단으로
     │
+    ├─ 복잡한 추론 필요? (GPQA 수준, 멀티홉 논리)
+    │   ├─ YES → Gemini CLI (Deep Think 모드)
+    │   └─ NO → 다음 판단으로
+    │
+    ├─ 빠른 프로토타입/실험 코드?
+    │   ├─ YES → Gemini CLI (제로샷) → Claude가 정제
+    │   └─ NO → 다음 판단으로
+    │
     ├─ 코드 리뷰 요청? (PR, 커밋 diff 분석)
     │   ├─ YES → Codex CLI 설치 확인
-    │   │         ├─ 설치됨 → Codex CLI (codex review)
+    │   │         ├─ 설치됨 → Codex CLI (/review 명령어 우선)
     │   │         └─ 미설치 → Claude (git diff 직접 분석)
+    │   └─ NO → 다음 판단으로
+    │
+    ├─ 수학/논리 추론 필요? (수식 검증, 조건 완전성)
+    │   ├─ YES → Codex CLI 설치 확인
+    │   │         ├─ 설치됨 → Codex CLI (AIME 100%)
+    │   │         └─ 미설치 → Claude (AIME 92.8% 수준)
     │   └─ NO → 다음 판단으로
     │
     ├─ 샌드박스 실행 필요?
     │   ├─ YES → Codex CLI 설치 확인
-    │   │         ├─ 설치됨 → Codex CLI (-s read-only)
+    │   │         ├─ 설치됨 → Codex CLI (--sandbox read-only)
     │   │         └─ 미설치 → Claude (실행 불가 안내 + 코드 설명)
     │   └─ NO → 다음 판단으로
     │
@@ -53,6 +77,10 @@ Claude는 외부 AI CLI 도구(Gemini CLI, Codex CLI)를 활용할 때 이 규�
     │   ├─ YES → Codex CLI 설치 확인
     │   │         ├─ 설치됨 → Codex CLI (--search)
     │   │         └─ 미설치 → Claude (WebSearch 도구 사용)
+    │   └─ NO → 다음 판단으로
+    │
+    ├─ CI/CD 자동화 필요?
+    │   ├─ YES → Codex CLI (codex exec, 대체 불가)
     │   └─ NO → Claude 직접 수행
     │
     └─ 그 외 모든 경우 → Claude 직접 수행
