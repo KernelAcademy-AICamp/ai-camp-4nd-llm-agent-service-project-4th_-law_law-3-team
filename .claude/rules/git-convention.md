@@ -4,92 +4,110 @@ Claude는 모든 Git 작업 시 이 규칙들을 **항상(ALWAYS)** 따라야 �
 
 ## 1. 커밋 메시지 형식
 
-[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) 표준을 따릅니다.
+[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) 표준 + 구조화 태그를 사용합니다.
 
 ```
 <타입>(<범위>): <제목>
 
-<본문>
+[context] <왜 이 변경이 필요했는지 1-2문장>
+[changes]
+- <변경 항목 1>
+- <변경 항목 2>
+[impact] <이 변경이 영향을 주는 모듈/레이어>
+[files] <변경된 핵심 파일 경로 (쉼표 구분)>
 
 <꼬리말>
 ```
 
+### 구조화 태그 규칙
+
+| 태그 | 필수 여부 | 설명 |
+|------|----------|------|
+| `[context]` | 필수 | 변경 동기/배경. "왜" 이 작업이 필요한지 |
+| `[changes]` | 필수 | 변경 내용 목록. 글머리 기호(`-`)로 나열 |
+| `[impact]` | 3개 이상 파일 변경 시 필수 | 영향받는 모듈/레이어 (frontend, backend, DB 등) |
+| `[files]` | 3개 이상 파일 변경 시 필수 | 핵심 변경 파일 경로 |
+
+단일 파일 수정 같은 간단한 커밋은 `[context]`와 `[changes]`만 작성합니다.
+
 ### 예시
+
+**복잡한 변경 (다중 파일):**
 ```
 feat(auth): 소셜 로그인 기능 추가
 
-Google OAuth 2.0을 사용한 소셜 로그인 구현
-- Google 로그인 버튼 컴포넌트 추가
-- OAuth 콜백 처리 로직 구현
-- 사용자 세션 관리 로직 추가
+[context] 자체 회원가입 전환율이 낮아 소셜 로그인으로 진입 장벽 완화
+[changes]
+- Google OAuth 2.0 로그인 버튼 컴포넌트 추가
+- /api/auth/callback OAuth 콜백 엔드포인트 구현
+- JWT 기반 세션 관리 로직 추가
+[impact] frontend: 로그인 페이지, backend: auth 모듈, DB: users 테이블 컬럼 추가
+[files] frontend/src/features/auth/GoogleLogin.tsx, backend/app/modules/auth/router/callback.py, backend/alembic/versions/006_add_oauth_fields.py
 
 Closes #123
 ```
 
+**간단한 변경 (단일 파일):**
+```
+fix(payment): 결제 금액 소수점 오차 수정
+
+[context] 할인율 적용 시 소수점 처리 문제로 1원 단위 오차 발생
+[changes]
+- calculateDiscount 반환값에 Math.round() 적용
+```
+
 ## 2. 커밋 타입
 
-| 타입 | 설명 | 예시 |
-|------|------|------|
-| `feat` | 새로운 기능 추가 | `feat(auth): 로그인 기능 추가` |
-| `fix` | 버그 수정 | `fix(api): 응답 파싱 오류 수정` |
-| `docs` | 문서 변경 | `docs: README 업데이트` |
-| `style` | 코드 스타일 (포맷팅, 세미콜론 등) | `style: 불필요한 공백 제거` |
-| `refactor` | 기능 변경 없는 코드 개선 | `refactor(db): 쿼리 최적화` |
-| `perf` | 성능 개선 | `perf: 이미지 로딩 속도 개선` |
-| `test` | 테스트 추가/수정 | `test: 로그인 단위 테스트 추가` |
-| `build` | 빌드/의존성 변경 | `build: 패키지 버전 업데이트` |
-| `ci` | CI/CD 설정 변경 | `ci: GitHub Actions 워크플로우 추가` |
-| `chore` | 기타 변경 (빌드, 도구 등) | `chore: .gitignore 업데이트` |
-| `revert` | 이전 커밋 되돌리기 | `revert: feat(auth) 커밋 되돌리기` |
+| 타입 | 설명 | 분류 기준 | 예시 |
+|------|------|----------|------|
+| `feat` | 새로운 기능 추가 | 사용자가 인식할 수 있는 새 동작 추가 | `feat(auth): 로그인 기능 추가` |
+| `fix` | 버그 수정 | 기존 동작이 의도와 다르게 작동하던 것을 수정 | `fix(api): 응답 파싱 오류 수정` |
+| `docs` | 문서 변경 | .md 파일, 주석, docstring만 변경 | `docs: README 업데이트` |
+| `style` | 코드 스타일 | 로직 변경 없이 포맷팅만 변경 (공백, 세미콜론, import 정렬) | `style: import 정렬` |
+| `refactor` | 코드 개선 | 동작 변경 없이 코드 구조 개선 (함수 분리, 이름 변경, 패턴 적용) | `refactor(db): 쿼리 최적화` |
+| `perf` | 성능 개선 | refactor 중 측정 가능한 성능 향상이 목적인 경우 | `perf: 쿼리 N+1 제거` |
+| `test` | 테스트 | 테스트 코드만 추가/수정 (프로덕션 코드 변경 없음) | `test: 로그인 단위 테스트 추가` |
+| `build` | 빌드/의존성 | pyproject.toml, package.json, Dockerfile 등 빌드 설정 변경 | `build: 패키지 버전 업데이트` |
+| `ci` | CI/CD | GitHub Actions, 배포 스크립트 등 CI/CD 파이프라인 변경 | `ci: GitHub Actions 워크플로우 추가` |
+| `chore` | 기타 | 위 어디에도 해당하지 않는 변경 (설정 파일, .gitignore, 스킬 등) | `chore: .gitignore 업데이트` |
+| `revert` | 되돌리기 | 이전 커밋을 되돌림 | `revert: feat(auth) 커밋 되돌리기` |
+
+### 영향 태그 (꼬리말에 추가)
+
+중요한 변경에는 꼬리말에 영향 태그를 추가합니다:
+
+| 태그 | 의미 | 사용 시점 |
+|------|------|----------|
+| `BREAKING CHANGE:` | API/인터페이스 호환성 깨짐 | 기존 API 응답 형식, 함수 시그니처 변경 |
+| `Migration:` | DB 마이그레이션 필요 | alembic 마이그레이션 포함 시 |
+| `API-Change:` | API 계약 변경 | 엔드포인트 추가/수정/삭제 시 |
 
 ## 3. 한국어 커밋 메시지 규칙
 
 이 프로젝트는 **한국어 커밋 메시지**를 사용합니다. 타입은 영어로 유지합니다 (도구 호환성).
 
-### 제목 작성 규칙
-
-```
-# ✅ Good - 명령형 사용
-feat(user): 프로필 이미지 업로드 기능 추가
-fix(cart): 수량 변경 시 가격 계산 오류 수정
-refactor(api): 에러 핸들링 로직 통합
-
-# ❌ Bad - 과거형/진행형 사용 금지
-feat(user): 프로필 이미지 업로드 기능 추가함
-feat(user): 프로필 이미지 업로드 기능을 추가했습니다
-feat(user): 프로필 이미지 업로드 기능 추가하는 중
-```
-
 ### 제목 규칙
-- **50자 이내** 권장 (최대 72자)
-- 명령형 동사로 시작 ("추가", "수정", "삭제", "개선", "리팩토링")
+- **72자 이내** (정보량 우선, 50자에 억지로 맞추지 않음)
+- 명령형 또는 서술형 모두 허용. **변경 내용이 명확하게 전달되는 것**이 우선
 - 마침표(.) 금지
-- 첫 글자 대문자 불필요 (한국어)
+- 범위(`scope`)에 복수 모듈 가능: `feat(auth,user):` 형식
+
+```
+# 명령형 (권장)
+feat(user): 프로필 이미지 업로드 기능 추가
+
+# 서술형 (허용)
+feat(user): 프로필 이미지 업로드를 위한 S3 연동 및 컴포넌트 구현
+```
 
 ### 본문 규칙
 - 제목과 본문 사이에 **빈 줄** 필수
-- **72자**마다 줄바꿈
-- **무엇을**, **왜** 변경했는지 설명
-- "어떻게" 변경했는지는 코드가 설명함
-
-```
-# ✅ Good - 무엇을, 왜
-fix(payment): 결제 금액 계산 오류 수정
-
-할인율 적용 시 소수점 처리 문제로 인해
-실제 결제 금액이 1원 단위로 오차가 발생했음.
-Math.round()를 사용하여 반올림 처리.
-
-# ❌ Bad - 어떻게만 설명
-fix(payment): 결제 금액 계산 오류 수정
-
-calculateDiscount 함수에서 Math.round()를
-호출하도록 변경함.
-```
+- 줄바꿈 강제 없음 (72자 규칙 폐지)
+- 본문은 **구조화 태그** (`[context]`, `[changes]`, `[impact]`, `[files]`) 형식으로 작성 (Section 1 참조)
 
 ### 꼬리말 규칙
 - 이슈 연결: `Closes #123`, `Fixes #456`, `Refs #789`
-- Breaking Change: `BREAKING CHANGE: API 응답 형식 변경`
+- 영향 태그: `BREAKING CHANGE:`, `Migration:`, `API-Change:` (Section 2 참조)
 
 ## 4. 절대 금지 사항
 
@@ -132,43 +150,9 @@ git reset --soft HEAD~1  # 마지막 커밋 취소 (변경사항 유지)
 
 ## 5. 주의 사항
 
-### .gitignore 확인 필수
+### .gitignore 확인
 
-커밋 전 다음 파일/폴더가 제외되었는지 확인:
-
-```gitignore
-# Python
-__pycache__/
-*.py[cod]
-*.so
-.Python
-venv/
-.venv/
-*.egg-info/
-
-# Node.js
-node_modules/
-.next/
-dist/
-build/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-
-# 환경 설정
-.env*
-!.env.example
-
-# 로그
-*.log
-logs/
-
-# 빈 폴더 문제
-# Git은 빈 폴더를 추적하지 않음
-# 필요 시 .gitkeep 파일 추가
-```
+커밋 전 `.gitignore` 파일을 확인하여 민감/불필요한 파일이 제외되었는지 점검한다.
 
 ### 대용량 파일 금지
 
@@ -200,25 +184,27 @@ touch data/uploads/.gitkeep
 ### 브랜치 명명 규칙
 
 ```
-main              # 프로덕션 배포 브랜치
-dev               # 개발 통합 브랜치
-feature/<설명>    # 새 기능 개발
-fix/<설명>        # 버그 수정
-refactor/<설명>   # 리팩토링
-docs/<설명>       # 문서 작업
-release/<버전>    # 릴리즈 준비
-hotfix/<설명>     # 긴급 수정
+main                          # 프로덕션 배포 브랜치
+dev                           # 개발 통합 브랜치
+feature/<이슈번호>-<설명>     # 새 기능 개발
+fix/<이슈번호>-<설명>         # 버그 수정
+refactor/<이슈번호>-<설명>    # 리팩토링
+docs/<설명>                   # 문서 작업
+release/<버전>                # 릴리즈 준비
+hotfix/<설명>                 # 긴급 수정
 ```
+
+이슈번호가 없는 경우 생략 가능 (예: `feature/plan-review-skill`).
 
 ### 브랜치 이름 규칙
 
 ```bash
-# ✅ Good - 케밥 케이스, 명확한 설명
-feature/user-profile-image
-fix/payment-calculation-error
+# Good - 케밥 케이스, 이슈번호 포함
+feature/42-user-profile-image
+fix/57-payment-calculation-error
 refactor/api-error-handling
 
-# ❌ Bad
+# Bad
 feature/UserProfileImage     # 카멜 케이스 금지
 feature/user_profile_image   # 스네이크 케이스 금지
 feature/fix                  # 너무 모호함

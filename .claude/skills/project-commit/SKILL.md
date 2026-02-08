@@ -27,16 +27,24 @@ git log --oneline -5
 
 ### 3. 커밋 메시지 작성
 
-Conventional Commits (한국어):
+Conventional Commits (한국어) + 구조화 태그:
 ```
-<타입>(<범위>): <명령형 제목 50자 이내>
+<타입>(<범위>): <제목 72자 이내>
 
-<본문: 무엇을, 왜 변경했는지>
+[context] <변경 동기/배경>
+[changes]
+- <변경 항목 1>
+- <변경 항목 2>
+[impact] <영향받는 모듈/레이어> (3개 이상 파일 변경 시)
+[files] <핵심 변경 파일 경로> (3개 이상 파일 변경 시)
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 ```
 
 타입: feat, fix, docs, style, refactor, perf, test, build, ci, chore
+영향 태그 (해당 시): `BREAKING CHANGE:`, `Migration:`, `API-Change:`
+
+상세 규칙: `.claude/rules/git-convention.md` Section 1, 2 참조
 
 ### 4. 커밋 실행
 
@@ -48,9 +56,11 @@ git add <specific-files>
 git commit -m "$(cat <<'EOF'
 타입(범위): 제목
 
-본문
+[context] 변경 동기
+[changes]
+- 변경 항목
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 EOF
 )"
 
