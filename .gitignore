@@ -33,6 +33,7 @@ ENV/
 .idea/
 .vscode/
 .claude/settings.local.json
+.claude/worktree-context.md
 .mcp.json
 *.swp
 *.swo
