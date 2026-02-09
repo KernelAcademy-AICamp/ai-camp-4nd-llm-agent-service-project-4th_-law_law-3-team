@@ -505,7 +505,7 @@ uv run python scripts/load_legal_terms_data.py --verify  # 검증
 | 항목 | 수치 |
 |------|------|
 | 전체 고유 용어 | ~72,700개 |
-| userdic 적재 | ~37,772개 |
+| userdic 적재 | ~37,366개 |
 | 유효 커버리지 | ≥99% (괄호 변형 포함, 상세: `docs/USERDIC_COVERAGE_ANALYSIS.md`) |
 | 사전유형 | 법령정의사전 + 법령한영사전 + 생활용어사전 + 한영역추출 |
 
@@ -539,9 +539,9 @@ uv run --no-sync python scripts/update_content_tokenized.py --userdic
 ```
 
 **출력 파일**:
-- `backend/data/mecab_userdic/legal_terms.csv` - userdic 소스 CSV (37,772 엔트리)
+- `backend/data/mecab_userdic/legal_terms.csv` - userdic 소스 CSV (37,366 엔트리)
 - `backend/data/mecab_userdic/legal_terms.dic` - 컴파일된 바이너리
-- `backend/data/mecab_userdic/decomposition_map.json` - 복합어 분해맵 (32,145 엔트리)
+- `backend/data/mecab_userdic/decomposition_map.json` - 복합어 분해맵 (31,732 엔트리)
 - `backend/data/mecab_userdic/priority_terms.json` - 회귀 수정 용어 (683개, cost=-3000)
 
 **롤백**: `USE_MECAB_USERDIC=false` (기본값)로 설정하면 기존 사후 복원 방식으로 즉시 복귀.

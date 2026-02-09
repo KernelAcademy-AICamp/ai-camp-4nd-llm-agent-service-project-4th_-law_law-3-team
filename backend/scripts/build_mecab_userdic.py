@@ -112,43 +112,57 @@ def _load_module(name: str, path: Path) -> object:
 def _extract_bracket_core_terms(rows_all: list[str]) -> set[str]:
     """괄호 포함 용어에서 userdic 후보 추출 (두 가지 변형)
 
-    Variant A: 괄호+내용 제거 → "전자(세금)계산서" → "전자계산서"
-    Variant B: 괄호 기호만 제거 → "전자(세금)계산서" → "전자세금계산서"
+    Variant A: 괄호+내용 제거 → 접두어+접미어
+        "전자(세금)계산서" → "전자계산서"
+    Variant B: 괄호 내용+접미어 → 괄호 앞 접두어를 괄호 내용으로 대체
+        "전자(세금)계산서" → "세금계산서"
 
     한자 괄호는 Variant B가 한글전용 필터에서 자동 제외:
-        "가처분(假處分)" → A: "가처분" (OK), B: "가처분假處分" (제외)
+        "가처분(假處分)" → A: "가처분" (OK), B: "假處分" (제외)
 
     예시:
-        "전자(세금)계산서" → {"전자계산서", "전자세금계산서"}
+        "전자(세금)계산서" → {"전자계산서", "세금계산서"}
         "가처분(假處分)"  → {"가처분"}
         "인지(印紙)대"    → {"인지대"}
     """
     import re
 
-    # 괄호 내용 포함 괄호: (), （）, []
-    bracket_pattern = re.compile(r"[（(][^)）]*[)）]|\[[^\]]*\]")
-    # 괄호 기호만 제거 (내용 유지)
-    bracket_markers = re.compile(r"[（()）)\[\]]")
+    # 괄호 매칭: (), （）, [] - 캡처 그룹으로 내용 추출
+    bracket_pattern = re.compile(r"[（(]([^)）]*)[)）]|\[([^\]]*)\]")
+    # 괄호+내용 전체 제거용
+    bracket_remove = re.compile(r"[（(][^)）]*[)）]|\[[^\]]*\]")
     korean_only = re.compile(r"^[가-힣]+$")
+
+    def _clean(s: str) -> str:
+        return s.replace(" ", "").replace("ㆍ", "").replace("·", "")
+
+    def _add(candidate: str, term: str) -> None:
+        if not candidate or candidate == term:
+            return
+        if not korean_only.match(candidate):
+            return
+        if len(candidate) < 2 or len(candidate) > 15:
+            return
+        cores.add(candidate)
 
     cores: set[str] = set()
     for term in rows_all:
+        matches = list(bracket_pattern.finditer(term))
+        if not matches:
+            continue
+
         # Variant A: 괄호+내용 전체 제거
-        variant_a = bracket_pattern.sub("", term).strip()
-        variant_a = variant_a.replace(" ", "").replace("ㆍ", "").replace("·", "")
+        variant_a = _clean(bracket_remove.sub("", term).strip())
+        _add(variant_a, term)
 
-        # Variant B: 괄호 기호만 제거 (내용 유지, 인라인)
-        variant_b = bracket_markers.sub("", term).strip()
-        variant_b = variant_b.replace(" ", "").replace("ㆍ", "").replace("·", "")
-
-        for candidate in (variant_a, variant_b):
-            if not candidate or candidate == term:
-                continue
-            if not korean_only.match(candidate):
-                continue
-            if len(candidate) < 2 or len(candidate) > 15:
-                continue
-            cores.add(candidate)
+        # Variant B: 각 괄호에 대해 (괄호 내용 + 괄호 뒤 텍스트)
+        for match in matches:
+            content = (match.group(1) or match.group(2) or "").strip()
+            suffix = term[match.end():]
+            # suffix에서 추가 괄호가 있으면 제거
+            suffix = bracket_remove.sub("", suffix).strip()
+            variant_b = _clean(content + suffix)
+            _add(variant_b, term)
 
     return cores
 

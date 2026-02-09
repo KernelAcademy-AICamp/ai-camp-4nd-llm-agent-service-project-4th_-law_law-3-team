@@ -540,7 +540,7 @@ uv run python scripts/load_legal_terms_data.py --verify  # 검증
 
 **데이터 현황:**
 - 총 엔트리: ~72,700개 ([DONE]lawterms.json 기반, 평탄화 + 역추출 포함)
-- userdic 적재: ~37,772개 (한글 전용 + 혼합 + 괄호 변형 추출)
+- userdic 적재: ~37,366개 (한글 전용 + 혼합 + 괄호 변형 추출)
 - 유효 커버리지: ≥99% (구조적 제외 35,234개 차감 기준)
 - 상세 분석: `docs/USERDIC_COVERAGE_ANALYSIS.md`
 
