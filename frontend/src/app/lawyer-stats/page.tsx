@@ -441,18 +441,6 @@ export default function LawyerStatPage() {
                           사건 수
                         </span>
                       </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer text-sm">
-                        <input
-                          type="radio"
-                          name="demand-indicator"
-                          checked={viewMode === 'burden_index'}
-                          onChange={() => setViewMode('burden_index')}
-                          className="h-3.5 w-3.5 text-gray-900 focus:ring-gray-500"
-                        />
-                        <span className={viewMode === 'burden_index' ? 'font-medium text-gray-900' : 'text-gray-600'}>
-                          부담지수
-                        </span>
-                      </label>
                     </div>
 
                     {/* 구분선 */}

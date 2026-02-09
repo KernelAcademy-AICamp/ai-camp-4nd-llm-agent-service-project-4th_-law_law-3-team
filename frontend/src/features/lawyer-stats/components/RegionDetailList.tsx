@@ -260,7 +260,7 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
                 <span className="relative group">
                   <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold cursor-help">?</span>
                   <span className="absolute bottom-full left-0 mb-1.5 w-56 px-2.5 py-2 rounded-md bg-amber-50 border border-amber-200 text-gray-700 text-xs leading-relaxed opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 whitespace-normal">
-                    관할 법원의 사건 수를 변호사 수로 나눈 값입니다. 높을수록 변호사 1인당 처리 사건이 많습니다.
+                    관할 법원의 사건 수를 변호사 수로 나눈 값입니다. 수치가 높을수록 변호사 1인당 처리 사건이 많음을 의미합니다.
                   </span>
                 </span>
               </div>

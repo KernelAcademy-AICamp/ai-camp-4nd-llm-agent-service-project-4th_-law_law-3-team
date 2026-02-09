@@ -60,16 +60,24 @@ src/features/<module-name>/
 **경로:** `src/features/lawyer-stats/`
 
 **컴포넌트:**
-- `RegionGeoMap` - 대한민국 시군구 지도 (TopoJSON)
-- `RegionDetailList` - 지역 목록 및 예측 상세 뷰
+- `RegionGeoMap` - 대한민국 시군구 지도 (TopoJSON), 수요 모드 시 법원 마커 표시
+- `RegionDetailList` - 지역 목록, 예측 상세 뷰, 법원 상세 뷰 (사건 수/변호사 수/부담지수/관할 지역)
 - `CrossAnalysisHeatmap` - 지역×전문분야 히트맵
 - `SpecialtyBarChart` - 전문분야별 바 차트
 - `StickyTabNav` - 스크롤 연동 탭
+
+**IndicatorGroup:**
+- `supply` (공급): 변호사 수, 인구 대비 밀도, 향후 예측
+- `demand` (수요): 법원별 사건 접수 수
 
 **ViewMode:**
 - `count` - 변호사 수
 - `density` - 인구 대비 밀도 (현재)
 - `prediction` - 향후 예측 (2030/2035/2040)
+- `case_count` - 사건 접수 수 (수요 모드)
+
+**타입:**
+- `CourtDemandMarker` - 법원 단위 수요 데이터 (좌표, 사건 수, 변호사 수, 부담지수, 관할 지역)
 
 ## Conventions
 
