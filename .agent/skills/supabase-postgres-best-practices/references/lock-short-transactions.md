@@ -48,3 +48,4 @@ set local statement_timeout = '5s';
 ```
 
 Reference: [Transaction Management](https://www.postgresql.org/docs/current/tutorial-transactions.html)
+

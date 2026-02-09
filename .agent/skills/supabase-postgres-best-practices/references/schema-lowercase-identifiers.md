@@ -53,3 +53,4 @@ CREATE VIEW users AS SELECT "userId" AS user_id, "firstName" AS first_name FROM 
 ```
 
 Reference: [Identifiers and Key Words](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS)
+

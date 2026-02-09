@@ -2,7 +2,7 @@
 
 코드 변경 시 빌드/린트/타입체크 및 API 계약 동기화를 검증하는 상세 가이드.
 
-> 규칙 요약: `.agent/rules/code-verification.md` 참조
+> 규칙 요약: `.Antigravity/rules/code-verification.md` 참조
 
 ---
 
@@ -451,8 +451,9 @@ Invoke-RestMethod http://localhost:8000/api/lawyer-finder/nearby?latitude=37.5`&
 
 | 파일 | 역할 | 이 스킬과의 관계 |
 |------|------|-----------------|
-| `.agent/rules/code-verification.md` | 검증 프로토콜 규칙 (요약) | 이 스킬의 규칙 버전 |
-| `.agent/rules/coding-style.md` | 코드 스타일 | 스타일 vs 변경 후 검증 |
-| `.agent/rules/git-convention.md` | Git 커밋 규칙 | 커밋 전 vs 코드 변경 직후 |
-| `.agent/skills/tdd-methodology/` | 테스트 작성 방법론 | TDD vs 빌드/린트/타입체크 |
-| `.agent/skills/react-nextjs-frontend/` | 컴포넌트 패턴 | UI 패턴 vs API 계약 동기화 |
+| `.Antigravity/rules/code-verification.md` | 검증 프로토콜 규칙 (요약) | 이 스킬의 규칙 버전 |
+| `.Antigravity/rules/coding-style.md` | 코드 스타일 | 스타일 vs 변경 후 검증 |
+| `.Antigravity/rules/git-convention.md` | Git 커밋 규칙 | 커밋 전 vs 코드 변경 직후 |
+| `.Antigravity/skills/tdd-methodology/` | 테스트 작성 방법론 | TDD vs 빌드/린트/타입체크 |
+| `.Antigravity/skills/react-nextjs-frontend/` | 컴포넌트 패턴 | UI 패턴 vs API 계약 동기화 |
+

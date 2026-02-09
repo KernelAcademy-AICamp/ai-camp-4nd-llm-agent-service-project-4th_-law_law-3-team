@@ -355,3 +355,4 @@ RETURN node.case_number, node.name, score LIMIT 10
 | IT/정보 | 정통망법, 개보법, 통비법 |
 | 부동산/건설 | 주임법, 상임법, 도교법 |
 | 행정/공공 | 행절법, 행심법, 국배법 |
+

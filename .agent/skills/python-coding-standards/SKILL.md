@@ -296,3 +296,4 @@ if is_adult and is_verified and is_active:
 - 비슷한 기능은 비슷한 방식으로 구현
 - 기존 유틸 함수가 있으면 재사용
 - 새로운 패턴 도입은 신중하게
+

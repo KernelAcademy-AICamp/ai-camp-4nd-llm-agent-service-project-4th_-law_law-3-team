@@ -75,3 +75,4 @@ export function ParentComponent() {
 
 ### 다이내믹 임포트 경로 문제 ("Module not found")
 - `import` 경로가 정확한지 확인하세요. default export를 명시적으로 지정해야 할 수도 있습니다 (`.then(mod => mod.default)`). 하지만 래퍼 패턴을 쓰면 이 문제는 래퍼 파일 내부의 정적 import에서 처리되므로 `dynamic` 호출부는 단순해집니다.
+

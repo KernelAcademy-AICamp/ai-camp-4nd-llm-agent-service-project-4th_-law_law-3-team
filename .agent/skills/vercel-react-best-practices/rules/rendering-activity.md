@@ -24,3 +24,4 @@ function Dropdown({ isOpen }: Props) {
 ```
 
 Avoids expensive re-renders and state loss.
+

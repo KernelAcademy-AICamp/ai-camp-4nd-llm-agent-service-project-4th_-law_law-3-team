@@ -43,3 +43,4 @@ Key things to look for:
 ```
 
 Reference: [EXPLAIN](https://supabase.com/docs/guides/database/inspect)
+

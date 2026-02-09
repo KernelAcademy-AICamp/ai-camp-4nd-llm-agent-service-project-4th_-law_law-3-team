@@ -36,3 +36,4 @@ export async function GET(request: Request) {
 ```
 
 For operations with more complex dependency chains, use `better-all` to automatically maximize parallelism (see Dependency-Based Parallelization).
+

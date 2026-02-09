@@ -53,3 +53,4 @@ function useWindowEvent(event: string, handler: () => void) {
 ```
 
 `useEffectEvent` provides a cleaner API for the same pattern: it creates a stable function reference that always calls the latest version of the handler.
+

@@ -54,3 +54,4 @@ if (acquired) {
 ```
 
 Reference: [Advisory Locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS)
+

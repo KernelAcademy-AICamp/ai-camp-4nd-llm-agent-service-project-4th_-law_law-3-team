@@ -26,3 +26,4 @@ const [user, posts, comments] = await Promise.all([
   fetchComments()
 ])
 ```
+

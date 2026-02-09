@@ -80,3 +80,4 @@ function Box({ isHighlighted }: { isHighlighted: boolean }) {
 ```
 
 Prefer CSS classes over inline styles when possible. Classes are cached by the browser and provide better separation of concerns.
+

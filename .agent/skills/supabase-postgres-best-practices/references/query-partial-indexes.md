@@ -43,3 +43,4 @@ where sku is not null;
 ```
 
 Reference: [Partial Indexes](https://www.postgresql.org/docs/current/indexes-partial.html)
+

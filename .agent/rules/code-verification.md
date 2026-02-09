@@ -1,6 +1,6 @@
 # Code Verification Protocol
 
-Claude는 코드를 변경한 후 이 검증 프로토콜을 **항상(ALWAYS)** 따라야 합니다.
+Antigravity는 코드를 변경한 후 이 검증 프로토콜을 **항상(ALWAYS)** 따라야 합니다.
 
 > 상세 가이드: `.agent/skills/code-verification/SKILL.md` 참조
 

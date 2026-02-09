@@ -1,6 +1,6 @@
 # supabase-postgres-best-practices
 
-> **Note:** `CLAUDE.md` is a symlink to this file.
+> **Note:** `Antigravity.md` is a symlink to this file.
 
 ## Overview
 
@@ -12,7 +12,7 @@ Postgres performance optimization and best practices from Supabase. Use this ski
 supabase-postgres-best-practices/
   SKILL.md       # Main skill file - read this first
   AGENTS.md      # This navigation guide
-  CLAUDE.md      # Symlink to AGENTS.md
+  Antigravity.md      # Symlink to AGENTS.md
   references/    # Detailed reference files
 ```
 
@@ -88,3 +88,4 @@ Reference files are named `{prefix}-{topic}.md` (e.g., `query-missing-indexes.md
 ---
 
 *30 reference files across 8 categories*
+

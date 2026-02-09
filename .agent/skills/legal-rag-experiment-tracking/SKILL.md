@@ -1,3 +1,8 @@
+---
+name: legal-rag-experiment-tracking
+description: 한국 법령/판례 RAG 시스템 검색 성능 실험 추적 가이드. 실험 메타데이터 템플릿, 쿼리 유형별 평가, 성능 지표(Recall, MRR, NDCG), 비용 지표, 비교 실험 요약. RAG 성능 개선 실험 설계, 결과 기록, A/B 테스트 시 사용.
+---
+
 # Legal RAG Experiment Tracking Skill
 
 ## Overview
@@ -121,7 +126,7 @@ initial_embedding_cost = (total_tokens / 1_000_000) * 0.02
 # 쿼리당 비용 (평균 50 토큰)
 query_embedding_cost = (50 / 1_000_000) * 0.02
 
-# LLM 비용 (Claude 3.5 Sonnet 기준)
+# LLM 비용 (Antigravity 3.5 Sonnet 기준)
 input_cost_per_1m = 3.00   # USD
 output_cost_per_1m = 15.00  # USD
 ```
@@ -193,7 +198,7 @@ experiments/
 [EXP] EXP-20250129-002: 조문 단위 청킹 vs 고정 크기 비교
 ```
 
-## Claude 활용 팁
+## Antigravity 활용 팁
 
 ### 실험 설계 요청 시
 ```
@@ -212,3 +217,4 @@ experiments/
 "[법령 RAG 비용] 현재 월 $80 쓰고 있는데 $60으로 줄이면서 
 성능은 유지하고 싶어. 어떤 옵션이 있을까?"
 ```
+

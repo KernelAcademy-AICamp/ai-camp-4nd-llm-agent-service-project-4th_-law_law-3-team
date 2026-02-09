@@ -444,3 +444,4 @@ export const Button = ({ label, onClick, variant = 'primary', disabled = false }
 8. **Premature optimization**: Optimize when needed, not by default
 9. **Ignoring TypeScript errors**: Fix them, don't suppress
 10. **Mixing concerns**: Separate logic, UI, and data fetching
+

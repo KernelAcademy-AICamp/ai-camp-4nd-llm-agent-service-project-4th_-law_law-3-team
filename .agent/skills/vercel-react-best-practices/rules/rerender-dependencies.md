@@ -43,3 +43,4 @@ useEffect(() => {
   }
 }, [isMobile])
 ```
+

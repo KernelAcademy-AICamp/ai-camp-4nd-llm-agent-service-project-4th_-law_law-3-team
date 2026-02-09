@@ -53,3 +53,4 @@ order by mean_exec_time desc;
 ```
 
 Reference: [pg_stat_statements](https://supabase.com/docs/guides/database/extensions/pg_stat_statements)
+

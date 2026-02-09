@@ -37,3 +37,4 @@ function ShareButton({ chatId }: { chatId: string }) {
   return <button onClick={handleShare}>Share</button>
 }
 ```
+

@@ -33,3 +33,4 @@ function CodePanel({ code }: { code: string }) {
   return <MonacoEditor value={code} />
 }
 ```
+

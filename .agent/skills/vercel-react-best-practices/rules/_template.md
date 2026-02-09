@@ -26,3 +26,4 @@ const good = example()
 ```
 
 Reference: [Link to documentation or resource](https://example.com)
+

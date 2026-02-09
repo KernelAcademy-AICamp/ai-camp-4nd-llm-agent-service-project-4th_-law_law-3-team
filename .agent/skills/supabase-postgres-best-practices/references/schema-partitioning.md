@@ -53,3 +53,4 @@ When to partition:
 - Need to efficiently drop old data
 
 Reference: [Table Partitioning](https://www.postgresql.org/docs/current/ddl-partitioning.html)
+

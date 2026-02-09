@@ -59,3 +59,4 @@ Guidelines:
 
 Reference:
 [Identity Columns](https://www.postgresql.org/docs/current/sql-createtable.html#SQL-CREATETABLE-PARMS-GENERATED-IDENTITY)
+

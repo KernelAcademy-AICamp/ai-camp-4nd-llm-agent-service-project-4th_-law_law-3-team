@@ -24,3 +24,4 @@ export const getCurrentUser = cache(async () => {
 ```
 
 Within a single request, multiple calls to `getCurrentUser()` execute the query only once.
+

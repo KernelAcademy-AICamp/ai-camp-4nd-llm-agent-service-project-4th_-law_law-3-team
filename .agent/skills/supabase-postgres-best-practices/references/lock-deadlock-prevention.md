@@ -66,3 +66,4 @@ set deadlock_timeout = '1s';
 
 Reference:
 [Deadlocks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-DEADLOCKS)
+

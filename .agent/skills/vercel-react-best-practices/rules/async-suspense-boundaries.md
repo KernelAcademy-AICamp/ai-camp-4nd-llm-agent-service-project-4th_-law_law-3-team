@@ -97,3 +97,4 @@ Both components share the same promise, so only one fetch occurs. Layout renders
 - When you want to avoid layout shift (loading → content jump)
 
 **Trade-off:** Faster initial paint vs potential layout shift. Choose based on your UX priorities.
+

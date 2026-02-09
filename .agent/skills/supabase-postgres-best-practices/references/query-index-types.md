@@ -43,3 +43,4 @@ create index sessions_token_idx on sessions using hash (token);
 ```
 
 Reference: [Index Types](https://www.postgresql.org/docs/current/indexes-types.html)
+

@@ -524,3 +524,4 @@ results = db.search(query_emb, top_k=5)
 for r in results:
     print(f"Score: {r['score']:.4f} - {r['metadata']['title']}")
 ```
+

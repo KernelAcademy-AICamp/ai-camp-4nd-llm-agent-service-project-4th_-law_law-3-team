@@ -44,3 +44,4 @@ Key guidelines:
 ```
 
 Reference: [Data Types](https://www.postgresql.org/docs/current/datatype.html)
+
