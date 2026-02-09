@@ -461,7 +461,7 @@ export default function ChatWidget() {
               )
             )
           },
-          onDone: () => {
+          onDone: (doneData) => {
             // 스트리밍 완료
             setStreamingMessageId(null)
             setIsLoading(false)
@@ -470,8 +470,11 @@ export default function ChatWidget() {
             setHasReceivedFirstToken(false)
             hasReceivedFirstTokenRef.current = false
 
-            // 세션 데이터 업데이트
+            // 세션 데이터 업데이트 (metadata + done 이벤트 병합)
             const newSessionData = { ...receivedSessionData }
+            if (doneData?.thread_id) newSessionData.thread_id = doneData.thread_id
+            if (doneData?.session_secret) newSessionData.session_secret = doneData.session_secret
+            if (doneData?.active_agent) newSessionData.active_agent = doneData.active_agent
 
             // 판례/법령 검색 결과 → aiCase 데이터 구성
             const searchAgents = ['legal_search', 'case_search', 'legal_answer', 'law_search']

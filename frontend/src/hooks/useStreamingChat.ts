@@ -32,7 +32,7 @@ interface StreamingChatOptions {
   onToken?: (content: string) => void
   onSources?: (sources: ChatSource[]) => void
   onMetadata?: (metadata: ChatMetadata) => void
-  onDone?: () => void
+  onDone?: (data?: Record<string, unknown>) => void
   onError?: (error: string) => void
 }
 
@@ -141,7 +141,7 @@ export function useStreamingChat(): UseStreamingChatReturn {
                   options.onMetadata?.(data as ChatMetadata)
                   break
                 case 'done':
-                  options.onDone?.()
+                  options.onDone?.(data as Record<string, unknown>)
                   break
                 case 'error':
                   options.onError?.(data.message || 'Unknown error')

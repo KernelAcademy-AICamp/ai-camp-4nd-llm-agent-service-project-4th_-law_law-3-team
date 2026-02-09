@@ -13,6 +13,7 @@ from typing import Any, Literal
 from app.multi_agent.agents.base_chat import BaseChatAgent
 from app.multi_agent.schemas.plan import AgentResult
 from app.services.rag import search_relevant_documents
+from app.services.rag.query_rewrite import rewrite_conversational_query
 from app.services.service_function import (
     PrecedentService,
     get_precedent_service,
@@ -177,8 +178,11 @@ class LegalSearchAgent(BaseChatAgent):
         user_location: dict[str, float] | None = None,
     ) -> AgentResult:
         """법률 검색 및 응답 생성"""
-        _, _, _, _, context, sources = await self._prepare_rag_data(message)
+        # 대화형 쿼리 리라이팅: RAG 검색에만 적용
+        search_query = await rewrite_conversational_query(message, history)
+        _, _, _, _, context, sources = await self._prepare_rag_data(search_query)
 
+        # LLM 응답은 원본 message로 생성 (자연스러운 대화)
         response = await self._generate_response(
             message=message,
             context=context,
@@ -396,9 +400,11 @@ class LegalSearchAgent(BaseChatAgent):
         user_location: dict[str, float] | None = None,
     ) -> AsyncGenerator[tuple[str, Any], None]:
         """스트리밍 법률 검색 및 응답 생성"""
-        _, _, _, _, context, sources = await self._prepare_rag_data(message)
+        # 대화형 쿼리 리라이팅: RAG 검색에만 적용
+        search_query = await rewrite_conversational_query(message, history)
+        _, _, _, _, context, sources = await self._prepare_rag_data(search_query)
 
-        # LLM 스트리밍 응답 생성
+        # LLM 스트리밍 응답은 원본 message로 생성
         model = get_chat_model()
         messages = self._build_messages(message, context, history)
 

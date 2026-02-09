@@ -13,6 +13,7 @@ from typing import Any
 from app.multi_agent.agents.base_chat import BaseChatAgent
 from app.multi_agent.schemas.plan import AgentResult
 from app.services.rag import search_relevant_documents
+from app.services.rag.query_rewrite import rewrite_conversational_query
 
 logger = logging.getLogger(__name__)
 
@@ -53,16 +54,19 @@ class LawStudyAgent(BaseChatAgent):
         """학습 자료 생성"""
         from app.tools.llm import get_chat_model
 
+        # 대화형 쿼리 리라이팅: RAG 검색에만 적용
+        search_query = await rewrite_conversational_query(message, history)
+
         # RAG: 법령 중심 검색 (sync → async 래핑)
         law_results = await asyncio.to_thread(
             search_relevant_documents,
-            query=message, n_results=3, doc_type="law",
+            query=search_query, n_results=3, doc_type="law",
         )
 
         # 컨텍스트 구성
         context = self._build_study_context(law_results)
 
-        # LLM 응답
+        # LLM 응답은 원본 message로 생성
         model = get_chat_model()
         messages: list[tuple[str, str]] = [("system", _SYSTEM_PROMPT)]
         if history:
@@ -94,16 +98,19 @@ class LawStudyAgent(BaseChatAgent):
         """스트리밍 학습 자료 생성"""
         from app.tools.llm import get_chat_model
 
+        # 대화형 쿼리 리라이팅: RAG 검색에만 적용
+        search_query = await rewrite_conversational_query(message, history)
+
         # RAG: 법령 중심 검색 (sync → async 래핑)
         law_results = await asyncio.to_thread(
             search_relevant_documents,
-            query=message, n_results=3, doc_type="law",
+            query=search_query, n_results=3, doc_type="law",
         )
 
         context = self._build_study_context(law_results)
         sources = self._format_sources(law_results)
 
-        # LLM 스트리밍
+        # LLM 스트리밍은 원본 message로 생성
         model = get_chat_model()
         messages: list[tuple[str, str]] = [("system", _SYSTEM_PROMPT)]
         if history:

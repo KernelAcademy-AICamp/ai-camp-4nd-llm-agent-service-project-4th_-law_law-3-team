@@ -234,16 +234,19 @@ async def chat_stream(request: ChatRequest) -> EventSourceResponse:
                     ),
                 }
 
-            # done 이벤트
+            # done 이벤트 (active_agent 포함: metadata 경로 외 백업)
+            done_data: dict[str, Any] = {
+                "thread_id": thread_id,
+                "session_secret": session_secret,
+            }
+            final_state = await graph.aget_state(config)
+            if final_state.values:
+                output_sd = final_state.values.get("output_session_data", {})
+                if output_sd.get("active_agent"):
+                    done_data["active_agent"] = output_sd["active_agent"]
             yield {
                 "event": "done",
-                "data": json.dumps(
-                    {
-                        "thread_id": thread_id,
-                        "session_secret": session_secret,
-                    },
-                    ensure_ascii=False,
-                ),
+                "data": json.dumps(done_data, ensure_ascii=False),
             }
 
         except HTTPException as e:
