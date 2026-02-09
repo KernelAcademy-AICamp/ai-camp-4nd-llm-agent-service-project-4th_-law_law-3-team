@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, memo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { PredictionYear, ViewMode } from '@/app/lawyer-stats/page'
-import type { DemandStat, DensityStat, RegionStat, SpecialtyStat } from '../types'
+import type { CourtDemandMarker, DemandStat, DensityStat, RegionStat, SpecialtyStat } from '../types'
 import { fetchRegionSpecialties } from '../services'
 
 interface RegionDetailListProps {
@@ -13,6 +13,11 @@ interface RegionDetailListProps {
   selectedProvince: string | null
   onRegionClick?: (region: string | null) => void
   mapSelectedRegion?: string | null
+  courtMarkers?: CourtDemandMarker[]
+  selectedCourt?: string | null
+  onCourtSelect?: (courtName: string | null) => void
+  demandCategory?: string
+  demandYear?: number
 }
 
 /** viewMode별 색상 매핑 (렌더링 외부에서 정의) */
@@ -74,7 +79,7 @@ const SpecialtyItem = memo(function SpecialtyItem({ spec, maxCount }: { spec: Sp
 
 type SortOrder = 'desc' | 'asc'
 
-export function RegionDetailList({ regions, viewMode, predictionYear, selectedProvince, onRegionClick, mapSelectedRegion }: RegionDetailListProps) {
+export function RegionDetailList({ regions, viewMode, predictionYear, selectedProvince, onRegionClick, mapSelectedRegion, courtMarkers, selectedCourt, onCourtSelect, demandCategory, demandYear }: RegionDetailListProps) {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
 
@@ -87,6 +92,11 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
   useEffect(() => {
     setSelectedRegion(null)
   }, [selectedProvince])
+
+  // 법원 선택 시 지역 선택 해제
+  useEffect(() => {
+    if (selectedCourt) setSelectedRegion(null)
+  }, [selectedCourt])
 
   const filteredRegions = useMemo(
     () => selectedProvince
@@ -150,6 +160,236 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
   const selectedRegionData = regions.find(r => r.region === selectedRegion)
 
   const isDemandMode = viewMode === 'case_count' || viewMode === 'burden_index'
+
+  // 수요 모드에서 법원 마커가 있으면 법원 기반 뷰 표시
+  const hasCourtMarkers = isDemandMode && courtMarkers && courtMarkers.length > 0
+
+  // 법원 목록 정렬
+  const sortedCourts = useMemo(() => {
+    if (!hasCourtMarkers || !courtMarkers) return []
+    return [...courtMarkers].sort((a, b) => {
+      const multiplier = sortOrder === 'desc' ? 1 : -1
+      if (viewMode === 'burden_index') return (b.burden_index - a.burden_index) * multiplier
+      return (b.case_count - a.case_count) * multiplier
+    })
+  }, [hasCourtMarkers, courtMarkers, sortOrder, viewMode])
+
+  const maxCourtValue = useMemo(() => {
+    if (!sortedCourts.length) return 1
+    if (viewMode === 'burden_index') return Math.max(...sortedCourts.map(c => c.burden_index), 1)
+    return Math.max(...sortedCourts.map(c => c.case_count), 1)
+  }, [sortedCourts, viewMode])
+
+  // 수요 모드 - 법원 상세 뷰
+  if (hasCourtMarkers && selectedCourt) {
+    const court = courtMarkers?.find(m => m.court_name === selectedCourt)
+    if (court) {
+      return (
+        <div className="h-[500px] flex flex-col">
+          <button
+            type="button"
+            onClick={() => onCourtSelect?.(null)}
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors mb-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            목록으로
+          </button>
+
+          <div className="mb-6 flex items-baseline gap-2">
+            <div className="text-lg font-semibold text-gray-900">{court.court_name}</div>
+            <div className="text-xs text-gray-400">{demandYear}년 · {demandCategory}</div>
+          </div>
+
+          <div className="space-y-5 overflow-y-auto flex-1 divide-y divide-gray-200">
+            {/* 사건 접수 수 */}
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-base font-medium text-gray-700">사건 접수 수</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  court.case_count >= 10000 ? 'bg-red-100 text-red-700'
+                    : court.case_count >= 5000 ? 'bg-orange-100 text-orange-700'
+                    : court.case_count >= 2000 ? 'bg-gray-100 text-gray-600'
+                    : court.case_count >= 1000 ? 'bg-blue-100 text-blue-600'
+                    : 'bg-slate-100 text-slate-500'
+                }`}>
+                  수요 {court.case_count >= 10000 ? '매우 많음'
+                    : court.case_count >= 5000 ? '많음'
+                    : court.case_count >= 2000 ? '보통'
+                    : court.case_count >= 1000 ? '적음'
+                    : '매우 적음'}
+                </span>
+              </div>
+              <div className="text-lg font-bold text-gray-800">{court.case_count.toLocaleString()}건</div>
+            </div>
+
+            {/* 관할 변호사 수 */}
+            <div className="pt-4">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-base font-medium text-gray-700">관할 변호사 수</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  court.lawyer_count >= 1000 ? 'bg-red-100 text-red-700'
+                    : court.lawyer_count >= 500 ? 'bg-orange-100 text-orange-700'
+                    : court.lawyer_count >= 100 ? 'bg-gray-100 text-gray-600'
+                    : court.lawyer_count >= 50 ? 'bg-blue-100 text-blue-600'
+                    : 'bg-slate-100 text-slate-500'
+                }`}>
+                  공급 {court.lawyer_count >= 1000 ? '매우 많음'
+                    : court.lawyer_count >= 500 ? '많음'
+                    : court.lawyer_count >= 100 ? '보통'
+                    : court.lawyer_count >= 50 ? '적음'
+                    : '매우 적음'}
+                </span>
+              </div>
+              <div className="text-lg font-bold text-gray-800">{court.lawyer_count.toLocaleString()}명</div>
+            </div>
+
+            {/* 부담지수 */}
+            <div className="pt-4">
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="text-base font-medium text-gray-700">부담지수</span>
+                {(() => {
+                  const s = [...(courtMarkers ?? [])].map(c => c.burden_index).sort((a, b) => a - b)
+                  const m = Math.floor(s.length / 2)
+                  const med = s.length % 2 === 0 ? (s[m - 1] + s[m]) / 2 : s[m]
+                  const d = med > 0 ? Math.round((court.burden_index - med) / med * 100) : 0
+                  const c = Math.abs(d) <= 10 ? 'text-gray-400' : d > 0 ? 'text-red-500' : 'text-blue-500'
+                  return <span className={`text-sm ${c}`}>{court.burden_index.toFixed(1)}</span>
+                })()}
+                <span className="relative group">
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold cursor-help">?</span>
+                  <span className="absolute bottom-full left-0 mb-1.5 w-56 px-2.5 py-2 rounded-md bg-amber-50 border border-amber-200 text-gray-700 text-xs leading-relaxed opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 whitespace-normal">
+                    관할 법원의 사건 수를 변호사 수로 나눈 값입니다. 높을수록 변호사 1인당 처리 사건이 많습니다.
+                  </span>
+                </span>
+              </div>
+              {(() => {
+                const sorted = [...(courtMarkers ?? [])].map(c => c.burden_index).sort((a, b) => a - b)
+                const mid = Math.floor(sorted.length / 2)
+                const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
+                const diff = median > 0 ? Math.round((court.burden_index - median) / median * 100) : 0
+                const medianText = `중앙값(${median.toFixed(1)})`
+                const isHigh = diff > 0
+                const boldColor = Math.abs(diff) <= 10 ? 'text-gray-700' : isHigh ? 'text-red-600' : 'text-blue-600'
+                const compPart = Math.abs(diff) <= 10
+                  ? `전국 ${medianText} 수준으로`
+                  : `전국 ${medianText} 대비 ${Math.abs(diff)}% ${isHigh ? '높아,' : '낮아,'}`
+                const descPart = Math.abs(diff) <= 10
+                  ? '수요와 공급이 비교적 균형적인 지역입니다.'
+                  : isHigh
+                    ? '업무 부담이 큰 지역에 해당합니다.'
+                    : '업무 부담이 상대적으로 낮은 지역에 해당합니다.'
+                return (
+                  <div className="rounded-lg border p-3 bg-gray-50 border-gray-200">
+                    <span className="text-sm leading-relaxed text-gray-500">변호사 1인당 사건 수가 <span className={`font-semibold ${boldColor}`}>{compPart}</span> {descPart}</span>
+                    <div className="text-[10px] text-gray-400 mt-1.5">※ 극단값의 영향을 줄이기 위해 중앙값을 기준으로 비교합니다.</div>
+                  </div>
+                )
+              })()}
+            </div>
+
+            {/* 관할 지역 */}
+            <div className="pt-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-base font-medium text-gray-700">관할 지역</span>
+                <span className="text-xs text-gray-400">({court.regions.length}개)</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {court.regions.map(region => (
+                  <span key={region} className="text-xs text-gray-600 py-1 px-2 bg-gray-50 rounded">
+                    {region}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+  }
+
+  // 수요 모드 - 법원 랭킹 목록
+  if (hasCourtMarkers && !selectedRegion) {
+    const displayCourts = selectedProvince ? sortedCourts : sortedCourts.slice(0, 15)
+    const titleText = viewMode === 'burden_index'
+      ? (selectedProvince ? `${selectedProvince} 내 부담지수 순위` : '전체 법원 부담지수 순위(Top15)')
+      : (selectedProvince ? `${selectedProvince} 내 사건 수 순위` : '전체 법원 사건 수 순위(Top15)')
+    const { bar: barColor, text: textColor } = VIEW_MODE_COLORS[viewMode]
+
+    return (
+      <div className="h-[500px] flex flex-col">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-500">{titleText}</span>
+          <button
+            type="button"
+            onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 16 16">
+              {sortOrder === 'desc' ? (
+                <>
+                  <rect x="2" y="2" width="12" height="2" rx="0.5" />
+                  <rect x="2" y="7" width="8" height="2" rx="0.5" />
+                  <rect x="2" y="12" width="4" height="2" rx="0.5" />
+                </>
+              ) : (
+                <>
+                  <rect x="2" y="2" width="4" height="2" rx="0.5" />
+                  <rect x="2" y="7" width="8" height="2" rx="0.5" />
+                  <rect x="2" y="12" width="12" height="2" rx="0.5" />
+                </>
+              )}
+            </svg>
+            {sortOrder === 'desc' ? '높은순' : '낮은순'}
+          </button>
+        </div>
+        <div className="space-y-2 overflow-y-auto flex-1">
+          {displayCourts.map((court, index) => {
+            const value = viewMode === 'burden_index' ? court.burden_index : court.case_count
+            const displayValue = viewMode === 'burden_index'
+              ? court.burden_index.toFixed(1)
+              : `${court.case_count.toLocaleString()}건`
+            const barWidth = (value / maxCourtValue) * 100
+
+            return (
+              <button
+                type="button"
+                key={court.court_name}
+                onClick={() => onCourtSelect?.(court.court_name)}
+                className="w-full flex items-center gap-3 hover:bg-gray-50 rounded-lg p-1 -m-1 transition-colors text-left"
+              >
+                <span className="w-6 text-right text-sm font-medium text-gray-400">
+                  {index + 1}
+                </span>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium text-gray-700">
+                        🏛 {court.court_name.replace(/지방법원/, '지법').replace(/가정법원/, '가법').replace(/행정법원/, '행법')}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {court.regions.length}개 지역
+                      </span>
+                    </div>
+                    <span className={`text-sm font-semibold ${textColor}`}>
+                      {displayValue}
+                    </span>
+                  </div>
+                  <div className="mt-1 h-1.5 w-full rounded-full bg-gray-100">
+                    <div
+                      className={`h-1.5 rounded-full ${barColor} transition-all`}
+                      style={{ width: `${barWidth}%` }}
+                    />
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   // 상세 뷰
   if (selectedRegion) {

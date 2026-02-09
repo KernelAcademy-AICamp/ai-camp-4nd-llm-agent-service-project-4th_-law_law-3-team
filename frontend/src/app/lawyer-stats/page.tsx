@@ -46,6 +46,7 @@ import {
   fetchRegionStats,
   fetchSpecialtyStats,
 } from '@/features/lawyer-stats/services'
+import type { CourtDemandMarker, DemandStat } from '@/features/lawyer-stats/types'
 
 export type IndicatorGroup = 'supply' | 'demand'
 export type ViewMode = 'count' | 'density' | 'prediction' | 'case_count' | 'burden_index'
@@ -110,13 +111,24 @@ export default function LawyerStatPage() {
   const [selectedProvince, setSelectedProvince] = useState<string | null>(null)
   const [highlightedRegion, setHighlightedRegion] = useState<string | null>(null)
   const [mapSelectedRegion, setMapSelectedRegion] = useState<string | null>(null)
+  const [selectedCourt, setSelectedCourt] = useState<string | null>(null)
+  const [courtCoords, setCourtCoords] = useState<Record<string, [number, number]>>({})
 
   const regionSectionRef = useRef<HTMLDivElement>(null)
   const crossSectionRef = useRef<HTMLDivElement>(null)
 
+  // 법원 좌표 데이터 로드
+  useEffect(() => {
+    fetch('/data/court_coordinates.json')
+      .then(r => r.json())
+      .then(setCourtCoords)
+      .catch(() => {})
+  }, [])
+
   // 공급 그룹으로 전환 시 viewMode 복원
   const handleIndicatorGroupChange = useCallback((group: IndicatorGroup) => {
     setIndicatorGroup(group)
+    setSelectedCourt(null)
     if (group === 'supply') {
       setViewMode('count')
     } else {
@@ -168,6 +180,26 @@ export default function LawyerStatPage() {
     return Array.from({ length: 10 }, (_, i) => 2015 + i)
   }, [demandQuery.data?.available_years])
 
+  // 법원 마커 클릭 → 해당 시/도로 필터 + 법원 선택
+  const handleCourtClick = useCallback((courtName: string | null) => {
+    if (!courtName) {
+      setSelectedCourt(null)
+      return
+    }
+    if (courtName === selectedCourt) {
+      setSelectedCourt(null)
+      return
+    }
+    setSelectedCourt(courtName)
+    const stat = demandQuery.data?.data.find(d => d.court_name === courtName)
+    if (stat) {
+      const province = stat.region.split(' ')[0]
+      setSelectedProvince(province)
+    }
+    setHighlightedRegion(null)
+    setMapSelectedRegion(null)
+  }, [selectedCourt, demandQuery.data])
+
   const isDemandMode = indicatorGroup === 'demand'
 
   const isLoading = isDemandMode
@@ -191,6 +223,40 @@ export default function LawyerStatPage() {
     if (!selectedProvince) return sourceData
     return sourceData.filter((r) => r.region.startsWith(selectedProvince))
   }, [isDemandMode, viewMode, demandQuery.data, regionQuery.data, densityQuery.data, selectedProvince])
+
+  // DemandStat[] → CourtDemandMarker[] 그룹화
+  const courtMarkers = useMemo((): CourtDemandMarker[] => {
+    if (!isDemandMode || !demandQuery.data || !Object.keys(courtCoords).length) return []
+
+    const grouped = new Map<string, { regions: string[]; stat: DemandStat }>()
+    for (const stat of demandQuery.data.data) {
+      const existing = grouped.get(stat.court_name)
+      if (existing) {
+        existing.regions.push(stat.region)
+      } else {
+        grouped.set(stat.court_name, { regions: [stat.region], stat })
+      }
+    }
+
+    const markers: CourtDemandMarker[] = []
+    grouped.forEach(({ regions, stat }, court) => {
+      const coords = courtCoords[court]
+      if (!coords) return
+      markers.push({
+        court_name: court,
+        coordinates: coords,
+        case_count: stat.case_count,
+        lawyer_count: stat.lawyer_count,
+        burden_index: stat.burden_index,
+        regions,
+      })
+    })
+
+    if (selectedProvince) {
+      return markers.filter(m => m.regions.some(r => r.startsWith(selectedProvince)))
+    }
+    return markers
+  }, [isDemandMode, demandQuery.data, courtCoords, selectedProvince])
 
   const scrollToSection = useCallback((tab: TabType) => {
     const refs: Record<TabType, React.RefObject<HTMLDivElement | null>> = {
@@ -434,6 +500,7 @@ export default function LawyerStatPage() {
                       setSelectedProvince(province === '전체' ? null : province)
                       setHighlightedRegion(null)
                       setMapSelectedRegion(null)
+                      setSelectedCourt(null)
                     }}
                     className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                       (province === '전체' && !selectedProvince) || province === selectedProvince
@@ -454,6 +521,9 @@ export default function LawyerStatPage() {
                     predictionYear={isPredictionMode ? predictionYear : undefined}
                     selectedProvince={selectedProvince}
                     highlightedRegion={highlightedRegion}
+                    courtMarkers={courtMarkers}
+                    selectedCourt={selectedCourt}
+                    onCourtClick={handleCourtClick}
                     onRegionClick={(region) => {
                       if (!region) {
                         setHighlightedRegion(null)
@@ -480,6 +550,11 @@ export default function LawyerStatPage() {
                       predictionYear={isPredictionMode ? predictionYear : undefined}
                       selectedProvince={selectedProvince}
                       mapSelectedRegion={mapSelectedRegion}
+                      courtMarkers={courtMarkers}
+                      selectedCourt={selectedCourt}
+                      onCourtSelect={handleCourtClick}
+                      demandCategory={demandCategory}
+                      demandYear={demandYear}
                       onRegionClick={(region) => {
                         if (region) {
                           const province = region.split(' ')[0]

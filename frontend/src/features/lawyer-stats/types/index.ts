@@ -81,3 +81,13 @@ export interface DemandStatResponse {
   available_years: number[]
   available_categories: string[]
 }
+
+/** 법원 단위로 그룹화된 수요 데이터 (지도 마커용) */
+export interface CourtDemandMarker {
+  court_name: string
+  coordinates: [number, number]  // [lng, lat]
+  case_count: number
+  lawyer_count: number
+  burden_index: number
+  regions: string[]              // 관할 지역 목록
+}
