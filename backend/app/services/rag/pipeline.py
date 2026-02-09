@@ -4,6 +4,7 @@ RAG 파이프라인
 검색, 리랭킹, 쿼리 리라이팅을 통합한 파이프라인 함수
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -177,3 +178,22 @@ def search_with_rewrite(
     )
     result = search_with_pipeline(query, config)
     return result.documents
+
+
+async def search_with_pipeline_async(
+    query: str,
+    config: Optional[PipelineConfig] = None,
+) -> PipelineResult:
+    """
+    통합 RAG 파이프라인 비동기 검색
+
+    sync 함수를 별도 스레드에서 실행하여 FastAPI 이벤트 루프 블로킹 방지.
+
+    Args:
+        query: 검색 쿼리
+        config: 파이프라인 설정 (기본값: 검색만 수행)
+
+    Returns:
+        파이프라인 결과
+    """
+    return await asyncio.to_thread(search_with_pipeline, query, config)

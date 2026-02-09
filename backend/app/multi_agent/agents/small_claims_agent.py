@@ -10,7 +10,7 @@ from typing import Any
 
 from app.multi_agent.agents.base_chat import ActionType, BaseChatAgent, ChatAction
 from app.multi_agent.schemas.plan import AgentResult
-from app.services.rag import search_relevant_documents
+from app.services.rag import search_relevant_documents_async
 from app.services.service_function import get_precedent_service
 
 logger = logging.getLogger(__name__)
@@ -182,7 +182,7 @@ class SmallClaimsAgent(BaseChatAgent):
         if dispute_type or amount:
             search_query = f"{dispute_type or ''} 소액소송 손해배상"
             try:
-                related_docs = search_relevant_documents(search_query, n_results=3)
+                related_docs = await search_relevant_documents_async(search_query, n_results=3)
             except Exception as e:
                 logger.warning(f"관련 문서 검색 실패: {e}")
 

@@ -11,6 +11,7 @@ LanceDB 벡터 저장소 구현체 (v2)
 """
 
 import logging
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -25,6 +26,38 @@ from app.tools.vectorstore.schema_v2 import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Per-thread MeCabTokenizer 캐시 (MeCab Tagger는 thread-safe하지 않음)
+_thread_local = threading.local()
+
+
+def _get_thread_tokenizer() -> "MeCabTokenizer":  # noqa: F821
+    """스레드별 MeCabTokenizer 인스턴스 반환 (캐싱)
+
+    MeCab Tagger는 thread-safe하지 않으므로 threading.local()로
+    스레드별 독립 인스턴스를 유지한다.
+    """
+    tokenizer = getattr(_thread_local, "tokenizer", None)
+    if tokenizer is not None:
+        return tokenizer
+
+    from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
+
+    legal_dict = None
+    if settings.USE_LEGAL_TERM_DICT:
+        from app.tools.vectorstore.legal_term_dict import get_legal_term_dict
+        legal_dict = get_legal_term_dict()
+
+    userdic_path = None
+    if settings.USE_MECAB_USERDIC:
+        _p = Path(settings.MECAB_USERDIC_PATH)
+        if _p.exists():
+            userdic_path = str(_p)
+
+    _thread_local.tokenizer = MeCabTokenizer(
+        legal_dict=legal_dict, userdic_path=userdic_path,
+    )
+    return _thread_local.tokenizer
 
 
 class LanceDBStore(VectorStoreBase):
@@ -368,18 +401,31 @@ class LanceDBStore(VectorStoreBase):
         return len(self._table)
 
     def count_by_type(self, data_type: str) -> int:
-        """문서 유형별 레코드 수"""
+        """문서 유형별 레코드 수 (컬럼 최소 선택으로 메모리 절약)"""
         if self._table is None:
             return 0
 
         escaped_type = self._escape_sql(data_type)
 
         try:
-            df = self._table.search().where(f"data_type = '{escaped_type}'").limit(1000000).to_pandas()
+            # select(["id"])로 벡터 컬럼 제외하여 메모리 절약
+            df = (
+                self._table.search()
+                .where(f"data_type = '{escaped_type}'")
+                .select(["id"])
+                .limit(1_000_000)
+                .to_pandas()
+            )
             return len(df)
         except RuntimeError:
             try:
-                df = self._table.search().where(f"doc_type = '{escaped_type}'").limit(1000000).to_pandas()
+                df = (
+                    self._table.search()
+                    .where(f"doc_type = '{escaped_type}'")
+                    .select(["id"])
+                    .limit(1_000_000)
+                    .to_pandas()
+                )
                 return len(df)
             except RuntimeError:
                 return 0
@@ -488,9 +534,8 @@ class LanceDBStore(VectorStoreBase):
         if self._table is None:
             return SearchResult(ids=[[]], distances=[[]], metadatas=[[]], documents=[[]])
 
-        # MeCab 토크나이징
-        from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
-        tokenizer = MeCabTokenizer()
+        # MeCab 토크나이징 (per-thread 캐싱, 법률 용어 사전 보강)
+        tokenizer = _get_thread_tokenizer()
         tokenized_query = tokenizer.tokenize_query(query)
 
         if not tokenized_query.strip():
@@ -514,9 +559,10 @@ class LanceDBStore(VectorStoreBase):
             return SearchResult(ids=[[]], distances=[[]], metadatas=[[]], documents=[[]])
 
         ids_list = df["id"].tolist()
-        # FTS는 _score (높을수록 관련도 높음), distance로 변환 (1 - score)
+        # FTS는 _score (높을수록 관련도 높음), distance로 변환
+        # BM25 스코어는 1.0을 초과할 수 있으므로 1/(1+s) 변환 사용 (항상 0~1 범위)
         scores = df["_score"].tolist()
-        distances_list = [1.0 - s for s in scores]
+        distances_list = [1.0 / (1.0 + s) for s in scores]
         documents_list = df["content"].tolist()
         metadatas_list = self._extract_metadatas(df)
 
@@ -583,14 +629,25 @@ class LanceDBStore(VectorStoreBase):
         # ID 기반 문서 조회
         doc_result = self.get_by_ids(final_ids)
 
+        # get_by_ids 결과를 RRF 랭킹 순서(final_ids)로 재정렬
+        id_to_idx: Dict[str, int] = {
+            doc_id: i for i, doc_id in enumerate(doc_result["ids"])
+        }
+        ordered_indices = [
+            id_to_idx[doc_id] for doc_id in final_ids if doc_id in id_to_idx
+        ]
+        ordered_ids = [doc_result["ids"][i] for i in ordered_indices]
+        ordered_docs = [doc_result.get("documents", [])[i] for i in ordered_indices] if doc_result.get("documents") else []
+        ordered_metas = [doc_result.get("metadatas", [])[i] for i in ordered_indices] if doc_result.get("metadatas") else []
+
         # RRF 순위 기반 거리 할당 (순위가 높을수록 0에 가까움)
-        rrf_distances = [i / len(final_ids) for i in range(len(final_ids))]
+        rrf_distances = [i / max(len(ordered_ids), 1) for i in range(len(ordered_ids))]
 
         return SearchResult(
-            ids=[doc_result["ids"]],
-            distances=[rrf_distances[:len(doc_result["ids"])]],
-            documents=[doc_result.get("documents", [])],
-            metadatas=[doc_result.get("metadatas", [])],
+            ids=[ordered_ids],
+            distances=[rrf_distances],
+            documents=[ordered_docs],
+            metadatas=[ordered_metas],
         )
 
     @staticmethod

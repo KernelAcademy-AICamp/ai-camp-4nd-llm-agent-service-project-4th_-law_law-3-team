@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from app.common.chat_service import generate_chat_response
 from app.core.errors import EmbeddingModelNotFoundError
-from app.services.rag import search_relevant_documents
+from app.services.rag import search_relevant_documents_async
 from app.services.service_function.precedent_service import fetch_precedent_details
 from app.tools.vectorstore import get_vector_store
 
@@ -205,7 +205,7 @@ async def search(request: SearchRequest) -> SearchResponse:
     쿼리와 유사한 판례/법률 문서 검색
     """
     try:
-        results = search_relevant_documents(
+        results = await search_relevant_documents_async(
             query=request.query,
             n_results=request.n_results or 5,
             doc_type=request.doc_type,
@@ -259,7 +259,7 @@ async def search_precedents(
     RAG 기반으로 키워드와 관련된 판례를 검색합니다.
     """
     try:
-        results = search_relevant_documents(
+        results = await search_relevant_documents_async(
             query=keyword,
             n_results=limit,
             doc_type=doc_type,

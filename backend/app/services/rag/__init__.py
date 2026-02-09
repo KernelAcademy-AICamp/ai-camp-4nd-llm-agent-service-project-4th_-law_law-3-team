@@ -8,6 +8,7 @@ RAG 서비스 모듈
 from app.services.rag.embedding import (
     check_embedding_model_availability,
     create_query_embedding,
+    create_query_embedding_async,
     get_local_model,
     is_embedding_model_cached,
 )
@@ -17,6 +18,7 @@ from app.services.rag.pipeline import (
     PipelineConfig,
     PipelineResult,
     search_with_pipeline,
+    search_with_pipeline_async,
     search_with_rerank,
     search_with_rewrite,
 )
@@ -42,16 +44,19 @@ from app.services.rag.retrieval import (
     RetrievalService,
     get_retrieval_service,
     search_relevant_documents,
+    search_relevant_documents_async,
 )
 
 __all__ = [
     # 임베딩
     "create_query_embedding",
+    "create_query_embedding_async",
     "check_embedding_model_availability",
     "get_local_model",
     "is_embedding_model_cached",
     # 검색
     "search_relevant_documents",
+    "search_relevant_documents_async",
     # 리랭킹
     "rerank_documents",
     "is_reranker_available",
@@ -63,6 +68,7 @@ __all__ = [
     "PipelineConfig",
     "PipelineResult",
     "search_with_pipeline",
+    "search_with_pipeline_async",
     "search_with_rerank",
     "search_with_rewrite",
     # 하위 호환용 (deprecated)

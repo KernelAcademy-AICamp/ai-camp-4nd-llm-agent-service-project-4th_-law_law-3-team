@@ -1,5 +1,4 @@
-> **NOTE (2026-01-29)**: 이 문서는 초기 구현 계획입니다.
-> 현재 구현 상태는 `docs/vectordb_design.md`를 참고하세요.
+> **ARCHIVED**: 이 문서는 `docs/architecture/vectordb_design.md`로 대체되었습니다.
 > 임베딩 스크립트 사용법은 `backend/scripts/CLAUDE.md`를 참고하세요.
 
 ---

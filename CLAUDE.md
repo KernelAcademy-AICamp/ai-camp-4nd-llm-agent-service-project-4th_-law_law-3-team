@@ -235,14 +235,40 @@ POST /api/chat
 ```bash
 cd backend
 
-# PyTorch CUDA 설치 (GPU 사용 시)
+# PyTorch 설치 (환경에 맞게)
 uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 
-# 임베딩 생성 (--no-sync 필수)
+# 로컬 임베딩 (권장 - 하드웨어 자동 감지, 체크포인트 지원)
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --reset
+
+# RunPod/클라우드 임베딩
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all --reset
 
 # 통계 확인
-uv run --no-sync python scripts/runpod_lancedb_embeddings.py --stats
+uv run --no-sync python scripts/local_lancedb_embeddings.py --stats
+```
+
+### 임베딩 인프라 구조
+
+```
+backend/scripts/
+├── local_lancedb_embeddings.py       # 로컬 임베딩 (데스크톱/노트북/Mac)
+├── runpod_lancedb_embeddings.py      # 클라우드 GPU 임베딩 (RunPod)
+├── embedding_common/                  # 공통 모듈 패키지
+│   ├── device.py                      # GPU/CPU/MPS 감지
+│   ├── config.py                      # 하드웨어 프로필 설정
+│   ├── model.py                       # 임베딩 모델 로딩
+│   ├── store.py                       # LanceDB 연결/테이블
+│   ├── chunking.py                    # 텍스트 청킹
+│   ├── schema.py                      # 스키마 검증
+│   ├── cache.py                       # 임베딩 캐시
+│   ├── temperature.py                 # GPU 온도 모니터링
+│   └── memory.py                      # 메모리 모니터링
+└── CLAUDE.md                          # 스크립트 상세 가이드
+
+backend/notebooks/
+├── runpod_lancedb_embeddings.ipynb    # RunPod 환경 노트북
+└── colab_lancedb_embeddings.ipynb     # Google Colab 노트북
 ```
 
 ### 저장 위치
@@ -256,9 +282,9 @@ uv run --no-sync python scripts/runpod_lancedb_embeddings.py --stats
 | 법령 | 5,841건 | 118,922개 |
 
 ### 관련 문서
-- `docs/vectordb_design.md` - 벡터 DB 설계
+- `docs/architecture/vectordb_design.md` - 벡터 DB 설계
 - `backend/scripts/CLAUDE.md` - 임베딩 스크립트 가이드
-- `docs/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
+- `docs/devlog/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
 
 ## Embedding Model (임베딩 모델)
 
@@ -452,6 +478,95 @@ JSON 파일(`data/lawyers_with_coords.json`)은 변경하지 않으므로 데이
 |------|------|
 | `backend/app/models/trial_statistics.py` | TrialStatistics ORM 모델 |
 | `backend/alembic/versions/005_add_trial_statistics_table.py` | 마이그레이션 |
+
+## Legal Terms DB (법률 용어 사전)
+
+법률 용어 데이터(`[DONE]lawterms.json`)를 PostgreSQL `legal_terms` 테이블에 저장하고, MeCab 토크나이저의 법률 복합명사 보강에 활용합니다.
+
+### 활성화
+
+```bash
+# backend/.env
+USE_LEGAL_TERM_DICT=true
+
+# 마이그레이션 + 데이터 로드
+cd backend
+uv run alembic upgrade head
+uv run python scripts/load_legal_terms_data.py
+uv run python scripts/load_legal_terms_data.py --verify  # 검증
+```
+
+### 동작 방식
+
+앱 시작(lifespan) 시 PostgreSQL에서 법률 용어를 메모리(frozenset)에 로드하고, MeCab 토크나이징 결과에 법률 복합명사를 추가 토큰으로 삽입합니다.
+
+```
+"손해배상청구권의 소멸시효"
+  → MeCab:  [손해, 배상, 청구, 권, 의, 소멸, 시효]
+  → 보강:   [손해, 배상, 청구, 권, 의, 소멸, 시효] + [배상청구권, 배상청구, 소멸시효]
+```
+
+### 데이터 현황
+
+| 항목 | 수치 |
+|------|------|
+| 전체 고유 용어 | ~72,700개 |
+| userdic 적재 | ~37,366개 |
+| 유효 커버리지 | ≥99% (괄호 변형 포함, 상세: `docs/tokenizer/USERDIC_COVERAGE_ANALYSIS.md`) |
+| 사전유형 | 법령정의사전 + 법령한영사전 + 생활용어사전 + 한영역추출 |
+
+> **참고**: `[DONE]lawterms.json` (81,488 레코드) 기반. 리스트 평탄화 + 한영사전 역추출 포함.
+> 72,700개 중 35,234개(48.5%)는 MeCab userdic 대상 외 (순수 비한글 12,985 + 공백 포함 22,249).
+> 상세 분석: `docs/tokenizer/USERDIC_COVERAGE_ANALYSIS.md`
+
+### MeCab userdic (사용자 사전)
+
+법률 복합명사를 MeCab이 직접 인식하도록 userdic에 등록합니다. 사후 복원보다 정확한 토크나이징이 가능합니다.
+
+```bash
+# backend/.env (사전 빌드 후 활성화)
+USE_MECAB_USERDIC=true
+
+# userdic 빌드
+cd backend
+uv run python scripts/build_mecab_userdic.py           # DB에서 빌드
+uv run python scripts/build_mecab_userdic.py --from-json  # JSON fallback
+uv run python scripts/build_mecab_userdic.py --verify   # 빌드 후 검증
+uv run python scripts/build_mecab_userdic.py --fix-regression  # 회귀 수정
+
+# content_tokenized 재생성 (userdic 적용)
+uv run --no-sync python scripts/update_content_tokenized.py --userdic
+```
+
+**동작 방식**:
+```
+현재: MeCab(기본사전) → 오분석 → 사후 복원(불완전)
+변경: MeCab(기본+userdic) → 정확한 인식 → 분해 토큰 추가(FTS용)
+```
+
+**출력 파일**:
+- `backend/data/mecab_userdic/legal_terms.csv` - userdic 소스 CSV (37,366 엔트리)
+- `backend/data/mecab_userdic/legal_terms.dic` - 컴파일된 바이너리
+- `backend/data/mecab_userdic/decomposition_map.json` - 복합어 분해맵 (31,732 엔트리)
+- `backend/data/mecab_userdic/priority_terms.json` - 회귀 수정 용어 (683개, cost=-3000)
+
+**롤백**: `USE_MECAB_USERDIC=false` (기본값)로 설정하면 기존 사후 복원 방식으로 즉시 복귀.
+
+### 롤백
+
+`USE_LEGAL_TERM_DICT=false`로 설정하면 기존 MeCab 동작으로 즉시 복귀합니다.
+
+### 관련 파일
+
+| 파일 | 설명 |
+|------|------|
+| `backend/app/models/legal_term.py` | LegalTerm ORM 모델 |
+| `backend/alembic/versions/006_add_legal_terms_table.py` | 마이그레이션 |
+| `backend/scripts/load_legal_terms_data.py` | 데이터 로드 스크립트 |
+| `backend/scripts/build_mecab_userdic.py` | userdic 빌드 스크립트 |
+| `backend/app/tools/vectorstore/legal_term_dict.py` | 메모리 사전 (frozenset O(1) lookup + 분해맵) |
+| `backend/app/tools/vectorstore/mecab_tokenizer.py` | MeCab 토크나이저 (보강 + userdic 모드) |
+| `backend/tests/unit/test_legal_term_dict.py` | 사전 단위 테스트 |
 
 ## Modules
 

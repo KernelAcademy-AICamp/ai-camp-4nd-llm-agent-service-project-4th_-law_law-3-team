@@ -5,14 +5,13 @@ RAG 기반 판례/법령 검색 및 법률 상담 제공
 focus 파라미터로 검색 비율 조절
 """
 
-import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any, Literal
 
 from app.multi_agent.agents.base_chat import BaseChatAgent
 from app.multi_agent.schemas.plan import AgentResult
-from app.services.rag import search_relevant_documents
+from app.services.rag import search_relevant_documents_async
 from app.services.rag.query_rewrite import rewrite_conversational_query
 from app.services.service_function import (
     PrecedentService,
@@ -90,8 +89,6 @@ class LegalSearchAgent(BaseChatAgent):
     ]:
         """RAG 검색 → 상세조회 → 그래프보강 → 컨텍스트 → 소스 포맷
 
-        sync RAG 함수를 asyncio.to_thread()로 래핑하여 이벤트 루프 블로킹 방지.
-
         Returns:
             (precedent_results, law_results, precedent_details,
              graph_contexts, context, sources)
@@ -101,16 +98,14 @@ class LegalSearchAgent(BaseChatAgent):
         law_results: list[dict[str, Any]] = []
 
         if self.n_precedents > 0:
-            precedent_results = await asyncio.to_thread(
-                search_relevant_documents,
+            precedent_results = await search_relevant_documents_async(
                 query=message,
                 n_results=self.n_precedents,
                 doc_type="precedent",
             )
 
         if self.n_laws > 0:
-            law_results = await asyncio.to_thread(
-                search_relevant_documents,
+            law_results = await search_relevant_documents_async(
                 query=message,
                 n_results=self.n_laws,
                 doc_type="law",

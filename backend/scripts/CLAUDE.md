@@ -6,19 +6,87 @@
 
 | 스크립트 | 용도 |
 |----------|------|
-| `runpod_lancedb_embeddings.py` | 메인 임베딩 스크립트 (로컬/RunPod/Colab) |
+| `runpod_lancedb_embeddings.py` | 메인 임베딩 스크립트 (RunPod/클라우드 GPU) |
+| `local_lancedb_embeddings.py` | 로컬 임베딩 스크립트 (멀티 하드웨어 지원) |
+| `update_content_tokenized.py` | content_tokenized 컬럼만 업데이트 (벡터 유지) |
 | `colab_lancedb_embeddings.py` | Google Colab 전용 |
 | `test_precedent_embedding.py` | 임베딩 테스트 |
 
+### 공통 모듈 (`embedding_common/`)
+
+| 모듈 | 설명 |
+|------|------|
+| `device.py` | GPU/CPU/MPS 디바이스 감지, DeviceInfo |
+| `config.py` | 하드웨어 프로필, 배치 크기 최적 설정 |
+| `model.py` | 임베딩 모델 로딩 (KURE-v1) |
+| `store.py` | LanceDB 테이블 생성/연결 |
+| `chunking.py` | 텍스트 청킹 (법령/판례) |
+| `schema.py` | 스키마 v2 re-export + 검증 유틸 |
+| `cache.py` | MD5 기반 임베딩 캐시 |
+| `temperature.py` | GPU 온도 모니터링 (nvidia-smi) |
+| `memory.py` | GPU/시스템 메모리 모니터링 |
+
+### Jupyter Notebook (`../notebooks/`)
+
+| 노트북 | 환경 | 설명 |
+|--------|------|------|
+| `runpod_lancedb_embeddings.ipynb` | RunPod (A100/H100) | 클라우드 GPU 임베딩 |
+| `colab_lancedb_embeddings.ipynb` | Google Colab (T4) | Drive 저장, 분할 처리 |
+
 ## 빠른 시작
 
-### 로컬 실행 (GPU)
+### 로컬 실행 (권장: `local_lancedb_embeddings.py`)
 
 ```bash
 cd backend
 
-# PyTorch CUDA 설치 (환경에 맞게)
-uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+# PyTorch 설치 (환경에 맞게)
+uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128  # CUDA
+# uv pip install --reinstall torch torchvision torchaudio  # CPU/MPS
+
+# 전체 임베딩 (하드웨어 자동 감지)
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --reset
+
+# 판례만
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type precedent
+
+# 법령만
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type law
+
+# 프로필 수동 지정
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --profile laptop  # 발열 보호
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --profile mac     # MPS 백엔드
+
+# 통계 / 검증
+uv run --no-sync python scripts/local_lancedb_embeddings.py --stats
+uv run --no-sync python scripts/local_lancedb_embeddings.py --verify
+```
+
+### 하드웨어 프로필
+
+| 프로필 | batch_size | 온도 모니터링 | 비고 |
+|--------|-----------|--------------|------|
+| desktop | 128 | OFF | 5060Ti 등 데스크톱 GPU |
+| laptop | 50 | ON (85°C) | 3060 Laptop 등 발열 보호 |
+| mac | 50 | OFF | Apple Silicon MPS |
+| cpu | 20 | OFF | CPU 전용 |
+
+### 체크포인트/재개
+
+중단 시 자동으로 체크포인트를 저장합니다. 재실행 시 이어서 처리합니다.
+
+```bash
+# 재개 (기본 동작)
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type precedent
+
+# 처음부터 다시
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type precedent --no-resume
+```
+
+### RunPod/클라우드 실행
+
+```bash
+cd backend
 
 # 판례 임베딩
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py \
@@ -283,8 +351,71 @@ for _, row in results.iterrows():
 
 ## 관련 문서
 
-- `docs/vectordb_design.md` - 전체 설계 문서
-- `docs/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
+- `docs/architecture/vectordb_design.md` - 전체 설계 문서
+- `docs/devlog/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
+- `notebooks/runpod_lancedb_embeddings.ipynb` - RunPod 노트북
+- `notebooks/colab_lancedb_embeddings.ipynb` - Colab 노트북
+
+---
+
+## 법률 용어 PostgreSQL 로드 (load_legal_terms_data.py)
+
+`[DONE]lawterms.json` (81,488건 → ~72,700 고유 용어)을 PostgreSQL `legal_terms` 테이블로 로드합니다.
+fallback: `data/law_data/lawterms_full.json` (37,169건)
+MeCab 토크나이저에서 법률 복합명사를 보강하기 위한 용어 사전 데이터입니다.
+
+### 사전 조건
+
+```bash
+# 1. 마이그레이션 실행 (legal_terms 테이블 생성)
+cd backend
+uv run alembic upgrade head
+```
+
+### 사용법
+
+```bash
+cd backend
+
+# 데이터 로드
+uv run python scripts/load_legal_terms_data.py
+
+# 기존 데이터 삭제 후 재로드
+uv run python scripts/load_legal_terms_data.py --reset
+
+# 검증만 (로드 없이)
+uv run python scripts/load_legal_terms_data.py --verify
+
+# 통계만 확인
+uv run python scripts/load_legal_terms_data.py --stats
+```
+
+### 주요 동작
+
+1. `[DONE]lawterms.json` 로드 (fallback: `lawterms_full.json`)
+2. 리스트 타입 레코드 평탄화 (flatten)
+3. 법령한영사전 역방향 한글 용어 추출 (reverse extraction)
+4. 우선순위 기반 중복 제거 + `source_count` 집계
+5. `ON CONFLICT (term) DO UPDATE`로 멱등성 보장
+6. 1,000건 단위 배치 insert
+7. 로드 후 통계 출력 (총 건수, 한글 전용 비율, 길이 분포, 제외 통계)
+
+### 환경 변수
+
+```bash
+# backend/.env
+DATABASE_URL=postgresql://lawuser:lawpassword@localhost:5432/lawdb
+USE_LEGAL_TERM_DICT=true  # 앱에서 사전 사용 활성화
+```
+
+### 데이터 현황
+
+| 항목 | 수치 |
+|------|------|
+| 원본 레코드 | 81,488건 ([DONE]lawterms.json) |
+| 고유 용어 | ~72,700개 (평탄화+역추출 포함) |
+| 한글 전용 (2-10자) | ~35,200개 (MeCab 로드 대상) |
+| 사전유형 | 법령정의사전, 생활용어사전, 법령한영사전, 법령용어사전, 한영역추출 |
 
 ---
 

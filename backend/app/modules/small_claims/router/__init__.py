@@ -10,8 +10,8 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from app.services.rag import search_relevant_documents
 from app.core.config import settings
+from app.services.rag import search_relevant_documents_async
 
 logger = logging.getLogger(__name__)
 
@@ -479,7 +479,7 @@ async def get_related_cases(dispute_type: str) -> RelatedCasesResponse:
                 detail=f"지원하지 않는 분쟁 유형입니다: {dispute_type}",
             )
 
-        results = search_relevant_documents(query=query, n_results=5)
+        results = await search_relevant_documents_async(query=query, n_results=5)
 
         # 관련성 설명 생성
         relevance_descriptions = {

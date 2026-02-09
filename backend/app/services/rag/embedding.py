@@ -4,6 +4,7 @@
 쿼리/문서 텍스트를 벡터로 변환
 """
 
+import asyncio
 import logging
 from functools import lru_cache
 from pathlib import Path
@@ -158,3 +159,21 @@ def create_query_embedding(query: str) -> List[float]:
             input=query,
         )
         return response.data[0].embedding
+
+
+async def create_query_embedding_async(query: str) -> List[float]:
+    """
+    쿼리 텍스트를 비동기로 임베딩 벡터로 변환
+
+    sync 함수를 별도 스레드에서 실행하여 FastAPI 이벤트 루프 블로킹 방지.
+
+    Args:
+        query: 검색 쿼리 텍스트
+
+    Returns:
+        임베딩 벡터 (float 리스트)
+
+    Raises:
+        EmbeddingModelNotFoundError: 로컬 모델 미캐시 시
+    """
+    return await asyncio.to_thread(create_query_embedding, query)
