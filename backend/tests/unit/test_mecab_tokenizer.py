@@ -259,3 +259,116 @@ class TestReverseExtractionTerms:
         result = tokenizer.morphs("불법행위로 인한 손해배상")
         assert "불법행위" in result
         assert "손해배상" in result
+
+
+# ============================================================================
+# MeCab userdic 모드 테스트
+# ============================================================================
+
+
+class TestMeCabUserdic:
+    """userdic 활성화 시 _decompose_compounds 동작 테스트"""
+
+    @pytest.fixture
+    def decomp_dict(self) -> LegalTermDictionary:
+        """분해맵이 로드된 법률 용어 사전"""
+        import json
+        import tempfile
+        from pathlib import Path
+
+        d = LegalTermDictionary()
+        d.load_from_terms({
+            "소멸시효",
+            "손해배상",
+            "법정이율",
+            "소멸",
+            "시효",
+            "손해",
+            "배상",
+        })
+
+        decomp_data = {
+            "소멸시효": ["소멸", "시효"],
+            "손해배상": ["손해", "배상"],
+            "법정이율": ["법정", "이율"],
+        }
+
+        # 임시 파일에 분해맵 저장
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8",
+        )
+        json.dump(decomp_data, tmp, ensure_ascii=False)
+        tmp.close()
+        d.load_decomposition_map(Path(tmp.name))
+        return d
+
+    def test_decompose_compounds_adds_sub_tokens(
+        self, decomp_dict: LegalTermDictionary,
+    ) -> None:
+        """_decompose_compounds가 분해 토큰을 추가"""
+        tokenizer = MeCabTokenizer(legal_dict=decomp_dict)
+        tokenizer._tagger = None  # fallback 모드
+
+        # userdic_active를 수동 설정하여 _decompose_compounds 경로 테스트
+        tokenizer._userdic_active = True
+
+        # fallback: "소멸시효" → ["소멸시효"] (단일 토큰)
+        result = tokenizer.morphs("소멸시효")
+        # _decompose_compounds가 분해맵에서 ["소멸", "시효"]를 추가
+        assert "소멸시효" in result
+        assert "소멸" in result
+        assert "시효" in result
+
+    def test_decompose_no_duplicates(
+        self, decomp_dict: LegalTermDictionary,
+    ) -> None:
+        """이미 존재하는 토큰은 추가하지 않음"""
+        tokenizer = MeCabTokenizer(legal_dict=decomp_dict)
+        tokenizer._tagger = None
+        tokenizer._userdic_active = True
+
+        # fallback: "소멸 시효" → ["소멸", "시효"]
+        # _decompose_compounds에서 "소멸", "시효"가 이미 morphs에 있으므로 추가 안 함
+        result = tokenizer.morphs("소멸 시효")
+        assert result.count("소멸") == 1
+        assert result.count("시효") == 1
+
+    def test_decompose_no_map_returns_base(self) -> None:
+        """분해맵 없으면 원본 형태소 그대로 반환"""
+        d = LegalTermDictionary()
+        d.load_from_terms({"소멸시효"})
+        # 분해맵 미로드
+        tokenizer = MeCabTokenizer(legal_dict=d)
+        tokenizer._tagger = None
+        tokenizer._userdic_active = True
+
+        result = tokenizer.morphs("소멸시효")
+        # get_sub_tokens("소멸시효") → [] (분해맵 없음)
+        assert result == ["소멸시효"]
+
+    def test_userdic_active_false_uses_augment(self) -> None:
+        """userdic_active=False이면 기존 augment 방식 사용"""
+        d = LegalTermDictionary()
+        d.load_from_terms({"손해배상"})
+
+        tokenizer = MeCabTokenizer(legal_dict=d)
+        tokenizer._tagger = None
+        tokenizer._userdic_active = False  # 기존 방식
+
+        result = tokenizer.morphs("손해 배상 청구")
+        # 기존 방식: find_terms_in_morphs로 "손해배상" 추가
+        assert "손해배상" in result
+
+    def test_tokenize_with_userdic_mode(
+        self, decomp_dict: LegalTermDictionary,
+    ) -> None:
+        """tokenize()도 userdic 모드에서 분해 토큰 포함"""
+        tokenizer = MeCabTokenizer(legal_dict=decomp_dict)
+        tokenizer._tagger = None
+        tokenizer._userdic_active = True
+
+        result = tokenizer.tokenize("법정이율")
+        tokens = result.split()
+        assert "법정이율" in tokens
+        assert "법정" in tokens
+        assert "이율" in tokens

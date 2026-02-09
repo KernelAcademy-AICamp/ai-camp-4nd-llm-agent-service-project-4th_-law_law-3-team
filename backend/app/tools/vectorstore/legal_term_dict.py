@@ -44,6 +44,7 @@ class LegalTermDictionary:
         self._terms: frozenset[str] = frozenset()
         self._max_len: int = 0
         self._min_len: int = DEFAULT_MIN_LENGTH
+        self._decomposition_map: dict[str, list[str]] = {}
 
     @property
     def is_loaded(self) -> bool:
@@ -268,6 +269,55 @@ class LegalTermDictionary:
                     seen.add(combined)
 
         return found
+
+    # ================================================================
+    # 분해맵 (userdic 모드용)
+    # ================================================================
+
+    @property
+    def has_decomposition_map(self) -> bool:
+        """분해맵 로드 여부"""
+        return len(self._decomposition_map) > 0
+
+    def load_decomposition_map(self, path: str | Path) -> int:
+        """
+        decomposition_map.json 로드
+
+        Args:
+            path: JSON 파일 경로 ({"복합어": ["서브1", "서브2"], ...})
+
+        Returns:
+            로드된 엔트리 수
+        """
+        p = Path(path)
+        if not p.exists():
+            logger.error("분해맵 파일이 없습니다: %s", p)
+            return 0
+
+        with open(p, encoding="utf-8") as f:
+            data = json.load(f)
+
+        if not isinstance(data, dict):
+            logger.error("분해맵 형식 오류: dict가 아닙니다")
+            return 0
+
+        self._decomposition_map = {
+            k: v for k, v in data.items() if isinstance(v, list)
+        }
+        logger.info("분해맵 로드 완료: %d개", len(self._decomposition_map))
+        return len(self._decomposition_map)
+
+    def get_sub_tokens(self, term: str) -> list[str]:
+        """
+        복합어의 분해 토큰 반환
+
+        Args:
+            term: 복합 용어 (예: "소멸시효")
+
+        Returns:
+            분해 토큰 리스트 (예: ["소멸", "시효"]), 없으면 빈 리스트
+        """
+        return self._decomposition_map.get(term, [])
 
 
 # 모듈 레벨 싱글톤 (선택적 사용)

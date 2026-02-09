@@ -502,6 +502,8 @@ class LanceDBStore(VectorStoreBase):
             return SearchResult(ids=[[]], distances=[[]], metadatas=[[]], documents=[[]])
 
         # MeCab 토크나이징 (법률 용어 사전 보강)
+        from pathlib import Path
+
         from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
 
         legal_dict = None
@@ -509,7 +511,13 @@ class LanceDBStore(VectorStoreBase):
             from app.tools.vectorstore.legal_term_dict import get_legal_term_dict
             legal_dict = get_legal_term_dict()
 
-        tokenizer = MeCabTokenizer(legal_dict=legal_dict)
+        userdic_path = None
+        if settings.USE_MECAB_USERDIC:
+            _p = Path(settings.MECAB_USERDIC_PATH)
+            if _p.exists():
+                userdic_path = str(_p)
+
+        tokenizer = MeCabTokenizer(legal_dict=legal_dict, userdic_path=userdic_path)
         tokenized_query = tokenizer.tokenize_query(query)
 
         if not tokenized_query.strip():

@@ -510,6 +510,37 @@ uv run python scripts/load_legal_terms_data.py --verify  # 검증
 
 > **참고**: `[DONE]lawterms.json` (81,488 레코드) 기반. 리스트 평탄화 + 한영사전 역추출 포함.
 
+### MeCab userdic (사용자 사전)
+
+법률 복합명사를 MeCab이 직접 인식하도록 userdic에 등록합니다. 사후 복원보다 정확한 토크나이징이 가능합니다.
+
+```bash
+# backend/.env (사전 빌드 후 활성화)
+USE_MECAB_USERDIC=true
+
+# userdic 빌드
+cd backend
+uv run python scripts/build_mecab_userdic.py           # DB에서 빌드
+uv run python scripts/build_mecab_userdic.py --from-json  # JSON fallback
+uv run python scripts/build_mecab_userdic.py --verify   # 빌드 후 검증
+
+# content_tokenized 재생성 (userdic 적용)
+uv run --no-sync python scripts/update_content_tokenized.py --userdic
+```
+
+**동작 방식**:
+```
+현재: MeCab(기본사전) → 오분석 → 사후 복원(불완전)
+변경: MeCab(기본+userdic) → 정확한 인식 → 분해 토큰 추가(FTS용)
+```
+
+**출력 파일**:
+- `backend/data/mecab_userdic/legal_terms.csv` - userdic 소스 CSV
+- `backend/data/mecab_userdic/legal_terms.dic` - 컴파일된 바이너리
+- `backend/data/mecab_userdic/decomposition_map.json` - 복합어 분해맵
+
+**롤백**: `USE_MECAB_USERDIC=false` (기본값)로 설정하면 기존 사후 복원 방식으로 즉시 복귀.
+
 ### 롤백
 
 `USE_LEGAL_TERM_DICT=false`로 설정하면 기존 MeCab 동작으로 즉시 복귀합니다.
@@ -521,8 +552,9 @@ uv run python scripts/load_legal_terms_data.py --verify  # 검증
 | `backend/app/models/legal_term.py` | LegalTerm ORM 모델 |
 | `backend/alembic/versions/006_add_legal_terms_table.py` | 마이그레이션 |
 | `backend/scripts/load_legal_terms_data.py` | 데이터 로드 스크립트 |
-| `backend/app/tools/vectorstore/legal_term_dict.py` | 메모리 사전 (frozenset O(1) lookup) |
-| `backend/app/tools/vectorstore/mecab_tokenizer.py` | MeCab 토크나이저 (보강 로직) |
+| `backend/scripts/build_mecab_userdic.py` | userdic 빌드 스크립트 |
+| `backend/app/tools/vectorstore/legal_term_dict.py` | 메모리 사전 (frozenset O(1) lookup + 분해맵) |
+| `backend/app/tools/vectorstore/mecab_tokenizer.py` | MeCab 토크나이저 (보강 + userdic 모드) |
 | `backend/tests/unit/test_legal_term_dict.py` | 사전 단위 테스트 |
 
 ## Modules

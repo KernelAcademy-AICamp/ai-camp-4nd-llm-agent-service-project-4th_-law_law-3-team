@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     # 법률 용어 사전 (MeCab 토크나이저 법률 복합명사 보강)
     USE_LEGAL_TERM_DICT: bool = False
 
+    # MeCab 사용자 사전 (법률 복합명사 인식)
+    USE_MECAB_USERDIC: bool = False
+    MECAB_USERDIC_PATH: str = "data/mecab_userdic/legal_terms.dic"
+
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []
 

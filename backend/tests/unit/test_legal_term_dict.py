@@ -370,3 +370,67 @@ class TestGlobalDict:
         init_legal_term_dict(json_path)
         reset_legal_term_dict()
         assert get_legal_term_dict() is None
+
+
+# ============================================================================
+# 분해맵 (decomposition map) 테스트
+# ============================================================================
+
+
+class TestDecompositionMap:
+    """분해맵 로드 및 조회 테스트"""
+
+    @pytest.fixture
+    def decomp_dict(self, tmp_path: Path) -> LegalTermDictionary:
+        """분해맵이 로드된 법률 용어 사전"""
+        d = LegalTermDictionary()
+        d.load_from_terms({"소멸시효", "손해배상", "법정이율", "소멸", "시효"})
+
+        decomp_data = {
+            "소멸시효": ["소멸", "시효"],
+            "손해배상": ["손해", "배상"],
+            "법정이율": ["법정", "이율"],
+        }
+        decomp_path = tmp_path / "decomposition_map.json"
+        decomp_path.write_text(
+            json.dumps(decomp_data, ensure_ascii=False), encoding="utf-8",
+        )
+        d.load_decomposition_map(decomp_path)
+        return d
+
+    def test_has_decomposition_map_initial(self) -> None:
+        """초기 상태는 분해맵 없음"""
+        d = LegalTermDictionary()
+        assert d.has_decomposition_map is False
+
+    def test_load_decomposition_map(self, decomp_dict: LegalTermDictionary) -> None:
+        """분해맵 로드 성공"""
+        assert decomp_dict.has_decomposition_map is True
+
+    def test_get_sub_tokens_exists(self, decomp_dict: LegalTermDictionary) -> None:
+        """분해맵에 존재하는 용어"""
+        result = decomp_dict.get_sub_tokens("소멸시효")
+        assert result == ["소멸", "시효"]
+
+    def test_get_sub_tokens_not_exists(
+        self, decomp_dict: LegalTermDictionary,
+    ) -> None:
+        """분해맵에 없는 용어는 빈 리스트"""
+        result = decomp_dict.get_sub_tokens("없는용어")
+        assert result == []
+
+    def test_load_nonexistent_decomp_file(self) -> None:
+        """존재하지 않는 분해맵 파일"""
+        d = LegalTermDictionary()
+        count = d.load_decomposition_map("/nonexistent/path.json")
+        assert count == 0
+        assert d.has_decomposition_map is False
+
+    def test_load_invalid_decomp_format(self, tmp_path: Path) -> None:
+        """잘못된 형식의 분해맵 파일 (리스트)"""
+        bad_path = tmp_path / "bad_decomp.json"
+        bad_path.write_text("[]", encoding="utf-8")
+
+        d = LegalTermDictionary()
+        count = d.load_decomposition_map(bad_path)
+        assert count == 0

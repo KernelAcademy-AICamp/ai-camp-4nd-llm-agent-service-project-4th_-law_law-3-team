@@ -24,6 +24,7 @@ Usage:
 """
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -39,6 +40,23 @@ try:
     _MECAB_AVAILABLE = True
 except ImportError:
     _MeCab = None  # type: ignore[assignment,unused-ignore]
+
+
+# MeCab 시스템 사전 경로 후보
+_MECAB_SYS_DICT_CANDIDATES = [
+    "/usr/lib/x86_64-linux-gnu/mecab/dic/mecab-ko-dic",
+    "/usr/local/lib/mecab/dic/mecab-ko-dic",
+    "/usr/lib/mecab/dic/mecab-ko-dic",
+    "/opt/homebrew/lib/mecab/dic/mecab-ko-dic",
+]
+
+
+def _find_mecab_sys_dict() -> Optional[str]:
+    """MeCab 시스템 사전 경로 자동 탐지"""
+    for candidate in _MECAB_SYS_DICT_CANDIDATES:
+        if Path(candidate).is_dir():
+            return candidate
+    return None
 
 
 def is_mecab_available() -> bool:
@@ -73,13 +91,27 @@ class MeCabTokenizer:
     def __init__(
         self,
         legal_dict: Optional["LegalTermDictionary"] = None,
+        userdic_path: Optional[str] = None,
     ) -> None:
         self._tagger: Optional[object] = None
         self._legal_dict = legal_dict
+        self._userdic_active: bool = False
 
         if _MECAB_AVAILABLE and _MeCab is not None:
             try:
-                self._tagger = _MeCab.Tagger()
+                if userdic_path:
+                    sys_dict = _find_mecab_sys_dict()
+                    if sys_dict:
+                        self._tagger = _MeCab.Tagger(
+                            f"-d {sys_dict} -u {userdic_path}"
+                        )
+                        self._userdic_active = True
+                        logger.info("MeCab userdic 활성화: %s", userdic_path)
+                    else:
+                        logger.warning("MeCab 시스템 사전 경로를 찾을 수 없어 기본 사전 사용")
+                        self._tagger = _MeCab.Tagger()
+                else:
+                    self._tagger = _MeCab.Tagger()
             except RuntimeError:
                 logger.warning("MeCab Python 패키지는 설치되었으나 시스템 라이브러리 미설치")
                 self._tagger = None
@@ -111,7 +143,11 @@ class MeCabTokenizer:
         """
         base_morphs = self._mecab_morphs(text)
 
-        if self._legal_dict and self._legal_dict.is_loaded:
+        if self._userdic_active and self._legal_dict:
+            # userdic 모드: MeCab이 복합명사를 정확히 인식 + 분해 토큰 추가
+            return self._decompose_compounds(base_morphs)
+        elif self._legal_dict and self._legal_dict.is_loaded:
+            # 기존 모드: 사후 복원
             return self._augment_with_legal_terms(text, base_morphs)
 
         return base_morphs
@@ -195,6 +231,35 @@ class MeCabTokenizer:
             return base_morphs
 
         return base_morphs + additional
+
+    def _decompose_compounds(self, morphs: list[str]) -> list[str]:
+        """
+        userdic 인식된 복합어에 분해 토큰 추가 (FTS 부분검색용)
+
+        userdic이 "법정이율"을 단일 NNG로 인식한 후,
+        분해맵에서 ["법정", "이율"]을 찾아 추가 토큰으로 삽입.
+
+        Args:
+            morphs: MeCab(userdic) 형태소 리스트
+
+        Returns:
+            원본 morphs + 분해 토큰 (중복 제거)
+        """
+        if not self._legal_dict:
+            return morphs
+
+        result = list(morphs)
+        additional: list[str] = []
+        existing = set(morphs)
+
+        for morph in morphs:
+            sub_tokens = self._legal_dict.get_sub_tokens(morph)
+            for st in sub_tokens:
+                if st not in existing:
+                    additional.append(st)
+                    existing.add(st)
+
+        return result + additional if additional else result
 
     @staticmethod
     def _decompose_compound(decomp_str: str) -> list[str]:
