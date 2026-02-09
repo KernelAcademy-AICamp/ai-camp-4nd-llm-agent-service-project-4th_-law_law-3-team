@@ -61,7 +61,7 @@ pa.field("content_tokenized", pa.utf8()),  # MeCab 사전 토크나이징된 con
 
 ### 1.4 Related Documents
 
-- 설계: `docs/vectordb_design.md` (벡터 DB 설계 문서)
+- 설계: `docs/architecture/vectordb_design.md` (벡터 DB 설계 문서)
 - 구현: `backend/app/tools/vectorstore/` (LanceDB 구현체)
 - 기존 테스트: `backend/tests/integration/test_lancedb_search.py` (스크립트 형태)
 - 토크나이저 유틸: `.agent/skills/embedding-pipeline/templates/tokenizer_utils.py` (KoreanTokenizer 참고)

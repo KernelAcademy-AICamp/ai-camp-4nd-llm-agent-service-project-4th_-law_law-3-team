@@ -183,5 +183,5 @@ userdic: 37,366개 (DB 유효 범위 37,465 + 괄호 변형 파생어 - 중복 �
 
 ## 7. 이전 분석 문서
 
-- `docs/LEGAL_TERMS_MECAB_ANALYSIS.md` - 법률 용어 사전 데이터 품질 + MeCab 분해 분석
-- `docs/LEGAL_TERMS_DATA_QUALITY_ANALYSIS.md` - [DONE]lawterms.json 데이터 품질 분석
+- `docs/tokenizer/LEGAL_TERMS_MECAB_ANALYSIS.md` - 법률 용어 사전 데이터 품질 + MeCab 분해 분석
+- `docs/data/LEGAL_TERMS_DATA_QUALITY_ANALYSIS.md` - [DONE]lawterms.json 데이터 품질 분석

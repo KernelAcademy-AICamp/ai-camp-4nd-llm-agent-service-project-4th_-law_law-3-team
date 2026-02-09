@@ -2,7 +2,7 @@
 
 > 분석 일시: 2026-02-09
 > 대상: userdic 35,196개 용어 (cost=100 균일)
-> 관련 문서: `docs/MECAB_USERDIC_TEST_REPORT.md`
+> 관련 문서: `docs/tokenizer/MECAB_USERDIC_TEST_REPORT.md`
 
 ---
 

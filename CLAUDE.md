@@ -276,9 +276,9 @@ backend/notebooks/
 | 법령 | 5,841건 | 118,922개 |
 
 ### 관련 문서
-- `docs/vectordb_design.md` - 벡터 DB 설계
+- `docs/architecture/vectordb_design.md` - 벡터 DB 설계
 - `backend/scripts/CLAUDE.md` - 임베딩 스크립트 가이드
-- `docs/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
+- `docs/devlog/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
 
 ## Embedding Model (임베딩 모델)
 
@@ -506,12 +506,12 @@ uv run python scripts/load_legal_terms_data.py --verify  # 검증
 |------|------|
 | 전체 고유 용어 | ~72,700개 |
 | userdic 적재 | ~37,366개 |
-| 유효 커버리지 | ≥99% (괄호 변형 포함, 상세: `docs/USERDIC_COVERAGE_ANALYSIS.md`) |
+| 유효 커버리지 | ≥99% (괄호 변형 포함, 상세: `docs/tokenizer/USERDIC_COVERAGE_ANALYSIS.md`) |
 | 사전유형 | 법령정의사전 + 법령한영사전 + 생활용어사전 + 한영역추출 |
 
 > **참고**: `[DONE]lawterms.json` (81,488 레코드) 기반. 리스트 평탄화 + 한영사전 역추출 포함.
 > 72,700개 중 35,234개(48.5%)는 MeCab userdic 대상 외 (순수 비한글 12,985 + 공백 포함 22,249).
-> 상세 분석: `docs/USERDIC_COVERAGE_ANALYSIS.md`
+> 상세 분석: `docs/tokenizer/USERDIC_COVERAGE_ANALYSIS.md`
 
 ### MeCab userdic (사용자 사전)
 

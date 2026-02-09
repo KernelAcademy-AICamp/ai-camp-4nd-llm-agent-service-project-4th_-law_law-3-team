@@ -2,7 +2,7 @@
 
 > 테스트 일시: 2026-02-09
 > 대상: userdic 33,981개 용어 (3자 이상 31,422개)
-> 관련 문서: `docs/MECAB_USERDIC_VITERBI_ANALYSIS.md`
+> 관련 문서: `docs/tokenizer/MECAB_USERDIC_VITERBI_ANALYSIS.md`
 
 ---
 

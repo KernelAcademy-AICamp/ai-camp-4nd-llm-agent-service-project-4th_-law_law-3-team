@@ -351,8 +351,8 @@ for _, row in results.iterrows():
 
 ## 관련 문서
 
-- `docs/vectordb_design.md` - 전체 설계 문서
-- `docs/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
+- `docs/architecture/vectordb_design.md` - 전체 설계 문서
+- `docs/devlog/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
 - `notebooks/runpod_lancedb_embeddings.ipynb` - RunPod 노트북
 - `notebooks/colab_lancedb_embeddings.ipynb` - Colab 노트북
 

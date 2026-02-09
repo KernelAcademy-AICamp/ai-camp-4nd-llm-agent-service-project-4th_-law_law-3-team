@@ -44,10 +44,10 @@ git diff --name-only HEAD~1
 
 | 문서 | 경로 | 업데이트 트리거 |
 |------|------|----------------|
-| DB 아키텍처 | `docs/DB_ARCHITECTURE.md` | 테이블 추가/삭제, 스키마 변경, 인덱스 변경 |
-| 데이터 카탈로그 | `docs/DATA_CATALOG.md` | 새 데이터 소스 추가, 데이터 구조 변경 |
-| 벡터DB 설계 | `docs/vectordb_design.md` | LanceDB 스키마/임베딩 변경 |
-| 배포 비용 | `docs/DEPLOYMENT_COST_ESTIMATION.md` | 인프라/서비스 구성 변경 |
+| DB 아키텍처 | `docs/architecture/DB_ARCHITECTURE.md` | 테이블 추가/삭제, 스키마 변경, 인덱스 변경 |
+| 데이터 카탈로그 | `docs/data/DATA_CATALOG.md` | 새 데이터 소스 추가, 데이터 구조 변경 |
+| 벡터DB 설계 | `docs/architecture/vectordb_design.md` | LanceDB 스키마/임베딩 변경 |
+| 배포 비용 | `docs/infrastructure/DEPLOYMENT_COST_ESTIMATION.md` | 인프라/서비스 구성 변경 |
 
 > **날짜 접미사 문서** (`*_20260120.md` 등)는 히스토리 기록이므로 업데이트 대상이 아님.
 > 새로운 변경이 필요하면 새 날짜로 문서를 생성.
@@ -69,8 +69,8 @@ git diff --name-only HEAD~1
 ─────────────────────────────────────────────────────────────
 backend/app/models/*.py                 → backend/CLAUDE.md (모델 파일 위치, 테이블 구조)
                                           CLAUDE.md (관련 섹션 있으면)
-                                          docs/DB_ARCHITECTURE.md
-                                          docs/DATA_CATALOG.md
+                                          docs/architecture/DB_ARCHITECTURE.md
+                                          docs/data/DATA_CATALOG.md
 
 backend/alembic/versions/*.py           → backend/CLAUDE.md (마이그레이션 섹션)
 
@@ -178,7 +178,7 @@ AGENTS.md가 아직 없습니다. Codex 등 범용 AI 에이전트를 위해 생
 | CLAUDE.md | [변경 설명] | ✅ 업데이트 |
 | backend/CLAUDE.md | [변경 설명] | ✅ 업데이트 |
 | AGENTS.md | [변경 설명] | ✅ 업데이트 / ⚠️ 파일 없음 |
-| docs/DB_ARCHITECTURE.md | 변경 사항 없음 | ⏭️ 스킵 |
+| docs/architecture/DB_ARCHITECTURE.md | 변경 사항 없음 | ⏭️ 스킵 |
 | ... | ... | ... |
 ```
 
