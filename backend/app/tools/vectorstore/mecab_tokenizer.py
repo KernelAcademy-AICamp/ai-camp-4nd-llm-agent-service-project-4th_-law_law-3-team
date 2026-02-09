@@ -160,19 +160,22 @@ class MeCabTokenizer:
 
     def _augment_with_legal_terms(
         self,
-        text: str,
+        text: str,  # noqa: ARG002
         base_morphs: list[str],
     ) -> list[str]:
         """
         MeCab 결과에 법률 복합명사 추가 토큰 삽입
 
         전략:
-        1. 원본 텍스트에서 법률 용어 사전 매칭
+        1. 형태소 경계 기반으로 연속 형태소를 결합하여 법률 용어 매칭
         2. MeCab이 이미 분해한 형태소에 없는 복합명사만 추가
         3. base_morphs 뒤에 추가 토큰 append
 
+        형태소 경계를 존중하므로 "매수인" 안에서 "수인"을 잘못
+        매칭하는 오탐을 방지한다.
+
         Args:
-            text: 원본 텍스트
+            text: 원본 텍스트 (미사용, 인터페이스 호환용)
             base_morphs: MeCab 분해 결과
 
         Returns:
@@ -180,7 +183,7 @@ class MeCabTokenizer:
         """
         assert self._legal_dict is not None  # noqa: S101
 
-        legal_terms = self._legal_dict.find_terms_in_text(text)
+        legal_terms = self._legal_dict.find_terms_in_morphs(base_morphs)
         if not legal_terms:
             return base_morphs
 

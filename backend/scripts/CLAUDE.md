@@ -8,6 +8,7 @@
 |----------|------|
 | `runpod_lancedb_embeddings.py` | 메인 임베딩 스크립트 (RunPod/클라우드 GPU) |
 | `local_lancedb_embeddings.py` | 로컬 임베딩 스크립트 (멀티 하드웨어 지원) |
+| `update_content_tokenized.py` | content_tokenized 컬럼만 업데이트 (벡터 유지) |
 | `colab_lancedb_embeddings.py` | Google Colab 전용 |
 | `test_precedent_embedding.py` | 임베딩 테스트 |
 
@@ -359,7 +360,8 @@ for _, row in results.iterrows():
 
 ## 법률 용어 PostgreSQL 로드 (load_legal_terms_data.py)
 
-`data/law_data/lawterms_full.json` (36,797건)을 PostgreSQL `legal_terms` 테이블로 로드합니다.
+`[DONE]lawterms.json` (81,488건 → ~72,700 고유 용어)을 PostgreSQL `legal_terms` 테이블로 로드합니다.
+fallback: `data/law_data/lawterms_full.json` (37,169건)
 MeCab 토크나이저에서 법률 복합명사를 보강하기 위한 용어 사전 데이터입니다.
 
 ### 사전 조건
@@ -390,11 +392,13 @@ uv run python scripts/load_legal_terms_data.py --stats
 
 ### 주요 동작
 
-1. `data/law_data/lawterms_full.json` 읽기
-2. 각 레코드에서 `term_length`, `is_korean_only` 자동 계산
-3. `ON CONFLICT (term) DO UPDATE`로 멱등성 보장
-4. 1,000건 단위 배치 insert
-5. 로드 후 통계 출력 (총 건수, 한글 전용 비율, 길이 분포)
+1. `[DONE]lawterms.json` 로드 (fallback: `lawterms_full.json`)
+2. 리스트 타입 레코드 평탄화 (flatten)
+3. 법령한영사전 역방향 한글 용어 추출 (reverse extraction)
+4. 우선순위 기반 중복 제거 + `source_count` 집계
+5. `ON CONFLICT (term) DO UPDATE`로 멱등성 보장
+6. 1,000건 단위 배치 insert
+7. 로드 후 통계 출력 (총 건수, 한글 전용 비율, 길이 분포, 제외 통계)
 
 ### 환경 변수
 
@@ -408,10 +412,10 @@ USE_LEGAL_TERM_DICT=true  # 앱에서 사전 사용 활성화
 
 | 항목 | 수치 |
 |------|------|
-| 총 엔트리 | 36,797개 |
-| 고유 용어 | 36,797개 |
-| 한글 전용 (2-10자) | 33,430개 (MeCab 로드 대상) |
-| 추후 확대 예정 | ~73,000개+ |
+| 원본 레코드 | 81,488건 ([DONE]lawterms.json) |
+| 고유 용어 | ~72,700개 (평탄화+역추출 포함) |
+| 한글 전용 (2-10자) | ~35,200개 (MeCab 로드 대상) |
+| 사전유형 | 법령정의사전, 생활용어사전, 법령한영사전, 법령용어사전, 한영역추출 |
 
 ---
 

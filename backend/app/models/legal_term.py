@@ -21,8 +21,10 @@ from sqlalchemy import (
 
 from app.core.database import Base
 
-# 한글 전용 여부 판단 정규식 (한글 + 공백만 허용)
-_KOREAN_ONLY_PATTERN = re.compile(r"^[가-힣\s]+$")
+# 한글 전용 여부 판단 정규식 (한글만 허용, 공백 제외)
+# 공백 제외 이유: find_terms_in_morphs()가 형태소를 공백 없이 연결하므로
+# 공백 포함 용어는 매칭 불가
+_KOREAN_ONLY_PATTERN = re.compile(r"^[가-힣]+$")
 
 
 class LegalTerm(Base):
@@ -66,6 +68,10 @@ class LegalTerm(Base):
     priority = Column(
         Integer, nullable=False, default=0,
         comment="토크나이저 로드 우선순위 (높을수록 우선)",
+    )
+    source_count = Column(
+        Integer, nullable=False, default=1,
+        comment="동일 용어 출처 법령 수",
     )
 
     # 타임스탬프
@@ -111,12 +117,18 @@ class LegalTerm(Base):
 
         기준:
         - 법령정의사전 +10
-        - 한글 전용 +5
-        - 2~10자 길이 +3
+        - 한영역추출   +8
+        - 생활용어사전 +6
+        - 한글 전용    +5
+        - 2~10자 길이  +3
         """
         priority = 0
         if source_code == "법령정의사전":
             priority += 10
+        elif source_code == "한영역추출":
+            priority += 8
+        elif source_code == "생활용어사전":
+            priority += 6
         if is_korean_only:
             priority += 5
         if 2 <= term_length <= 10:

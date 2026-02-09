@@ -495,7 +495,7 @@ app/models/
 | `law_documents` | 법령 원본 | law_id, law_name, content, raw_data |
 | `precedent_documents` | 판례 원본 | serial_number, case_name, ruling, reasoning |
 | `lawyers` | 변호사 정보 (17,326건) | name, address, specialties(ARRAY), latitude, longitude, region |
-| `legal_terms` | 법률 용어 사전 (36,797건) | term(UNIQUE), definition, source_code, term_length, is_korean_only |
+| `legal_terms` | 법률 용어 사전 (~72,700건) | term(UNIQUE), definition, source_code, source_count, term_length, is_korean_only |
 | `trial_statistics` | 재판 통계 | category, court_name, court_type, parent_court, year, case_count |
 
 ### 변호사 데이터 (lawyers 테이블)
@@ -537,8 +537,8 @@ uv run python scripts/load_legal_terms_data.py --verify  # 검증
 3. 예: "손해배상청구" → MeCab ["손해","배상","청구"] + 사전 ["손해배상","손해배상청구"]
 
 **데이터 현황:**
-- 총 엔트리: 36,797개 (lawterms_full.json 기준, 추후 ~73K+ 확대 예정)
-- 필터 후 로드: 33,430개 (한글 전용 + 2-10자)
+- 총 엔트리: ~72,700개 ([DONE]lawterms.json 기반, 평탄화 + 역추출 포함)
+- 필터 후 로드: ~35,200개 (한글 전용 + 2-10자)
 
 **주요 인덱스:**
 - `idx_legal_terms_term`: term UNIQUE - 용어 조회

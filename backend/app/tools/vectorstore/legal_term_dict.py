@@ -24,8 +24,8 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# 한글 전용 판별 패턴
-_KOREAN_ONLY_PATTERN = re.compile(r"^[가-힣\s]+$")
+# 한글 전용 판별 패턴 (공백 제외: 형태소 결합 시 공백 없이 연결)
+_KOREAN_ONLY_PATTERN = re.compile(r"^[가-힣]+$")
 
 # 기본 필터: 토크나이저에 로드할 용어 조건
 DEFAULT_MIN_LENGTH = 2
@@ -186,10 +186,13 @@ class LegalTermDictionary:
 
     def find_terms_in_text(self, text: str) -> list[str]:
         """
-        텍스트에서 사전에 존재하는 법률 용어 탐지
+        텍스트에서 사전에 존재하는 법률 용어 탐지 (raw substring 매칭)
 
         sliding window: 각 위치에서 max_len → min_len 순서로 부분문자열 검사.
         longest match 우선, 중복 제거.
+
+        주의: 단어 경계를 무시하므로 오탐 가능 ("매수인" → "수인" 매칭).
+        MeCab 토크나이저에서는 find_terms_in_morphs()를 사용할 것.
 
         성능: O(n * max_term_length) ≈ O(n * 10)
 
@@ -214,6 +217,55 @@ class LegalTermDictionary:
                 if substr in self._terms and substr not in seen:
                     found.append(substr)
                     seen.add(substr)
+
+        return found
+
+    def find_terms_in_morphs(
+        self,
+        morphs: list[str],
+        min_combine_len: int = 3,
+    ) -> list[str]:
+        """
+        형태소 경계를 기반으로 법률 용어 탐지
+
+        연속 형태소를 결합하여 사전 매칭. 형태소 경계를 존중하므로
+        "매수인" 안에서 "수인"을 잘못 매칭하는 오탐을 방지.
+
+        min_combine_len=3으로 2글자 조합(1글자 조사끼리 결합)을 제외하여
+        "상"+"의"→"상의", "고"+"도"→"고도" 같은 오탐도 방지.
+
+        예시:
+            morphs = ["손해", "배상", "청구"]
+            → 결합 후보: "손해배상"(4), "손해배상청구"(6), "배상청구"(4)
+            → 사전 매칭된 것만 반환
+
+        Args:
+            morphs: MeCab 형태소 리스트
+            min_combine_len: 연속 형태소 결합 시 최소 글자 수 (기본 3)
+
+        Returns:
+            발견된 법률 용어 리스트 (중복 제거, 발견 순서)
+        """
+        if not self._terms or not morphs:
+            return []
+
+        found: list[str] = []
+        seen: set[str] = set()
+        n = len(morphs)
+
+        for i in range(n):
+            combined = ""
+            for j in range(i, n):
+                combined += morphs[j]
+                if len(combined) > self._max_len:
+                    break
+                if (
+                    len(combined) >= min_combine_len
+                    and combined in self._terms
+                    and combined not in seen
+                ):
+                    found.append(combined)
+                    seen.add(combined)
 
         return found
 

@@ -125,6 +125,93 @@ class TestFindTermsInText:
 
 
 # ============================================================================
+# find_terms_in_morphs 테스트 (형태소 경계 기반)
+# ============================================================================
+
+
+class TestFindTermsInMorphs:
+    """형태소 경계 기반 법률 용어 탐지"""
+
+    @pytest.fixture
+    def legal_dict(self) -> LegalTermDictionary:
+        d = LegalTermDictionary()
+        d.load_from_terms({
+            "손해배상",
+            "손해배상청구",
+            "배상청구",
+            "소멸시효",
+            "불법행위",
+            "상의",     # 오탐 유발 가능 용어
+            "수인",     # 오탐 유발 가능 용어
+            "고도",     # 오탐 유발 가능 용어
+            "중도금",
+            "지급의무",
+        })
+        return d
+
+    def test_combines_consecutive_morphs(
+        self, legal_dict: LegalTermDictionary,
+    ) -> None:
+        """연속 형태소 결합으로 복합명사 탐지"""
+        morphs = ["손해", "배상", "청구"]
+        result = legal_dict.find_terms_in_morphs(morphs)
+        assert "손해배상" in result
+        assert "손해배상청구" in result
+        assert "배상청구" in result
+
+    def test_no_false_positive_substring(
+        self, legal_dict: LegalTermDictionary,
+    ) -> None:
+        """형태소 경계를 존중하여 substring 오탐 방지"""
+        # MeCab: "매수인" → 단일 형태소, "수인"은 추출 불가
+        morphs = ["매수", "인", "의", "중도", "금"]
+        result = legal_dict.find_terms_in_morphs(morphs)
+        assert "수인" not in result
+        assert "중도금" in result
+
+    def test_no_short_particle_combination(
+        self, legal_dict: LegalTermDictionary,
+    ) -> None:
+        """1글자 조사끼리 결합된 2글자 오탐 방지 (min_combine_len=3)"""
+        # "관리"+"상"+"의" → "상의" 오탐 방지
+        morphs = ["관리", "상", "의", "잘못"]
+        result = legal_dict.find_terms_in_morphs(morphs)
+        assert "상의" not in result
+
+        # "하"+"고"+"도" → "고도" 오탐 방지
+        morphs2 = ["중대", "하", "고", "도"]
+        result2 = legal_dict.find_terms_in_morphs(morphs2)
+        assert "고도" not in result2
+
+    def test_empty_morphs(self, legal_dict: LegalTermDictionary) -> None:
+        """빈 형태소 리스트"""
+        assert legal_dict.find_terms_in_morphs([]) == []
+
+    def test_empty_dict(self) -> None:
+        """빈 사전에서 검색"""
+        d = LegalTermDictionary()
+        assert d.find_terms_in_morphs(["손해", "배상"]) == []
+
+    def test_no_duplicates(self, legal_dict: LegalTermDictionary) -> None:
+        """동일 용어 중복 방지"""
+        morphs = ["손해", "배상", "과", "손해", "배상"]
+        result = legal_dict.find_terms_in_morphs(morphs)
+        assert result.count("손해배상") == 1
+
+    def test_custom_min_combine_len(
+        self, legal_dict: LegalTermDictionary,
+    ) -> None:
+        """min_combine_len 파라미터로 최소 길이 조절"""
+        morphs = ["관리", "상", "의"]
+        # min_combine_len=2면 "상의" 매칭됨
+        result = legal_dict.find_terms_in_morphs(morphs, min_combine_len=2)
+        assert "상의" in result
+        # min_combine_len=3이면 "상의" 매칭 안 됨 (기본값)
+        result2 = legal_dict.find_terms_in_morphs(morphs, min_combine_len=3)
+        assert "상의" not in result2
+
+
+# ============================================================================
 # JSON 로드 테스트
 # ============================================================================
 
@@ -175,6 +262,26 @@ class TestLoadFromJson:
         assert d.contains("손해배상") is True
         assert d.contains("소멸시효") is True
         assert d.contains("ABC Corp") is False
+
+    def test_load_space_term_excluded(self, tmp_path: Path) -> None:
+        """공백 포함 한글 용어는 korean_only 필터에서 제외"""
+        data = [
+            {"법령용어명_한글": "상속 승인", "법령용어코드명": "법령정의사전"},
+            {"법령용어명_한글": "공동 상속인", "법령용어코드명": "법령정의사전"},
+            {"법령용어명_한글": "손해배상", "법령용어코드명": "법령정의사전"},
+        ]
+
+        json_path = tmp_path / "lawterms.json"
+        json_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+        d = LegalTermDictionary()
+        count = d.load_from_json(json_path)
+
+        # 공백 포함 용어는 제외됨 (형태소 결합 시 매칭 불가하므로)
+        assert count == 1
+        assert d.contains("손해배상") is True
+        assert d.contains("상속 승인") is False
+        assert d.contains("공동 상속인") is False
 
     def test_load_with_source_filter(self, tmp_path: Path) -> None:
         """사전유형 필터링"""

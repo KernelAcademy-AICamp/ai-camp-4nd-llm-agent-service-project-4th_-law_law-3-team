@@ -159,18 +159,22 @@ class TestLegalTermAugmentation:
     def test_augmentation_adds_legal_terms(
         self, legal_dict: LegalTermDictionary,
     ) -> None:
-        """법률 용어 보강: 추가 토큰 삽입"""
+        """법률 용어 보강: 연속 형태소 결합으로 복합명사 추가"""
         tokenizer = MeCabTokenizer(legal_dict=legal_dict)
         tokenizer._tagger = None  # fallback으로 공백 분리
 
-        # "손해배상청구" → fallback이므로 ["손해배상청구"]
-        # 사전 매칭: "손해배상청구", "손해배상" 발견
+        # fallback에서는 형태소 경계가 공백이므로
+        # "손해배상청구"는 하나의 토큰 → 내부 substring 매칭 안 함
         result = tokenizer.morphs("손해배상청구")
-        # base: ["손해배상청구"] (공백 분리 결과)
-        # additional: "손해배상" (base에 없는 것)
-        # "손해배상청구"는 이미 base에 있으므로 추가 안 됨
         assert "손해배상청구" in result
-        assert "손해배상" in result
+
+        # 공백으로 분리된 토큰 결합은 가능
+        result2 = tokenizer.morphs("손해 배상 청구")
+        assert "손해" in result2
+        assert "배상" in result2
+        # "손해"+"배상" 결합 → "손해배상" (사전에 있으면 추가)
+        if legal_dict.contains("손해배상"):
+            assert "손해배상" in result2
 
     def test_augmentation_no_duplicates(
         self, legal_dict: LegalTermDictionary,
@@ -191,11 +195,13 @@ class TestLegalTermAugmentation:
         tokenizer = MeCabTokenizer(legal_dict=legal_dict)
         tokenizer._tagger = None
 
+        # fallback: "손해배상청구의 소멸시효" → ["손해배상청구의", "소멸시효"]
         result = tokenizer.tokenize("손해배상청구의 소멸시효")
         assert isinstance(result, str)
-        # "손해배상"이 추가 토큰으로 포함되어야 함
         tokens = result.split()
-        assert "손해배상" in tokens
+        # fallback에서는 공백 기준 토큰만 존재
+        assert "손해배상청구의" in tokens
+        assert "소멸시효" in tokens
 
     @pytest.mark.requires_mecab
     def test_augmentation_with_real_mecab(
@@ -211,4 +217,45 @@ class TestLegalTermAugmentation:
         # 사전 보강으로 "손해배상", "손해배상청구", "소멸시효" 등 추가
         assert "손해" in result or "손해배상" in result
         # 법률 복합명사가 추가되었는지 확인
+        assert "손해배상" in result
+
+
+class TestReverseExtractionTerms:
+    """한영사전 역추출 용어 보강 테스트"""
+
+    @pytest.fixture
+    def reverse_dict(self) -> LegalTermDictionary:
+        """역추출 핵심 용어를 포함한 사전"""
+        d = LegalTermDictionary()
+        d.load_from_terms({
+            "손해배상",
+            "불법행위",
+            "채무불이행",
+            "소멸시효",
+            "부당이득",
+        })
+        return d
+
+    def test_reverse_terms_in_augmentation(
+        self, reverse_dict: LegalTermDictionary,
+    ) -> None:
+        """역추출 핵심 용어가 형태소 보강에 활용됨"""
+        tokenizer = MeCabTokenizer(legal_dict=reverse_dict)
+        tokenizer._tagger = None  # fallback 모드
+
+        # fallback: 공백 기준 분리 → 결합 매칭
+        result = tokenizer.morphs("채무 불이행 의")
+        assert "채무불이행" in result
+
+    @pytest.mark.requires_mecab
+    def test_reverse_terms_with_real_mecab(
+        self, reverse_dict: LegalTermDictionary,
+    ) -> None:
+        """MeCab + 역추출 용어 통합"""
+        tokenizer = MeCabTokenizer(legal_dict=reverse_dict)
+        if not tokenizer.is_available:
+            pytest.skip("MeCab이 설치되지 않았습니다")
+
+        result = tokenizer.morphs("불법행위로 인한 손해배상")
+        assert "불법행위" in result
         assert "손해배상" in result
