@@ -91,6 +91,36 @@ export function useWizardState(): UseWizardStateReturn {
     }
   }, [])
 
+  // 챗봇에서 상태 변경 시 UI 동기화
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handleWizardStateChange = (e: CustomEvent) => {
+      const newState = e.detail
+      if (newState?.chatUpdated) {
+        // 챗봇에서 분쟁 유형 설정 시 UI 업데이트
+        if (newState.chatDisputeType && newState.chatDisputeType !== disputeType) {
+          setDisputeTypeState(newState.chatDisputeType)
+          setCheckedEvidence(new Set())
+          setGeneratedDocument(null)
+        }
+        // 챗봇에서 단계 변경 시 UI 업데이트
+        if (newState.currentStep && newState.currentStep !== currentStep) {
+          setCurrentStep(newState.currentStep)
+        }
+        // 챗봇에서 청구 금액 설정 시 caseInfo 업데이트
+        if (newState.chatClaimAmount) {
+          setCaseInfo((prev) => ({ ...prev, amount: newState.chatClaimAmount }))
+        }
+      }
+    }
+
+    window.addEventListener('wizardStateChange', handleWizardStateChange as EventListener)
+    return () => {
+      window.removeEventListener('wizardStateChange', handleWizardStateChange as EventListener)
+    }
+  }, [currentStep, disputeType])
+
   // Save state to sessionStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {

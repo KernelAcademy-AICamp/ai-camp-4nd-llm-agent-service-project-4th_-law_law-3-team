@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
 import { useStreamingChat } from '@/hooks/useStreamingChat'
+import { useSmallClaimsSync } from '@/hooks/useSmallClaimsSync'
 import { api } from '@/lib/api'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
@@ -233,6 +234,9 @@ export default function ChatWidget() {
     setHighlightedCaseNumber,
   } = useChat()
 
+  // 소액소송 UI 동기화 훅
+  const { setChatDisputeType, setChatClaimAmount, setChatStep } = useSmallClaimsSync()
+
   // Determine if we are on pages that support floating mode
   const isMapPage = pathname === '/lawyer-finder'
   const supportsFloatingMode = FLOATING_MODE_PATHS.has(pathname)
@@ -452,6 +456,24 @@ export default function ChatWidget() {
             agentUsed = metadata.agent_used
             receivedActions = metadata.actions
             receivedSessionData = metadata.session_data
+            
+            // 소액소송 에이전트 응답 시 UI 동기화
+            if (metadata.agent_used === 'small_claims' && metadata.session_data) {
+              const sessionDataTyped = metadata.session_data as Record<string, unknown>
+              // 분쟁 유형 동기화
+              if (sessionDataTyped.dispute_type) {
+                setChatDisputeType(sessionDataTyped.dispute_type as string)
+              }
+              // 청구 금액 동기화
+              if (sessionDataTyped.claim_amount) {
+                setChatClaimAmount(sessionDataTyped.claim_amount as number)
+              }
+              // 현재 단계 동기화
+              if (sessionDataTyped.step) {
+                setChatStep(sessionDataTyped.step as string)
+              }
+            }
+            
             // 메타데이터 업데이트
             setMessages((prev) =>
               prev.map((msg) =>
