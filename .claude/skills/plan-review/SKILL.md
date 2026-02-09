@@ -116,7 +116,7 @@ $(cat /tmp/plan_review_context.md)
 
 **Codex CLI** (실행가능성/정밀성 관점):
 ```bash
-codex --full-auto "당신은 시니어 개발자입니다. 다음 구현 플랜의 실행가능성을 검토해주세요.
+codex exec --full-auto "당신은 시니어 개발자입니다. 다음 구현 플랜의 실행가능성을 검토해주세요.
 
 검토 관점:
 1. 구현 순서의 논리적 정확성

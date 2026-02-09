@@ -111,7 +111,7 @@ fi
 
 if [[ "$CODEX_OK" == true ]]; then
   (
-    REVIEW=$(codex --full-auto "$CODEX_PROMPT" 2>&1) || REVIEW="[오류] Codex CLI 실행 실패: $?"
+    REVIEW=$(codex exec --full-auto "$CODEX_PROMPT" 2>&1) || REVIEW="[오류] Codex CLI 실행 실패: $?"
     {
       echo "## Codex CLI 리뷰 (실행가능성)"
       echo ""
