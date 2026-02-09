@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from "react-simple-maps"
 import type { PredictionYear, ViewMode } from "@/app/lawyer-stats/page"
-import type { DensityStat, RegionStat } from "../types"
+import type { DemandStat, DensityStat, RegionStat } from "../types"
 
 // GeoJSON path (Nationwide)
 const GEO_URL = "/data/korea_geo.json"
@@ -30,7 +30,7 @@ const PROVINCE_PREFIX_MAP: Record<string, string> = {
 }
 
 interface Props {
-  data: (RegionStat | DensityStat)[]
+  data: (RegionStat | DensityStat | DemandStat)[]
   viewMode: ViewMode
   predictionYear?: PredictionYear
   selectedProvince?: string | null
@@ -100,6 +100,10 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
     density?: number
     count: number
     changePercent?: number
+    caseCount?: number
+    lawyerCount?: number
+    burdenIndex?: number
+    courtName?: string
   } | null>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
@@ -115,12 +119,19 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
 
   // 1. Create a map of "Full Region Name" -> region data
   const regionDataMap = useMemo(() => {
-    const map = new Map<string, { count: number; density?: number; changePercent?: number }>()
+    const map = new Map<string, {
+      count: number; density?: number; changePercent?: number
+      caseCount?: number; lawyerCount?: number; burdenIndex?: number; courtName?: string
+    }>()
     data.forEach((d) => {
       map.set(d.region, {
-        count: d.count,
-        density: 'density' in d ? d.density : undefined,
-        changePercent: 'change_percent' in d ? d.change_percent : undefined,
+        count: 'count' in d ? (d as RegionStat).count : 0,
+        density: 'density' in d ? (d as DensityStat).density : undefined,
+        changePercent: 'change_percent' in d ? (d as DensityStat).change_percent : undefined,
+        caseCount: 'case_count' in d ? (d as DemandStat).case_count : undefined,
+        lawyerCount: 'lawyer_count' in d ? (d as DemandStat).lawyer_count : undefined,
+        burdenIndex: 'burden_index' in d ? (d as DemandStat).burden_index : undefined,
+        courtName: 'court_name' in d ? (d as DemandStat).court_name : undefined,
       })
     })
     return map
@@ -131,10 +142,14 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
     const map = new Map<string, number>()
     const useDensity = viewMode === 'density' || viewMode === 'prediction'
     data.forEach((d) => {
-      if (useDensity && 'density' in d) {
-        map.set(d.region, d.density)
-      } else {
-        map.set(d.region, d.count)
+      if (viewMode === 'burden_index' && 'burden_index' in d) {
+        map.set(d.region, (d as DemandStat).burden_index)
+      } else if (viewMode === 'case_count' && 'case_count' in d) {
+        map.set(d.region, (d as DemandStat).case_count)
+      } else if (useDensity && 'density' in d) {
+        map.set(d.region, (d as DensityStat).density)
+      } else if ('count' in d) {
+        map.set(d.region, (d as RegionStat).count)
       }
     })
     return map
@@ -169,13 +184,37 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
     { min: 0, max: 1, color: "#EDE9FE" },           // 1명 미만 - violet-100
   ]
 
+  // Color Scale - case_count mode (앰버 그라데이션 - 6단계)
+  const CASE_COUNT_COLOR_RANGES = [
+    { min: 50000, max: Infinity, color: "#78350F" },  // 5만건 이상 - amber-900
+    { min: 20000, max: 50000, color: "#92400E" },     // 2~5만건 - amber-800
+    { min: 10000, max: 20000, color: "#B45309" },     // 1~2만건 - amber-700
+    { min: 5000, max: 10000, color: "#D97706" },      // 5천~1만건 - amber-600
+    { min: 1000, max: 5000, color: "#F59E0B" },       // 1~5천건 - amber-500
+    { min: 0, max: 1000, color: "#FCD34D" },          // 1천건 미만 - amber-300
+  ]
+
+  // Color Scale - burden_index mode (로즈 그라데이션 - 6단계)
+  const BURDEN_COLOR_RANGES = [
+    { min: 100, max: Infinity, color: "#881337" },  // 100 이상 - rose-900
+    { min: 50, max: 100, color: "#BE123C" },        // 50~100 - rose-700
+    { min: 20, max: 50, color: "#E11D48" },         // 20~50 - rose-600
+    { min: 10, max: 20, color: "#FB7185" },         // 10~20 - rose-400
+    { min: 5, max: 10, color: "#FDA4AF" },          // 5~10 - rose-300
+    { min: 0, max: 5, color: "#FFE4E6" },           // 5 미만 - rose-100
+  ]
+
   const colorScale = (value: number) => {
     if (value === 0) return "#ffffff"
-    const ranges = viewMode === 'prediction'
-      ? PREDICTION_COLOR_RANGES
-      : viewMode === 'density'
-        ? DENSITY_COLOR_RANGES
-        : COUNT_COLOR_RANGES
+    const ranges = viewMode === 'case_count'
+      ? CASE_COUNT_COLOR_RANGES
+      : viewMode === 'burden_index'
+        ? BURDEN_COLOR_RANGES
+        : viewMode === 'prediction'
+          ? PREDICTION_COLOR_RANGES
+          : viewMode === 'density'
+            ? DENSITY_COLOR_RANGES
+            : COUNT_COLOR_RANGES
     for (const range of ranges) {
       if (value >= range.min && value < range.max) {
         return range.color
@@ -218,6 +257,10 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
       density: regionData?.density,
       count: regionData?.count ?? 0,
       changePercent: regionData?.changePercent,
+      caseCount: regionData?.caseCount,
+      lawyerCount: regionData?.lawyerCount,
+      burdenIndex: regionData?.burdenIndex,
+      courtName: regionData?.courtName,
     })
     const e = event.nativeEvent || event
     setTooltipPos({ x: e.clientX, y: e.clientY })
@@ -244,7 +287,27 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
           style={{ left: tooltipPos.x + 15, top: tooltipPos.y + 15 }}
         >
           <div className="font-medium">{tooltipContent.region}</div>
-          {viewMode === 'prediction' && tooltipContent.density !== undefined ? (
+          {viewMode === 'case_count' && tooltipContent.caseCount !== undefined ? (
+            <>
+              <div>사건 수: {tooltipContent.caseCount.toLocaleString()}건</div>
+              {tooltipContent.courtName && (
+                <div className="text-gray-300">관할: {tooltipContent.courtName}</div>
+              )}
+              {tooltipContent.lawyerCount !== undefined && (
+                <div className="text-gray-300">변호사: {tooltipContent.lawyerCount.toLocaleString()}명</div>
+              )}
+            </>
+          ) : viewMode === 'burden_index' && tooltipContent.burdenIndex !== undefined ? (
+            <>
+              <div>부담지수: {tooltipContent.burdenIndex.toFixed(1)}</div>
+              {tooltipContent.courtName && (
+                <div className="text-gray-300">관할: {tooltipContent.courtName}</div>
+              )}
+              <div className="text-gray-300">
+                사건 {tooltipContent.caseCount?.toLocaleString() ?? 0}건 / 변호사 {tooltipContent.lawyerCount?.toLocaleString() ?? 0}명
+              </div>
+            </>
+          ) : viewMode === 'prediction' && tooltipContent.density !== undefined ? (
             <div>
               {predictionYear} 예측: {tooltipContent.density.toFixed(1)}명 / 10만명
               {tooltipContent.changePercent !== undefined && (
@@ -386,7 +449,63 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
 
         {/* Legend */}
         <div className="flex flex-col gap-1 text-xs text-gray-600 bg-white/95 p-2.5 rounded-lg shadow-sm border border-gray-200">
-          {viewMode === 'count' ? (
+          {viewMode === 'case_count' ? (
+            <>
+              <div className="font-medium text-amber-700 mb-1">사건 접수 수</div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(50000) }}></div>
+                <span>5만건 이상</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(30000) }}></div>
+                <span>2 ~ 5만건</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(15000) }}></div>
+                <span>1 ~ 2만건</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(7000) }}></div>
+                <span>5천 ~ 1만건</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(3000) }}></div>
+                <span>1 ~ 5천건</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(500) }}></div>
+                <span>1천건 미만</span>
+              </div>
+            </>
+          ) : viewMode === 'burden_index' ? (
+            <>
+              <div className="font-medium text-rose-700 mb-1">부담지수 (사건/변호사)</div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(100) }}></div>
+                <span>100 이상</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(70) }}></div>
+                <span>50 ~ 100</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(30) }}></div>
+                <span>20 ~ 50</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(15) }}></div>
+                <span>10 ~ 20</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(7) }}></div>
+                <span>5 ~ 10</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorScale(2) }}></div>
+                <span>5 미만</span>
+              </div>
+            </>
+          ) : viewMode === 'count' ? (
             <>
               <div className="font-medium text-gray-700 mb-1">변호사 수</div>
               <div className="flex items-center gap-2">

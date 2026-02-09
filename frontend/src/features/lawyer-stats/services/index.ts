@@ -5,6 +5,7 @@
 import { api, endpoints } from '@/lib/api'
 import type {
   CrossAnalysisResponse,
+  DemandStatResponse,
   DensityStatResponse,
   OverviewResponse,
   RegionStatResponse,
@@ -60,6 +61,17 @@ export async function fetchCrossAnalysisByRegions(regions: string[]): Promise<Cr
   const response = await api.post<CrossAnalysisResponse>(
     `${endpoints.lawyerStat}/cross-analysis/regions`,
     { regions }
+  )
+  return response.data
+}
+
+export async function fetchDemandStats(
+  category: string = '민사',
+  year: number = 2024
+): Promise<DemandStatResponse> {
+  const response = await api.get<DemandStatResponse>(
+    `${endpoints.lawyerStat}/demand-by-region`,
+    { params: { category, year } }
   )
   return response.data
 }

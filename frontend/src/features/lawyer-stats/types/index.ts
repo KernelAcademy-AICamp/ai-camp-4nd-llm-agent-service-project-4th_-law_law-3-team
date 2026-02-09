@@ -64,3 +64,20 @@ export interface CrossAnalysisResponse {
   regions: string[]
   categories: string[]
 }
+
+// 수요 통계 타입
+export interface DemandStat {
+  region: string
+  case_count: number
+  lawyer_count: number
+  burden_index: number  // case_count / lawyer_count
+  court_name: string    // 관할법원명
+}
+
+export interface DemandStatResponse {
+  data: DemandStat[]
+  year: number
+  category: string
+  available_years: number[]
+  available_categories: string[]
+}

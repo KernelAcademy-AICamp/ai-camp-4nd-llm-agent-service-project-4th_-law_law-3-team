@@ -3,11 +3,11 @@
 import { useState, useEffect, useMemo, memo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { PredictionYear, ViewMode } from '@/app/lawyer-stats/page'
-import type { DensityStat, RegionStat, SpecialtyStat } from '../types'
+import type { DemandStat, DensityStat, RegionStat, SpecialtyStat } from '../types'
 import { fetchRegionSpecialties } from '../services'
 
 interface RegionDetailListProps {
-  regions: (RegionStat | DensityStat)[]
+  regions: (RegionStat | DensityStat | DemandStat)[]
   viewMode: ViewMode
   predictionYear?: PredictionYear
   selectedProvince: string | null
@@ -20,6 +20,8 @@ const VIEW_MODE_COLORS = {
   count: { bar: 'bg-blue-500', text: 'text-blue-600' },
   density: { bar: 'bg-emerald-500', text: 'text-emerald-600' },
   prediction: { bar: 'bg-violet-500', text: 'text-violet-600' },
+  case_count: { bar: 'bg-amber-500', text: 'text-amber-600' },
+  burden_index: { bar: 'bg-rose-500', text: 'text-rose-600' },
 } as const
 
 const SpecialtyItem = memo(function SpecialtyItem({ spec, maxCount }: { spec: SpecialtyStat; maxCount: number }) {
@@ -97,12 +99,22 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
   const sortedRegions = useMemo(() => {
     return [...filteredRegions].sort((a, b) => {
       const multiplier = sortOrder === 'desc' ? 1 : -1
+      if (viewMode === 'burden_index') {
+        const aVal = 'burden_index' in a ? (a as DemandStat).burden_index : 0
+        const bVal = 'burden_index' in b ? (b as DemandStat).burden_index : 0
+        return (bVal - aVal) * multiplier
+      }
+      if (viewMode === 'case_count') {
+        const aVal = 'case_count' in a ? (a as DemandStat).case_count : 0
+        const bVal = 'case_count' in b ? (b as DemandStat).case_count : 0
+        return (bVal - aVal) * multiplier
+      }
       if (viewMode === 'density' || viewMode === 'prediction') {
-        const aDensity = 'density' in a ? a.density : 0
-        const bDensity = 'density' in b ? b.density : 0
+        const aDensity = 'density' in a ? (a as DensityStat).density : 0
+        const bDensity = 'density' in b ? (b as DensityStat).density : 0
         return (bDensity - aDensity) * multiplier
       }
-      return (b.count - a.count) * multiplier
+      return ((b as RegionStat).count - (a as RegionStat).count) * multiplier
     })
   }, [filteredRegions, sortOrder, viewMode])
 
@@ -113,9 +125,16 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
 
   // viewMode에 따라 최대값 결정 (바 그래프용 - 정렬 순서 무관하게 최대값)
   const maxValue = useMemo(() => {
-    return (viewMode === 'density' || viewMode === 'prediction')
-      ? Math.max(...displayRegions.map(r => 'density' in r ? r.density : 0), 1)
-      : Math.max(...displayRegions.map(r => r.count), 1)
+    if (viewMode === 'burden_index') {
+      return Math.max(...displayRegions.map(r => 'burden_index' in r ? (r as DemandStat).burden_index : 0), 1)
+    }
+    if (viewMode === 'case_count') {
+      return Math.max(...displayRegions.map(r => 'case_count' in r ? (r as DemandStat).case_count : 0), 1)
+    }
+    if (viewMode === 'density' || viewMode === 'prediction') {
+      return Math.max(...displayRegions.map(r => 'density' in r ? (r as DensityStat).density : 0), 1)
+    }
+    return Math.max(...displayRegions.map(r => (r as RegionStat).count), 1)
   }, [displayRegions, viewMode])
 
   // 선택된 지역의 전문분야 데이터 조회
@@ -130,8 +149,72 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
   // 선택된 지역의 데이터 찾기
   const selectedRegionData = regions.find(r => r.region === selectedRegion)
 
+  const isDemandMode = viewMode === 'case_count' || viewMode === 'burden_index'
+
   // 상세 뷰
   if (selectedRegion) {
+    // 수요 모드 상세 뷰
+    if (isDemandMode && selectedRegionData && 'case_count' in selectedRegionData) {
+      const data = selectedRegionData as DemandStat
+      return (
+        <div className="h-[500px] flex flex-col">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedRegion(null)
+              onRegionClick?.(null)
+            }}
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors mb-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            목록으로
+          </button>
+
+          <div className="mb-4">
+            <div className="text-lg font-semibold text-gray-900">{selectedRegion}</div>
+            <div className="text-sm text-gray-500">사건 수요 상세</div>
+          </div>
+
+          <div className="space-y-4 overflow-y-auto flex-1">
+            {/* 관할법원 */}
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <div className="text-xs text-gray-400 mb-1">관할법원</div>
+              <div className="text-base font-medium text-gray-800">{data.court_name}</div>
+            </div>
+
+            {/* 사건 수 */}
+            <div className="p-3 bg-amber-50 rounded-lg">
+              <div className="text-xs text-amber-600 mb-1">사건 접수 수</div>
+              <div className="text-2xl font-bold text-amber-700">{data.case_count.toLocaleString()}<span className="text-base font-normal ml-1">건</span></div>
+            </div>
+
+            {/* 변호사 수 */}
+            <div className="p-3 bg-blue-50 rounded-lg">
+              <div className="text-xs text-blue-600 mb-1">관할 변호사 수</div>
+              <div className="text-2xl font-bold text-blue-700">{data.lawyer_count.toLocaleString()}<span className="text-base font-normal ml-1">명</span></div>
+            </div>
+
+            {/* 부담지수 */}
+            <div className="p-3 bg-rose-50 rounded-lg">
+              <div className="text-xs text-rose-600 mb-1">부담지수 (사건 수 / 변호사 수)</div>
+              <div className="text-2xl font-bold text-rose-700">{data.burden_index.toFixed(1)}</div>
+              <div className="mt-2 text-xs text-gray-500">
+                {data.burden_index >= 50
+                  ? '변호사 대비 사건이 매우 많습니다'
+                  : data.burden_index >= 20
+                    ? '변호사 대비 사건이 다소 많습니다'
+                    : data.burden_index >= 10
+                      ? '적정 수준입니다'
+                      : '변호사 대비 사건이 적습니다'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     // 예측 모드 상세 뷰
     if (viewMode === 'prediction' && selectedRegionData && 'density' in selectedRegionData) {
       const data = selectedRegionData as DensityStat
@@ -302,11 +385,15 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
   }
 
   // 리스트 뷰
-  const titleText = viewMode === 'prediction'
-    ? (selectedProvince ? `${selectedProvince} 내 ${predictionYear}년 예측 밀도` : `전체 지역 ${predictionYear}년 예측 밀도(Top15)`)
-    : viewMode === 'density'
-      ? (selectedProvince ? `${selectedProvince} 내 인구 대비 밀도 순위` : '전체 지역 인구 대비 밀도 순위(Top15)')
-      : (selectedProvince ? `${selectedProvince} 내 변호사 수 순위` : '전체 지역 변호사 수 순위(Top15)')
+  const titleText = viewMode === 'burden_index'
+    ? (selectedProvince ? `${selectedProvince} 내 부담지수 순위` : '전체 지역 부담지수 순위(Top15)')
+    : viewMode === 'case_count'
+      ? (selectedProvince ? `${selectedProvince} 내 사건 수 순위` : '전체 지역 사건 수 순위(Top15)')
+      : viewMode === 'prediction'
+        ? (selectedProvince ? `${selectedProvince} 내 ${predictionYear}년 예측 밀도` : `전체 지역 ${predictionYear}년 예측 밀도(Top15)`)
+        : viewMode === 'density'
+          ? (selectedProvince ? `${selectedProvince} 내 인구 대비 밀도 순위` : '전체 지역 인구 대비 밀도 순위(Top15)')
+          : (selectedProvince ? `${selectedProvince} 내 변호사 수 순위` : '전체 지역 변호사 수 순위(Top15)')
 
   return (
     <div className="h-[500px] flex flex-col">
@@ -338,15 +425,26 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
       <div className="space-y-2 overflow-y-auto flex-1">
         {displayRegions.map((region, index) => {
           const isDensityMode = viewMode === 'density' || viewMode === 'prediction'
-          const value = isDensityMode && 'density' in region ? region.density : region.count
+          let value: number
+          let displayValue: string
+          if (viewMode === 'burden_index' && 'burden_index' in region) {
+            value = (region as DemandStat).burden_index
+            displayValue = `${value.toFixed(1)}`
+          } else if (viewMode === 'case_count' && 'case_count' in region) {
+            value = (region as DemandStat).case_count
+            displayValue = `${value.toLocaleString()}건`
+          } else if (isDensityMode && 'density' in region) {
+            value = (region as DensityStat).density
+            displayValue = `${value.toFixed(1)}명/10만`
+          } else {
+            value = (region as RegionStat).count
+            displayValue = `${value.toLocaleString()}명`
+          }
           const barWidth = (value / maxValue) * 100
-          const displayValue = isDensityMode && 'density' in region
-            ? `${region.density.toFixed(1)}명/10만`
-            : `${region.count.toLocaleString()}명`
           const { bar: barColor, text: textColor } = VIEW_MODE_COLORS[viewMode]
 
           // 예측 모드에서 변화율 표시
-          const changePercent = 'change_percent' in region ? region.change_percent : undefined
+          const changePercent = 'change_percent' in region ? (region as DensityStat).change_percent : undefined
 
           return (
             <button
@@ -373,6 +471,12 @@ export function RegionDetailList({ regions, viewMode, predictionYear, selectedPr
                         changePercent > 0 ? 'text-red-600' : changePercent < 0 ? 'text-blue-600' : 'text-gray-500'
                       }`}>
                         ({changePercent > 0 ? '▲' : changePercent < 0 ? '▼' : '−'}{Math.abs(changePercent)}%)
+                      </span>
+                    )}
+                    {/* 수요 모드일 때 관할법원 표시 */}
+                    {'court_name' in region && isDemandMode && (
+                      <span className="text-xs text-gray-400">
+                        {(region as DemandStat).court_name}
                       </span>
                     )}
                   </div>
