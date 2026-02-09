@@ -247,8 +247,36 @@ def demand_letter_node(state: SmallClaimsState) -> Command[str]:
         "step": SmallClaimsStep.DEMAND_LETTER,
     })
 
-    _ = interrupt_value
+    user_input = str(interrupt_value)
+    
+    # 내용증명 작성 도움 버튼 클릭 시
+    if "draft_demand_letter" in user_input or "내용증명" in user_input or "작성" in user_input:
+        dispute_type = state.get("dispute_type", "기타")
+        claim_amount = state.get("claim_amount", 0)
+        
+        draft_response = f"""**내용증명 작성을 도와드리겠습니다.**
 
+📋 **소액소송 서류 작성 페이지**로 이동하여 내용증명을 작성하세요.
+
+**현재 입력된 정보:**
+- 분쟁 유형: {dispute_type}
+- 청구 금액: {claim_amount:,}원
+
+➡️ 왼쪽 메뉴의 **"소액소송 가이드"**를 클릭하면 서류 작성 페이지로 이동할 수 있습니다.
+
+내용증명을 작성하여 상대방에게 발송하세요. 답변이 없거나 거부당하면 소송을 진행할 수 있습니다.
+"""
+        return Command(
+            update={
+                "step": SmallClaimsStep.DEMAND_LETTER,
+                "response": draft_response,
+                "actions": _court_actions(),
+                "agent_used": "small_claims",
+            },
+            goto="court_node",
+        )
+
+    # 일반적인 경우 - 다음 단계로
     response = (
         "내용증명 발송 후 응답이 없거나 거부당하면, "
         "소송을 제기할 수 있습니다.\n\n"
