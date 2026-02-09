@@ -238,6 +238,10 @@ async def chat_stream(request: ChatRequest) -> EventSourceResponse:
                             "session_data": {
                                 "thread_id": thread_id,
                                 "session_secret": session_secret,
+                                # 소액소송 UI 동기화용 데이터
+                                "dispute_type": graph_state.values.get("dispute_type"),
+                                "step": interrupt_data.get("step") or graph_state.values.get("step"),
+                                "claim_amount": graph_state.values.get("claim_amount"),
                             },
                         },
                         ensure_ascii=False,
