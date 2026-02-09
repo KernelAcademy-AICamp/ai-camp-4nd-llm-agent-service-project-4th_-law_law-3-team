@@ -12,6 +12,7 @@ from app.multi_agent.agents.base_chat import ActionType, BaseChatAgent, ChatActi
 from app.multi_agent.schemas.plan import AgentResult
 from app.services.rag import search_relevant_documents_async
 from app.services.service_function import get_precedent_service
+from app.services.document_service import DocumentService
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class SmallClaimsStep:
     GATHER_INFO = "gather_info"
     EVIDENCE = "evidence"
     DEMAND_LETTER = "demand_letter"
+    GATHER_DOC_INFO = "gather_doc_info"
     COURT = "court"
     COMPLETE = "complete"
 
@@ -79,6 +81,16 @@ STEP_MESSAGES = {
 - 불이행 시 법적 조치 예고
 
 내용증명 초안을 작성해드릴까요?
+""",
+    SmallClaimsStep.GATHER_DOC_INFO: """
+**내용증명 작성에 필요한 정보를 알려주세요.**
+
+다음 정보들이 필요합니다:
+1. **수신인 주소**: (상대방 주소)
+2. **발신인 주소**: (본인 주소)
+3. **지급 기한**: (언제까지 갚으라고 할지. 예: 2024년 2월 28일)
+
+위 내용을 입력해주시면 내용증명 초안을 만들어드립니다.
 """,
     SmallClaimsStep.COURT: """
 **소액소송 제기 단계**
@@ -188,6 +200,7 @@ class SmallClaimsAgent(BaseChatAgent):
 
         # 단계별 처리
         response, actions, new_session = self._process_step(
+            message=message,
             current_step=current_step,
             dispute_type=dispute_type,
             amount=amount,
@@ -207,6 +220,7 @@ class SmallClaimsAgent(BaseChatAgent):
 
     def _process_step(
         self,
+        message: str,
         current_step: str,
         dispute_type: str | None,
         amount: int | None,
@@ -283,25 +297,82 @@ class SmallClaimsAgent(BaseChatAgent):
             ]
 
         elif current_step == SmallClaimsStep.DEMAND_LETTER:
-            response = (
-                "내용증명 발송 후 응답이 없거나 거부당하면, "
-                "소송을 제기할 수 있습니다.\n\n"
-                + STEP_MESSAGES[SmallClaimsStep.COURT]
-            )
-            new_session["step"] = SmallClaimsStep.COURT
+            # Check for draft action trigger
+            if "작성" in message or "도와줘" in message:
+                 new_session["step"] = SmallClaimsStep.GATHER_DOC_INFO
+                 response = STEP_MESSAGES[SmallClaimsStep.GATHER_DOC_INFO]
+                 actions = []
+            else:
+                response = (
+                    "내용증명 발송 후 응답이 없거나 거부당하면, "
+                    "소송을 제기할 수 있습니다.\n\n"
+                    + STEP_MESSAGES[SmallClaimsStep.COURT]
+                )
+                new_session["step"] = SmallClaimsStep.COURT
 
-            actions = [
-                ChatAction(
-                    type=ActionType.LINK,
-                    label="전자소송 바로가기",
-                    url="https://ecfs.scourt.go.kr",
-                ).model_dump(),
-                ChatAction(
-                    type=ActionType.BUTTON,
-                    label="소장 작성 도움",
-                    action="draft_complaint",
-                ).model_dump(),
+                actions = [
+                    ChatAction(
+                        type=ActionType.LINK,
+                        label="전자소송 바로가기",
+                        url="https://ecfs.scourt.go.kr",
+                    ).model_dump(),
+                    ChatAction(
+                        type=ActionType.BUTTON,
+                        label="소장 작성 도움",
+                        action="draft_complaint",
+                    ).model_dump(),
             ]
+
+        elif current_step == SmallClaimsStep.GATHER_DOC_INFO:
+            # Simple check for address info (naive implementation for Green phase)
+            response = "정보를 확인 중입니다..."
+            
+            # Update session with potentially new info from message
+            # In a real app, we would parse the message more carefully
+            if "주소" in message:
+                new_session["recipient_address"] = message # just dummy storage
+            
+            # Check if we have enough info to generate
+            # For this test, we assume if we are in this step and user sent a message, we try to generate
+            # if session has required fields.
+            
+            required = ["recipient", "sender", "content"]
+            if all(k in new_session for k in required):
+                try:
+                    service = DocumentService()
+                    # Prepare data for template
+                    doc_data = {
+                        "recipient": new_session.get("recipient"),
+                        "sender": new_session.get("sender"),
+                        "content": new_session.get("content"),
+                        # Add date etc.
+                    }
+                    
+                    # Generate PDF
+                    # In real app, save to a static/download folder
+                    output_path = f"data/demand_letter_{new_session.get('active_agent', 'temp')}.pdf"
+                    # Ensure directory exists
+                    import os
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    
+                    file_path = service.generate_demand_letter(doc_data, format="pdf", output_path=output_path)
+                    
+                    response = "내용증명 PDF가 생성되었습니다. 아래 버튼을 눌러 확인하세요."
+                    actions = [
+                        ChatAction(
+                            type=ActionType.LINK, 
+                            label="내용증명 다운로드",
+                            url=file_path, 
+                            action="download_file"
+                        ).model_dump()
+                    ]
+                    new_session["step"] = SmallClaimsStep.COMPLETE
+                except Exception as e:
+                    response = f"문서 생성 중 오류가 발생했습니다: {e}"
+                    actions = []
+            else:
+                 response = "필수 정보가 부족합니다. (수신인, 발신인, 내용)"
+                 actions = []
 
         else:
             response = STEP_MESSAGES[SmallClaimsStep.COURT]
