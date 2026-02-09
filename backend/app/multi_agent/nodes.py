@@ -6,11 +6,13 @@ lawyer_stats, law_study, simple_chat)
 SmallClaims는 별도 subgraph로 분리
 """
 
+import asyncio
 import logging
 from typing import Any
 
 from langgraph.types import Command, StreamWriter
 
+from app.core.config import settings
 from app.multi_agent.agents.base_chat import BaseChatAgent
 from app.multi_agent.router import (
     INTENT_OVERRIDE_CONFIDENCE,
@@ -59,46 +61,37 @@ def _get_rules_router() -> RulesRouter:
 # 노드 실행 헬퍼 (#3 보일러플레이트 제거, #5 에러 핸들링, #9 중복 done 제거)
 # ──────────────────────────────────────────────
 
+_TIMEOUT_RESPONSE = "응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."
 
-async def _run_streaming_node(
+
+async def _run_streaming_node_inner(
     agent: BaseChatAgent,
     state: ChatState,
     writer: StreamWriter,
 ) -> dict[str, Any]:
-    """스트리밍 에이전트 공통 실행 헬퍼
-
-    process_stream()의 이벤트를 writer로 전달하고 결과를 수집한다.
-    done 이벤트는 chat.py에서 전송하므로 여기서 필터링한다.
-    """
+    """스트리밍 에이전트 실행 (타임아웃 없이)"""
     full_response = ""
     sources: list[dict[str, Any]] = []
     actions: list[dict[str, Any]] = []
     output_session_data: dict[str, Any] = {}
 
-    try:
-        async for event_type, data in agent.process_stream(
-            message=state["message"],
-            history=state.get("history"),
-            session_data=state.get("session_data"),
-            user_location=state.get("user_location"),
-        ):
-            if event_type == "done":
-                continue
-            writer({"event": event_type, "data": data})
+    async for event_type, data in agent.process_stream(
+        message=state["message"],
+        history=state.get("history"),
+        session_data=state.get("session_data"),
+        user_location=state.get("user_location"),
+    ):
+        if event_type == "done":
+            continue
+        writer({"event": event_type, "data": data})
 
-            if event_type == "token":
-                full_response += data.get("content", "")
-            elif event_type == "sources":
-                sources = data.get("sources", [])
-            elif event_type == "metadata":
-                actions = data.get("actions", [])
-                output_session_data = data.get("session_data", {})
-    except Exception:
-        logger.exception("에이전트 스트리밍 오류: %s", agent.name)
-        writer({
-            "event": "error",
-            "data": {"message": "처리 중 오류가 발생했습니다."},
-        })
+        if event_type == "token":
+            full_response += data.get("content", "")
+        elif event_type == "sources":
+            sources = data.get("sources", [])
+        elif event_type == "metadata":
+            actions = data.get("actions", [])
+            output_session_data = data.get("session_data", {})
 
     return {
         "response": full_response,
@@ -109,23 +102,80 @@ async def _run_streaming_node(
     }
 
 
+async def _run_streaming_node(
+    agent: BaseChatAgent,
+    state: ChatState,
+    writer: StreamWriter,
+) -> dict[str, Any]:
+    """스트리밍 에이전트 공통 실행 헬퍼 (타임아웃 + 에러 핸들링)
+
+    process_stream()의 이벤트를 writer로 전달하고 결과를 수집한다.
+    done 이벤트는 chat.py에서 전송하므로 여기서 필터링한다.
+    """
+    try:
+        return await asyncio.wait_for(
+            _run_streaming_node_inner(agent, state, writer),
+            timeout=settings.AGENT_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.error(
+            "에이전트 타임아웃: %s (%ds)", agent.name, settings.AGENT_TIMEOUT_SECONDS
+        )
+        writer({
+            "event": "error",
+            "data": {"message": _TIMEOUT_RESPONSE},
+        })
+    except Exception:
+        logger.exception("에이전트 스트리밍 오류: %s", agent.name)
+        writer({
+            "event": "error",
+            "data": {"message": "처리 중 오류가 발생했습니다."},
+        })
+
+    return {
+        "response": "",
+        "sources": [],
+        "actions": [],
+        "output_session_data": {},
+        "agent_used": agent.name,
+    }
+
+
 async def _run_nonstreaming_node(
     agent: BaseChatAgent,
     state: ChatState,
     writer: StreamWriter,
 ) -> dict[str, Any]:
-    """비스트리밍 에이전트 공통 실행 헬퍼
+    """비스트리밍 에이전트 공통 실행 헬퍼 (타임아웃 + 에러 핸들링)
 
     process()를 호출한 뒤 결과를 writer로 한꺼번에 전달한다.
     done 이벤트는 chat.py에서 전송하므로 여기서 보내지 않는다.
     """
     try:
-        result = await agent.process(
-            message=state["message"],
-            history=state.get("history"),
-            session_data=state.get("session_data"),
-            user_location=state.get("user_location"),
+        result = await asyncio.wait_for(
+            agent.process(
+                message=state["message"],
+                history=state.get("history"),
+                session_data=state.get("session_data"),
+                user_location=state.get("user_location"),
+            ),
+            timeout=settings.AGENT_TIMEOUT_SECONDS,
         )
+    except asyncio.TimeoutError:
+        logger.error(
+            "에이전트 타임아웃: %s (%ds)", agent.name, settings.AGENT_TIMEOUT_SECONDS
+        )
+        writer({
+            "event": "error",
+            "data": {"message": _TIMEOUT_RESPONSE},
+        })
+        return {
+            "response": _TIMEOUT_RESPONSE,
+            "sources": [],
+            "actions": [],
+            "output_session_data": {},
+            "agent_used": agent.name,
+        }
     except Exception:
         logger.exception("에이전트 처리 오류: %s", agent.name)
         writer({

@@ -122,12 +122,27 @@ INTENT_PATTERNS: dict[AgentType, list[tuple[str, float]]] = {
         ("시험 문제", 0.75),
         ("법학 문제", 0.75),
     ],
+    AgentType.GENERAL: [
+        ("안녕", 0.85),
+        ("안녕하세요", 0.9),
+        ("감사합니다", 0.85),
+        ("고마워", 0.85),
+        ("고맙습니다", 0.85),
+        ("도움이 됐", 0.8),
+        ("반갑습니다", 0.85),
+        ("ㅎㅇ", 0.8),
+        ("ㅎㅎ", 0.7),
+    ],
 }
 
 # 법령 키워드 (detect_search_type 헬퍼용)
 _LAW_KEYWORDS = ("법령", "법률", "조문", "시행령", "시행규칙", "법 제")
 # 세션 고정/agent_override를 해제할 최소 신뢰도
 INTENT_OVERRIDE_CONFIDENCE = 0.9
+# 세션 탈출 키워드 — active_agent 세션 고정을 해제
+_SESSION_EXIT_KEYWORDS = frozenset({
+    "그만", "종료", "끝", "다른질문", "다른거", "처음으로", "초기화",
+})
 
 
 def detect_search_type(message: str) -> str:
@@ -201,7 +216,10 @@ class RulesRouter:
         )
 
         # 1. 진행 중인 세션이 있으면 해당 에이전트 유지
-        if session_data.get("active_agent"):
+        #    단, 세션 탈출 키워드가 포함되면 세션 고정 해제
+        if session_data.get("active_agent") and not any(
+            kw in message_nospace for kw in _SESSION_EXIT_KEYWORDS
+        ):
             active_agent = session_data.get("active_agent")
             try:
                 agent_type = AgentType(active_agent)
@@ -260,12 +278,12 @@ class RulesRouter:
                 reason=f"키워드 매칭 (신뢰도: {confidence})",
             )
 
-        # 3. 기본 에이전트: 양쪽 모두 LEGAL_SEARCH
+        # 3. 기본 에이전트: 양쪽 모두 GENERAL (비용 절감)
         return AgentPlan(
-            agent_type=AgentType.LEGAL_SEARCH.value,
-            use_rag=True,
-            confidence=0.5,
-            reason="기본 법률 검색",
+            agent_type=AgentType.GENERAL.value,
+            use_rag=False,
+            confidence=0.3,
+            reason="기본 일반 채팅",
         )
 
 
@@ -277,6 +295,7 @@ __all__ = [
     "ROLE_AGENTS",
     "INTENT_PATTERNS",
     "INTENT_OVERRIDE_CONFIDENCE",
+    "_SESSION_EXIT_KEYWORDS",
     # 클래스
     "RulesRouter",
     # 함수

@@ -35,8 +35,20 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error("임베딩 모델 로드 실패: %s", e)
 
+    # 시작 시: LangGraph 체크포인터 초기화
+    if settings.USE_PERSISTENT_CHECKPOINTER:
+        from app.multi_agent.graph import init_checkpointer
+
+        logger.info("PostgreSQL 체크포인터를 초기화합니다...")
+        await init_checkpointer(settings.DATABASE_URL)
+
     yield
-    # 종료 시: 정리 작업 (필요 시)
+
+    # 종료 시: 체크포인터 정리
+    if settings.USE_PERSISTENT_CHECKPOINTER:
+        from app.multi_agent.graph import shutdown_checkpointer
+
+        await shutdown_checkpointer()
 
 
 app = FastAPI(

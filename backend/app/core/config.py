@@ -78,6 +78,15 @@ class Settings(BaseSettings):
     # 변호사 데이터 소스 (True: PostgreSQL, False: JSON 파일)
     USE_DB_LAWYERS: bool = False
 
+    # 영속 체크포인터 사용 여부 (True: PostgreSQL, False: InMemory)
+    USE_PERSISTENT_CHECKPOINTER: bool = True
+
+    # LLM 타임아웃 (초)
+    LLM_TIMEOUT_SECONDS: int = 60
+
+    # 에이전트 노드 전체 타임아웃 (초)
+    AGENT_TIMEOUT_SECONDS: int = 120
+
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []
 

@@ -5,6 +5,7 @@ RAG(법령) + LLM으로 법학 학습 자료 제공
 학습용 프롬프트로 법령 내용을 교육적으로 설명
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -52,8 +53,9 @@ class LawStudyAgent(BaseChatAgent):
         """학습 자료 생성"""
         from app.tools.llm import get_chat_model
 
-        # RAG: 법령 중심 검색
-        law_results = search_relevant_documents(
+        # RAG: 법령 중심 검색 (sync → async 래핑)
+        law_results = await asyncio.to_thread(
+            search_relevant_documents,
             query=message, n_results=3, doc_type="law",
         )
 
@@ -92,8 +94,9 @@ class LawStudyAgent(BaseChatAgent):
         """스트리밍 학습 자료 생성"""
         from app.tools.llm import get_chat_model
 
-        # RAG: 법령 중심 검색
-        law_results = search_relevant_documents(
+        # RAG: 법령 중심 검색 (sync → async 래핑)
+        law_results = await asyncio.to_thread(
+            search_relevant_documents,
             query=message, n_results=3, doc_type="law",
         )
 

@@ -5,6 +5,7 @@ RAG 기반 판례/법령 검색 및 법률 상담 제공
 focus 파라미터로 검색 비율 조절
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any, Literal
@@ -26,6 +27,16 @@ SEARCH_CONFIG = {
     "precedent": {"n_precedents": 4, "n_laws": 1},
     "law": {"n_precedents": 1, "n_laws": 4},
 }
+
+_SYSTEM_PROMPT = """당신은 법률 전문 AI 어시스턴트입니다.
+사용자의 질문에 대해 제공된 판례와 법령을 참고하여 정확하고 이해하기 쉽게 답변해주세요.
+
+답변 시 유의사항:
+1. 제공된 판례와 법령을 근거로 답변하세요
+2. 법률 용어는 쉽게 풀어서 설명하세요
+3. 일반적인 정보 제공이며, 구체적인 법률 상담은 변호사에게 의뢰하도록 안내하세요
+4. 판례 번호와 법령명을 언급할 때는 정확하게 표기하세요
+5. 판례와 법령을 함께 활용하여 종합적인 답변을 제공하세요"""
 
 
 class LegalSearchAgent(BaseChatAgent):
@@ -66,27 +77,39 @@ class LegalSearchAgent(BaseChatAgent):
         """LegalSearchAgent는 스트리밍 지원"""
         return True
 
-    async def process(
-        self,
-        message: str,
-        history: list[dict[str, str]] | None = None,
-        session_data: dict[str, Any] | None = None,
-        user_location: dict[str, float] | None = None,
-    ) -> AgentResult:
-        """법률 검색 및 응답 생성"""
-        # 1. 하이브리드 검색: 판례 + 법령
-        precedent_results = []
-        law_results = []
+    async def _prepare_rag_data(
+        self, message: str
+    ) -> tuple[
+        list[dict[str, Any]],
+        list[dict[str, Any]],
+        dict[str, dict[str, Any]],
+        dict[str, dict[str, Any]],
+        str,
+        list[dict[str, Any]],
+    ]:
+        """RAG 검색 → 상세조회 → 그래프보강 → 컨텍스트 → 소스 포맷
+
+        sync RAG 함수를 asyncio.to_thread()로 래핑하여 이벤트 루프 블로킹 방지.
+
+        Returns:
+            (precedent_results, law_results, precedent_details,
+             graph_contexts, context, sources)
+        """
+        # 1. 하이브리드 검색: 판례 + 법령 (sync → async 래핑)
+        precedent_results: list[dict[str, Any]] = []
+        law_results: list[dict[str, Any]] = []
 
         if self.n_precedents > 0:
-            precedent_results = search_relevant_documents(
+            precedent_results = await asyncio.to_thread(
+                search_relevant_documents,
                 query=message,
                 n_results=self.n_precedents,
                 doc_type="precedent",
             )
 
         if self.n_laws > 0:
-            law_results = search_relevant_documents(
+            law_results = await asyncio.to_thread(
+                search_relevant_documents,
                 query=message,
                 n_results=self.n_laws,
                 doc_type="law",
@@ -99,7 +122,7 @@ class LegalSearchAgent(BaseChatAgent):
             if doc.get("metadata", {}).get("doc_id")
         ]
 
-        precedent_details = {}
+        precedent_details: dict[str, dict[str, Any]] = {}
         if source_ids:
             precedent_details = self.precedent_service.get_details(source_ids)
 
@@ -111,16 +134,55 @@ class LegalSearchAgent(BaseChatAgent):
             precedent_results, precedent_details, graph_contexts, law_results
         )
 
-        # 5. LLM 응답 생성
+        # 5. 소스 정보 정리
+        sources = self._format_sources(
+            precedent_results, precedent_details, graph_contexts, law_results
+        )
+
+        return (
+            precedent_results,
+            law_results,
+            precedent_details,
+            graph_contexts,
+            context,
+            sources,
+        )
+
+    def _build_messages(
+        self,
+        message: str,
+        context: str,
+        history: list[dict[str, str]] | None = None,
+    ) -> list[tuple[str, str]]:
+        """시스템 프롬프트 + 히스토리 + 사용자 메시지 구성"""
+        messages: list[tuple[str, str]] = [("system", _SYSTEM_PROMPT)]
+
+        if history:
+            for h in history:
+                messages.append((h.get("role", "user"), h.get("content", "")))
+
+        user_message = f"""참고 자료:
+{context}
+
+사용자 질문: {message}"""
+
+        messages.append(("user", user_message))
+        return messages
+
+    async def process(
+        self,
+        message: str,
+        history: list[dict[str, str]] | None = None,
+        session_data: dict[str, Any] | None = None,
+        user_location: dict[str, float] | None = None,
+    ) -> AgentResult:
+        """법률 검색 및 응답 생성"""
+        _, _, _, _, context, sources = await self._prepare_rag_data(message)
+
         response = await self._generate_response(
             message=message,
             context=context,
             history=history,
-        )
-
-        # 6. 소스 정보 정리 (focus에 따라 순서 조절)
-        sources = self._format_sources(
-            precedent_results, precedent_details, graph_contexts, law_results
         )
 
         return AgentResult(
@@ -322,32 +384,7 @@ class LegalSearchAgent(BaseChatAgent):
     ) -> str:
         """LLM 응답 생성"""
         model = get_chat_model()
-
-        system_prompt = """당신은 법률 전문 AI 어시스턴트입니다.
-사용자의 질문에 대해 제공된 판례와 법령을 참고하여 정확하고 이해하기 쉽게 답변해주세요.
-
-답변 시 유의사항:
-1. 제공된 판례와 법령을 근거로 답변하세요
-2. 법률 용어는 쉽게 풀어서 설명하세요
-3. 일반적인 정보 제공이며, 구체적인 법률 상담은 변호사에게 의뢰하도록 안내하세요
-4. 판례 번호와 법령명을 언급할 때는 정확하게 표기하세요
-5. 판례와 법령을 함께 활용하여 종합적인 답변을 제공하세요"""
-
-        # 대화 기록 구성
-        messages = [("system", system_prompt)]
-
-        if history:
-            for h in history:
-                messages.append((h.get("role", "user"), h.get("content", "")))
-
-        # 컨텍스트와 함께 질문
-        user_message = f"""참고 자료:
-{context}
-
-사용자 질문: {message}"""
-
-        messages.append(("user", user_message))
-
+        messages = self._build_messages(message, context, history)
         response = model.invoke(messages)
         return response.content
 
@@ -359,85 +396,17 @@ class LegalSearchAgent(BaseChatAgent):
         user_location: dict[str, float] | None = None,
     ) -> AsyncGenerator[tuple[str, Any], None]:
         """스트리밍 법률 검색 및 응답 생성"""
-        # 1. 하이브리드 검색: 판례 + 법령
-        precedent_results = []
-        law_results = []
+        _, _, _, _, context, sources = await self._prepare_rag_data(message)
 
-        if self.n_precedents > 0:
-            precedent_results = search_relevant_documents(
-                query=message,
-                n_results=self.n_precedents,
-                doc_type="precedent",
-            )
-
-        if self.n_laws > 0:
-            law_results = search_relevant_documents(
-                query=message,
-                n_results=self.n_laws,
-                doc_type="law",
-            )
-
-        # 2. 판례 상세 정보 조회
-        source_ids = [
-            doc.get("metadata", {}).get("doc_id")
-            for doc in precedent_results
-            if doc.get("metadata", {}).get("doc_id")
-        ]
-
-        precedent_details = {}
-        if source_ids:
-            precedent_details = self.precedent_service.get_details(source_ids)
-
-        # 3. 그래프 컨텍스트 보강 (판례용)
-        graph_contexts = self._get_graph_contexts(precedent_results)
-
-        # 4. 컨텍스트 구성
-        context = self._build_context(
-            precedent_results, precedent_details, graph_contexts, law_results
-        )
-
-        # 5. 소스 정보 준비 (토큰 스트리밍 후 전송)
-        sources = self._format_sources(
-            precedent_results, precedent_details, graph_contexts, law_results
-        )
-
-        # 6. LLM 스트리밍 응답 생성
+        # LLM 스트리밍 응답 생성
         model = get_chat_model()
+        messages = self._build_messages(message, context, history)
 
-        system_prompt = """당신은 법률 전문 AI 어시스턴트입니다.
-사용자의 질문에 대해 제공된 판례와 법령을 참고하여 정확하고 이해하기 쉽게 답변해주세요.
-
-답변 시 유의사항:
-1. 제공된 판례와 법령을 근거로 답변하세요
-2. 법률 용어는 쉽게 풀어서 설명하세요
-3. 일반적인 정보 제공이며, 구체적인 법률 상담은 변호사에게 의뢰하도록 안내하세요
-4. 판례 번호와 법령명을 언급할 때는 정확하게 표기하세요
-5. 판례와 법령을 함께 활용하여 종합적인 답변을 제공하세요"""
-
-        # 대화 기록 구성
-        messages = [("system", system_prompt)]
-
-        if history:
-            for h in history:
-                messages.append((h.get("role", "user"), h.get("content", "")))
-
-        # 컨텍스트와 함께 질문
-        user_message = f"""참고 자료:
-{context}
-
-사용자 질문: {message}"""
-
-        messages.append(("user", user_message))
-
-        # LLM 스트리밍 호출
         async for chunk in model.astream(messages):
             if chunk.content:
                 yield ("token", {"content": chunk.content})
 
-        # 7. 소스 정보 전송 (토큰 스트리밍 완료 후)
         yield ("sources", {"sources": sources})
-
-        # 8. 메타데이터 전송
         yield ("metadata", {
             "agent_used": self.name,
             "actions": [],

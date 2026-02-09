@@ -28,6 +28,9 @@ class ChatState(TypedDict, total=False):
     routing_confidence: float
     routing_reason: str
 
+    # Session security (set by chat.py)
+    session_secret: str
+
     # Output (set by agent nodes)
     response: str
     sources: list[dict[str, Any]]
@@ -62,6 +65,7 @@ def request_to_state(request: ChatRequest) -> dict[str, Any]:
         "search_focus": "",
         "routing_confidence": 0.0,
         "routing_reason": "",
+        "session_secret": "",
         "response": "",
         "sources": [],
         "actions": [],

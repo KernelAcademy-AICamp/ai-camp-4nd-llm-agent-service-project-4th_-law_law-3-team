@@ -74,6 +74,7 @@ def _get_openai_model(
         model=model_name,
         temperature=temperature,
         api_key=str(settings.OPENAI_API_KEY),  # type: ignore[arg-type]
+        request_timeout=settings.LLM_TIMEOUT_SECONDS,
         **kwargs,
     )
 
@@ -102,6 +103,7 @@ def _get_anthropic_model(
         model_name=model_name,
         temperature=temperature,
         api_key=api_key,  # type: ignore[arg-type]
+        timeout=float(settings.LLM_TIMEOUT_SECONDS),
         **kwargs,
     )
 
