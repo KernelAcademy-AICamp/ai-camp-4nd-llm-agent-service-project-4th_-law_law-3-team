@@ -32,6 +32,28 @@ export function CaseInfoStep({ caseInfo, onUpdate, onNext, onPrevious }: CaseInf
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">사건 정보 입력</h2>
         <p className="text-gray-600">소송에 필요한 기본 정보를 입력해주세요</p>
+        
+        {/* Development Helper Button */}
+        {process.env.NODE_ENV === 'development' && (
+          <button
+            onClick={() => {
+              onUpdate({
+                plaintiff_name: '홍길동',
+                plaintiff_phone: '010-1234-5678',
+                plaintiff_address: '서울시 강남구 테헤란로 123',
+                defendant_name: '김사기',
+                defendant_phone: '010-9876-5432',
+                defendant_address: '서울시 서초구 서초대로 456',
+                amount: 500000,
+                incident_date: '2024-02-01',
+                description: '중고나라에서 아이패드를 구매하기 위해 50만원을 입금했으나, 판매자가 물건을 보내지 않고 연락이 두절되었습니다.',
+              })
+            }}
+            className="mt-4 px-3 py-1 bg-gray-100 text-xs text-gray-500 rounded hover:bg-gray-200 transition"
+          >
+            [DEV] 테스트 데이터 채우기
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-6">

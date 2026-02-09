@@ -200,21 +200,38 @@ export function DocumentStep({
             )}
           </div>
 
-          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end">
-            <button
-              onClick={handleDownload}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                />
-              </svg>
-              다운로드 (.txt)
-            </button>
+          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
+            {generatedDocument.pdf_url && (
+              <a
+                href={generatedDocument.pdf_url}
+                download={`${generatedDocument.title}_${new Date().toISOString().split('T')[0]}.pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                PDF 다운로드
+              </a>
+            )}
+            {generatedDocument.docx_url && (
+              <a
+                href={generatedDocument.docx_url}
+                download={`${generatedDocument.title}_${new Date().toISOString().split('T')[0]}.docx`}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  />
+                </svg>
+                워드(.docx) 다운로드
+              </a>
+            )}
           </div>
         </div>
       )}

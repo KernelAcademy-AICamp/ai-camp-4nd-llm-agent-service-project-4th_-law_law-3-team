@@ -47,6 +47,8 @@ export interface DocumentResponse {
   title: string
   content: string
   template_sections: Record<string, string>
+  pdf_url?: string
+  docx_url?: string
 }
 
 export interface RelatedCaseItem {
