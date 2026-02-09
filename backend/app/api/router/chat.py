@@ -219,6 +219,16 @@ async def chat_stream(request: ChatRequest) -> EventSourceResponse:
                 t.interrupts for t in graph_state.tasks
             ):
                 interrupt_data = graph_state.tasks[0].interrupts[0].value
+                # interrupt 응답 텍스트를 token 이벤트로 전송
+                response_text = interrupt_data.get("response", "")
+                if response_text:
+                    yield {
+                        "event": "token",
+                        "data": json.dumps(
+                            {"content": response_text},
+                            ensure_ascii=False,
+                        ),
+                    }
                 yield {
                     "event": "metadata",
                     "data": json.dumps(
