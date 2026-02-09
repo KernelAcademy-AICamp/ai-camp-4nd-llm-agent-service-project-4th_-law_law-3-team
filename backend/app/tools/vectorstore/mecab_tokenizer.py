@@ -24,6 +24,7 @@ Usage:
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -31,6 +32,11 @@ if TYPE_CHECKING:
     from app.tools.vectorstore.legal_term_dict import LegalTermDictionary
 
 logger = logging.getLogger(__name__)
+
+# MeCab이 UNKNOWN으로 처리하여 오분석을 유발하는 문자 → 공백 정규화
+# ㆍ (U+318D, 한글 가운뎃점): "시ㆍ도" → MeCab이 "시"+"ㆍ도"로 합쳐 오분석
+# · (U+00B7, 가운데점): MeCab이 SC(특수문자)로 정상 처리하지만 통일성 위해 포함
+_MIDDOT_PATTERN = re.compile(r"[ㆍ·]")
 
 # MeCab 설치 여부 확인
 _MECAB_AVAILABLE = False
@@ -168,6 +174,9 @@ class MeCabTokenizer:
         if self._tagger is None:
             logger.warning("MeCab 미설치: 공백 분리 fallback 사용")
             return text.strip().split()
+
+        # 전처리: 가운뎃점(ㆍ/·) → 공백 (MeCab UNKNOWN 오분석 방지)
+        text = _MIDDOT_PATTERN.sub(" ", text)
 
         # MeCab 형태소 분석
         parsed: str = self._tagger.parse(text)  # type: ignore[union-attr,attr-defined,unused-ignore]

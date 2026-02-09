@@ -26,6 +26,7 @@ Usage:
 """
 
 import argparse
+import asyncio
 import importlib.util
 import sys
 import time
@@ -41,6 +42,9 @@ PROJECT_ROOT = BACKEND_DIR.parent
 
 LANCEDB_PATH = BACKEND_DIR / "lancedb_data"
 TABLE_NAME = "legal_chunks"
+
+# JSON fallback 경로 (DB 연결 실패 시)
+DONE_LAWTERMS_JSON = PROJECT_ROOT / "data" / "[DONE]lawterms.json"
 LEGAL_TERMS_JSON = PROJECT_ROOT / "data" / "lawterms_full.json"
 
 PROGRESS_INTERVAL = 10_000  # 진행률 출력 간격
@@ -59,31 +63,62 @@ def _load_module(name: str, path: Path) -> object:
     return mod
 
 
+async def _load_legal_dict_from_db(dict_mod: object) -> Optional[object]:
+    """DB에서 법률 용어 사전 로드 (source of truth)"""
+    sys.path.insert(0, str(BACKEND_DIR))
+    try:
+        from app.core.database import (
+            async_session_factory,  # type: ignore[import-untyped]
+        )
+
+        ld = dict_mod.LegalTermDictionary()  # type: ignore[attr-defined]
+        async with async_session_factory() as session:
+            count = await ld.load_from_db(session)
+        print(f"[INFO] 법률용어사전 DB 로드: {count:,}개")
+        return ld
+    except Exception as e:
+        print(f"[WARN] DB 로드 실패 ({e}), JSON fallback 시도")
+        return None
+
+
+def _load_legal_dict_from_json(dict_mod: object) -> Optional[object]:
+    """JSON에서 법률 용어 사전 로드 (fallback)"""
+    json_path = DONE_LAWTERMS_JSON if DONE_LAWTERMS_JSON.exists() else LEGAL_TERMS_JSON
+    if not json_path.exists():
+        print(f"[WARN] 법률용어 JSON 없음: {json_path}")
+        return None
+
+    ld = dict_mod.LegalTermDictionary()  # type: ignore[attr-defined]
+    count = ld.load_from_json(str(json_path))
+    print(f"[INFO] 법률용어사전 JSON 로드: {count:,}개 ({json_path.name})")
+    return ld
+
+
 def load_mecab_tokenizer(
     *,
     use_legal_dict: bool = True,
     use_userdic: bool = False,
 ) -> object:
-    """MeCab 토크나이저 로드 (법률용어사전/userdic 포함)"""
+    """MeCab 토크나이저 로드 (DB 우선, JSON fallback)"""
     vectorstore_dir = BACKEND_DIR / "app" / "tools" / "vectorstore"
 
     tok_mod = _load_module("mecab_tokenizer", vectorstore_dir / "mecab_tokenizer.py")
 
     legal_dict = None
-    if use_legal_dict and LEGAL_TERMS_JSON.exists():
+    if use_legal_dict:
         dict_mod = _load_module("legal_term_dict", vectorstore_dir / "legal_term_dict.py")
-        ld = dict_mod.LegalTermDictionary()  # type: ignore[attr-defined]
-        count = ld.load_from_json(str(LEGAL_TERMS_JSON))
-        print(f"[INFO] 법률용어사전 로드: {count:,}개")
+
+        # DB 우선 로드
+        legal_dict = asyncio.run(_load_legal_dict_from_db(dict_mod))
+
+        # DB 실패 시 JSON fallback
+        if legal_dict is None:
+            legal_dict = _load_legal_dict_from_json(dict_mod)
 
         # userdic 분해맵 로드
-        if use_userdic and DECOMP_MAP_PATH.exists():
-            decomp_count = ld.load_decomposition_map(DECOMP_MAP_PATH)
+        if legal_dict and use_userdic and DECOMP_MAP_PATH.exists():
+            decomp_count = legal_dict.load_decomposition_map(DECOMP_MAP_PATH)  # type: ignore[attr-defined]
             print(f"[INFO] userdic 분해맵 로드: {decomp_count:,}개")
-
-        legal_dict = ld
-    elif use_legal_dict:
-        print(f"[WARN] 법률용어 JSON 없음: {LEGAL_TERMS_JSON}")
 
     # userdic 경로 결정
     userdic_path = None

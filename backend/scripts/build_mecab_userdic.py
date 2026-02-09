@@ -78,9 +78,19 @@ def _find_path(candidates: list[str]) -> Optional[str]:
 
 
 def _has_final_consonant(char: str) -> bool:
-    """한글 문자의 받침(종성) 여부 판별"""
-    code = ord(char) - 0xAC00
-    return (code % 28) != 0
+    """마지막 문자의 받침(종성) 여부 판별
+
+    한글: 종성 코드로 판별
+    영문/숫자: 음절 연결 시 받침처럼 동작하는지 기준
+      - 받침 있음(T): l, m, n, r, ng, 1, 3, 6, 7, 8, 0 등
+      - 받침 없음(F): 나머지
+    """
+    if "\uAC00" <= char <= "\uD7A3":
+        # 한글
+        return ((ord(char) - 0xAC00) % 28) != 0
+    # 영문/숫자: 보수적으로 T(받침 있음) 처리
+    # MeCab 연결 비용에서 안전한 쪽
+    return True
 
 
 def _load_module(name: str, path: Path) -> object:
@@ -99,34 +109,127 @@ def _load_module(name: str, path: Path) -> object:
 # ================================================================
 
 
+def _extract_bracket_core_terms(rows_all: list[str]) -> set[str]:
+    """괄호 포함 용어에서 userdic 후보 추출 (두 가지 변형)
+
+    Variant A: 괄호+내용 제거 → "전자(세금)계산서" → "전자계산서"
+    Variant B: 괄호 기호만 제거 → "전자(세금)계산서" → "전자세금계산서"
+
+    한자 괄호는 Variant B가 한글전용 필터에서 자동 제외:
+        "가처분(假處分)" → A: "가처분" (OK), B: "가처분假處分" (제외)
+
+    예시:
+        "전자(세금)계산서" → {"전자계산서", "전자세금계산서"}
+        "가처분(假處分)"  → {"가처분"}
+        "인지(印紙)대"    → {"인지대"}
+    """
+    import re
+
+    # 괄호 내용 포함 괄호: (), （）, []
+    bracket_pattern = re.compile(r"[（(][^)）]*[)）]|\[[^\]]*\]")
+    # 괄호 기호만 제거 (내용 유지)
+    bracket_markers = re.compile(r"[（()）)\[\]]")
+    korean_only = re.compile(r"^[가-힣]+$")
+
+    cores: set[str] = set()
+    for term in rows_all:
+        # Variant A: 괄호+내용 전체 제거
+        variant_a = bracket_pattern.sub("", term).strip()
+        variant_a = variant_a.replace(" ", "").replace("ㆍ", "").replace("·", "")
+
+        # Variant B: 괄호 기호만 제거 (내용 유지, 인라인)
+        variant_b = bracket_markers.sub("", term).strip()
+        variant_b = variant_b.replace(" ", "").replace("ㆍ", "").replace("·", "")
+
+        for candidate in (variant_a, variant_b):
+            if not candidate or candidate == term:
+                continue
+            if not korean_only.match(candidate):
+                continue
+            if len(candidate) < 2 or len(candidate) > 15:
+                continue
+            cores.add(candidate)
+
+    return cores
+
+
 async def load_terms_from_db() -> set[str]:
-    """PostgreSQL legal_terms 테이블에서 용어 로드 (한글 전용, 2-10자)"""
+    """PostgreSQL legal_terms 테이블에서 용어 로드
+
+    대상:
+    1. 한글 전용 (2-15자): 복합명사 포함 (예: 개인신용정보처리시스템)
+    2. 혼합 단어 (2-15자): 영문/숫자+한글 복합어 (공백/괄호/가운뎃점 없음)
+       예: A1해역, 제1심, DB서버, IP주소
+    3. 괄호 포함 용어에서 핵심어 추출 (예: 전자(세금)계산서 → 전자계산서)
+    """
     # app 패키지 임포트를 위해 경로 추가
     sys.path.insert(0, str(BACKEND_DIR))
 
-    from sqlalchemy import select  # type: ignore[import-untyped]
+    from sqlalchemy import (
+        or_,  # type: ignore[import-untyped]
+        select,  # type: ignore[import-untyped]
+    )
 
     from app.core.database import async_session_factory  # type: ignore[import-untyped]
     from app.models.legal_term import LegalTerm  # type: ignore[import-untyped]
 
     query = select(LegalTerm.term).where(
-        LegalTerm.term_length >= 2,
-        LegalTerm.term_length <= 10,
-        LegalTerm.is_korean_only.is_(True),
+        or_(
+            # 1) 한글 전용 (2-15자)
+            (
+                LegalTerm.is_korean_only.is_(True)
+                & (LegalTerm.term_length >= 2)
+                & (LegalTerm.term_length <= 15)
+            ),
+            # 2) 혼합 단어 (2-15자, 한글 포함, 공백/괄호/가운뎃점 없음)
+            (
+                LegalTerm.is_korean_only.is_(False)
+                & (LegalTerm.term_length >= 2)
+                & (LegalTerm.term_length <= 15)
+                & LegalTerm.term.regexp_match(r"[가-힣]")
+                & ~LegalTerm.term.regexp_match(r"[ （()）)·ㆍ]")
+            ),
+        ),
     )
 
     async with async_session_factory() as session:
         result = await session.execute(query)
         rows = result.scalars().all()
 
-    return set(rows)
+        # 괄호 핵심어 추출을 위해 괄호 포함 용어도 별도 로드
+        bracket_query = select(LegalTerm.term).where(
+            LegalTerm.term.regexp_match(r"[（()）)]")
+            & (LegalTerm.term_length >= 3)
+            & (LegalTerm.term_length <= 30)
+        )
+        bracket_result = await session.execute(bracket_query)
+        all_rows = bracket_result.scalars().all()
+
+    import re
+    # 혼합 단어 중 영문/숫자+한글만 (슬래시, 특수기호 등 제외)
+    mixed_pattern = re.compile(r"^[가-힣a-zA-Z0-9]+$")
+    terms = {t for t in rows if mixed_pattern.match(t)}
+
+    # 3) 괄호 포함 용어에서 한글 핵심어 추출
+    bracket_terms = _extract_bracket_core_terms(rows_all=all_rows)
+    new_cores = bracket_terms - terms
+    if new_cores:
+        print(f"  괄호 핵심어 추가: {len(new_cores):,}개")
+    terms.update(new_cores)
+
+    return terms
 
 
 def load_terms_from_json() -> set[str]:
-    """JSON 파일에서 법률 용어 로드 (fallback, 리스트 평탄화 포함)"""
+    """JSON 파일에서 법률 용어 로드 (fallback, 리스트 평탄화 포함)
+
+    한글 전용(2-15자) + 혼합 단어(영문/숫자+한글, 2-15자) 모두 포함.
+    """
     import re
 
-    korean_only = re.compile(r"^[가-힣]+$")
+    # 한글 전용 또는 영문/숫자+한글 혼합
+    valid_pattern = re.compile(r"^[가-힣a-zA-Z0-9]+$")
+    has_korean = re.compile(r"[가-힣]")
 
     json_path = DONE_LAWTERMS_JSON if DONE_LAWTERMS_JSON.exists() else LEGAL_TERMS_JSON
     if not json_path.exists():
@@ -137,6 +240,7 @@ def load_terms_from_json() -> set[str]:
         data = json.load(f)
 
     terms: set[str] = set()
+    all_raw_terms: list[str] = []  # 괄호 핵심어 추출용
     for item in data:
         raw_val = item.get("법령용어명_한글", "")
 
@@ -152,11 +256,23 @@ def load_terms_from_json() -> set[str]:
             term = term_raw.strip()
             if not term:
                 continue
-            if len(term) < 2 or len(term) > 10:
+            if not has_korean.search(term):
                 continue
-            if not korean_only.match(term):
+            all_raw_terms.append(term)
+            if not valid_pattern.match(term):
+                continue
+            term_len = len(term)
+            if term_len < 2 or term_len > 15:
                 continue
             terms.add(term)
+
+    # 괄호 포함 용어에서 한글 핵심어 추출
+    bracket_rows = [t for t in all_raw_terms if "(" in t or "（" in t or ")" in t or "）" in t]
+    bracket_cores = _extract_bracket_core_terms(bracket_rows)
+    new_cores = bracket_cores - terms
+    if new_cores:
+        print(f"  괄호 핵심어 추가: {len(new_cores):,}개")
+    terms.update(new_cores)
 
     return terms
 

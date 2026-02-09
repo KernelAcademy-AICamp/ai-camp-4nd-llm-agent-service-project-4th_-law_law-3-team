@@ -505,10 +505,13 @@ uv run python scripts/load_legal_terms_data.py --verify  # 검증
 | 항목 | 수치 |
 |------|------|
 | 전체 고유 용어 | ~72,700개 |
-| 토크나이저 로드 (한글 2-10자) | ~35,200개 |
+| userdic 적재 | ~37,772개 |
+| 유효 커버리지 | ≥99% (괄호 변형 포함, 상세: `docs/USERDIC_COVERAGE_ANALYSIS.md`) |
 | 사전유형 | 법령정의사전 + 법령한영사전 + 생활용어사전 + 한영역추출 |
 
 > **참고**: `[DONE]lawterms.json` (81,488 레코드) 기반. 리스트 평탄화 + 한영사전 역추출 포함.
+> 72,700개 중 35,234개(48.5%)는 MeCab userdic 대상 외 (순수 비한글 12,985 + 공백 포함 22,249).
+> 상세 분석: `docs/USERDIC_COVERAGE_ANALYSIS.md`
 
 ### MeCab userdic (사용자 사전)
 
@@ -523,6 +526,7 @@ cd backend
 uv run python scripts/build_mecab_userdic.py           # DB에서 빌드
 uv run python scripts/build_mecab_userdic.py --from-json  # JSON fallback
 uv run python scripts/build_mecab_userdic.py --verify   # 빌드 후 검증
+uv run python scripts/build_mecab_userdic.py --fix-regression  # 회귀 수정
 
 # content_tokenized 재생성 (userdic 적용)
 uv run --no-sync python scripts/update_content_tokenized.py --userdic
@@ -535,9 +539,10 @@ uv run --no-sync python scripts/update_content_tokenized.py --userdic
 ```
 
 **출력 파일**:
-- `backend/data/mecab_userdic/legal_terms.csv` - userdic 소스 CSV
+- `backend/data/mecab_userdic/legal_terms.csv` - userdic 소스 CSV (37,772 엔트리)
 - `backend/data/mecab_userdic/legal_terms.dic` - 컴파일된 바이너리
-- `backend/data/mecab_userdic/decomposition_map.json` - 복합어 분해맵
+- `backend/data/mecab_userdic/decomposition_map.json` - 복합어 분해맵 (32,145 엔트리)
+- `backend/data/mecab_userdic/priority_terms.json` - 회귀 수정 용어 (683개, cost=-3000)
 
 **롤백**: `USE_MECAB_USERDIC=false` (기본값)로 설정하면 기존 사후 복원 방식으로 즉시 복귀.
 

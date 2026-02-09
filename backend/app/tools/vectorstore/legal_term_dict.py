@@ -29,7 +29,7 @@ _KOREAN_ONLY_PATTERN = re.compile(r"^[가-힣]+$")
 
 # 기본 필터: 토크나이저에 로드할 용어 조건
 DEFAULT_MIN_LENGTH = 2
-DEFAULT_MAX_LENGTH = 10
+DEFAULT_MAX_LENGTH = 15
 
 
 class LegalTermDictionary:
