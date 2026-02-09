@@ -92,3 +92,26 @@ class CrossAnalysisRequest(BaseModel):
     """교차 분석 요청 (선택된 지역 목록)"""
 
     regions: list[str]
+
+
+# =============================================================================
+# 수요 통계 스키마
+# =============================================================================
+class DemandStat(BaseModel):
+    """지역별 사건 수요 통계"""
+
+    region: str
+    case_count: int
+    lawyer_count: int
+    burden_index: float  # case_count / lawyer_count
+    court_name: str  # 관할법원명
+
+
+class DemandStatResponse(BaseModel):
+    """수요 통계 응답"""
+
+    data: list[DemandStat]
+    year: int
+    category: str
+    available_years: list[int]
+    available_categories: list[str]

@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.modules.lawyer_stats.schema import (
     CrossAnalysisRequest,
     CrossAnalysisResponse,
+    DemandStatResponse,
     DensityStat,
     DensityStatResponse,
     OverviewResponse,
@@ -133,6 +134,29 @@ async def get_cross_analysis_by_province(
     else:
         data = calculate_cross_analysis_by_province(province)
     return CrossAnalysisResponse(**data)
+
+
+@router.get("/demand-by-region", response_model=DemandStatResponse)
+async def get_demand_by_region(
+    category: str = Query(
+        default="민사",
+        description="사건 분야 (민사, 형사, 가사, 행정, 소년보호, 가정보호)",
+    ),
+    year: int = Query(
+        default=2024,
+        description="연도 (2015~2024)",
+        ge=2015,
+        le=2024,
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> DemandStatResponse:
+    """지역별 사건 수요 통계 조회."""
+    from app.services.service_function.case_demand_service import (
+        calculate_demand_by_region,
+    )
+
+    data = await calculate_demand_by_region(db, category=category, year=year)
+    return DemandStatResponse(**data)
 
 
 @router.post("/cross-analysis/regions", response_model=CrossAnalysisResponse)

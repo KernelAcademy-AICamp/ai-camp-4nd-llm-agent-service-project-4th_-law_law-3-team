@@ -80,7 +80,7 @@ law-3-team/
 | 모듈 | 설명 | 주요 기능 |
 |------|------|----------|
 | **lawyer_finder** | 카카오맵 API를 활용한 위치 기반 변호사 검색 | 지도 기반 검색, 반경 설정, 변호사 상세 정보 |
-| **lawyer_stats** | 지역별·전문분야별 변호사 분포 및 시장 분석 | 지역별 밀도, 향후 예측(2030/2035/2040), 히트맵 |
+| **lawyer_stats** | 지역별·전문분야별 변호사 분포 및 시장 분석 | 공급(지역별 밀도, 향후 예측), 수요(법원별 사건 수, 부담지수), 히트맵 |
 | **case_precedent** | RAG 기반 판례 검색 및 AI 질문 | Split View 검색, 필터(문서유형/법원), AI 판례 분석 |
 | **storyboard** | AI 이미지 생성을 활용한 사건 타임라인 시각화 | 타임라인 생성, 이미지 생성 |
 | **law_study** | 로스쿨 학생용 학습 자료, 퀴즈 제공 | 학습 자료, 퀴즈, 오답 노트 |
@@ -88,13 +88,15 @@ law-3-team/
 
 ### 변호사 통계 (lawyer_stats) 상세
 
-- **지역별 현황**: 시/도 → 시/군/구 드릴다운, 변호사 수 및 인구 대비 밀도
+- **공급 분석**: 시/도 → 시/군/구 드릴다운, 변호사 수 및 인구 대비 밀도
 - **향후 예측**: 2030/2035/2040년 추계인구 기반 밀도 변화 예측
+- **수요 분석**: 법원별 사건 접수 수 마커 시각화, 부담지수(변호사 1인당 사건 수) 중앙값 비교
 - **교차 분석**: 지역×전문분야 히트맵 시각화
 - **API 엔드포인트**:
   - `GET /api/lawyer-stats/overview` - 전체 현황 요약
   - `GET /api/lawyer-stats/by-region` - 지역별 변호사 수
   - `GET /api/lawyer-stats/density-by-region?year=current` - 지역별 밀도
+  - `GET /api/lawyer-stats/demand?category=민사&year=2024` - 사건 수요 통계
   - `GET /api/lawyer-stats/cross-analysis` - 지역×전문분야 교차 분석
 
 ### 판례 검색 (case_precedent) 상세

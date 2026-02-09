@@ -41,14 +41,20 @@ const SpecialtyBarChart = dynamic(
   { loading: DynamicLoadingFallback }
 )
 import {
+  fetchDemandStats,
   fetchDensityStats,
   fetchOverview,
   fetchRegionStats,
   fetchSpecialtyStats,
 } from '@/features/lawyer-stats/services'
+import type { CourtDemandMarker, DemandStat } from '@/features/lawyer-stats/types'
 
-export type ViewMode = 'count' | 'density' | 'prediction'
+export type IndicatorGroup = 'supply' | 'demand'
+export type ViewMode = 'count' | 'density' | 'prediction' | 'case_count' | 'burden_index'
 export type PredictionYear = 2030 | 2035 | 2040
+export type DemandCategory = '민사' | '형사' | '가사' | '행정' | '소년보호' | '가정보호'
+
+const DEMAND_CATEGORIES: DemandCategory[] = ['민사', '형사', '가사', '행정', '소년보호', '가정보호']
 
 function LoadingSpinner() {
   return (
@@ -99,15 +105,40 @@ const PROVINCES = [
 export default function LawyerStatPage() {
   const { isChatOpen, chatMode } = useUI()
   const [activeTab, setActiveTab] = useState<TabType>('region')
+  const [indicatorGroup, setIndicatorGroup] = useState<IndicatorGroup>('supply')
   const [viewMode, setViewMode] = useState<ViewMode>('count')
   const [predictionYear, setPredictionYear] = useState<PredictionYear>(2030)
+  const [demandCategory, setDemandCategory] = useState<DemandCategory>('민사')
+  const [demandYear, setDemandYear] = useState<number>(2024)
   const [selectedProvince, setSelectedProvince] = useState<string | null>(null)
   const [highlightedRegion, setHighlightedRegion] = useState<string | null>(null)
   const [mapSelectedRegion, setMapSelectedRegion] = useState<string | null>(null)
+  const [selectedCourt, setSelectedCourt] = useState<string | null>(null)
+  const [courtCoords, setCourtCoords] = useState<Record<string, [number, number]>>({})
 
   const regionSectionRef = useRef<HTMLDivElement>(null)
   const crossSectionRef = useRef<HTMLDivElement>(null)
 
+  // 법원 좌표 데이터 로드
+  useEffect(() => {
+    fetch('/data/court_coordinates.json')
+      .then(r => r.json())
+      .then(setCourtCoords)
+      .catch(() => {})
+  }, [])
+
+  // 공급 그룹으로 전환 시 viewMode 복원
+  const handleIndicatorGroupChange = useCallback((group: IndicatorGroup) => {
+    setIndicatorGroup(group)
+    setSelectedCourt(null)
+    if (group === 'supply') {
+      setViewMode('count')
+    } else {
+      setViewMode('case_count')
+    }
+  }, [])
+
+  // === Supply queries ===
   const overviewQuery = useQuery({
     queryKey: ['lawyer-stats', 'overview'],
     queryFn: fetchOverview,
@@ -134,38 +165,100 @@ export default function LawyerStatPage() {
     queryFn: fetchSpecialtyStats,
   })
 
-  const isLoading =
-    overviewQuery.isLoading ||
-    regionQuery.isLoading ||
-    densityQuery.isLoading ||
-    specialtyQuery.isLoading
+  // === Demand query ===
+  const demandQuery = useQuery({
+    queryKey: ['lawyer-stats', 'demand', demandCategory, demandYear],
+    queryFn: () => fetchDemandStats(demandCategory, demandYear),
+    enabled: indicatorGroup === 'demand',
+    placeholderData: keepPreviousData,
+  })
 
-  const hasError =
-    overviewQuery.isError ||
-    regionQuery.isError ||
-    densityQuery.isError ||
-    specialtyQuery.isError
+  // 수요 모드에서 사용 가능한 연도 목록
+  const availableDemandYears = useMemo(() => {
+    if (demandQuery.data?.available_years && demandQuery.data.available_years.length > 0) {
+      return demandQuery.data.available_years
+    }
+    // 기본값: 2015~2024
+    return Array.from({ length: 10 }, (_, i) => 2015 + i)
+  }, [demandQuery.data?.available_years])
 
-  const topRegion = useMemo(() => {
-    if (!regionQuery.data?.data || regionQuery.data.data.length === 0) return null
-    const top = regionQuery.data.data[0]
-    return { name: top.region, count: top.count }
-  }, [regionQuery.data])
+  // 법원 마커 클릭 → 해당 시/도로 필터 + 법원 선택
+  const handleCourtClick = useCallback((courtName: string | null) => {
+    if (!courtName) {
+      setSelectedCourt(null)
+      return
+    }
+    if (courtName === selectedCourt) {
+      setSelectedCourt(null)
+      return
+    }
+    setSelectedCourt(courtName)
+    const stat = demandQuery.data?.data.find(d => d.court_name === courtName)
+    if (stat) {
+      const province = stat.region.split(' ')[0]
+      setSelectedProvince(province)
+    }
+    setHighlightedRegion(null)
+    setMapSelectedRegion(null)
+  }, [selectedCourt, demandQuery.data])
 
-  const topSpecialty = useMemo(() => {
-    if (!specialtyQuery.data?.data || specialtyQuery.data.data.length === 0) return null
-    const top = specialtyQuery.data.data[0]
-    return { name: top.category_name, count: top.count }
-  }, [specialtyQuery.data])
+  const isDemandMode = indicatorGroup === 'demand'
+
+  const isLoading = isDemandMode
+    ? demandQuery.isLoading
+    : (overviewQuery.isLoading || regionQuery.isLoading || densityQuery.isLoading || specialtyQuery.isLoading)
+
+  const hasError = isDemandMode
+    ? demandQuery.isError
+    : (overviewQuery.isError || regionQuery.isError || densityQuery.isError || specialtyQuery.isError)
 
   const filteredRegionData = useMemo(() => {
+    if (isDemandMode && demandQuery.data) {
+      const sourceData = demandQuery.data.data
+      if (!selectedProvince) return sourceData
+      return sourceData.filter(r => r.region.startsWith(selectedProvince))
+    }
     const sourceData = viewMode === 'count'
       ? regionQuery.data?.data
       : densityQuery.data?.data
     if (!sourceData) return []
     if (!selectedProvince) return sourceData
     return sourceData.filter((r) => r.region.startsWith(selectedProvince))
-  }, [regionQuery.data, densityQuery.data, selectedProvince, viewMode])
+  }, [isDemandMode, viewMode, demandQuery.data, regionQuery.data, densityQuery.data, selectedProvince])
+
+  // DemandStat[] → CourtDemandMarker[] 그룹화
+  const courtMarkers = useMemo((): CourtDemandMarker[] => {
+    if (!isDemandMode || !demandQuery.data || !Object.keys(courtCoords).length) return []
+
+    const grouped = new Map<string, { regions: string[]; stat: DemandStat }>()
+    for (const stat of demandQuery.data.data) {
+      const existing = grouped.get(stat.court_name)
+      if (existing) {
+        existing.regions.push(stat.region)
+      } else {
+        grouped.set(stat.court_name, { regions: [stat.region], stat })
+      }
+    }
+
+    const markers: CourtDemandMarker[] = []
+    grouped.forEach(({ regions, stat }, court) => {
+      const coords = courtCoords[court]
+      if (!coords) return
+      markers.push({
+        court_name: court,
+        coordinates: coords,
+        case_count: stat.case_count,
+        lawyer_count: stat.lawyer_count,
+        burden_index: stat.burden_index,
+        regions,
+      })
+    })
+
+    if (selectedProvince) {
+      return markers.filter(m => m.regions.some(r => r.startsWith(selectedProvince)))
+    }
+    return markers
+  }, [isDemandMode, demandQuery.data, courtCoords, selectedProvince])
 
   const scrollToSection = useCallback((tab: TabType) => {
     const refs: Record<TabType, React.RefObject<HTMLDivElement | null>> = {
@@ -262,66 +355,133 @@ export default function LawyerStatPage() {
               ref={regionSectionRef}
               className="scroll-mt-16 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">지역별 변호사 현황</h2>
-                {/* 변호사 수 / 인구 대비 밀도 / 향후 예측 토글 */}
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('count')}
-                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                        viewMode === 'count'
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      변호사 수
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('density')}
-                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                        viewMode === 'density'
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      인구 대비 밀도
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('prediction')}
-                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                        viewMode === 'prediction'
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      향후 예측
-                    </button>
-                  </div>
+              {/* ===== 2단 지표 토글 ===== */}
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
+                {/* [공급][수요] pill 토글 */}
+                <div className="flex rounded-lg bg-gray-100 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => handleIndicatorGroupChange('supply')}
+                    className={`rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                      indicatorGroup === 'supply'
+                        ? 'bg-gray-900 text-white shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    공급
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleIndicatorGroupChange('demand')}
+                    className={`rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                      indicatorGroup === 'demand'
+                        ? 'bg-gray-900 text-white shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    수요
+                  </button>
+                </div>
 
-                  {/* 향후 예측 선택 시 연도 선택기 표시 */}
-                  {viewMode === 'prediction' && (
-                    <div className="flex gap-1 rounded-lg bg-violet-100 p-1">
-                      {([2030, 2035, 2040] as const).map((year) => (
+                {/* 구분선 */}
+                <div className="h-5 w-px bg-gray-300" />
+
+                {/* 하위 지표 라디오 버튼 */}
+                {indicatorGroup === 'supply' ? (
+                  <div className="flex items-center gap-4">
+                    {([
+                      { mode: 'count' as ViewMode, label: '변호사 수' },
+                      { mode: 'density' as ViewMode, label: '인구 대비 밀도' },
+                      { mode: 'prediction' as ViewMode, label: '향후 예측' },
+                    ]).map(({ mode, label }) => (
+                      <label key={mode} className="flex items-center gap-1.5 cursor-pointer text-sm">
+                        <input
+                          type="radio"
+                          name="supply-indicator"
+                          checked={viewMode === mode}
+                          onChange={() => setViewMode(mode)}
+                          className="h-3.5 w-3.5 text-gray-900 focus:ring-gray-500"
+                        />
+                        <span className={viewMode === mode ? 'font-medium text-gray-900' : 'text-gray-600'}>
+                          {label}
+                        </span>
+                      </label>
+                    ))}
+
+                    {/* 예측 연도 선택 */}
+                    {viewMode === 'prediction' && (
+                      <>
+                        <div className="h-5 w-px bg-gray-300" />
+                        <div className="flex gap-1 rounded-lg bg-violet-100 p-0.5">
+                          {([2030, 2035, 2040] as const).map((year) => (
+                            <button
+                              key={year}
+                              type="button"
+                              onClick={() => setPredictionYear(year)}
+                              className={`rounded-md px-2.5 py-1 text-sm font-medium transition-colors ${
+                                predictionYear === year
+                                  ? 'bg-violet-600 text-white shadow-sm'
+                                  : 'text-violet-700 hover:text-violet-900'
+                              }`}
+                            >
+                              {year}년
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {/* 수요 지표 라디오 */}
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-1.5 cursor-pointer text-sm">
+                        <input
+                          type="radio"
+                          name="demand-indicator"
+                          checked={viewMode === 'case_count'}
+                          onChange={() => setViewMode('case_count')}
+                          className="h-3.5 w-3.5 text-gray-900 focus:ring-gray-500"
+                        />
+                        <span className={viewMode === 'case_count' ? 'font-medium text-gray-900' : 'text-gray-600'}>
+                          사건 수
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* 구분선 */}
+                    <div className="h-5 w-px bg-gray-300" />
+
+                    {/* 분야 필터 pill 토글 */}
+                    <div className="flex gap-1 rounded-lg bg-amber-50 p-0.5">
+                      {DEMAND_CATEGORIES.map((cat) => (
                         <button
-                          key={year}
+                          key={cat}
                           type="button"
-                          onClick={() => setPredictionYear(year)}
-                          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                            predictionYear === year
-                              ? 'bg-violet-600 text-white shadow-sm'
-                              : 'text-violet-700 hover:text-violet-900'
+                          onClick={() => setDemandCategory(cat)}
+                          className={`rounded-md px-2.5 py-1 text-sm font-medium transition-colors ${
+                            demandCategory === cat
+                              ? 'bg-amber-500 text-white shadow-sm'
+                              : 'text-amber-800 hover:text-amber-900 hover:bg-amber-100'
                           }`}
                         >
-                          {year}년
+                          {cat}
                         </button>
                       ))}
                     </div>
-                  )}
-                </div>
+
+                    {/* 연도 드롭다운 */}
+                    <select
+                      value={demandYear}
+                      onChange={(e) => setDemandYear(Number(e.target.value))}
+                      className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm font-medium text-gray-700 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    >
+                      {availableDemandYears.map((y) => (
+                        <option key={y} value={y}>{y}년</option>
+                      ))}
+                    </select>
+                  </>
+                )}
               </div>
 
               {/* 지역 탭 버튼 */}
@@ -334,6 +494,7 @@ export default function LawyerStatPage() {
                       setSelectedProvince(province === '전체' ? null : province)
                       setHighlightedRegion(null)
                       setMapSelectedRegion(null)
+                      setSelectedCourt(null)
                     }}
                     className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                       (province === '전체' && !selectedProvince) || province === selectedProvince
@@ -354,20 +515,20 @@ export default function LawyerStatPage() {
                     predictionYear={isPredictionMode ? predictionYear : undefined}
                     selectedProvince={selectedProvince}
                     highlightedRegion={highlightedRegion}
+                    courtMarkers={courtMarkers}
+                    selectedCourt={selectedCourt}
+                    onCourtClick={handleCourtClick}
                     onRegionClick={(region) => {
-                      // 회색 영역(필터링 외 지역) 클릭 시 선택 해제
                       if (!region) {
                         setHighlightedRegion(null)
                         setMapSelectedRegion(null)
                         return
                       }
-                      // 같은 지역 클릭 시 토글 (선택 해제)
                       if (mapSelectedRegion === region) {
                         setHighlightedRegion(null)
                         setMapSelectedRegion(null)
                         return
                       }
-                      // 다른 지역 클릭 시 해당 지역 세부 화면으로 전환
                       const province = region.split(' ')[0]
                       setSelectedProvince(province)
                       setHighlightedRegion(region)
@@ -376,19 +537,24 @@ export default function LawyerStatPage() {
                   />
                 </div>
                 <div className="lg:col-span-4">
-                  {(viewMode === 'count' ? regionQuery.data : densityQuery.data) && (
+                  {filteredRegionData.length > 0 && (
                     <RegionDetailList
-                      regions={viewMode === 'count' ? regionQuery.data!.data : densityQuery.data!.data}
+                      regions={filteredRegionData}
                       viewMode={viewMode}
                       predictionYear={isPredictionMode ? predictionYear : undefined}
                       selectedProvince={selectedProvince}
                       mapSelectedRegion={mapSelectedRegion}
+                      courtMarkers={courtMarkers}
+                      selectedCourt={selectedCourt}
+                      onCourtSelect={handleCourtClick}
+                      demandCategory={demandCategory}
+                      demandYear={demandYear}
                       onRegionClick={(region) => {
                         if (region) {
                           const province = region.split(' ')[0]
                           setSelectedProvince(province)
                           setHighlightedRegion(region)
-                          setMapSelectedRegion(null)  // 리스트에서 선택 시 초기화
+                          setMapSelectedRegion(null)
                         } else {
                           setHighlightedRegion(null)
                           setMapSelectedRegion(null)

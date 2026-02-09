@@ -34,7 +34,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DATA_DIR = PROJECT_ROOT.parent / "data" / "trial_statistics_data"
+DATA_DIR = PROJECT_ROOT.parent / "data" / "case_intake_stats"
 
 BATCH_SIZE = 1000
 

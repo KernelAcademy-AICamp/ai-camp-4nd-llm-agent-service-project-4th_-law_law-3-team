@@ -64,3 +64,30 @@ export interface CrossAnalysisResponse {
   regions: string[]
   categories: string[]
 }
+
+// 수요 통계 타입
+export interface DemandStat {
+  region: string
+  case_count: number
+  lawyer_count: number
+  burden_index: number  // case_count / lawyer_count
+  court_name: string    // 관할법원명
+}
+
+export interface DemandStatResponse {
+  data: DemandStat[]
+  year: number
+  category: string
+  available_years: number[]
+  available_categories: string[]
+}
+
+/** 법원 단위로 그룹화된 수요 데이터 (지도 마커용) */
+export interface CourtDemandMarker {
+  court_name: string
+  coordinates: [number, number]  // [lng, lat]
+  case_count: number
+  lawyer_count: number
+  burden_index: number
+  regions: string[]              // 관할 지역 목록
+}

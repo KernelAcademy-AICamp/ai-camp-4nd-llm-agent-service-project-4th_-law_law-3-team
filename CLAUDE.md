@@ -578,8 +578,13 @@ uv run --no-sync python scripts/update_content_tokenized.py --userdic
 - 지역별 변호사 현황 (시/도 → 시/군/구 드릴다운)
 - 인구 대비 밀도 분석 (변호사 수 / 인구 × 10만명)
 - 향후 예측 모드 (2030/2035/2040년 추계인구 기반)
+- 사건 수요 분석 (법원 단위 마커 시각화, 부담지수 중앙값 비교)
 - 전문분야별 변호사 분포
 - 지역×전문분야 교차 분석 히트맵
+
+**지표 그룹 (IndicatorGroup):**
+- `supply` (공급): 변호사 수, 인구 대비 밀도, 향후 예측
+- `demand` (수요): 법원별 사건 접수 수 (민사/형사/가사/행정 등)
 
 **API 엔드포인트:**
 - `GET /api/lawyer-stats/overview` - 전체 현황 요약
@@ -588,10 +593,14 @@ uv run --no-sync python scripts/update_content_tokenized.py --userdic
 - `GET /api/lawyer-stats/by-specialty` - 전문분야별 통계
 - `GET /api/lawyer-stats/cross-analysis` - 지역×전문분야 교차 분석
 - `GET /api/lawyer-stats/region/{region}/specialties` - 특정 지역 전문분야 상세
+- `GET /api/lawyer-stats/demand` - 사건 수요 통계 (category, year 파라미터)
 
 **프론트엔드 컴포넌트:**
-- `RegionGeoMap` - 대한민국 시군구 지도 시각화 (TopoJSON)
-- `RegionDetailList` - 지역 상세 목록 및 예측 상세 뷰
+- `RegionGeoMap` - 대한민국 시군구 지도 시각화 (TopoJSON), 수요 모드 시 법원 마커 표시
+- `RegionDetailList` - 지역 상세 목록, 예측 상세 뷰, 법원 상세 뷰 (사건 수/변호사 수/부담지수/관할 지역)
 - `CrossAnalysisHeatmap` - 지역×전문분야 히트맵
 - `SpecialtyBarChart` - 전문분야별 바 차트
 - `StickyTabNav` - 스크롤 연동 탭 네비게이션
+
+**정적 데이터:**
+- `frontend/public/data/court_coordinates.json` - 법원 좌표 (약 66개)

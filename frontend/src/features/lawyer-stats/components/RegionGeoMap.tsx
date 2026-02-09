@@ -1,9 +1,9 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
-import { ComposableMap, Geographies, Geography, ZoomableGroup } from "react-simple-maps"
+import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from "react-simple-maps"
 import type { PredictionYear, ViewMode } from "@/app/lawyer-stats/page"
-import type { DensityStat, RegionStat } from "../types"
+import type { CourtDemandMarker, DemandStat, DensityStat, RegionStat } from "../types"
 
 // GeoJSON path (Nationwide)
 const GEO_URL = "/data/korea_geo.json"
@@ -30,12 +30,15 @@ const PROVINCE_PREFIX_MAP: Record<string, string> = {
 }
 
 interface Props {
-  data: (RegionStat | DensityStat)[]
+  data: (RegionStat | DensityStat | DemandStat)[]
   viewMode: ViewMode
   predictionYear?: PredictionYear
   selectedProvince?: string | null
   highlightedRegion?: string | null
   onRegionClick?: (region: string | null) => void
+  courtMarkers?: CourtDemandMarker[]
+  selectedCourt?: string | null
+  onCourtClick?: (courtName: string | null) => void
 }
 
 // 시/도 이름 -> GeoJSON 코드 prefix 매핑
@@ -83,7 +86,34 @@ const PROVINCE_VIEW_CONFIG: Record<string, { center: [number, number]; zoom: num
   제주: { center: [126.55, 33.4], zoom: 8 },
 }
 
-export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince, highlightedRegion, onRegionClick }: Props) {
+// 마커 색상 (사건 수 - 앰버)
+const CASE_MARKER_COLORS = [
+  { min: 10000, color: "#0F2A44" },
+  { min: 5000, color: "#2A4F78" },
+  { min: 2000, color: "#4E7AAD" },
+  { min: 1000, color: "#7FA3C7" },
+  { min: 0, color: "#C5D8EA" },
+]
+
+// 마커 색상 (부담지수 - 로즈)
+const BURDEN_MARKER_COLORS = [
+  { min: 100, color: "#9F1239" },
+  { min: 50, color: "#E11D48" },
+  { min: 20, color: "#FB7185" },
+  { min: 10, color: "#FDA4AF" },
+  { min: 0, color: "#FECDD3" },
+]
+
+export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince, highlightedRegion, onRegionClick, courtMarkers, selectedCourt, onCourtClick }: Props) {
+  const isDemandMode = viewMode === 'case_count' || viewMode === 'burden_index'
+
+  // 선택된 법원의 관할 지역 Set (하이라이트용)
+  const selectedCourtRegions = useMemo(() => {
+    if (!selectedCourt || !courtMarkers) return new Set<string>()
+    const marker = courtMarkers.find(m => m.court_name === selectedCourt)
+    return new Set(marker?.regions ?? [])
+  }, [selectedCourt, courtMarkers])
+
   // 선택된 시/도의 코드 prefix
   const selectedCodePrefix = selectedProvince ? PROVINCE_TO_CODE[selectedProvince] : null
 
@@ -100,6 +130,11 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
     density?: number
     count: number
     changePercent?: number
+    caseCount?: number
+    lawyerCount?: number
+    burdenIndex?: number
+    courtName?: string
+    isCourtMarker?: boolean
   } | null>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
@@ -113,14 +148,22 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
   }, [selectedProvince])
 
 
+
   // 1. Create a map of "Full Region Name" -> region data
   const regionDataMap = useMemo(() => {
-    const map = new Map<string, { count: number; density?: number; changePercent?: number }>()
+    const map = new Map<string, {
+      count: number; density?: number; changePercent?: number
+      caseCount?: number; lawyerCount?: number; burdenIndex?: number; courtName?: string
+    }>()
     data.forEach((d) => {
       map.set(d.region, {
-        count: d.count,
-        density: 'density' in d ? d.density : undefined,
-        changePercent: 'change_percent' in d ? d.change_percent : undefined,
+        count: 'count' in d ? (d as RegionStat).count : 0,
+        density: 'density' in d ? (d as DensityStat).density : undefined,
+        changePercent: 'change_percent' in d ? (d as DensityStat).change_percent : undefined,
+        caseCount: 'case_count' in d ? (d as DemandStat).case_count : undefined,
+        lawyerCount: 'lawyer_count' in d ? (d as DemandStat).lawyer_count : undefined,
+        burdenIndex: 'burden_index' in d ? (d as DemandStat).burden_index : undefined,
+        courtName: 'court_name' in d ? (d as DemandStat).court_name : undefined,
       })
     })
     return map
@@ -131,10 +174,14 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
     const map = new Map<string, number>()
     const useDensity = viewMode === 'density' || viewMode === 'prediction'
     data.forEach((d) => {
-      if (useDensity && 'density' in d) {
-        map.set(d.region, d.density)
-      } else {
-        map.set(d.region, d.count)
+      if (viewMode === 'burden_index' && 'burden_index' in d) {
+        map.set(d.region, (d as DemandStat).burden_index)
+      } else if (viewMode === 'case_count' && 'case_count' in d) {
+        map.set(d.region, (d as DemandStat).case_count)
+      } else if (useDensity && 'density' in d) {
+        map.set(d.region, (d as DensityStat).density)
+      } else if ('count' in d) {
+        map.set(d.region, (d as RegionStat).count)
       }
     })
     return map
@@ -169,13 +216,37 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
     { min: 0, max: 1, color: "#EDE9FE" },           // 1명 미만 - violet-100
   ]
 
+  // Color Scale - case_count mode (앰버 그라데이션 - 6단계)
+  const CASE_COUNT_COLOR_RANGES = [
+    { min: 50000, max: Infinity, color: "#78350F" },  // 5만건 이상 - amber-900
+    { min: 20000, max: 50000, color: "#92400E" },     // 2~5만건 - amber-800
+    { min: 10000, max: 20000, color: "#B45309" },     // 1~2만건 - amber-700
+    { min: 5000, max: 10000, color: "#D97706" },      // 5천~1만건 - amber-600
+    { min: 1000, max: 5000, color: "#F59E0B" },       // 1~5천건 - amber-500
+    { min: 0, max: 1000, color: "#FCD34D" },          // 1천건 미만 - amber-300
+  ]
+
+  // Color Scale - burden_index mode (로즈 그라데이션 - 6단계)
+  const BURDEN_COLOR_RANGES = [
+    { min: 100, max: Infinity, color: "#881337" },  // 100 이상 - rose-900
+    { min: 50, max: 100, color: "#BE123C" },        // 50~100 - rose-700
+    { min: 20, max: 50, color: "#E11D48" },         // 20~50 - rose-600
+    { min: 10, max: 20, color: "#FB7185" },         // 10~20 - rose-400
+    { min: 5, max: 10, color: "#FDA4AF" },          // 5~10 - rose-300
+    { min: 0, max: 5, color: "#FFE4E6" },           // 5 미만 - rose-100
+  ]
+
   const colorScale = (value: number) => {
     if (value === 0) return "#ffffff"
-    const ranges = viewMode === 'prediction'
-      ? PREDICTION_COLOR_RANGES
-      : viewMode === 'density'
-        ? DENSITY_COLOR_RANGES
-        : COUNT_COLOR_RANGES
+    const ranges = viewMode === 'case_count'
+      ? CASE_COUNT_COLOR_RANGES
+      : viewMode === 'burden_index'
+        ? BURDEN_COLOR_RANGES
+        : viewMode === 'prediction'
+          ? PREDICTION_COLOR_RANGES
+          : viewMode === 'density'
+            ? DENSITY_COLOR_RANGES
+            : COUNT_COLOR_RANGES
     for (const range of ranges) {
       if (value >= range.min && value < range.max) {
         return range.color
@@ -218,6 +289,10 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
       density: regionData?.density,
       count: regionData?.count ?? 0,
       changePercent: regionData?.changePercent,
+      caseCount: regionData?.caseCount,
+      lawyerCount: regionData?.lawyerCount,
+      burdenIndex: regionData?.burdenIndex,
+      courtName: regionData?.courtName,
     })
     const e = event.nativeEvent || event
     setTooltipPos({ x: e.clientX, y: e.clientY })
@@ -244,7 +319,25 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
           style={{ left: tooltipPos.x + 15, top: tooltipPos.y + 15 }}
         >
           <div className="font-medium">{tooltipContent.region}</div>
-          {viewMode === 'prediction' && tooltipContent.density !== undefined ? (
+          {/* 수요 모드 지역 호버: 지역명 + 관할법원만 */}
+          {isDemandMode && !tooltipContent.isCourtMarker && tooltipContent.courtName ? (
+            <div className="text-gray-300">관할: {tooltipContent.courtName}</div>
+          ) : /* 수요 모드 법원 마커 호버: 전체 정보 */
+          viewMode === 'case_count' && tooltipContent.caseCount !== undefined && tooltipContent.isCourtMarker ? (
+            <>
+              <div>사건 수: {tooltipContent.caseCount.toLocaleString()}건</div>
+              {tooltipContent.lawyerCount !== undefined && (
+                <div className="text-gray-300">관할 변호사 수: {tooltipContent.lawyerCount.toLocaleString()}명</div>
+              )}
+            </>
+          ) : viewMode === 'burden_index' && tooltipContent.burdenIndex !== undefined && tooltipContent.isCourtMarker ? (
+            <>
+              <div>부담지수: {tooltipContent.burdenIndex.toFixed(1)}</div>
+              <div className="text-gray-300">
+                사건 {tooltipContent.caseCount?.toLocaleString() ?? 0}건 / 관할 변호사 {tooltipContent.lawyerCount?.toLocaleString() ?? 0}명
+              </div>
+            </>
+          ) : viewMode === 'prediction' && tooltipContent.density !== undefined ? (
             <div>
               {predictionYear} 예측: {tooltipContent.density.toFixed(1)}명 / 10만명
               {tooltipContent.changePercent !== undefined && (
@@ -298,27 +391,43 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
                 // 줌 레벨에 반비례하여 테두리 두께 조절
                 const baseStrokeWidth = 0.5 / zoom
 
-                // 1️⃣ 선택된 지역: Fill 기존 색 유지 + 테두리 굵고 진하게
-                // 2️⃣ 나머지 지역: dim 처리 (opacity 낮게)
-                const fillColor = isSelected ? colorScale(count) : "#E5E7EB"
+                // 수요 모드: 지역을 회색 단색으로 표시, 선택된 법원 관할만 하이라이트
+                // 공급 모드: 기존 색칠 방식
+                const isCourtRegion = selectedCourtRegions.has(fullName)
+                let fillColor: string
+                if (isDemandMode && courtMarkers && courtMarkers.length > 0) {
+                  if (isCourtRegion) {
+                    fillColor = viewMode === 'case_count' ? "#DBEAFE" : "#DBEAFE"
+                  } else {
+                    fillColor = isSelected ? "#F1F5F9" : "#E5E7EB"
+                  }
+                } else {
+                  fillColor = isSelected ? colorScale(count) : "#E5E7EB"
+                }
 
                 // 선택된 지역이 있을 때 나머지는 dim 처리
-                const fillOpacity = isHighlighted
+                const fillOpacity = isCourtRegion
                   ? 1
-                  : highlightedRegion && isSelected
-                    ? 0.5
-                    : isSelected
-                      ? 1
-                      : 0.4
+                  : isHighlighted
+                    ? 1
+                    : highlightedRegion && isSelected
+                      ? 0.5
+                      : isSelected
+                        ? 1
+                        : 0.4
 
                 // Stroke 설정
+                // Stroke 설정
+                const isDemandZoomed = isDemandMode && courtMarkers && courtMarkers.length > 0 && selectedCodePrefix
                 const strokeColor = isHighlighted
                   ? "#2563EB"  // 선택: blue-600
-                  : isSelected && selectedCodePrefix
-                    ? "#6B7280"
-                    : isSelected
-                      ? "#9CA3AF"
-                      : "#D6D6DA"
+                  : isDemandZoomed && isSelected
+                    ? "#C0C7CF"  // 수요 확대: 연한 경계 (바깥 #D6D6DA보다는 진하게)
+                    : isSelected && selectedCodePrefix
+                      ? "#6B7280"
+                      : isSelected
+                        ? "#9CA3AF"
+                        : "#D6D6DA"
 
                 const strokeWidth = isHighlighted
                   ? baseStrokeWidth * 5  // 선택: 굵게
@@ -339,17 +448,24 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
                     onMouseLeave={isSelected ? handleMouseLeave : undefined}
                     onClick={(e) => {
                       e.stopPropagation()
-                      onRegionClick?.(isSelected ? fullName : null)
+                      if (isDemandMode && isSelected) {
+                        // 수요 모드: 지역의 관할법원으로 연결
+                        const rd = regionDataMap.get(fullName)
+                        if (rd?.courtName) onCourtClick?.(rd.courtName)
+                      } else {
+                        onRegionClick?.(isSelected ? fullName : null)
+                      }
                     }}
                     tabIndex={-1}
                     style={{
                       default: { outline: "none" },
                       hover: isSelected
                         ? {
-                            fill: isHighlighted ? colorScale(count) : "#BFDBFE",
-                            stroke: "#93C5FD",
+                            fill: isDemandZoomed ? "#E2E8F0" : (isHighlighted ? colorScale(count) : "#BFDBFE"),
+                            stroke: isDemandZoomed ? "#CBD5E1" : "#93C5FD",
                             strokeWidth: baseStrokeWidth * 1.5,
-                            outline: "none"
+                            outline: "none",
+                            cursor: isDemandMode ? "pointer" : undefined,
                           }
                         : { outline: "none" },
                       pressed: { outline: "none" },
@@ -359,6 +475,75 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
               })
             }
           </Geographies>
+
+          {/* 수요 모드: 법원 마커 렌더링 */}
+          {isDemandMode && courtMarkers?.map((court) => {
+            const isMarkerSelected = selectedCourt === court.court_name
+            const value = viewMode === 'burden_index' ? court.burden_index : court.case_count
+            const size = 12
+
+            const colors = viewMode === 'burden_index' ? BURDEN_MARKER_COLORS : CASE_MARKER_COLORS
+            let markerColor = colors[colors.length - 1].color
+            for (const c of colors) {
+              if (value >= c.min) { markerColor = c.color; break }
+            }
+
+            {/* 아이콘 크기: 원 반지름의 ~65% */}
+            const iconScale = (size * 0.65) / zoom / 12
+
+            return (
+              <Marker key={court.court_name} coordinates={court.coordinates}>
+                <g
+                  onClick={(e) => { e.stopPropagation(); onCourtClick?.(court.court_name) }}
+                  onMouseEnter={(e) => {
+                    const regionsPreview = court.regions.length > 3
+                      ? court.regions.slice(0, 3).join(', ') + ` 외 ${court.regions.length - 3}개`
+                      : court.regions.join(', ')
+                    setTooltipContent({
+                      region: court.court_name,
+                      count: 0,
+                      caseCount: court.case_count,
+                      lawyerCount: court.lawyer_count,
+                      burdenIndex: court.burden_index,
+                      courtName: regionsPreview,
+                      isCourtMarker: true,
+                    })
+                    setTooltipPos({ x: e.clientX, y: e.clientY })
+                  }}
+                  onMouseMove={handleMouseMove}
+                  onMouseLeave={handleMouseLeave}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {/* 배경 원 */}
+                  <circle
+                    r={size / zoom}
+                    fill={markerColor}
+                    fillOpacity={0.85}
+                    stroke={isMarkerSelected ? "#1E40AF" : "#FFFFFF"}
+                    strokeWidth={isMarkerSelected ? 2 / zoom : 1 / zoom}
+                  />
+                  {/* 법원 건물 아이콘 (Landmark) */}
+                  <g transform={`translate(${-12 * iconScale}, ${-12 * iconScale}) scale(${iconScale})`}>
+                    <polygon points="12,3 21,8 3,8" fill="white" fillOpacity={0.95} />
+                    <rect x="5" y="9.5" width="2" height="8" rx="0.5" fill="white" fillOpacity={0.95} />
+                    <rect x="9" y="9.5" width="2" height="8" rx="0.5" fill="white" fillOpacity={0.95} />
+                    <rect x="13" y="9.5" width="2" height="8" rx="0.5" fill="white" fillOpacity={0.95} />
+                    <rect x="17" y="9.5" width="2" height="8" rx="0.5" fill="white" fillOpacity={0.95} />
+                    <rect x="2" y="18" width="20" height="2.5" rx="0.5" fill="white" fillOpacity={0.95} />
+                  </g>
+                </g>
+                {zoom >= 3 && (
+                  <text
+                    textAnchor="middle"
+                    y={-size / zoom - 4 / zoom}
+                    style={{ fontSize: `${10 / zoom}px`, fill: '#374151', fontWeight: 500, pointerEvents: 'none' }}
+                  >
+                    {court.court_name.replace(/지방법원|가정법원|행정법원/, '')}
+                  </text>
+                )}
+              </Marker>
+            )
+          })}
         </ZoomableGroup>
       </ComposableMap>
 
@@ -386,7 +571,49 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
 
         {/* Legend */}
         <div className="flex flex-col gap-1 text-xs text-gray-600 bg-white/95 p-2.5 rounded-lg shadow-sm border border-gray-200">
-          {viewMode === 'count' ? (
+          {isDemandMode && courtMarkers && courtMarkers.length > 0 ? (
+            viewMode === 'case_count' ? (
+              <>
+                <div className="font-medium text-slate-700 mb-1">지역별 사건 수<br /><span className="font-normal text-gray-400">(관할법원 기준)</span></div>
+                {[
+                  { min: 10000, label: '1만 건 이상' },
+                  { min: 5000, label: '5천 ~ 1만 건' },
+                  { min: 2000, label: '2천 ~ 5천 건' },
+                  { min: 1000, label: '1천 ~ 2천 건' },
+                  { min: 0, label: '1천 건 미만' },
+                ].map(({ min, label }) => {
+                  let c = CASE_MARKER_COLORS[CASE_MARKER_COLORS.length - 1].color
+                  for (const mc of CASE_MARKER_COLORS) { if (min >= mc.min) { c = mc.color; break } }
+                  return (
+                    <div key={min} className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c, opacity: 0.85 }} />
+                      <span>{label}</span>
+                    </div>
+                  )
+                })}
+              </>
+            ) : (
+              <>
+                <div className="font-medium text-rose-700 mb-1">법원별 부담지수</div>
+                {[
+                  { min: 100, label: '100 이상' },
+                  { min: 50, label: '50 ~ 100' },
+                  { min: 20, label: '20 ~ 50' },
+                  { min: 10, label: '10 ~ 20' },
+                  { min: 0, label: '10 미만' },
+                ].map(({ min, label }) => {
+                  let c = BURDEN_MARKER_COLORS[BURDEN_MARKER_COLORS.length - 1].color
+                  for (const mc of BURDEN_MARKER_COLORS) { if (min >= mc.min) { c = mc.color; break } }
+                  return (
+                    <div key={min} className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c, opacity: 0.85 }} />
+                      <span>{label}</span>
+                    </div>
+                  )
+                })}
+              </>
+            )
+          ) : viewMode === 'count' ? (
             <>
               <div className="font-medium text-gray-700 mb-1">변호사 수</div>
               <div className="flex items-center gap-2">
@@ -467,10 +694,12 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
               </div>
             </>
           )}
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-white border border-gray-300"></div>
-            <span>0명</span>
-          </div>
+          {!(isDemandMode && courtMarkers && courtMarkers.length > 0) && (
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-sm bg-white border border-gray-300"></div>
+              <span>0명</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
