@@ -1199,6 +1199,105 @@ def chunk_law_content(content: str, config: LawChunkConfig) -> List[tuple]:
     return chunks
 
 
+def _load_mecab_tokenizer() -> Any:
+    """MeCab 토크나이저 로드 (법률 용어 사전 + userdic 포함, 없으면 None)
+
+    검색 시(lancedb.py search_fts)와 동일한 설정으로 토크나이저를 생성하여
+    인덱싱-검색 간 토크나이저 불일치를 방지한다.
+    """
+    import importlib.util
+
+    vectorstore_dir = (
+        Path(__file__).parent.parent / "app" / "tools" / "vectorstore"
+    )
+    userdic_dir = Path(__file__).parent.parent / "data" / "mecab_userdic"
+
+    try:
+        # 토크나이저 모듈 로드
+        tok_path = vectorstore_dir / "mecab_tokenizer.py"
+        spec = importlib.util.spec_from_file_location("mecab_tokenizer", str(tok_path))
+        if not spec or not spec.loader:
+            print("[WARN] MeCab tokenizer module not found. content_tokenized will be None.")
+            return None
+        tok_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tok_mod)
+
+        # 법률 용어 사전 로드 (JSON fallback)
+        legal_dict = None
+        dict_path = vectorstore_dir / "legal_term_dict.py"
+        spec_d = importlib.util.spec_from_file_location("legal_term_dict", str(dict_path))
+        if spec_d and spec_d.loader:
+            dict_mod = importlib.util.module_from_spec(spec_d)
+            spec_d.loader.exec_module(dict_mod)
+
+            # DB 로드 시도
+            try:
+                import sys as _sys
+                _backend_root_str = str(Path(__file__).parent.parent)
+                if _backend_root_str not in _sys.path:
+                    _sys.path.insert(0, _backend_root_str)
+
+                import asyncio
+
+                from app.core.database import (
+                    async_session_factory,  # type: ignore[import-untyped]
+                )
+
+                ld = dict_mod.LegalTermDictionary()
+
+                async def _load_db() -> int:
+                    async with async_session_factory() as session:
+                        return await ld.load_from_db(session)
+
+                count = asyncio.run(_load_db())
+                legal_dict = ld
+                print(f"[INFO] 법률용어사전 DB 로드: {count:,}개")
+            except Exception as db_err:
+                print(f"[WARN] DB 로드 실패 ({db_err}), JSON fallback 시도")
+                # JSON fallback
+                json_candidates = [
+                    Path(__file__).parent.parent.parent / "data" / "[DONE]lawterms.json",
+                    Path(__file__).parent.parent.parent / "data" / "lawterms_full.json",
+                ]
+                for jp in json_candidates:
+                    if jp.exists():
+                        ld = dict_mod.LegalTermDictionary()
+                        count = ld.load_from_json(str(jp))
+                        if count > 0:
+                            legal_dict = ld
+                            print(f"[INFO] 법률용어사전 JSON 로드: {count:,}개 ({jp.name})")
+                        break
+
+            # userdic 분해맵 로드
+            decomp_path = userdic_dir / "decomposition_map.json"
+            if legal_dict and decomp_path.exists():
+                decomp_count = legal_dict.load_decomposition_map(decomp_path)
+                print(f"[INFO] userdic 분해맵 로드: {decomp_count:,}개")
+
+        # userdic 경로
+        userdic_path = None
+        dic_path = userdic_dir / "legal_terms.dic"
+        if dic_path.exists():
+            userdic_path = str(dic_path)
+
+        tokenizer = tok_mod.MeCabTokenizer(
+            legal_dict=legal_dict,
+            userdic_path=userdic_path,
+        )
+        if tokenizer.is_available:
+            mode_parts = []
+            if legal_dict:
+                mode_parts.append("법률용어사전")
+            if userdic_path:
+                mode_parts.append("userdic")
+            mode_str = f"(+ {' + '.join(mode_parts)})" if mode_parts else "(MeCab 기본)"
+            print(f"[INFO] MeCab 토크나이저 초기화 완료 {mode_str}")
+            return tokenizer
+        print("[WARN] MeCab not available. content_tokenized will be None.")
+    except Exception as e:
+        print(f"[WARN] MeCab tokenizer init failed: {e}. content_tokenized will be None.")
+    return None
+
 
 class StreamingEmbeddingProcessor(ABC, Generic[ChunkConfigT]):
     """
@@ -1220,25 +1319,8 @@ class StreamingEmbeddingProcessor(ABC, Generic[ChunkConfigT]):
         self.store = LanceDBStore()
         self.stats = EmbeddingStats(device=str(self.device_info))
 
-        # MeCab 토크나이저 초기화 (FTS content_tokenized용)
-        self._mecab_tokenizer = None
-        try:
-            import importlib.util
-            module_path = Path(__file__).parent.parent / "app" / "tools" / "vectorstore" / "mecab_tokenizer.py"
-            spec = importlib.util.spec_from_file_location("mecab_tokenizer", str(module_path))
-            if spec and spec.loader:
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                tokenizer = mod.MeCabTokenizer()
-                if tokenizer.is_available:
-                    self._mecab_tokenizer = tokenizer
-                    print("[INFO] MeCab tokenizer initialized for FTS pre-tokenization")
-                else:
-                    print("[WARN] MeCab not available. content_tokenized will be None.")
-            else:
-                print("[WARN] MeCab tokenizer module not found. content_tokenized will be None.")
-        except Exception as e:
-            print(f"[WARN] MeCab tokenizer init failed: {e}. content_tokenized will be None.")
+        # MeCab 토크나이저 초기화 (FTS content_tokenized용, 법률용어사전+userdic 포함)
+        self._mecab_tokenizer = _load_mecab_tokenizer()
 
     @abstractmethod
     def get_chunk_config(self) -> ChunkConfigT:

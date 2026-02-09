@@ -22,6 +22,7 @@ class EmbeddingStore:
         import lancedb
 
         db_path = db_path or str(DEFAULT_CONFIG["LANCEDB_URI"])
+        self.db_path = db_path
         self.table_name = table_name or str(DEFAULT_CONFIG["LANCEDB_TABLE_NAME"])
 
         Path(db_path).mkdir(parents=True, exist_ok=True)

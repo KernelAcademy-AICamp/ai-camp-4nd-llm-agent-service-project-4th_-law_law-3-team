@@ -158,30 +158,99 @@ def clear_checkpoint(data_type: str) -> None:
 
 
 def _load_mecab_tokenizer() -> Any:
-    """MeCab 토크나이저 로드 (없으면 None)"""
-    try:
-        import importlib.util
+    """MeCab 토크나이저 로드 (법률 용어 사전 + userdic 포함, 없으면 None)
 
-        module_path = (
-            Path(__file__).parent.parent
-            / "app"
-            / "tools"
-            / "vectorstore"
-            / "mecab_tokenizer.py"
-        )
-        spec = importlib.util.spec_from_file_location(
-            "mecab_tokenizer", str(module_path)
-        )
-        if spec and spec.loader:
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            tokenizer = mod.MeCabTokenizer()
-            if tokenizer.is_available:
-                print("[INFO] MeCab 토크나이저 초기화 완료 (FTS 사전 토크나이징)")
-                return tokenizer
-            print("[WARN] MeCab 사용 불가. content_tokenized = None")
-        else:
+    검색 시(lancedb.py search_fts)와 동일한 설정으로 토크나이저를 생성하여
+    인덱싱-검색 간 토크나이저 불일치를 방지한다.
+    """
+    import importlib.util
+
+    vectorstore_dir = (
+        Path(__file__).parent.parent / "app" / "tools" / "vectorstore"
+    )
+    userdic_dir = Path(__file__).parent.parent / "data" / "mecab_userdic"
+
+    try:
+        # 토크나이저 모듈 로드
+        tok_path = vectorstore_dir / "mecab_tokenizer.py"
+        spec = importlib.util.spec_from_file_location("mecab_tokenizer", str(tok_path))
+        if not spec or not spec.loader:
             print("[WARN] MeCab 토크나이저 모듈 미발견. content_tokenized = None")
+            return None
+        tok_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tok_mod)
+
+        # 법률 용어 사전 로드 (JSON fallback)
+        legal_dict = None
+        dict_path = vectorstore_dir / "legal_term_dict.py"
+        spec_d = importlib.util.spec_from_file_location("legal_term_dict", str(dict_path))
+        if spec_d and spec_d.loader:
+            dict_mod = importlib.util.module_from_spec(spec_d)
+            spec_d.loader.exec_module(dict_mod)
+
+            # DB 로드 시도
+            try:
+                import sys as _sys
+                _backend_root_str = str(Path(__file__).parent.parent)
+                if _backend_root_str not in _sys.path:
+                    _sys.path.insert(0, _backend_root_str)
+
+                import asyncio
+
+                from app.core.database import (
+                    async_session_factory,  # type: ignore[import-untyped]
+                )
+
+                ld = dict_mod.LegalTermDictionary()
+                async def _load_db() -> int:
+                    async with async_session_factory() as session:
+                        return await ld.load_from_db(session)
+
+                count = asyncio.run(_load_db())
+                legal_dict = ld
+                print(f"[INFO] 법률용어사전 DB 로드: {count:,}개")
+            except Exception as db_err:
+                print(f"[WARN] DB 로드 실패 ({db_err}), JSON fallback 시도")
+                # JSON fallback
+                json_candidates = [
+                    Path(__file__).parent.parent.parent / "data" / "[DONE]lawterms.json",
+                    Path(__file__).parent.parent.parent / "data" / "lawterms_full.json",
+                ]
+                for jp in json_candidates:
+                    if jp.exists():
+                        ld = dict_mod.LegalTermDictionary()
+                        count = ld.load_from_json(str(jp))
+                        if count > 0:
+                            legal_dict = ld
+                            print(f"[INFO] 법률용어사전 JSON 로드: {count:,}개 ({jp.name})")
+                        break
+
+            # userdic 분해맵 로드
+            decomp_path = userdic_dir / "decomposition_map.json"
+            if legal_dict and decomp_path.exists():
+                decomp_count = legal_dict.load_decomposition_map(decomp_path)
+                print(f"[INFO] userdic 분해맵 로드: {decomp_count:,}개")
+
+        # userdic 경로
+        userdic_path = None
+        dic_path = userdic_dir / "legal_terms.dic"
+        if dic_path.exists():
+            userdic_path = str(dic_path)
+
+        tokenizer = tok_mod.MeCabTokenizer(
+            legal_dict=legal_dict,
+            userdic_path=userdic_path,
+        )
+        if tokenizer.is_available:
+            mode_parts = []
+            if legal_dict:
+                mode_parts.append("법률용어사전")
+            if userdic_path:
+                mode_parts.append("userdic")
+            mode_str = f"(+ {' + '.join(mode_parts)})" if mode_parts else "(MeCab 기본)"
+            print(f"[INFO] MeCab 토크나이저 초기화 완료 {mode_str}")
+            return tokenizer
+        print("[WARN] MeCab 사용 불가. content_tokenized = None")
     except Exception as e:
         print(f"[WARN] MeCab 토크나이저 초기화 실패: {e}. content_tokenized = None")
     return None
@@ -457,6 +526,41 @@ class LocalEmbeddingProcessor(ABC):
             return self._mecab.tokenize(text)
         return None
 
+    def _save_tokenizer_manifest(self) -> None:
+        """토크나이저 매니페스트 저장 (content_tokenized 버전 추적)"""
+        from scripts.embedding_common.tokenizer_manifest import (
+            build_manifest,
+            save_manifest,
+        )
+
+        legal_dict_count = 0
+        userdic_path_str = None
+        decomp_map_path_str = None
+        userdic_dir = _backend_root / "data" / "mecab_userdic"
+
+        if self._mecab:
+            ld = getattr(self._mecab, "_legal_dict", None)
+            if ld:
+                legal_dict_count = getattr(ld, "term_count", 0)
+            if getattr(self._mecab, "_userdic_active", False):
+                dic_p = userdic_dir / "legal_terms.dic"
+                if dic_p.exists():
+                    userdic_path_str = str(dic_p)
+            decomp_p = userdic_dir / "decomposition_map.json"
+            if decomp_p.exists():
+                decomp_map_path_str = str(decomp_p)
+
+        lancedb_path = Path(self.store.db_path)
+        manifest = build_manifest(
+            legal_dict_count=legal_dict_count,
+            userdic_path=userdic_path_str,
+            decomp_map_path=decomp_map_path_str,
+            total_rows=self.stats.total_chunks,
+            tokenized_rows=self.stats.total_chunks if self._mecab else 0,
+        )
+        out = save_manifest(lancedb_path, manifest)
+        print(f"[INFO] 토크나이저 매니페스트 저장: {out}")
+
     def run(
         self,
         source_path: str,
@@ -647,6 +751,9 @@ class LocalEmbeddingProcessor(ABC):
                 print("[INFO] FTS 인덱스 생성 완료")
             except Exception as e:
                 print(f"[WARN] FTS 인덱스 생성 실패: {e}")
+
+        # 토크나이저 매니페스트 저장
+        self._save_tokenizer_manifest()
 
         # 체크포인트 정리 (완료 시)
         clear_checkpoint(self.data_type)

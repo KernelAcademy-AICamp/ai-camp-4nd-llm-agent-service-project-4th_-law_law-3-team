@@ -52,6 +52,44 @@ USERDIC_PATH = BACKEND_DIR / "data" / "mecab_userdic" / "legal_terms.dic"
 DECOMP_MAP_PATH = BACKEND_DIR / "data" / "mecab_userdic" / "decomposition_map.json"
 
 
+def _save_tokenizer_manifest(
+    *,
+    tokenizer: object,
+    total_rows: int,
+    tokenized_rows: int,
+) -> None:
+    """토크나이저 매니페스트 저장 (content_tokenized 버전 추적)"""
+    try:
+        from scripts.embedding_common.tokenizer_manifest import (
+            build_manifest,
+            save_manifest,
+        )
+    except ImportError:
+        sys.path.insert(0, str(BACKEND_DIR))
+        from scripts.embedding_common.tokenizer_manifest import (
+            build_manifest,
+            save_manifest,
+        )
+
+    # 토크나이저에서 설정 정보 추출
+    legal_dict_count = 0
+    userdic_path_str = None
+    if hasattr(tokenizer, "_legal_dict") and tokenizer._legal_dict:  # type: ignore[attr-defined]
+        legal_dict_count = getattr(tokenizer._legal_dict, "term_count", 0)  # type: ignore[attr-defined]
+    if hasattr(tokenizer, "_userdic_active") and tokenizer._userdic_active:  # type: ignore[attr-defined]
+        userdic_path_str = str(USERDIC_PATH) if USERDIC_PATH.exists() else None
+
+    manifest = build_manifest(
+        legal_dict_count=legal_dict_count,
+        userdic_path=userdic_path_str,
+        decomp_map_path=str(DECOMP_MAP_PATH) if DECOMP_MAP_PATH.exists() else None,
+        total_rows=total_rows,
+        tokenized_rows=tokenized_rows,
+    )
+    out = save_manifest(LANCEDB_PATH, manifest)
+    print(f"[INFO] 토크나이저 매니페스트 저장: {out}")
+
+
 def _load_module(name: str, path: Path) -> object:
     """파일 경로에서 Python 모듈을 동적 로드"""
     spec = importlib.util.spec_from_file_location(name, path)
@@ -308,6 +346,13 @@ def update_table(
     new_table = db.open_table(TABLE_NAME)
     new_table.create_fts_index("content_tokenized", replace=True)
     print(f"  완료 ({time.time() - t3:.1f}초)")
+
+    # 5. 토크나이저 매니페스트 저장
+    _save_tokenizer_manifest(
+        tokenizer=tokenizer,
+        total_rows=total,
+        tokenized_rows=total - new_tokenized.null_count,
+    )
 
     # 결과 요약
     elapsed = time.time() - t0

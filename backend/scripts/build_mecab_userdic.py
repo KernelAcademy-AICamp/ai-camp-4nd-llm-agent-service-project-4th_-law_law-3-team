@@ -345,7 +345,11 @@ def generate_csv(
 
 
 def compile_dic(csv_path: Path, dic_path: Path) -> bool:
-    """mecab-dict-index로 CSV → .dic 컴파일"""
+    """mecab-dict-index로 CSV → .dic 컴파일
+
+    기존 .dic 파일이 있으면 백업 후 컴파일. 실패 시 백업에서 복원.
+    컴파일 성공 후 .dic 파일 크기/무결성을 검증.
+    """
     dict_index = _find_path(MECAB_DICT_INDEX_CANDIDATES)
     sys_dict = _find_path(SYS_DICT_CANDIDATES)
 
@@ -359,6 +363,14 @@ def compile_dic(csv_path: Path, dic_path: Path) -> bool:
         print("  후보:", SYS_DICT_CANDIDATES)
         return False
 
+    # 기존 .dic 백업
+    backup_path = dic_path.with_suffix(".dic.bak")
+    had_existing = dic_path.exists()
+    if had_existing:
+        import shutil
+        shutil.copy2(dic_path, backup_path)
+        print(f"[INFO] 기존 .dic 백업: {backup_path}")
+
     cmd = [
         dict_index,
         "-d", sys_dict,
@@ -369,14 +381,62 @@ def compile_dic(csv_path: Path, dic_path: Path) -> bool:
     ]
 
     print(f"[INFO] 컴파일 중: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        print(f"[ERROR] mecab-dict-index 실패: {result.stderr}")
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        print("[ERROR] mecab-dict-index 타임아웃 (120초)")
+        _restore_backup(dic_path, backup_path, had_existing)
         return False
 
-    print(f"[INFO] .dic 생성 완료: {dic_path} ({dic_path.stat().st_size:,} bytes)")
+    if result.returncode != 0:
+        print(f"[ERROR] mecab-dict-index 실패 (returncode={result.returncode})")
+        if result.stderr:
+            print(f"  stderr: {result.stderr.strip()}")
+        if result.stdout:
+            print(f"  stdout: {result.stdout.strip()}")
+        _restore_backup(dic_path, backup_path, had_existing)
+        return False
+
+    # .dic 파일 무결성 검증
+    if not dic_path.exists():
+        print("[ERROR] 컴파일 완료했으나 .dic 파일이 생성되지 않음")
+        _restore_backup(dic_path, backup_path, had_existing)
+        return False
+
+    dic_size = dic_path.stat().st_size
+    if dic_size == 0:
+        print("[ERROR] .dic 파일 크기가 0바이트 (빈 파일)")
+        _restore_backup(dic_path, backup_path, had_existing)
+        return False
+
+    # CSV 행 수와 .dic 크기의 합리성 검증 (행당 최소 ~20바이트 기대)
+    csv_line_count = sum(1 for _ in open(csv_path, encoding="utf-8"))
+    min_expected_size = csv_line_count * 20
+    if dic_size < min_expected_size:
+        print(
+            f"[WARN] .dic 크기({dic_size:,}B)가 예상 최소({min_expected_size:,}B)보다 작음. "
+            f"CSV {csv_line_count:,}행 대비 비정상적일 수 있음"
+        )
+
+    # 백업 정리 (성공)
+    if backup_path.exists():
+        backup_path.unlink()
+
+    print(f"[INFO] .dic 생성 완료: {dic_path} ({dic_size:,} bytes)")
     return True
+
+
+def _restore_backup(dic_path: Path, backup_path: Path, had_existing: bool) -> None:
+    """컴파일 실패 시 기존 .dic 백업에서 복원"""
+    if had_existing and backup_path.exists():
+        import shutil
+        shutil.copy2(backup_path, dic_path)
+        backup_path.unlink()
+        print(f"[INFO] 기존 .dic 복원 완료: {dic_path}")
+    elif backup_path.exists():
+        backup_path.unlink()
 
 
 # ================================================================

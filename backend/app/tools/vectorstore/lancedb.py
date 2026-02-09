@@ -11,6 +11,7 @@ LanceDB 벡터 저장소 구현체 (v2)
 """
 
 import logging
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -25,6 +26,38 @@ from app.tools.vectorstore.schema_v2 import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Per-thread MeCabTokenizer 캐시 (MeCab Tagger는 thread-safe하지 않음)
+_thread_local = threading.local()
+
+
+def _get_thread_tokenizer() -> "MeCabTokenizer":  # noqa: F821
+    """스레드별 MeCabTokenizer 인스턴스 반환 (캐싱)
+
+    MeCab Tagger는 thread-safe하지 않으므로 threading.local()로
+    스레드별 독립 인스턴스를 유지한다.
+    """
+    tokenizer = getattr(_thread_local, "tokenizer", None)
+    if tokenizer is not None:
+        return tokenizer
+
+    from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
+
+    legal_dict = None
+    if settings.USE_LEGAL_TERM_DICT:
+        from app.tools.vectorstore.legal_term_dict import get_legal_term_dict
+        legal_dict = get_legal_term_dict()
+
+    userdic_path = None
+    if settings.USE_MECAB_USERDIC:
+        _p = Path(settings.MECAB_USERDIC_PATH)
+        if _p.exists():
+            userdic_path = str(_p)
+
+    _thread_local.tokenizer = MeCabTokenizer(
+        legal_dict=legal_dict, userdic_path=userdic_path,
+    )
+    return _thread_local.tokenizer
 
 
 class LanceDBStore(VectorStoreBase):
@@ -501,23 +534,8 @@ class LanceDBStore(VectorStoreBase):
         if self._table is None:
             return SearchResult(ids=[[]], distances=[[]], metadatas=[[]], documents=[[]])
 
-        # MeCab 토크나이징 (법률 용어 사전 보강)
-        from pathlib import Path
-
-        from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
-
-        legal_dict = None
-        if settings.USE_LEGAL_TERM_DICT:
-            from app.tools.vectorstore.legal_term_dict import get_legal_term_dict
-            legal_dict = get_legal_term_dict()
-
-        userdic_path = None
-        if settings.USE_MECAB_USERDIC:
-            _p = Path(settings.MECAB_USERDIC_PATH)
-            if _p.exists():
-                userdic_path = str(_p)
-
-        tokenizer = MeCabTokenizer(legal_dict=legal_dict, userdic_path=userdic_path)
+        # MeCab 토크나이징 (per-thread 캐싱, 법률 용어 사전 보강)
+        tokenizer = _get_thread_tokenizer()
         tokenized_query = tokenizer.tokenize_query(query)
 
         if not tokenized_query.strip():
