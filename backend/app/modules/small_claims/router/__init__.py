@@ -12,6 +12,9 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.services.rag import search_relevant_documents_async
+from app.services.document_service import DocumentService
+import uuid
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -238,6 +241,8 @@ class DocumentResponse(BaseModel):
     title: str
     content: str
     template_sections: dict[str, Any]
+    pdf_url: Optional[str] = None
+    docx_url: Optional[str] = None
 
 
 class RelatedCaseItem(BaseModel):
@@ -441,11 +446,46 @@ async def generate_document(request: DocumentGenerateRequest) -> DocumentRespons
 신청인(원고): {case_info.plaintiff_name} (인)
 """
 
+        # PDF 생성
+        try:
+            doc_service = DocumentService()
+            
+            # Save path: data/media/documents
+            base_dir = Path("data/media/documents")
+            base_dir.mkdir(parents=True, exist_ok=True)
+            
+            filename = f"{document_type}_{uuid.uuid4()}.pdf"
+            output_path = base_dir / filename
+            
+            doc_service.generate_pdf_from_text(full_content, str(output_path))
+            
+            # URL (mounted at /media)
+            pdf_url = f"/media/documents/{filename}"
+            
+        except Exception as e:
+            logger.error(f"PDF 생성 실패: {e}")
+            pdf_url = None
+
+        # DOCX 생성 (워드 파일 - 한글에서도 열림)
+        try:
+            docx_filename = f"{document_type}_{uuid.uuid4()}.docx"
+            docx_output_path = base_dir / docx_filename
+            
+            doc_service.generate_docx_from_text(full_content, str(docx_output_path))
+            
+            docx_url = f"/media/documents/{docx_filename}"
+            
+        except Exception as e:
+            logger.error(f"DOCX 생성 실패: {e}")
+            docx_url = None
+
         return DocumentResponse(
             document_type=document_type,
             title=template["title"],
             content=full_content,
             template_sections=template_sections,
+            pdf_url=pdf_url,
+            docx_url=docx_url,
         )
 
     except HTTPException:
