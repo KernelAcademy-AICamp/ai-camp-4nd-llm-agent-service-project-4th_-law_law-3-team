@@ -98,16 +98,40 @@ export function useWizardState(): UseWizardStateReturn {
     const handleWizardStateChange = (e: CustomEvent) => {
       const newState = e.detail
       if (newState?.chatUpdated) {
-        // 챗봇에서 분쟁 유형 설정 시 UI 업데이트
-        if (newState.chatDisputeType && newState.chatDisputeType !== disputeType) {
-          setDisputeTypeState(newState.chatDisputeType)
-          setCheckedEvidence(new Set())
-          setGeneratedDocument(null)
+        // 챗봇에서 분쟁 유형 설정 시 UI 업데이트 (매핑 필요)
+        if (newState.chatDisputeType) {
+          const disputeTypeMapping: Record<string, DisputeType> = {
+            '물품대금': 'product_payment',
+            '중고거래': 'fraud',
+            '임대차': 'deposit',
+            '용역대금': 'service_payment',
+            '임금체불': 'wage',
+          }
+          const targetDisputeType = disputeTypeMapping[newState.chatDisputeType] || newState.chatDisputeType
+          
+          if (targetDisputeType && targetDisputeType !== disputeType) {
+            setDisputeTypeState(targetDisputeType as DisputeType)
+            setCheckedEvidence(new Set())
+            setGeneratedDocument(null)
+          }
         }
-        // 챗봇에서 단계 변경 시 UI 업데이트
-        if (newState.currentStep && newState.currentStep !== currentStep) {
-          setCurrentStep(newState.currentStep)
+
+        // 챗봇에서 단계 변경 시 UI 업데이트 (매핑 필요)
+        if (newState.chatStep) {
+          const stepMapping: Record<string, WizardStep> = {
+            'init': 'dispute_type',
+            'gather_info': 'case_info',
+            'evidence': 'evidence',
+            'demand_letter': 'document',
+            'court': 'document',
+            'complete': 'document'
+          }
+          const targetStep = stepMapping[newState.chatStep]
+          if (targetStep && targetStep !== currentStep) {
+            setCurrentStep(targetStep)
+          }
         }
+
         // 챗봇에서 청구 금액 설정 시 caseInfo 업데이트
         if (newState.chatClaimAmount) {
           setCaseInfo((prev) => ({ ...prev, amount: newState.chatClaimAmount }))

@@ -235,7 +235,7 @@ export default function ChatWidget() {
   } = useChat()
 
   // 소액소송 UI 동기화 훅
-  const { setChatDisputeType, setChatClaimAmount, setChatStep } = useSmallClaimsSync()
+  const { readState, setChatDisputeType, setChatClaimAmount, setChatStep } = useSmallClaimsSync()
 
   // Determine if we are on pages that support floating mode
   const isMapPage = pathname === '/lawyer-finder'
@@ -406,6 +406,25 @@ export default function ChatWidget() {
     let receivedSessionData: Record<string, unknown> = {}
     let agentUsed = ''
 
+    // 소액소송인 경우 UI 상태를 session_data에 병합
+    const isSmallClaims = effectiveAgent === 'small_claims' || sessionData.active_agent === 'small_claims'
+    let finalSessionData = { ...sessionData }
+
+    if (isSmallClaims) {
+      const wizardState = readState()
+      if (wizardState) {
+        finalSessionData = {
+          ...finalSessionData,
+          wizard_state: {
+            dispute_type: wizardState.disputeType,
+            current_step: wizardState.currentStep,
+            case_info: wizardState.caseInfo,
+            checked_evidence: wizardState.checkedEvidence
+          }
+        }
+      }
+    }
+
     // Helper to clean AI response for case detail view
     const cleanAIResponse = (text: string) => {
       let cleaned = text
@@ -422,7 +441,7 @@ export default function ChatWidget() {
           message: messageToSend,
           user_role: userRole,
           history: history,
-          session_data: sessionData,
+          session_data: finalSessionData,
           user_location: locationToSend,
           agent: effectiveAgent || undefined,
         },

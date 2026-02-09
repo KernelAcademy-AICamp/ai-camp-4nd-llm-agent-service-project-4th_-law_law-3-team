@@ -194,6 +194,10 @@ async def chat_stream(request: ChatRequest) -> EventSourceResponse:
                 if graph_state.tasks and any(
                     t.interrupts for t in graph_state.tasks
                 ):
+                    # interrupt 재개 전 최신 세션 데이터(UI 상태 등)를 그래프 상태에 반영
+                    await graph.aupdate_state(
+                        config, {"session_data": request.session_data}
+                    )
                     input_value = Command(resume=request.message)
                 else:
                     input_value = request_to_state(request)

@@ -106,14 +106,74 @@ def _court_actions() -> list[dict[str, Any]]:
     ]
 
 
+def _sync_from_ui_state(state: SmallClaimsState) -> dict[str, Any]:
+    """session_data의 wizard_state로부터 내부 상태 동기화"""
+    wizard_state = state.get("session_data", {}).get("wizard_state", {})
+    if not wizard_state:
+        return {}
+
+    updates = {}
+    
+    # 분쟁 유형 동기화 (프론트엔드 ID -> 백엔드 한글명)
+    ui_dispute_type = wizard_state.get("dispute_type")
+    if ui_dispute_type:
+        mapping = {
+            "product_payment": "물품대금",
+            "fraud": "중고거래",
+            "deposit": "임대차",
+            "service_payment": "용역대금",
+            "wage": "임금체불",
+        }
+        internal_type = mapping.get(ui_dispute_type)
+        if internal_type and internal_type != state.get("dispute_type"):
+            updates["dispute_type"] = internal_type
+
+    # 청구 금액 동기화
+    ui_amount = wizard_state.get("case_info", {}).get("amount")
+    if ui_amount and ui_amount != state.get("claim_amount"):
+        updates["claim_amount"] = int(ui_amount)
+
+    # 단계 동기화 (프론트엔드 단계 -> 백엔드 단계)
+    # 주의: 강제 이동은 위험할 수 있으므로 보조적으로만 사용
+    ui_step = wizard_state.get("current_step")
+    if ui_step:
+        step_mapping = {
+            "dispute_type": SmallClaimsStep.INIT,
+            "case_info": SmallClaimsStep.GATHER_INFO,
+            "evidence": SmallClaimsStep.EVIDENCE,
+            "document": SmallClaimsStep.DEMAND_LETTER,
+        }
+        internal_step = step_mapping.get(ui_step)
+        if internal_step and internal_step != state.get("step"):
+            # 현재 단계가 초기화 상태거나 명백히 뒤쳐진 경우에만 업데이트
+            if not state.get("step") or state.get("step") == SmallClaimsStep.INIT:
+                updates["step"] = internal_step
+
+    return updates
+
+
 def init_node(state: SmallClaimsState) -> Command[str]:
-    """초기 안내 + 분쟁 유형 질문
+    """초기 안내 + 분쟁 유형 질문"""
+    # 1. UI 상태와 동기화
+    ui_updates = _sync_from_ui_state(state)
+    if ui_updates:
+        # UI에서 이미 정보가 있으면 상태 업데이트 후 진행
+        dispute_type = ui_updates.get("dispute_type") or state.get("dispute_type")
+        if dispute_type:
+            response = f"**{dispute_type}** 관련 분쟁이시군요.\n\n"
+            response += STEP_MESSAGES[SmallClaimsStep.GATHER_INFO]
+            return Command(
+                update={
+                    **ui_updates,
+                    "response": response,
+                    "actions": [],
+                    "agent_used": "small_claims",
+                    "output_session_data": {"active_agent": "small_claims"},
+                },
+                goto="gather_info_node",
+            )
 
-    메시지에서 분쟁 유형 감지 시 바로 다음 단계로 이동.
-    감지 실패 시 interrupt()로 사용자에게 질문.
-    """
     message = state["message"]
-
     # 메시지에서 분쟁 유형 감지 시도
     dispute_type = detect_dispute_type(message)
     if dispute_type:
@@ -160,6 +220,9 @@ def init_node(state: SmallClaimsState) -> Command[str]:
 
 def gather_info_node(state: SmallClaimsState) -> Command[str]:
     """금액/상대방 정보 수집"""
+    # 1. UI 상태와 동기화
+    ui_updates = _sync_from_ui_state(state)
+    
     # interrupt로 사용자 입력 대기
     interrupt_value = interrupt({
         "response": STEP_MESSAGES[SmallClaimsStep.GATHER_INFO],
@@ -169,6 +232,10 @@ def gather_info_node(state: SmallClaimsState) -> Command[str]:
 
     user_input = str(interrupt_value)
     amount = extract_amount(user_input)
+    
+    # UI에서 전달된 금액이 있고 메시지에서 추출된 금액이 없으면 UI 금액 사용
+    if not amount and "claim_amount" in ui_updates:
+        amount = ui_updates["claim_amount"]
 
     if amount and amount > SMALL_CLAIMS_LIMIT:
         # 한도 초과 안내 후 다시 interrupt
@@ -213,6 +280,9 @@ def gather_info_node(state: SmallClaimsState) -> Command[str]:
 
 def evidence_node(state: SmallClaimsState) -> Command[str]:
     """증거 자료 안내"""
+    # UI 상태와 동기화 (단계 등)
+    ui_updates = _sync_from_ui_state(state)
+
     interrupt_value = interrupt({
         "response": STEP_MESSAGES[SmallClaimsStep.EVIDENCE],
         "actions": [],
@@ -230,6 +300,7 @@ def evidence_node(state: SmallClaimsState) -> Command[str]:
 
     return Command(
         update={
+            **ui_updates,
             "step": SmallClaimsStep.DEMAND_LETTER,
             "response": response,
             "actions": _evidence_actions(),
@@ -241,6 +312,9 @@ def evidence_node(state: SmallClaimsState) -> Command[str]:
 
 def demand_letter_node(state: SmallClaimsState) -> Command[str]:
     """내용증명 안내"""
+    # UI 상태와 동기화
+    ui_updates = _sync_from_ui_state(state)
+
     interrupt_value = interrupt({
         "response": STEP_MESSAGES[SmallClaimsStep.DEMAND_LETTER],
         "actions": _evidence_actions(),
@@ -251,8 +325,8 @@ def demand_letter_node(state: SmallClaimsState) -> Command[str]:
     
     # 내용증명 작성 도움 버튼 클릭 시
     if "draft_demand_letter" in user_input or "내용증명" in user_input or "작성" in user_input:
-        dispute_type = state.get("dispute_type", "기타")
-        claim_amount = state.get("claim_amount", 0)
+        dispute_type = ui_updates.get("dispute_type") or state.get("dispute_type", "기타")
+        claim_amount = ui_updates.get("claim_amount") or state.get("claim_amount", 0)
         
         draft_response = f"""**내용증명 작성을 도와드리겠습니다.**
 
@@ -268,6 +342,7 @@ def demand_letter_node(state: SmallClaimsState) -> Command[str]:
 """
         return Command(
             update={
+                **ui_updates,
                 "step": SmallClaimsStep.DEMAND_LETTER,
                 "response": draft_response,
                 "actions": _court_actions(),
