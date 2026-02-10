@@ -29,27 +29,26 @@ import argparse
 import asyncio
 import gc
 import os
-import sys
 import re
-from pathlib import Path
-from datetime import datetime
-from typing import List, Optional, Dict, Any
+import sys
 from dataclasses import dataclass
+from pathlib import Path
+from typing import List
 
-from tqdm import tqdm
 import torch
+from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.database import async_session_factory
-from app.tools.vectorstore.lancedb import LanceDBStore
-from app.tools.vectorstore.schema_v2 import VECTOR_DIM
 from app.models.law_document import LawDocument
 from app.models.precedent_document import PrecedentDocument
-
+from app.tools.vectorstore.lancedb import LanceDBStore
+from app.tools.vectorstore.legal_term_dict import get_legal_term_dict
+from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
 
 # ============================================================================
 # 디바이스 감지 및 최적화
@@ -106,10 +105,14 @@ def get_device_info() -> DeviceInfo:
 def get_optimal_config(device_info: DeviceInfo) -> OptimalConfig:
     """디바이스에 따른 최적 설정 반환"""
     if device_info.device == "cuda":
-        if device_info.vram_gb >= 20: return OptimalConfig(128, 25)
-        elif device_info.vram_gb >= 12: return OptimalConfig(100, 20)
-        elif device_info.vram_gb >= 8: return OptimalConfig(64, 15)
-        else: return OptimalConfig(32, 10)
+        if device_info.vram_gb >= 20:
+            return OptimalConfig(128, 25)
+        elif device_info.vram_gb >= 12:
+            return OptimalConfig(100, 20)
+        elif device_info.vram_gb >= 8:
+            return OptimalConfig(64, 15)
+        else:
+            return OptimalConfig(32, 10)
     elif device_info.device == "mps":
         return OptimalConfig(40, 10)
     else:
@@ -152,7 +155,7 @@ def chunk_precedent_text(text: str, config: ChunkConfig) -> List[tuple]:
 
     while start < len(text):
         end = min(start + config.chunk_size, len(text))
-        
+
         # 문장 경계 자르기
         if end < len(text):
             for sep in ['. ', '.\n', '\n\n', '\n', ' ']:
@@ -160,37 +163,39 @@ def chunk_precedent_text(text: str, config: ChunkConfig) -> List[tuple]:
                 if sep_pos > start:
                     end = sep_pos + len(sep)
                     break
-        
+
         chunk = text[start:end].strip()
         if chunk and len(chunk) >= config.min_chunk_size:
             chunks.append((chunk_index, chunk))
             chunk_index += 1
-        
+
         start = end - config.chunk_overlap
         if start >= len(text) - config.min_chunk_size:
             break
-            
+
     return chunks
 
 
 def chunk_law_content(content: str, config: LawChunkConfig) -> List[tuple]:
     """법령 텍스트 청킹 (조문 단위)"""
-    if not content: return []
-    
+    if not content:
+        return []
+
     # 간단한 구현: \n\n 단위 분리 후 병합
     articles = content.split("\n\n")
     chunks = []
     idx = 0
-    
+
     article_no_pattern = re.compile(r"^(제\d+조(?:의\d+)?)")
 
     for art in articles:
         art = art.strip()
-        if not art: continue
-        
+        if not art:
+            continue
+
         match = article_no_pattern.match(art)
         article_no = match.group(1) if match else None
-        
+
         # 길이 체크 (단순화: 1토큰 ≈ 2자)
         if len(art) > config.max_tokens * 2:
             # 너무 길면 강제 분할
@@ -201,7 +206,7 @@ def chunk_law_content(content: str, config: LawChunkConfig) -> List[tuple]:
         else:
             chunks.append((idx, art, article_no))
             idx += 1
-            
+
     return chunks
 
 
@@ -238,8 +243,8 @@ async def process_precedents(reset: bool, batch_size: int = None):
     device_info = get_device_info()
     config = get_optimal_config(device_info)
     bs = batch_size or config.batch_size
-    
-    print(f"\n=== Processing Precedents ===")
+
+    print("\n=== Processing Precedents ===")
     print(f"Device: {device_info}")
     print(f"Batch Size: {bs}")
 
@@ -252,7 +257,11 @@ async def process_precedents(reset: bool, batch_size: int = None):
     print(f"[INFO] Found {len(existing_ids)} existing precedents.")
 
     chunk_config = ChunkConfig()
-    
+
+    # MeCab 토크나이저 초기화
+    legal_dict = get_legal_term_dict() if settings.USE_LEGAL_TERM_DICT else None
+    tokenizer = MeCabTokenizer(legal_dict=legal_dict)
+
     # DB 조회
     async with async_session_factory() as session:
         # 전체 개수
@@ -262,15 +271,16 @@ async def process_precedents(reset: bool, batch_size: int = None):
         # 배치 처리
         offset = 0
         db_batch = 1000
-        
+
         buffer = {
             "source_ids": [], "chunk_indices": [], "contents": [], "titles": [],
             "decision_dates": [], "court_names": [], "total_chunks_list": [],
-            "case_numbers": [], "case_types": [], 
-            "judgment_types": [], "judgment_statuses": [],  # 추가된 필드
-            "reference_provisions_list": [], "reference_cases_list": []
+            "case_numbers": [], "case_types": [],
+            "judgment_types": [], "judgment_statuses": [],
+            "reference_provisions_list": [], "reference_cases_list": [],
+            "content_tokenized_list": []  # 추가
         }
-        
+
         with tqdm(total=total, desc="Processing") as pbar:
             while offset < total:
                 result = await session.execute(
@@ -279,33 +289,40 @@ async def process_precedents(reset: bool, batch_size: int = None):
                     .offset(offset).limit(db_batch)
                 )
                 docs = result.scalars().all()
-                if not docs: break
-                
+                if not docs:
+                    break
+
                 for doc in docs:
                     if doc.serial_number in existing_ids:
                         pbar.update(1)
                         continue
-                        
+
                     # 텍스트 구성
                     text = f"[{doc.case_name or ''}]\n{doc.summary or ''}\n{doc.reasoning or ''}"
                     chunks = chunk_precedent_text(text, chunk_config)
-                    
+
                     total_chunks = len(chunks)
-                    
+
                     for idx, content in chunks:
+                        full_content = f"[판례] {content}"
+
                         buffer["source_ids"].append(doc.serial_number)
                         buffer["chunk_indices"].append(idx)
-                        buffer["contents"].append(f"[판례] {content}")
+                        buffer["contents"].append(full_content)
                         buffer["titles"].append(doc.case_name or "")
                         buffer["decision_dates"].append(doc.decision_date.isoformat() if doc.decision_date else "")
                         buffer["court_names"].append(doc.court_name or "")
                         buffer["total_chunks_list"].append(total_chunks)
                         buffer["case_numbers"].append(doc.case_number or "")
                         buffer["case_types"].append(doc.case_type or "")
-                        buffer["judgment_types"].append(doc.judgment_type or "")     # 추가
-                        buffer["judgment_statuses"].append(doc.judgment_status or "") # 추가
+                        buffer["judgment_types"].append(doc.judgment_type or "")
+                        buffer["judgment_statuses"].append(doc.judgment_status or "")
                         buffer["reference_provisions_list"].append(doc.reference_provisions or "")
                         buffer["reference_cases_list"].append(doc.reference_cases or "")
+
+                        # 토큰화 수행
+                        tokenized = tokenizer.tokenize(full_content)
+                        buffer["content_tokenized_list"].append(tokenized)
 
                         # 버퍼 꽉 차면 저장
                         if len(buffer["source_ids"]) >= bs:
@@ -321,19 +338,21 @@ async def process_precedents(reset: bool, batch_size: int = None):
                                 total_chunks_list=buffer["total_chunks_list"],
                                 case_numbers=buffer["case_numbers"],
                                 case_types=buffer["case_types"],
-                                judgment_types=buffer["judgment_types"],        # 전달
-                                judgment_statuses=buffer["judgment_statuses"],  # 전달
+                                judgment_types=buffer["judgment_types"],
+                                judgment_statuses=buffer["judgment_statuses"],
                                 reference_provisions_list=buffer["reference_provisions_list"],
-                                reference_cases_list=buffer["reference_cases_list"]
+                                reference_cases_list=buffer["reference_cases_list"],
+                                content_tokenized_list=buffer["content_tokenized_list"]  # 전달
                             )
                             # 초기화
-                            for k in buffer: buffer[k] = []
+                            for k in buffer:
+                                buffer[k] = []
                             clear_memory()
-                    
+
                     pbar.update(1)
-                
+
                 offset += db_batch
-                
+
         # 남은 버퍼 처리
         if buffer["source_ids"]:
             embeddings = create_embeddings(buffer["contents"], device_info.device)
@@ -351,9 +370,10 @@ async def process_precedents(reset: bool, batch_size: int = None):
                 judgment_types=buffer["judgment_types"],
                 judgment_statuses=buffer["judgment_statuses"],
                 reference_provisions_list=buffer["reference_provisions_list"],
-                reference_cases_list=buffer["reference_cases_list"]
+                reference_cases_list=buffer["reference_cases_list"],
+                content_tokenized_list=buffer["content_tokenized_list"]  # 전달
             )
-            
+
     print("[INFO] Processing complete.")
 
 
@@ -363,8 +383,8 @@ async def process_laws(reset: bool, batch_size: int = None):
     device_info = get_device_info()
     config = get_optimal_config(device_info)
     bs = batch_size or config.batch_size
-    
-    print(f"\n=== Processing Laws ===")
+
+    print("\n=== Processing Laws ===")
     print(f"Device: {device_info}")
 
     if reset:
@@ -372,39 +392,47 @@ async def process_laws(reset: bool, batch_size: int = None):
 
     existing_ids = store.get_existing_source_ids("법령")
     chunk_config = LawChunkConfig()
-    
+
+    # MeCab 토크나이저 초기화
+    legal_dict = get_legal_term_dict() if settings.USE_LEGAL_TERM_DICT else None
+    tokenizer = MeCabTokenizer(legal_dict=legal_dict)
+
     async with async_session_factory() as session:
         total = (await session.execute(select(func.count(LawDocument.id)))).scalar()
-        
+
         offset = 0
         db_batch = 1000
         buffer = {
             "source_ids": [], "chunk_indices": [], "contents": [], "titles": [],
             "enforcement_dates": [], "departments": [], "total_chunks_list": [],
-            "promulgation_dates": [], "promulgation_nos": [], "law_types": [], "article_nos": []
+            "promulgation_dates": [], "promulgation_nos": [], "law_types": [], "article_nos": [],
+            "content_tokenized_list": []  # 추가
         }
-        
+
         with tqdm(total=total, desc="Processing") as pbar:
             while offset < total:
                 result = await session.execute(
                     select(LawDocument).order_by(LawDocument.id).offset(offset).limit(db_batch)
                 )
                 docs = result.scalars().all()
-                if not docs: break
-                
+                if not docs:
+                    break
+
                 for doc in docs:
                     if doc.law_id in existing_ids:
                         pbar.update(1)
                         continue
-                        
+
                     chunks = chunk_law_content(doc.content or "", chunk_config)
                     total_chunks = len(chunks)
-                    
+
                     for idx, content, art_no in chunks:
+                        prefix = f"[법령] {art_no} " if art_no else "[법령] "
+                        full_content = prefix + content
+
                         buffer["source_ids"].append(doc.law_id)
                         buffer["chunk_indices"].append(idx)
-                        prefix = f"[법령] {art_no} " if art_no else "[법령] "
-                        buffer["contents"].append(prefix + content)
+                        buffer["contents"].append(full_content)
                         buffer["titles"].append(doc.law_name or "")
                         buffer["enforcement_dates"].append(doc.enforcement_date.isoformat() if doc.enforcement_date else "")
                         buffer["departments"].append(doc.ministry or "")
@@ -413,6 +441,10 @@ async def process_laws(reset: bool, batch_size: int = None):
                         buffer["promulgation_nos"].append(doc.promulgation_no or "")
                         buffer["law_types"].append(doc.law_type or "")
                         buffer["article_nos"].append(art_no or "")
+
+                        # 토큰화 수행
+                        tokenized = tokenizer.tokenize(full_content)
+                        buffer["content_tokenized_list"].append(tokenized)
 
                         if len(buffer["source_ids"]) >= bs:
                             embeddings = create_embeddings(buffer["contents"], device_info.device)
@@ -428,11 +460,13 @@ async def process_laws(reset: bool, batch_size: int = None):
                                 promulgation_dates=buffer["promulgation_dates"],
                                 promulgation_nos=buffer["promulgation_nos"],
                                 law_types=buffer["law_types"],
-                                article_nos=buffer["article_nos"]
+                                article_nos=buffer["article_nos"],
+                                content_tokenized_list=buffer["content_tokenized_list"]  # 전달
                             )
-                            for k in buffer: buffer[k] = []
+                            for k in buffer:
+                                buffer[k] = []
                             clear_memory()
-                            
+
                     pbar.update(1)
                 offset += db_batch
 
@@ -450,7 +484,8 @@ async def process_laws(reset: bool, batch_size: int = None):
                 promulgation_dates=buffer["promulgation_dates"],
                 promulgation_nos=buffer["promulgation_nos"],
                 law_types=buffer["law_types"],
-                article_nos=buffer["article_nos"]
+                article_nos=buffer["article_nos"],
+                content_tokenized_list=buffer["content_tokenized_list"]  # 전달
             )
 
 
@@ -500,12 +535,11 @@ def create_fts_index():
 
 
             # Tantivy 엔진을 사용하여 FTS 인덱스 생성
+            # content가 아닌 content_tokenized에 인덱스를 생성하여
+            # MeCab 전처리 효과(복합명사 분해 등)를 반영함
+            store.table.create_fts_index("content_tokenized", replace=True)
 
-
-            store.table.create_fts_index("content", replace=True)
-
-
-            print("[INFO] FTS Index created successfully!")
+            print("[INFO] FTS Index created successfully on 'content_tokenized'!")
 
 
         except Exception as e:
@@ -586,23 +620,14 @@ if __name__ == "__main__":
         asyncio.run(process_precedents(args.reset, args.batch_size))
 
 
-    
+
 
 
     if args.type in ["law", "all"]:
-
-
         asyncio.run(process_laws(args.reset, args.batch_size))
 
-
-        
-
-
-    # 전체 작업 완료 후 FTS 인덱스 생성 (권장)
-
-
+    # 전체 작업 완료 후 FTS 인덱스 생성
     create_fts_index()
-
 
     show_stats()
 
