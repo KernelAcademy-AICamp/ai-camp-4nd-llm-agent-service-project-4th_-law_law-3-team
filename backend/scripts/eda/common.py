@@ -96,6 +96,27 @@ def reservoir_sample(
     return reservoir
 
 
+def head_sample(
+    path: Path,
+    n: int = 5000,
+) -> list[dict[str, Any]]:
+    """파일에서 처음 n개 레코드만 추출 (O(n) 시간).
+
+    reservoir_sample과 달리 파일 전체를 읽지 않으므로 대용량 파일에서 훨씬 빠릅니다.
+    EDA 용도에서는 무작위성보다 속도가 중요하므로 이 함수를 권장합니다.
+    """
+    size_mb = get_file_size_mb(path)
+    if size_mb < STREAMING_THRESHOLD_MB:
+        data = load_json(path)
+        return data[:n]
+    records: list[dict[str, Any]] = []
+    for item in stream_json(path):
+        records.append(item)
+        if len(records) >= n:
+            break
+    return records
+
+
 def count_records(path: Path) -> int:
     """전체 레코드 수 카운트 (스트리밍).
 
@@ -186,11 +207,23 @@ def get_sample(
     path: Path,
     n: int = 1000,
     seed: int = 42,
+    *,
+    fast: bool = False,
 ) -> list[dict[str, Any]]:
     """파일에서 n개 샘플 추출 (크기에 따라 전략 자동 선택).
 
-    소용량: random.sample, 대용량: reservoir_sample
+    Args:
+        path: JSON 파일 경로
+        n: 샘플 수
+        seed: 랜덤 시드
+        fast: True이면 head sampling 사용 (전체 파일 스캔 없이 빠름, EDA 권장)
+
+    Returns:
+        소용량: random.sample, 대용량(fast=False): reservoir_sample,
+        대용량(fast=True): head_sample
     """
+    if fast:
+        return head_sample(path, n)
     size_mb = get_file_size_mb(path)
     if size_mb < STREAMING_THRESHOLD_MB:
         data = load_json(path)
