@@ -38,10 +38,16 @@ async def lifespan(app: FastAPI):
     # 벡터 인덱스 생성 (LANCEDB_INDEX_TYPE이 설정된 경우에만)
     if settings.LANCEDB_INDEX_TYPE:
         try:
-            from app.tools.vectorstore.lancedb import LanceDBStore
+            if settings.LANCEDB_MODE == "remote":
+                from app.tools.vectorstore import get_vector_store
 
-            store = LanceDBStore()
-            created = store.create_vector_index(settings.LANCEDB_INDEX_TYPE)
+                store = get_vector_store()
+                created = store.create_vector_index(settings.LANCEDB_INDEX_TYPE)  # type: ignore[attr-defined]
+            else:
+                from app.tools.vectorstore.lancedb import LanceDBStore
+
+                lance_store = LanceDBStore()
+                created = lance_store.create_vector_index(settings.LANCEDB_INDEX_TYPE)
             if created:
                 logger.info("LanceDB 벡터 인덱스 생성 완료: %s", settings.LANCEDB_INDEX_TYPE)
         except Exception as e:

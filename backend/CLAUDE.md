@@ -249,6 +249,9 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `LANCEDB_URI` | LanceDB 저장 경로 | `./lancedb_data` |
 | `LANCEDB_TABLE_NAME` | LanceDB 테이블명 | `legal_chunks` |
 | `LANCEDB_INDEX_TYPE` | 벡터 인덱스 타입 (빈 문자열: brute-force) | `""` |
+| `LANCEDB_MODE` | LanceDB 모드 (local: 임베디드, remote: 마이크로서비스) | `local` |
+| `LANCEDB_SERVICE_URL` | remote 모드 시 마이크로서비스 URL | `http://localhost:8100` |
+| `LANCEDB_SERVICE_TIMEOUT` | remote 모드 HTTP timeout (초) | `30.0` |
 | `USE_LOCAL_EMBEDDING` | 로컬 임베딩 사용 | `true` |
 | `LOCAL_EMBEDDING_MODEL` | 임베딩 모델 | `nlpai-lab/KURE-v1` |
 | `UPSTAGE_API_KEY` | Solar API 키 | - |

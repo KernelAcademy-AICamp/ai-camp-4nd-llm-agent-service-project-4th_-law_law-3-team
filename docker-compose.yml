@@ -1,5 +1,6 @@
-# Development Docker Compose - PostgreSQL + Neo4j
+# Development Docker Compose - PostgreSQL + Neo4j + LanceDB
 # Usage: docker-compose up -d postgres neo4j
+#        docker-compose up -d lancedb  (벡터 검색 마이크로서비스)
 # 환경변수: 루트 .env 파일에서 로드 (cp .env.example .env 후 편집)
 
 services:
@@ -43,7 +44,32 @@ services:
       retries: 5
     restart: unless-stopped
 
+  lancedb:
+    build:
+      context: ./services/lancedb
+      dockerfile: Dockerfile
+    container_name: lancedb-service
+    ports:
+      - "127.0.0.1:8100:8100"
+    volumes:
+      - lancedb_data:/app/lancedb_data
+      - ./backend/data/mecab_userdic:/app/mecab_userdic:ro
+    environment:
+      - LANCEDB_URI=/app/lancedb_data
+      - LANCEDB_TABLE_NAME=${LANCEDB_TABLE_NAME:-legal_chunks}
+      - USE_LEGAL_TERM_DICT=${USE_LEGAL_TERM_DICT:-false}
+      - USE_MECAB_USERDIC=${USE_MECAB_USERDIC:-false}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8100/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   neo4j_data:
   neo4j_logs:
+  lancedb_data:
+    external: true
+    name: law-3-team_lancedb_data

@@ -214,19 +214,37 @@ full_content = "\n".join(sorted_chunks)
 ```
 backend/
 ├── app/
-│   └── common/
+│   └── tools/
 │       └── vectorstore/
-│           ├── __init__.py          # 팩토리 및 export
+│           ├── __init__.py          # 팩토리 및 export (LANCEDB_MODE 분기)
 │           ├── base.py              # VectorStoreBase 인터페이스
 │           ├── schema_v2.py         # LanceDB 스키마 v2 (단일 테이블 + NULL)
-│           ├── lancedb.py           # LanceDBStore 구현체
+│           ├── lancedb.py           # LanceDBStore 구현체 (로컬 임베디드)
+│           ├── remote_lancedb.py    # RemoteLanceDBStore (HTTP 클라이언트, remote 모드)
 │           ├── chroma.py            # ChromaDB 구현체 (기존)
 │           └── qdrant.py            # Qdrant 구현체 (기존)
 ├── scripts/
 │   └── create_lancedb_embeddings.py # LanceDB 임베딩 생성 스크립트
-└── data/
-    └── lancedb/                     # LanceDB 데이터 저장소
+└── lancedb_data/                    # LanceDB 데이터 저장소
+
+services/
+└── lancedb/                         # LanceDB 마이크로서비스 (Docker)
+    ├── Dockerfile                   # mecab-ko 소스 컴파일 빌드
+    ├── main.py                      # FastAPI 앱 (검색/인덱스 API)
+    ├── store.py                     # LanceDB 래퍼 (벡터/FTS/하이브리드 검색)
+    ├── tokenizer.py                 # MeCab 토크나이저 (독립 버전)
+    ├── schemas.py                   # Pydantic 스키마
+    └── requirements.txt
 ```
+
+### 배포 모드
+
+| 모드 | 환경변수 | 동작 |
+|------|---------|------|
+| `local` (기본값) | `LANCEDB_MODE=local` | `LanceDBStore` — 임베디드 LanceDB 직접 접근 |
+| `remote` | `LANCEDB_MODE=remote` | `RemoteLanceDBStore` — HTTP로 `lancedb-service:8100` 호출 |
+
+롤백: `LANCEDB_MODE=local`로 즉시 복귀. 기존 코드 변경 없음.
 
 ---
 

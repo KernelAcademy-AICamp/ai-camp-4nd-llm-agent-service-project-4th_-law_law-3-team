@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     LANCEDB_URI: str = "./lancedb_data"
     LANCEDB_TABLE_NAME: str = "legal_chunks"
     LANCEDB_INDEX_TYPE: str = ""  # 빈 문자열이면 brute-force, "IVF_FLAT" 등 설정 가능
+    LANCEDB_MODE: str = "local"  # "local" | "remote"
+    LANCEDB_SERVICE_URL: str = "http://localhost:8100"  # remote 모드 시 마이크로서비스 URL
+    LANCEDB_SERVICE_TIMEOUT: float = 30.0  # HTTP timeout (초)
 
     # Embedding
     EMBEDDING_MODEL: str = "text-embedding-3-small"

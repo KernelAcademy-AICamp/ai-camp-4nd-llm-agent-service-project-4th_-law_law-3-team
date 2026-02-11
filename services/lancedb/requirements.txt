@@ -1,0 +1,7 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+lancedb>=0.15.0
+pyarrow>=18.0.0
+pandas>=2.0.0
+pydantic>=2.0.0
+mecab-python3>=1.0.9

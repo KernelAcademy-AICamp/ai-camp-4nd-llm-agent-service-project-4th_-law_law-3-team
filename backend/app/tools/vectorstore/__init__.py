@@ -62,6 +62,9 @@ def _create_vector_store(collection_name: Optional[str] = None) -> VectorStoreBa
     vector_db = getattr(settings, "VECTOR_DB", "chroma").lower()
 
     if vector_db == "lancedb":
+        if settings.LANCEDB_MODE == "remote":
+            from app.tools.vectorstore.remote_lancedb import RemoteLanceDBStore
+            return RemoteLanceDBStore()
         from app.tools.vectorstore.lancedb import LanceDBStore
         return LanceDBStore(collection_name=collection_name)
     elif vector_db == "qdrant":
