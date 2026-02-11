@@ -4,10 +4,10 @@
 FastAPI 요청 처리 시 사용되는 컨텍스트 객체
 """
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-import uuid
 
 
 @dataclass

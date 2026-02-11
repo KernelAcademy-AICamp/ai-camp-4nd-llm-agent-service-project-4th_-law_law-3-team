@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Optional
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
-from app.tools.vectorstore.base import SearchResult, VectorStoreBase
 from app.core.config import settings
+from app.tools.vectorstore.base import SearchResult, VectorStoreBase
 
 
 def get_chroma_client() -> chromadb.ClientAPI:  # type: ignore[name-defined]

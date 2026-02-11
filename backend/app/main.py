@@ -60,30 +60,24 @@ async def lifespan(app: FastAPI):
         logger.info("PostgreSQL 체크포인터를 초기화합니다...")
         await init_checkpointer(settings.DATABASE_URL)
 
-    # 법률 용어 사전 초기화 (USE_LEGAL_TERM_DICT=true 시)
-    if settings.USE_LEGAL_TERM_DICT:
-        from app.tools.vectorstore.legal_term_dict import (
-            get_legal_term_dict,
-            init_legal_term_dict_from_db,
-        )
+    # MeCab userdic 분해맵 검증 (실제 로드는 각 토크나이저 초기화 시)
+    if settings.USE_MECAB_USERDIC:
+        userdic_path = Path(settings.MECAB_USERDIC_PATH)
+        decomp_path = userdic_path.parent / "decomposition_map.json"
+        if userdic_path.exists() and decomp_path.exists():
+            import json
 
-        try:
-            count = await init_legal_term_dict_from_db()
-            logger.info("법률 용어 사전 로드 완료: %d개", count)
-        except Exception as e:
-            logger.error("법률 용어 사전 로드 실패: %s", e)
-
-        # MeCab userdic 분해맵 로드
-        if settings.USE_MECAB_USERDIC:
-            decomp_path = Path("data/mecab_userdic/decomposition_map.json")
-            userdic_path = Path(settings.MECAB_USERDIC_PATH)
-            if userdic_path.exists() and decomp_path.exists():
-                legal_dict = get_legal_term_dict()
-                if legal_dict:
-                    decomp_count = legal_dict.load_decomposition_map(decomp_path)
-                    logger.info("MeCab userdic 분해맵 로드: %d개", decomp_count)
-            else:
-                logger.warning("MeCab userdic 파일 없음, 기존 방식 사용")
+            with open(decomp_path, encoding="utf-8") as f:
+                decomp_count = len(json.load(f))
+            logger.info(
+                "MeCab userdic 확인: %s (%d 분해맵)",
+                userdic_path, decomp_count,
+            )
+        else:
+            logger.warning(
+                "MeCab userdic 파일 없음: dic=%s, map=%s",
+                userdic_path.exists(), decomp_path.exists(),
+            )
 
     yield
 

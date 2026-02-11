@@ -147,10 +147,6 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "requires_fts: marks tests that require FTS index support"
-    )
-    config.addinivalue_line(
-        "markers",
         "requires_mecab_userdic: marks tests that require MeCab userdic build"
     )
 

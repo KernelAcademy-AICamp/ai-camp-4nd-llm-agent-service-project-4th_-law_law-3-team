@@ -9,8 +9,8 @@ Qdrant 벡터 저장소 구현체
 
 from typing import Any, Dict, List, Optional
 
-from app.tools.vectorstore.base import SearchResult, VectorStoreBase
 from app.core.config import settings
+from app.tools.vectorstore.base import SearchResult, VectorStoreBase
 
 
 class QdrantVectorStore(VectorStoreBase):

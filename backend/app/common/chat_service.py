@@ -24,13 +24,13 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from openai import OpenAI
 from sqlalchemy import or_, select
 
-from app.core.database import sync_session_factory
-from app.tools.llm import get_chat_model
-from app.tools.vectorstore import get_vector_store
 from app.core.config import settings
+from app.core.database import sync_session_factory
 from app.models.law import Law
 from app.models.legal_document import LegalDocument
 from app.models.precedent_document import PrecedentDocument
+from app.tools.llm import get_chat_model
+from app.tools.vectorstore import get_vector_store
 
 # ============================================================================
 # 상수 정의

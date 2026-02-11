@@ -337,7 +337,6 @@ LEGAL_CHUNKS_SCHEMA = pa.schema([
     pa.field("data_type", pa.utf8()),
     pa.field("title", pa.utf8()),
     pa.field("content", pa.utf8()),
-    pa.field("content_tokenized", pa.utf8()),  # MeCab 사전 토크나이징 (FTS용)
     pa.field("vector", pa.list_(pa.float32(), VECTOR_DIM)),
     pa.field("date", pa.utf8()),
     pa.field("source_name", pa.utf8()),
@@ -373,7 +372,6 @@ def create_law_chunk(
     promulgation_no: Optional[str] = None,
     law_type: Optional[str] = None,
     article_no: Optional[str] = None,
-    content_tokenized: Optional[str] = None,
 ) -> Dict[str, Any]:
     """법령 청크 레코드 생성"""
     return {
@@ -382,7 +380,6 @@ def create_law_chunk(
         "data_type": "법령",
         "title": title,
         "content": content,
-        "content_tokenized": content_tokenized,
         "vector": vector,
         "date": enforcement_date,
         "source_name": department,
@@ -416,7 +413,6 @@ def create_precedent_chunk(
     judgment_status: Optional[str] = None,
     reference_provisions: Optional[str] = None,
     reference_cases: Optional[str] = None,
-    content_tokenized: Optional[str] = None,
 ) -> Dict[str, Any]:
     """판례 청크 레코드 생성"""
     return {
@@ -425,7 +421,6 @@ def create_precedent_chunk(
         "data_type": "판례",
         "title": title,
         "content": content,
-        "content_tokenized": content_tokenized,
         "vector": vector,
         "date": decision_date,
         "source_name": court_name,
@@ -476,18 +471,6 @@ class LanceDBStore:
             )
         return self._table
 
-    def create_fts_index(self, column: str = "content"):
-        """Full-Text Search 인덱스 생성 (Hybrid Search용)"""
-        if self._table is not None:
-            print(f"\n=== Creating FTS Index (Tantivy) on '{column}' ===")
-            try:
-                self._table.create_fts_index(column, replace=True)
-                print("[INFO] FTS Index created successfully!")
-            except Exception as e:
-                print(f"[ERROR] Failed to create FTS index: {e}")
-        else:
-            print("[WARN] Table does not exist. Run embedding first.")
-
     def add_law_documents(
         self,
         source_ids: List[str],
@@ -502,7 +485,6 @@ class LanceDBStore:
         promulgation_nos: List[str],
         law_types: List[str],
         article_nos: List[str],
-        content_tokenized_list: Optional[List[str]] = None,
     ) -> None:
         """법령 문서 배치 추가"""
         if not source_ids:
@@ -525,7 +507,6 @@ class LanceDBStore:
                 promulgation_no=promulgation_nos[i] if promulgation_nos else None,
                 law_type=law_types[i] if law_types else None,
                 article_no=article_nos[i] if article_nos else None,
-                content_tokenized=content_tokenized_list[i] if content_tokenized_list else None,
             )
             data.append(chunk)
 
@@ -548,7 +529,6 @@ class LanceDBStore:
         judgment_statuses: Optional[List[str]] = None,
         reference_provisions_list: Optional[List[str]] = None,
         reference_cases_list: Optional[List[str]] = None,
-        content_tokenized_list: Optional[List[str]] = None,
     ) -> None:
         """판례 문서 배치 추가"""
         if not source_ids:
@@ -573,7 +553,6 @@ class LanceDBStore:
                 judgment_status=judgment_statuses[i] if judgment_statuses else None,
                 reference_provisions=reference_provisions_list[i] if reference_provisions_list else None,
                 reference_cases=reference_cases_list[i] if reference_cases_list else None,
-                content_tokenized=content_tokenized_list[i] if content_tokenized_list else None,
             )
             data.append(chunk)
 
@@ -1200,7 +1179,7 @@ def chunk_law_content(content: str, config: LawChunkConfig) -> List[tuple]:
 
 
 def _load_mecab_tokenizer() -> Any:
-    """MeCab 토크나이저 로드 (법률 용어 사전 + userdic 포함, 없으면 None)
+    """MeCab 토크나이저 로드 (userdic 포함, 없으면 None)
 
     검색 시(lancedb.py search_fts)와 동일한 설정으로 토크나이저를 생성하여
     인덱싱-검색 간 토크나이저 불일치를 방지한다.
@@ -1217,62 +1196,10 @@ def _load_mecab_tokenizer() -> Any:
         tok_path = vectorstore_dir / "mecab_tokenizer.py"
         spec = importlib.util.spec_from_file_location("mecab_tokenizer", str(tok_path))
         if not spec or not spec.loader:
-            print("[WARN] MeCab tokenizer module not found. content_tokenized will be None.")
+            print("[WARN] MeCab tokenizer module not found.")
             return None
         tok_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(tok_mod)
-
-        # 법률 용어 사전 로드 (JSON fallback)
-        legal_dict = None
-        dict_path = vectorstore_dir / "legal_term_dict.py"
-        spec_d = importlib.util.spec_from_file_location("legal_term_dict", str(dict_path))
-        if spec_d and spec_d.loader:
-            dict_mod = importlib.util.module_from_spec(spec_d)
-            spec_d.loader.exec_module(dict_mod)
-
-            # DB 로드 시도
-            try:
-                import sys as _sys
-                _backend_root_str = str(Path(__file__).parent.parent)
-                if _backend_root_str not in _sys.path:
-                    _sys.path.insert(0, _backend_root_str)
-
-                import asyncio
-
-                from app.core.database import (
-                    async_session_factory,  # type: ignore[import-untyped]
-                )
-
-                ld = dict_mod.LegalTermDictionary()
-
-                async def _load_db() -> int:
-                    async with async_session_factory() as session:
-                        return await ld.load_from_db(session)
-
-                count = asyncio.run(_load_db())
-                legal_dict = ld
-                print(f"[INFO] 법률용어사전 DB 로드: {count:,}개")
-            except Exception as db_err:
-                print(f"[WARN] DB 로드 실패 ({db_err}), JSON fallback 시도")
-                # JSON fallback
-                json_candidates = [
-                    Path(__file__).parent.parent.parent / "data" / "[DONE]lawterms.json",
-                    Path(__file__).parent.parent.parent / "data" / "lawterms_full.json",
-                ]
-                for jp in json_candidates:
-                    if jp.exists():
-                        ld = dict_mod.LegalTermDictionary()
-                        count = ld.load_from_json(str(jp))
-                        if count > 0:
-                            legal_dict = ld
-                            print(f"[INFO] 법률용어사전 JSON 로드: {count:,}개 ({jp.name})")
-                        break
-
-            # userdic 분해맵 로드
-            decomp_path = userdic_dir / "decomposition_map.json"
-            if legal_dict and decomp_path.exists():
-                decomp_count = legal_dict.load_decomposition_map(decomp_path)
-                print(f"[INFO] userdic 분해맵 로드: {decomp_count:,}개")
 
         # userdic 경로
         userdic_path = None
@@ -1280,22 +1207,31 @@ def _load_mecab_tokenizer() -> Any:
         if dic_path.exists():
             userdic_path = str(dic_path)
 
+        # 분해맵 로드
+        decomposition_map = None
+        decomp_path = userdic_dir / "decomposition_map.json"
+        if decomp_path.exists():
+            import json as _json
+            with open(decomp_path, "r", encoding="utf-8") as f:
+                decomposition_map = _json.load(f)
+            print(f"[INFO] userdic 분해맵 로드: {len(decomposition_map):,}개")
+
         tokenizer = tok_mod.MeCabTokenizer(
-            legal_dict=legal_dict,
             userdic_path=userdic_path,
+            decomposition_map=decomposition_map,
         )
         if tokenizer.is_available:
             mode_parts = []
-            if legal_dict:
-                mode_parts.append("법률용어사전")
             if userdic_path:
                 mode_parts.append("userdic")
+            if decomposition_map:
+                mode_parts.append("분해맵")
             mode_str = f"(+ {' + '.join(mode_parts)})" if mode_parts else "(MeCab 기본)"
             print(f"[INFO] MeCab 토크나이저 초기화 완료 {mode_str}")
             return tokenizer
-        print("[WARN] MeCab not available. content_tokenized will be None.")
+        print("[WARN] MeCab not available.")
     except Exception as e:
-        print(f"[WARN] MeCab tokenizer init failed: {e}. content_tokenized will be None.")
+        print(f"[WARN] MeCab tokenizer init failed: {e}.")
     return None
 
 
@@ -1319,7 +1255,7 @@ class StreamingEmbeddingProcessor(ABC, Generic[ChunkConfigT]):
         self.store = LanceDBStore()
         self.stats = EmbeddingStats(device=str(self.device_info))
 
-        # MeCab 토크나이저 초기화 (FTS content_tokenized용, 법률용어사전+userdic 포함)
+        # MeCab 토크나이저 초기화
         self._mecab_tokenizer = _load_mecab_tokenizer()
 
     @abstractmethod
@@ -1707,7 +1643,6 @@ class LawEmbeddingProcessor(StreamingEmbeddingProcessor[LawChunkConfig]):
             "source_ids": [],
             "chunk_indices": [],
             "contents": [],
-            "content_tokenized_list": [],
             "titles": [],
             "enforcement_dates": [],
             "departments": [],
@@ -1730,9 +1665,6 @@ class LawEmbeddingProcessor(StreamingEmbeddingProcessor[LawChunkConfig]):
         batch_data["source_ids"].append(source_id)
         batch_data["chunk_indices"].append(chunk_idx)
         batch_data["contents"].append(chunk_content)
-        # MeCab 사전 토크나이징
-        tokenized = self._mecab_tokenizer.tokenize(chunk_content) if self._mecab_tokenizer else None
-        batch_data["content_tokenized_list"].append(tokenized)
         batch_data["titles"].append(metadata["title"])
         batch_data["enforcement_dates"].append(metadata["enforcement_date"])
         batch_data["departments"].append(metadata["department"])
@@ -1756,7 +1688,6 @@ class LawEmbeddingProcessor(StreamingEmbeddingProcessor[LawChunkConfig]):
             promulgation_nos=batch_data["promulgation_nos"],
             law_types=batch_data["law_types"],
             article_nos=batch_data["article_nos"],
-            content_tokenized_list=batch_data["content_tokenized_list"],
         )
         return len(batch_data["source_ids"])
 
@@ -1812,7 +1743,6 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor[PrecedentChunkConf
             "source_ids": [],
             "chunk_indices": [],
             "contents": [],
-            "content_tokenized_list": [],
             "titles": [],
             "decision_dates": [],
             "court_names": [],
@@ -1837,9 +1767,6 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor[PrecedentChunkConf
         batch_data["source_ids"].append(source_id)
         batch_data["chunk_indices"].append(chunk_idx)
         batch_data["contents"].append(chunk_content)
-        # MeCab 사전 토크나이징
-        tokenized = self._mecab_tokenizer.tokenize(chunk_content) if self._mecab_tokenizer else None
-        batch_data["content_tokenized_list"].append(tokenized)
         batch_data["titles"].append(metadata["case_name"])
         batch_data["decision_dates"].append(metadata["decision_date"])
         batch_data["court_names"].append(metadata["court_name"])
@@ -1867,7 +1794,6 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor[PrecedentChunkConf
             judgment_statuses=batch_data["judgment_statuses"],
             reference_provisions_list=batch_data["reference_provisions_list"],
             reference_cases_list=batch_data["reference_cases_list"],
-            content_tokenized_list=batch_data["content_tokenized_list"],
         )
         return len(batch_data["source_ids"])
 
@@ -2146,9 +2072,8 @@ def run_law_embedding(
     processor = LawEmbeddingProcessor()
     stats = processor.run(source_path, reset=reset, batch_size=batch_size)
 
-    # 통계 출력 및 인덱스 생성 (MeCab 사전 토크나이징된 컬럼에 FTS 인덱스)
+    # 통계 출력
     store = LanceDBStore()
-    store.create_fts_index("content_tokenized")
     show_stats(store)
     del store
     clear_memory()
@@ -2181,9 +2106,8 @@ def run_precedent_embedding(
     processor = PrecedentEmbeddingProcessor()
     stats = processor.run(source_path, reset=reset, batch_size=batch_size)
 
-    # 통계 출력 및 인덱스 생성 (MeCab 사전 토크나이징된 컬럼에 FTS 인덱스)
+    # 통계 출력
     store = LanceDBStore()
-    store.create_fts_index("content_tokenized")
     show_stats(store)
     del store
     clear_memory()

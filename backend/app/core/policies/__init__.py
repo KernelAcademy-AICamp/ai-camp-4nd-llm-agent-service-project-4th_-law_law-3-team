@@ -2,8 +2,8 @@
 
 from app.core.policies.legal_safety import (
     LEGAL_DISCLAIMER,
-    check_input_safety,
     add_disclaimer_if_needed,
+    check_input_safety,
 )
 
 __all__ = [
