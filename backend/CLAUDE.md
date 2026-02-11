@@ -248,6 +248,7 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `VECTOR_DB` | 벡터 DB 선택 | `lancedb` |
 | `LANCEDB_URI` | LanceDB 저장 경로 | `./lancedb_data` |
 | `LANCEDB_TABLE_NAME` | LanceDB 테이블명 | `legal_chunks` |
+| `LANCEDB_INDEX_TYPE` | 벡터 인덱스 타입 (빈 문자열: brute-force) | `""` |
 | `USE_LOCAL_EMBEDDING` | 로컬 임베딩 사용 | `true` |
 | `LOCAL_EMBEDDING_MODEL` | 임베딩 모델 | `nlpai-lab/KURE-v1` |
 | `UPSTAGE_API_KEY` | Solar API 키 | - |

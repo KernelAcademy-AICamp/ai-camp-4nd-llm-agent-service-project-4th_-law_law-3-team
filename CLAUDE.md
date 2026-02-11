@@ -281,8 +281,14 @@ backend/notebooks/
 | 판례 | 65,107건 | 134,846개 |
 | 법령 | 5,841건 | 118,922개 |
 
+### 벡터 인덱스 (검색 속도 최적화)
+
+`LANCEDB_INDEX_TYPE=IVF_FLAT` 설정 시 벡터 검색 속도가 ~14x 향상됩니다 (91ms → 6ms, Recall 100% 유지).
+빈 문자열(기본값)이면 brute-force로 동작합니다. 상세: `docs/devlog/LANCEDB_VECTOR_INDEX_20260211.md`
+
 ### 관련 문서
 - `docs/architecture/vectordb_design.md` - 벡터 DB 설계
+- `docs/architecture/lancedb_fts_guide.md` - FTS + 벡터 인덱스 가이드
 - `backend/scripts/CLAUDE.md` - 임베딩 스크립트 가이드
 - `docs/devlog/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
 

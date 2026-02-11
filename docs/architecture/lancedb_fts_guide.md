@@ -156,3 +156,44 @@ PostgreSQL도 훌륭한 FTS(tsvector)를 지원하지만, 다음과 같은 이�
 
 *   **Law/Precedent Update**: PostgreSQL에 데이터 적재 완료 후, 별도 스크립트(`create_lancedb_embeddings.py`)를 실행하여 LanceDB를 갱신합니다.
 *   **주의**: LanceDB는 `upsert`를 지원하지 않으므로, 중복 방지를 위해 기존 데이터를 지우고 다시 넣거나(`overwrite`), `merge` 로직을 구현해야 합니다.
+
+---
+
+## 7. 벡터 인덱스 (Vector Index)
+
+FTS 인덱스와 별도로, **벡터 검색 속도**를 높이기 위한 ANN(Approximate Nearest Neighbor) 인덱스를 지원합니다.
+
+### 7.1 인덱스 타입별 성능 비교 (~253K 청크 기준)
+
+| Index Type | Mean (ms) | Recall@10 | 빌드 시간 | 비고 |
+|:-----------|----------:|----------:|----------:|------|
+| Brute-force | 90.86 | 100% | - | 기본값 (인덱스 없음) |
+| IVF_PQ | 3.41 | 60% | 26s | 벡터 압축, recall 손실 큼 |
+| **IVF_FLAT** | **6.37** | **100%** | **36s** | **권장** — recall 유지, ~14x 빠름 |
+| IVF_HNSW_SQ | 3.68 | 90% | 46s | 가장 빠르나 recall 10% 손실 |
+
+### 7.2 활성화 방법
+
+```bash
+# backend/.env
+LANCEDB_INDEX_TYPE=IVF_FLAT
+```
+
+*   빈 문자열(기본값)이면 인덱스를 생성하지 않고 brute-force로 동작합니다.
+*   앱 시작(lifespan) 시 `create_vector_index()`가 호출되며, 이미 존재하면 스킵합니다.
+*   인덱스 생성 실패 시 앱 시작은 차단되지 않고 brute-force로 fallback됩니다.
+
+### 7.3 인덱스 파라미터
+
+*   `num_partitions`: `max(16, sqrt(row_count))` 자동 계산
+*   `metric`: cosine
+*   `vector_column_name`: "vector" (1024차원, KURE-v1)
+
+### 7.4 벤치마크 재현
+
+```bash
+cd backend
+uv run python scripts/benchmark_lancedb_search.py
+```
+
+상세 결과: `docs/devlog/LANCEDB_VECTOR_INDEX_20260211.md`

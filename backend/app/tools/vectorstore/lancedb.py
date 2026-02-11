@@ -498,6 +498,61 @@ class LanceDBStore(VectorStoreBase):
         return metadatas
 
     # =========================================================================
+    # 벡터 인덱스 메서드
+    # =========================================================================
+
+    def create_vector_index(self, index_type: str = "IVF_FLAT") -> bool:
+        """
+        벡터 인덱스 생성 (이미 동일 타입 인덱스가 있으면 스킵)
+
+        Args:
+            index_type: 인덱스 타입 ("IVF_FLAT", "IVF_PQ", "IVF_HNSW_SQ" 등)
+
+        Returns:
+            True: 인덱스 생성됨, False: 스킵 (이미 존재 또는 테이블 없음)
+        """
+        if self._table is None:
+            logger.warning("벡터 인덱스 생성 스킵: 테이블이 없습니다")
+            return False
+
+        row_count = len(self._table)
+        if row_count == 0:
+            logger.warning("벡터 인덱스 생성 스킵: 테이블이 비어있습니다")
+            return False
+
+        # 이미 벡터 인덱스가 존재하면 스킵
+        try:
+            existing = self._table.list_indices()
+            for idx in existing:
+                # dict 또는 객체 형태 모두 대응
+                idx_columns = idx.get("columns", []) if isinstance(idx, dict) else getattr(idx, "columns", [])
+                if "vector" in idx_columns:
+                    logger.info(
+                        "벡터 인덱스 이미 존재, 생성 스킵 (테이블: %s)",
+                        self.table_name,
+                    )
+                    return False
+        except Exception:
+            # list_indices 미지원 버전이면 무시하고 생성 시도
+            pass
+
+        num_partitions = max(16, int(row_count**0.5))
+        logger.info(
+            "벡터 인덱스 생성 시작: type=%s, partitions=%d, rows=%d",
+            index_type, num_partitions, row_count,
+        )
+
+        self._table.create_index(
+            metric="cosine",
+            index_type=index_type,
+            num_partitions=num_partitions,
+            vector_column_name="vector",
+            replace=True,
+        )
+        logger.info("벡터 인덱스 생성 완료: %s", index_type)
+        return True
+
+    # =========================================================================
     # FTS (Full-Text Search) 메서드
     # =========================================================================
 

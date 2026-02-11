@@ -35,6 +35,18 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error("임베딩 모델 로드 실패: %s", e)
 
+    # 벡터 인덱스 생성 (LANCEDB_INDEX_TYPE이 설정된 경우에만)
+    if settings.LANCEDB_INDEX_TYPE:
+        try:
+            from app.tools.vectorstore.lancedb import LanceDBStore
+
+            store = LanceDBStore()
+            created = store.create_vector_index(settings.LANCEDB_INDEX_TYPE)
+            if created:
+                logger.info("LanceDB 벡터 인덱스 생성 완료: %s", settings.LANCEDB_INDEX_TYPE)
+        except Exception as e:
+            logger.error("LanceDB 벡터 인덱스 생성 실패 (검색은 brute-force로 동작): %s", e)
+
     # 시작 시: LangGraph 체크포인터 초기화
     if settings.USE_PERSISTENT_CHECKPOINTER:
         from app.multi_agent.graph import init_checkpointer

@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     # LanceDB 설정 (VECTOR_DB=lancedb 일 때 사용)
     LANCEDB_URI: str = "./lancedb_data"
     LANCEDB_TABLE_NAME: str = "legal_chunks"
+    LANCEDB_INDEX_TYPE: str = ""  # 빈 문자열이면 brute-force, "IVF_FLAT" 등 설정 가능
 
     # Embedding
     EMBEDDING_MODEL: str = "text-embedding-3-small"
