@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     # 법률 용어 사전 (MeCab 토크나이저 법률 복합명사 보강)
     USE_LEGAL_TERM_DICT: bool = False
 
+    # 하이브리드 검색 (벡터 + 키워드)
+    USE_HYBRID_SEARCH: bool = True
+
     # MeCab 사용자 사전 (법률 복합명사 인식)
     USE_MECAB_USERDIC: bool = False
     MECAB_USERDIC_PATH: str = "data/mecab_userdic/legal_terms.dic"

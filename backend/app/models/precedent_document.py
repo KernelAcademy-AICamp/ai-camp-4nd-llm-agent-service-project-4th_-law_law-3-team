@@ -5,17 +5,17 @@ data/precedents_cleaned.json 데이터를 PostgreSQL에 저장하기 위한 테�
 LanceDB 벡터 검색 후 원본 데이터 조회에 사용
 """
 
-from datetime import datetime, date
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import (
     Column,
-    Integer,
-    String,
-    Text,
     Date,
     DateTime,
     Index,
+    Integer,
+    String,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 

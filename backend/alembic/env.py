@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.core.config import settings
 from app.core.database import Base
 from app.models import (  # noqa: F401  # 모델 임포트 (테이블 등록)
+    FtsIndex,
     Law,
     LawDocument,
     Lawyer,

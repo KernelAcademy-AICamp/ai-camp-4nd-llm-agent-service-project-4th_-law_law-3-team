@@ -9,6 +9,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from app.core.config import settings
 from app.services.rag.query_rewrite import rewrite_query
 from app.services.rag.rerank import rerank_documents
 from app.services.rag.retrieval import search_relevant_documents
@@ -51,6 +52,7 @@ class PipelineResult:
         rewritten_queries: 리라이팅된 쿼리 목록 (활성화 시)
         reranked: 리랭킹 적용 여부
         total_retrieved: 리랭킹 전 검색 결과 수
+        hybrid_search_used: 하이브리드 검색 사용 여부
     """
 
     documents: List[Dict[str, Any]] = field(default_factory=list)
@@ -58,6 +60,7 @@ class PipelineResult:
     rewritten_queries: List[str] = field(default_factory=list)
     reranked: bool = False
     total_retrieved: int = 0
+    hybrid_search_used: bool = field(default_factory=lambda: settings.USE_HYBRID_SEARCH)
 
 
 def search_with_pipeline(

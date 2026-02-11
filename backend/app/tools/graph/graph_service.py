@@ -22,7 +22,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from typing import Generator, List, Optional
 
-from neo4j import GraphDatabase, Driver
+from neo4j import Driver, GraphDatabase
 
 from app.core.config import settings
 

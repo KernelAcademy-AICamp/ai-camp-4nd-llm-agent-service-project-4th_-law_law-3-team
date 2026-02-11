@@ -13,6 +13,10 @@ from app.services.rag.embedding import (
     is_embedding_model_cached,
 )
 
+# 하이브리드 검색
+from app.services.rag.fusion import reciprocal_rank_fusion
+from app.services.rag.keyword_search import search_by_keyword
+
 # 파이프라인
 from app.services.rag.pipeline import (
     PipelineConfig,
@@ -57,6 +61,9 @@ __all__ = [
     # 검색
     "search_relevant_documents",
     "search_relevant_documents_async",
+    # 하이브리드 검색
+    "search_by_keyword",
+    "reciprocal_rank_fusion",
     # 리랭킹
     "rerank_documents",
     "is_reranker_available",

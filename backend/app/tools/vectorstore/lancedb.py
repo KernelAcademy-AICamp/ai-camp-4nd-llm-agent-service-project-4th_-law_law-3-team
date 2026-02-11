@@ -31,6 +31,26 @@ logger = logging.getLogger(__name__)
 _thread_local = threading.local()
 
 
+def _load_decomposition_map() -> dict[str, list[str]]:
+    """decomposition_map.json 로드 (프로세스 내 1회)"""
+    cached = getattr(_load_decomposition_map, "_cache", None)
+    if cached is not None:
+        return cached
+
+    import json
+
+    path = Path(settings.MECAB_USERDIC_PATH).parent / "decomposition_map.json"
+    if not path.exists():
+        _load_decomposition_map._cache = {}  # type: ignore[attr-defined]
+        return {}
+
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    _load_decomposition_map._cache = data  # type: ignore[attr-defined]
+    return data
+
+
 def _get_thread_tokenizer() -> "MeCabTokenizer":  # noqa: F821
     """스레드별 MeCabTokenizer 인스턴스 반환 (캐싱)
 
@@ -43,19 +63,17 @@ def _get_thread_tokenizer() -> "MeCabTokenizer":  # noqa: F821
 
     from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
 
-    legal_dict = None
-    if settings.USE_LEGAL_TERM_DICT:
-        from app.tools.vectorstore.legal_term_dict import get_legal_term_dict
-        legal_dict = get_legal_term_dict()
-
     userdic_path = None
+    decomposition_map = None
     if settings.USE_MECAB_USERDIC:
         _p = Path(settings.MECAB_USERDIC_PATH)
         if _p.exists():
             userdic_path = str(_p)
+            decomposition_map = _load_decomposition_map()
 
     _thread_local.tokenizer = MeCabTokenizer(
-        legal_dict=legal_dict, userdic_path=userdic_path,
+        userdic_path=userdic_path,
+        decomposition_map=decomposition_map,
     )
     return _thread_local.tokenizer
 
