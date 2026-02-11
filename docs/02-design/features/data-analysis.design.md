@@ -110,24 +110,24 @@ CATEGORIES: dict[str, dict[str, Any]] = {
         "date_field": None,
         "streaming": True,
     },
-    # ... 12개 카테고리
+    # ... 11개 카테고리
 }
 ```
 
 | 카테고리 | 파일 수 | streaming | 비고 |
 |----------|---------|-----------|------|
 | precedent | 1 | True | ~1.1GB |
-| law | 1 | True | ~356MB |
-| constitutional | 1 | True | ~279MB |
-| administration | 1 | True | ~427MB |
+| law | 1 | True | ~356MB (0.35GB) |
+| constitutional | 1 | True | ~279MB (0.27GB) |
+| administration | 1 | True | ~427MB (0.42GB) |
 | special_tribunal | 2 | True | ~2.05GB |
-| legislation | 1 | False | ~79MB |
-| committee | 10 | False | ~300MB (10개 위원회) |
-| cgm_expc | 28 | False | ~100MB (28개 부처) |
-| law_term | 1 | False | ~66MB |
-| treaty | 1 | False | ~57MB |
-| school | 1 | False | ~58MB |
-| **합계** | **48** | | **~12GB** |
+| legislation | 1 | False | ~79MB (0.08GB) |
+| committee | 10 | False | ~300MB (0.29GB) |
+| cgm_expc | 28 | False | ~100MB (0.10GB) |
+| law_term | 1 | False | ~66MB (0.06GB) |
+| treaty | 1 | False | ~57MB (0.06GB) |
+| school | 1 | False | ~58MB (0.06GB) |
+| **합계** | **48** | | **~4.9GB** |
 
 ### 3.2 중간 결과 스키마 (eda_output/)
 

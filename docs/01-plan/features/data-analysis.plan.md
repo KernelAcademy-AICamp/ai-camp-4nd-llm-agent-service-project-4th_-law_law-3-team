@@ -1,6 +1,6 @@
 # Data Analysis (EDA) Planning Document
 
-> **Summary**: DB 구축 전 48개 [DONE] JSON 파일(~12GB)의 데이터 특성 파악을 위한 탐색적 분석(EDA)
+> **Summary**: DB 구축 전 48개 [DONE] JSON 파일(~4.9GB)의 데이터 특성 파악을 위한 탐색적 분석(EDA)
 >
 > **Project**: law-3-team (법률 서비스 플랫폼)
 > **Author**: Claude
@@ -13,13 +13,13 @@
 
 ### 1.1 Purpose
 
-PostgreSQL, LanceDB, Neo4j 3개 DB 구축 전에 법률 데이터(48개 [DONE] JSON 파일, ~12GB)의 특성을 파악한다. 파일 인벤토리, 스키마 구조, 데이터 품질, 텍스트 분포, 시간 패턴, 데이터셋 간 관계, DB 볼륨 추정을 수행하여 DB 설계에 필요한 근거 데이터를 확보한다.
+PostgreSQL, LanceDB, Neo4j 3개 DB 구축 전에 법률 데이터(48개 [DONE] JSON 파일, ~4.9GB)의 특성을 파악한다. 파일 인벤토리, 스키마 구조, 데이터 품질, 텍스트 분포, 시간 패턴, 데이터셋 간 관계, DB 볼륨 추정을 수행하여 DB 설계에 필요한 근거 데이터를 확보한다.
 
 ### 1.2 Background
 
-- 법률 서비스 플랫폼의 핵심 데이터가 48개 JSON 파일(총 ~12GB)로 존재
-- 판례(1.1GB), 법령(356MB), 헌재결정례(279MB), 행정심판례(427MB), 특별행정심판(2.05GB) 등 대용량 파일 포함
-- 12개 카테고리로 분류 가능: precedent, law, constitutional, administration, special_tribunal, legislation, committee(10개), cgm_expc(28개), law_term, treaty, school
+- 법률 서비스 플랫폼의 핵심 데이터가 48개 JSON 파일(총 ~4.9GB)로 존재
+- 판례(1.1GB), 법령(356MB/0.35GB), 헌재결정례(279MB/0.27GB), 행정심판례(427MB/0.42GB), 특별행정심판(2.05GB) 등 대용량 파일 포함
+- 11개 카테고리로 분류 가능: precedent, law, constitutional, administration, special_tribunal, legislation, committee(10개), cgm_expc(28개), law_term, treaty, school
 - DB 설계 시 테이블 구조, 인덱스 전략, 청킹 설정, 용량 추정 등에 EDA 결과가 직접 반영됨
 
 ### 1.3 Related Documents
@@ -59,7 +59,7 @@ PostgreSQL, LanceDB, Neo4j 3개 DB 구축 전에 법률 데이터(48개 [DONE] J
 | ID | Requirement | Priority | Status |
 |----|-------------|----------|--------|
 | FR-01 | 48개 [DONE] 파일의 크기, 레코드 수, 루트 타입 스캔 | High | Done |
-| FR-02 | 12개 카테고리별 스키마 발견 (필드명, 타입, 존재율/null률) | High | Done |
+| FR-02 | 11개 카테고리별 스키마 발견 (필드명, 타입, 존재율/null률) | High | Done |
 | FR-03 | 카테고리별 데이터 품질 분석 (null/empty, 중복 ID, 인코딩) | High | Done |
 | FR-04 | 주요 텍스트 필드 길이 분포 분석 (P25/P50/P75/P90/P99) | High | Done |
 | FR-05 | 현재 청킹 설정(1,250자/800토큰) 대비 예상 청크 수 추정 | Medium | Done |
