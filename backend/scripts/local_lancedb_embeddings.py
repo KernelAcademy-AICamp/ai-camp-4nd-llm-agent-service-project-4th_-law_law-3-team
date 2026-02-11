@@ -158,7 +158,7 @@ def clear_checkpoint(data_type: str) -> None:
 
 
 def _load_mecab_tokenizer() -> Any:
-    """MeCab 토크나이저 로드 (법률 용어 사전 + userdic 포함, 없으면 None)
+    """MeCab 토크나이저 로드 (userdic 포함, 없으면 None)
 
     검색 시(lancedb.py search_fts)와 동일한 설정으로 토크나이저를 생성하여
     인덱싱-검색 간 토크나이저 불일치를 방지한다.
@@ -175,61 +175,18 @@ def _load_mecab_tokenizer() -> Any:
         tok_path = vectorstore_dir / "mecab_tokenizer.py"
         spec = importlib.util.spec_from_file_location("mecab_tokenizer", str(tok_path))
         if not spec or not spec.loader:
-            print("[WARN] MeCab 토크나이저 모듈 미발견. content_tokenized = None")
+            print("[WARN] MeCab 토크나이저 모듈 미발견")
             return None
         tok_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(tok_mod)
 
-        # 법률 용어 사전 로드 (JSON fallback)
-        legal_dict = None
-        dict_path = vectorstore_dir / "legal_term_dict.py"
-        spec_d = importlib.util.spec_from_file_location("legal_term_dict", str(dict_path))
-        if spec_d and spec_d.loader:
-            dict_mod = importlib.util.module_from_spec(spec_d)
-            spec_d.loader.exec_module(dict_mod)
-
-            # DB 로드 시도
-            try:
-                import sys as _sys
-                _backend_root_str = str(Path(__file__).parent.parent)
-                if _backend_root_str not in _sys.path:
-                    _sys.path.insert(0, _backend_root_str)
-
-                import asyncio
-
-                from app.core.database import (
-                    async_session_factory,  # type: ignore[import-untyped]
-                )
-
-                ld = dict_mod.LegalTermDictionary()
-                async def _load_db() -> int:
-                    async with async_session_factory() as session:
-                        return await ld.load_from_db(session)
-
-                count = asyncio.run(_load_db())
-                legal_dict = ld
-                print(f"[INFO] 법률용어사전 DB 로드: {count:,}개")
-            except Exception as db_err:
-                print(f"[WARN] DB 로드 실패 ({db_err}), JSON fallback 시도")
-                # JSON fallback
-                json_candidates = [
-                    Path(__file__).parent.parent.parent / "data" / "[DONE]lawterms.json",
-                    Path(__file__).parent.parent.parent / "data" / "lawterms_full.json",
-                ]
-                for jp in json_candidates:
-                    if jp.exists():
-                        ld = dict_mod.LegalTermDictionary()
-                        count = ld.load_from_json(str(jp))
-                        if count > 0:
-                            legal_dict = ld
-                            print(f"[INFO] 법률용어사전 JSON 로드: {count:,}개 ({jp.name})")
-                        break
-
-            # userdic 분해맵 로드
-            decomp_path = userdic_dir / "decomposition_map.json"
-            if legal_dict and decomp_path.exists():
-                decomp_count = legal_dict.load_decomposition_map(decomp_path)
-                print(f"[INFO] userdic 분해맵 로드: {decomp_count:,}개")
+        # 분해맵 직접 로드
+        decomposition_map: Optional[dict[str, list[str]]] = None
+        decomp_path = userdic_dir / "decomposition_map.json"
+        if decomp_path.exists():
+            with open(decomp_path, encoding="utf-8") as f:
+                decomposition_map = json.load(f)
+            print(f"[INFO] userdic 분해맵 로드: {len(decomposition_map):,}개")
 
         # userdic 경로
         userdic_path = None
@@ -238,21 +195,19 @@ def _load_mecab_tokenizer() -> Any:
             userdic_path = str(dic_path)
 
         tokenizer = tok_mod.MeCabTokenizer(
-            legal_dict=legal_dict,
             userdic_path=userdic_path,
+            decomposition_map=decomposition_map,
         )
         if tokenizer.is_available:
             mode_parts = []
-            if legal_dict:
-                mode_parts.append("법률용어사전")
             if userdic_path:
                 mode_parts.append("userdic")
             mode_str = f"(+ {' + '.join(mode_parts)})" if mode_parts else "(MeCab 기본)"
             print(f"[INFO] MeCab 토크나이저 초기화 완료 {mode_str}")
             return tokenizer
-        print("[WARN] MeCab 사용 불가. content_tokenized = None")
+        print("[WARN] MeCab 사용 불가")
     except Exception as e:
-        print(f"[WARN] MeCab 토크나이저 초기화 실패: {e}. content_tokenized = None")
+        print(f"[WARN] MeCab 토크나이저 초기화 실패: {e}")
     return None
 
 
@@ -516,7 +471,6 @@ class LocalEmbeddingProcessor(ABC):
         total_chunks: int,
         vector: list[float],
         metadata: dict[str, str],
-        content_tokenized: Optional[str],
     ) -> dict[str, Any]:
         """청크 레코드 빌드"""
 
@@ -527,21 +481,17 @@ class LocalEmbeddingProcessor(ABC):
         return None
 
     def _save_tokenizer_manifest(self) -> None:
-        """토크나이저 매니페스트 저장 (content_tokenized 버전 추적)"""
+        """토크나이저 매니페스트 저장"""
         from scripts.embedding_common.tokenizer_manifest import (
             build_manifest,
             save_manifest,
         )
 
-        legal_dict_count = 0
         userdic_path_str = None
         decomp_map_path_str = None
         userdic_dir = _backend_root / "data" / "mecab_userdic"
 
         if self._mecab:
-            ld = getattr(self._mecab, "_legal_dict", None)
-            if ld:
-                legal_dict_count = getattr(ld, "term_count", 0)
             if getattr(self._mecab, "_userdic_active", False):
                 dic_p = userdic_dir / "legal_terms.dic"
                 if dic_p.exists():
@@ -552,7 +502,7 @@ class LocalEmbeddingProcessor(ABC):
 
         lancedb_path = Path(self.store.db_path)
         manifest = build_manifest(
-            legal_dict_count=legal_dict_count,
+            legal_dict_count=0,
             userdic_path=userdic_path_str,
             decomp_map_path=decomp_map_path_str,
             total_rows=self.stats.total_chunks,
@@ -667,7 +617,6 @@ class LocalEmbeddingProcessor(ABC):
 
             # 배치에 청크 추가
             for chunk_idx, chunk_content in chunks:
-                tokenized = self._tokenize(chunk_content)
                 # 레코드는 벡터 없이 일단 저장 (배치 임베딩 후 벡터 추가)
                 record = self.build_chunk_record(
                     source_id=source_id,
@@ -676,7 +625,6 @@ class LocalEmbeddingProcessor(ABC):
                     total_chunks=total_chunks,
                     vector=[],  # placeholder
                     metadata=metadata,
-                    content_tokenized=tokenized,
                 )
                 batch_records.append(record)
                 batch_contents.append(chunk_content)
@@ -743,14 +691,6 @@ class LocalEmbeddingProcessor(ABC):
 
         # 최종 정리
         clear_memory()
-
-        # FTS 인덱스 생성
-        if self.store.table is not None:
-            try:
-                self.store.table.create_fts_index("content_tokenized", replace=True)
-                print("[INFO] FTS 인덱스 생성 완료")
-            except Exception as e:
-                print(f"[WARN] FTS 인덱스 생성 실패: {e}")
 
         # 토크나이저 매니페스트 저장
         self._save_tokenizer_manifest()
@@ -850,7 +790,6 @@ class LawEmbeddingProcessor(LocalEmbeddingProcessor):
         total_chunks: int,
         vector: list[float],
         metadata: dict[str, str],
-        content_tokenized: Optional[str],
     ) -> dict[str, Any]:
         return create_law_chunk(
             source_id=source_id,
@@ -865,7 +804,6 @@ class LawEmbeddingProcessor(LocalEmbeddingProcessor):
             promulgation_no=metadata.get("promulgation_no"),
             law_type=metadata.get("law_type"),
             article_no=None,
-            content_tokenized=content_tokenized,
         )
 
 
@@ -928,7 +866,6 @@ class PrecedentEmbeddingProcessor(LocalEmbeddingProcessor):
         total_chunks: int,
         vector: list[float],
         metadata: dict[str, str],
-        content_tokenized: Optional[str],
     ) -> dict[str, Any]:
         return create_precedent_chunk(
             source_id=source_id,
@@ -945,7 +882,6 @@ class PrecedentEmbeddingProcessor(LocalEmbeddingProcessor):
             judgment_status=metadata.get("judgment_status"),
             reference_provisions=metadata.get("reference_provisions"),
             reference_cases=metadata.get("reference_cases"),
-            content_tokenized=content_tokenized,
         )
 
 

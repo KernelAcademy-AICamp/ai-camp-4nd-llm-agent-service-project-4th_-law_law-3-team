@@ -42,13 +42,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import func, select
 
-from app.core.config import settings
 from app.core.database import async_session_factory
 from app.models.law_document import LawDocument
 from app.models.precedent_document import PrecedentDocument
 from app.tools.vectorstore.lancedb import LanceDBStore
-from app.tools.vectorstore.legal_term_dict import get_legal_term_dict
-from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
 
 # ============================================================================
 # 디바이스 감지 및 최적화
@@ -258,10 +255,6 @@ async def process_precedents(reset: bool, batch_size: int = None):
 
     chunk_config = ChunkConfig()
 
-    # MeCab 토크나이저 초기화
-    legal_dict = get_legal_term_dict() if settings.USE_LEGAL_TERM_DICT else None
-    tokenizer = MeCabTokenizer(legal_dict=legal_dict)
-
     # DB 조회
     async with async_session_factory() as session:
         # 전체 개수
@@ -278,7 +271,6 @@ async def process_precedents(reset: bool, batch_size: int = None):
             "case_numbers": [], "case_types": [],
             "judgment_types": [], "judgment_statuses": [],
             "reference_provisions_list": [], "reference_cases_list": [],
-            "content_tokenized_list": []  # 추가
         }
 
         with tqdm(total=total, desc="Processing") as pbar:
@@ -320,10 +312,6 @@ async def process_precedents(reset: bool, batch_size: int = None):
                         buffer["reference_provisions_list"].append(doc.reference_provisions or "")
                         buffer["reference_cases_list"].append(doc.reference_cases or "")
 
-                        # 토큰화 수행
-                        tokenized = tokenizer.tokenize(full_content)
-                        buffer["content_tokenized_list"].append(tokenized)
-
                         # 버퍼 꽉 차면 저장
                         if len(buffer["source_ids"]) >= bs:
                             embeddings = create_embeddings(buffer["contents"], device_info.device)
@@ -342,7 +330,6 @@ async def process_precedents(reset: bool, batch_size: int = None):
                                 judgment_statuses=buffer["judgment_statuses"],
                                 reference_provisions_list=buffer["reference_provisions_list"],
                                 reference_cases_list=buffer["reference_cases_list"],
-                                content_tokenized_list=buffer["content_tokenized_list"]  # 전달
                             )
                             # 초기화
                             for k in buffer:
@@ -371,7 +358,6 @@ async def process_precedents(reset: bool, batch_size: int = None):
                 judgment_statuses=buffer["judgment_statuses"],
                 reference_provisions_list=buffer["reference_provisions_list"],
                 reference_cases_list=buffer["reference_cases_list"],
-                content_tokenized_list=buffer["content_tokenized_list"]  # 전달
             )
 
     print("[INFO] Processing complete.")
@@ -393,10 +379,6 @@ async def process_laws(reset: bool, batch_size: int = None):
     existing_ids = store.get_existing_source_ids("법령")
     chunk_config = LawChunkConfig()
 
-    # MeCab 토크나이저 초기화
-    legal_dict = get_legal_term_dict() if settings.USE_LEGAL_TERM_DICT else None
-    tokenizer = MeCabTokenizer(legal_dict=legal_dict)
-
     async with async_session_factory() as session:
         total = (await session.execute(select(func.count(LawDocument.id)))).scalar()
 
@@ -406,7 +388,6 @@ async def process_laws(reset: bool, batch_size: int = None):
             "source_ids": [], "chunk_indices": [], "contents": [], "titles": [],
             "enforcement_dates": [], "departments": [], "total_chunks_list": [],
             "promulgation_dates": [], "promulgation_nos": [], "law_types": [], "article_nos": [],
-            "content_tokenized_list": []  # 추가
         }
 
         with tqdm(total=total, desc="Processing") as pbar:
@@ -442,10 +423,6 @@ async def process_laws(reset: bool, batch_size: int = None):
                         buffer["law_types"].append(doc.law_type or "")
                         buffer["article_nos"].append(art_no or "")
 
-                        # 토큰화 수행
-                        tokenized = tokenizer.tokenize(full_content)
-                        buffer["content_tokenized_list"].append(tokenized)
-
                         if len(buffer["source_ids"]) >= bs:
                             embeddings = create_embeddings(buffer["contents"], device_info.device)
                             store.add_law_documents(
@@ -461,7 +438,6 @@ async def process_laws(reset: bool, batch_size: int = None):
                                 promulgation_nos=buffer["promulgation_nos"],
                                 law_types=buffer["law_types"],
                                 article_nos=buffer["article_nos"],
-                                content_tokenized_list=buffer["content_tokenized_list"]  # 전달
                             )
                             for k in buffer:
                                 buffer[k] = []
@@ -485,7 +461,6 @@ async def process_laws(reset: bool, batch_size: int = None):
                 promulgation_nos=buffer["promulgation_nos"],
                 law_types=buffer["law_types"],
                 article_nos=buffer["article_nos"],
-                content_tokenized_list=buffer["content_tokenized_list"]  # 전달
             )
 
 
@@ -513,51 +488,6 @@ def show_stats():
 
 
 
-def create_fts_index():
-
-
-    """Full-Text Search 인덱스 생성 (Hybrid Search용)"""
-
-
-    store = LanceDBStore()
-
-
-    if store.table is not None:
-
-
-        print("\n=== Creating FTS Index (Tantivy) ===")
-
-
-        print("[INFO] Indexing 'content' column for keyword search...")
-
-
-        try:
-
-
-            # Tantivy 엔진을 사용하여 FTS 인덱스 생성
-            # content가 아닌 content_tokenized에 인덱스를 생성하여
-            # MeCab 전처리 효과(복합명사 분해 등)를 반영함
-            store.table.create_fts_index("content_tokenized", replace=True)
-
-            print("[INFO] FTS Index created successfully on 'content_tokenized'!")
-
-
-        except Exception as e:
-
-
-            print(f"[ERROR] Failed to create FTS index: {e}")
-
-
-            print("[HINT] 'pip install tantivy' might be required.")
-
-
-    else:
-
-
-        print("[WARN] Table does not exist. Run embedding first.")
-
-
-
 
 
 
@@ -576,9 +506,6 @@ if __name__ == "__main__":
 
 
     parser.add_argument("--stats", action="store_true")
-
-
-    parser.add_argument("--fts", action="store_true", help="FTS 인덱스만 생성")
 
 
     parser.add_argument("--batch-size", type=int)
@@ -602,16 +529,6 @@ if __name__ == "__main__":
 
 
 
-    if args.fts:
-
-
-        create_fts_index()
-
-
-        sys.exit(0)
-
-
-
 
 
     if args.type in ["precedent", "all"]:
@@ -625,9 +542,6 @@ if __name__ == "__main__":
 
     if args.type in ["law", "all"]:
         asyncio.run(process_laws(args.reset, args.batch_size))
-
-    # 전체 작업 완료 후 FTS 인덱스 생성
-    create_fts_index()
 
     show_stats()
 

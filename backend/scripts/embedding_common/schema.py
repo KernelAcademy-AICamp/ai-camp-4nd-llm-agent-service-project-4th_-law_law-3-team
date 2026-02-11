@@ -45,7 +45,6 @@ except ImportError:
         pa.field("data_type", pa.utf8()),
         pa.field("title", pa.utf8()),
         pa.field("content", pa.utf8()),
-        pa.field("content_tokenized", pa.utf8()),
         pa.field("vector", pa.list_(pa.float32(), VECTOR_DIM)),
         pa.field("date", pa.utf8()),
         pa.field("source_name", pa.utf8()),
@@ -67,7 +66,7 @@ except ImportError:
 
     COMMON_COLUMNS = [
         "id", "source_id", "data_type", "title", "content",
-        "content_tokenized", "vector", "date", "source_name",
+        "vector", "date", "source_name",
         "chunk_index", "total_chunks",
     ]
     LAW_COLUMNS = ["promulgation_date", "promulgation_no", "law_type", "article_no"]
@@ -92,7 +91,6 @@ except ImportError:
         promulgation_no: Optional[str] = None,
         law_type: Optional[str] = None,
         article_no: Optional[str] = None,
-        content_tokenized: Optional[str] = None,
     ) -> dict[str, Any]:
         return {
             "id": f"law_{source_id}_{chunk_index}",
@@ -100,7 +98,6 @@ except ImportError:
             "data_type": "법령",
             "title": title,
             "content": content,
-            "content_tokenized": content_tokenized,
             "vector": vector,
             "date": enforcement_date,
             "source_name": department,
@@ -133,7 +130,6 @@ except ImportError:
         judgment_status: Optional[str] = None,
         reference_provisions: Optional[str] = None,
         reference_cases: Optional[str] = None,
-        content_tokenized: Optional[str] = None,
     ) -> dict[str, Any]:
         return {
             "id": f"prec_{source_id}_{chunk_index}",
@@ -141,7 +137,6 @@ except ImportError:
             "data_type": "판례",
             "title": title,
             "content": content,
-            "content_tokenized": content_tokenized,
             "vector": vector,
             "date": decision_date,
             "source_name": court_name,
