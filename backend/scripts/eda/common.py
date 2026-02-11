@@ -10,8 +10,10 @@ Usage (노트북에서):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import random
+import re
 from pathlib import Path
 from typing import Any, Generator
 
@@ -73,6 +75,18 @@ def smart_load(
     return load_json(path)
 
 
+def load_all(path: Path) -> list[dict[str, Any]]:
+    """파일의 모든 레코드를 리스트로 로드.
+
+    소용량 파일은 json.load, 대용량 파일은 스트리밍 후 리스트 변환합니다.
+    대용량 파일은 메모리 사용이 클 수 있으므로 주의하세요.
+    """
+    size_mb = get_file_size_mb(path)
+    if size_mb < STREAMING_THRESHOLD_MB:
+        return load_json(path)
+    return list(stream_json(path))
+
+
 def reservoir_sample(
     iterable: Generator[dict[str, Any], None, None] | list[dict[str, Any]],
     k: int = 10000,
@@ -103,7 +117,8 @@ def head_sample(
     """파일에서 처음 n개 레코드만 추출 (O(n) 시간).
 
     reservoir_sample과 달리 파일 전체를 읽지 않으므로 대용량 파일에서 훨씬 빠릅니다.
-    EDA 용도에서는 무작위성보다 속도가 중요하므로 이 함수를 권장합니다.
+    단, 데이터가 정렬되어 있으면 편향될 수 있습니다.
+    편향 없는 샘플이 필요하면 get_sample(fast=False) 또는 cached_sample()을 사용하세요.
     """
     size_mb = get_file_size_mb(path)
     if size_mb < STREAMING_THRESHOLD_MB:
@@ -115,6 +130,43 @@ def head_sample(
         if len(records) >= n:
             break
     return records
+
+
+def _sample_cache_path(path: Path, n: int, seed: int) -> Path:
+    """샘플 캐시 파일 경로를 생성."""
+    # 파일 경로 + 크기 + n + seed로 고유 키 생성
+    key = f"{path.name}:{path.stat().st_size}:{n}:{seed}"
+    digest = hashlib.md5(key.encode()).hexdigest()[:12]  # noqa: S324
+    return OUTPUT_DIR / f"_cache_sample_{path.stem}_{digest}.json"
+
+
+def cached_sample(
+    path: Path,
+    n: int = 5000,
+    seed: int = 42,
+) -> list[dict[str, Any]]:
+    """디스크 캐시 기반 reservoir sampling.
+
+    첫 실행: reservoir sampling (전체 파일 스캔) → 결과를 JSON 캐시로 저장.
+    이후 실행: 캐시에서 즉시 로드.
+
+    무작위 샘플이 필요하면서 반복 실행 속도도 중요한 경우 사용합니다.
+    """
+    cache_path = _sample_cache_path(path, n, seed)
+
+    # 캐시 히트
+    if cache_path.exists():
+        with open(cache_path, encoding="utf-8") as f:
+            return json.load(f)
+
+    # 캐시 미스: reservoir sampling 실행
+    sample = get_sample(path, n=n, seed=seed, fast=False)
+
+    # 캐시 저장
+    with open(cache_path, "w", encoding="utf-8") as f:
+        json.dump(sample, f, ensure_ascii=False)
+
+    return sample
 
 
 def count_records(path: Path) -> int:
@@ -316,3 +368,167 @@ def infer_field_types(
         }
 
     return result
+
+
+# ── 법령 인용 추출 ────────────────────────────────────────
+
+# 「법령명」 제N조 패턴 (가장 정확)
+# 제2조의2 같은 조의N 패턴도 캡처
+_CITATION_BRACKET_RE = re.compile(
+    r"「([^」]+)」\s*제(\d+)\s*조(?:의(\d+))?"
+)
+
+# 법령명 제N조 패턴 (꺾쇠 없이)
+_CITATION_PLAIN_RE = re.compile(
+    r"((?:[가-힣]+법|[가-힣]+령|[가-힣]+규칙|[가-힣]+조례)(?:\s*시행[령규칙])?)"
+    r"\s+제(\d+)\s*조(?:의(\d+))?"
+)
+
+# 법령명만 추출 (조문 번호 없이)
+_LAW_NAME_RE = re.compile(
+    r"「([^」]+)」"
+)
+
+
+def extract_citations(text: str) -> list[str]:
+    """텍스트에서 법령 인용을 추출.
+
+    「법령명」 제N조 패턴과 법령명 제N조 패턴을 모두 매칭합니다.
+    중복 제거 후 발견 순서로 반환합니다.
+
+    Args:
+        text: 분석할 텍스트
+
+    Returns:
+        추출된 인용 문자열 리스트 (예: ["민법 제750조", "형법 제250조"])
+    """
+    if not text or not isinstance(text, str):
+        return []
+
+    seen: set[str] = set()
+    citations: list[str] = []
+
+    # 패턴 1: 「법령명」 제N조
+    for match in _CITATION_BRACKET_RE.finditer(text):
+        law_name = match.group(1).strip()
+        article = match.group(2)
+        suffix = f"의{match.group(3)}" if match.group(3) else ""
+        citation = f"{law_name} 제{article}조{suffix}"
+        if citation not in seen:
+            seen.add(citation)
+            citations.append(citation)
+
+    # 패턴 2: 법령명 제N조 (꺾쇠 없이)
+    for match in _CITATION_PLAIN_RE.finditer(text):
+        law_name = match.group(1).strip()
+        article = match.group(2)
+        suffix = f"의{match.group(3)}" if match.group(3) else ""
+        citation = f"{law_name} 제{article}조{suffix}"
+        if citation not in seen:
+            seen.add(citation)
+            citations.append(citation)
+
+    return citations
+
+
+def extract_law_names(text: str) -> list[str]:
+    """텍스트에서 「법령명」 패턴으로 법령명만 추출.
+
+    Args:
+        text: 분석할 텍스트
+
+    Returns:
+        추출된 법령명 리스트 (중복 제거)
+    """
+    if not text or not isinstance(text, str):
+        return []
+
+    seen: set[str] = set()
+    names: list[str] = []
+
+    for match in _LAW_NAME_RE.finditer(text):
+        name = match.group(1).strip()
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+
+    return names
+
+
+# ── 사건번호 추출 ─────────────────────────────────────────
+
+# 사건번호 패턴: 연도(2-4자리) + 사건종류(한글 1-3자) + 번호
+# 예: 80다268, 2023도1234, 99다12345
+# build_graph.py:298 패턴과 동일
+_CASE_NUMBER_RE = re.compile(
+    r"(\d{2,4})"    # 연도 (2-4자리)
+    r"([가-힣]{1,3})"  # 사건종류 (다, 도, 누, 카, 마 등)
+    r"(\d+)"         # 번호
+)
+
+
+def extract_case_numbers(text: str) -> list[str]:
+    """텍스트에서 사건번호 패턴을 추출.
+
+    ``2022다12345``, ``80도268`` 등의 사건번호를 찾습니다.
+    build_graph.py의 판례 인용 추출 패턴과 동일합니다.
+
+    Args:
+        text: 분석할 텍스트
+
+    Returns:
+        추출된 사건번호 리스트 (중복 제거, 발견 순서)
+    """
+    if not text or not isinstance(text, str):
+        return []
+
+    seen: set[str] = set()
+    case_numbers: list[str] = []
+
+    for match in _CASE_NUMBER_RE.finditer(text):
+        year, case_type, number = match.groups()
+        case_number = f"{year}{case_type}{number}"
+        if case_number not in seen:
+            seen.add(case_number)
+            case_numbers.append(case_number)
+
+    return case_numbers
+
+
+# ── 꺾쇠 없는 법령명 추출 ─────────────────────────────────
+
+# 꺾쇠(「」) 없이 본문에서 법령명 추출
+# build_graph.py:244 패턴과 동일 계열
+# 한글+ "법"으로 매칭, 단독 "법" 오매칭 방지 (최소 결과 2글자)
+# build_graph.py:244와 동일: r"([가-힣]+법(?:시행령|시행규칙)?)"
+_STATUTE_NAME_PLAIN_RE = re.compile(
+    r"([가-힣]+법(?:\s*시행[령규칙])?)"
+)
+
+
+def extract_statute_names_plain(text: str) -> list[str]:
+    """텍스트에서 꺾쇠 없는 법령명을 추출.
+
+    ``민법``, ``형사소송법 시행령`` 등 본문에 직접 언급된 법령명을 찾습니다.
+    기존 ``extract_law_names``는 「법령명」 패턴만 매칭하므로,
+    꺾쇠 없이 나타나는 경우를 보완합니다.
+
+    Args:
+        text: 분석할 텍스트
+
+    Returns:
+        추출된 법령명 리스트 (중복 제거, 발견 순서)
+    """
+    if not text or not isinstance(text, str):
+        return []
+
+    seen: set[str] = set()
+    names: list[str] = []
+
+    for match in _STATUTE_NAME_PLAIN_RE.finditer(text):
+        name = match.group(1).strip()
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+
+    return names
