@@ -418,6 +418,33 @@ grep -r "변경전_경로" .claude/skills/ .claude/agents/
 - 오래된 정보(2년 이상)는 현재도 유효한지 반드시 교차 확인한다
 - deprecated된 API나 패턴을 사용하지 않도록 주의한다
 
+## 13. Python 의존성 동기화 (pyproject.toml)
+
+### 규칙
+`pyproject.toml`에 의존성을 추가/삭제할 때, **두 섹션을 반드시 동기화**한다.
+
+| 섹션 | 용도 | 사용 주체 |
+|------|------|----------|
+| `[project.optional-dependencies]` dev | PyPI 표준 (PEP 621) | `pip install .[dev]` |
+| `[dependency-groups]` dev | uv 전용 (PEP 735) | `uv sync --dev` |
+
+### 왜 중요한가
+- **uv는 `[dependency-groups]`를 우선 사용**한다
+- `[project.optional-dependencies]`에만 있으면 `uv sync --dev`로 설치되지 않는다
+- 양쪽이 불일치하면 환경에 따라 다른 패키지가 설치되어 디버깅이 어려워진다
+
+### 체크리스트
+- [ ] `uv add --dev <package>` 실행 후 양쪽 섹션에 모두 존재하는지 확인
+- [ ] 수동으로 `pyproject.toml`을 편집한 경우 양쪽 동기화 확인
+- [ ] 패키지 삭제 시에도 양쪽에서 모두 제거
+
+### 검증 방법
+```bash
+# 양쪽 dev 의존성 비교 (수동 확인)
+grep -A 20 '\[project.optional-dependencies\]' backend/pyproject.toml
+grep -A 20 '\[dependency-groups\]' backend/pyproject.toml
+```
+
 ---
 
 **중요**: 이 규칙들은 예외 없이 항상 적용됩니다. 규칙을 어길 합당한 이유가 있다면 주석으로 명시적으로 설명해야 합니다.
