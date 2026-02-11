@@ -521,3 +521,103 @@ KAKAO_REST_API_KEY=your_kakao_rest_api_key
 |------|------|
 | `data/lawyers_with_coords.json` | 좌표가 추가된 변호사 데이터 |
 | `data/geocode_failed.json` | 지오코딩 실패 목록 |
+
+---
+
+## 탐색적 데이터 분석 (EDA)
+
+법률 데이터 48개 JSON 파일(~4.9GB)을 분석하는 EDA 프레임워크입니다.
+
+### 구조
+
+```
+backend/
+├── scripts/eda/
+│   ├── common.py           # 공유 유틸리티 (21개 함수)
+│   └── data_registry.py    # 데이터 카테고리 레지스트리 (11개)
+├── notebooks/eda/
+│   ├── 01_inventory_schema.ipynb       # 데이터 인벤토리 + 스키마 분석
+│   ├── 02_quality_text.ipynb           # 텍스트 품질 분석
+│   ├── 03_temporal_relationships.ipynb # 시계열 + 참조 관계
+│   ├── 04_projections_summary.ipynb    # 임베딩/그래프 규모 추정
+│   ├── 05_lancedb_embedding_strategy.ipynb  # LanceDB 임베딩 전략
+│   ├── 06_neo4j_citation_analysis.ipynb     # Neo4j 인용 네트워크
+│   └── 07_citation_recovery.ipynb           # 인용 복구 잠재력
+└── eda_output/             # 분석 결과 JSON 저장
+    ├── phase1_inventory.json
+    ├── phase2_schema.json
+    ├── phase3_quality.json
+    ├── phase4_temporal.json
+    ├── phase5_lancedb_strategy.json
+    ├── phase6_neo4j_citation.json
+    └── phase7_citation_recovery.json
+```
+
+### 공유 모듈 (`eda/common.py`)
+
+| 카테고리 | 함수 | 설명 |
+|----------|------|------|
+| **I/O** | `smart_load(path)` | 파일 크기 기반 자동 로드 (200MB 기준) |
+| | `load_all(path)` | 전체 레코드 리스트 로드 |
+| | `stream_json(path)` | ijson 스트리밍 로드 |
+| | `load_json(path)` | 전체 JSON 로드 |
+| | `save_result(name, data)` | `eda_output/`에 JSON 저장 |
+| | `load_result(name)` | `eda_output/`에서 JSON 로드 |
+| **샘플링** | `get_sample(path, n, fast)` | 통합 샘플링 (fast=True: head, False: reservoir) |
+| | `head_sample(path, n)` | 처음 n개 추출 (빠름, 편향 가능) |
+| | `cached_sample(path, n, seed)` | 디스크 캐시 기반 reservoir sampling |
+| | `reservoir_sample(iterable, k, seed)` | 무작위 reservoir sampling |
+| **메타** | `count_records(path)` | 레코드 수 카운트 (스트리밍) |
+| | `count_records_fast(path)` | 레코드 수 추정 (정규식, 빠름) |
+| | `discover_done_files()` | `data/` 폴더 `[DONE]*.json` 파일 탐색 |
+| | `detect_root_type(path)` | JSON 루트 타입 감지 (array/object) |
+| **분석** | `infer_field_types(sample)` | 필드별 타입/분포 추론 |
+| **인용 추출** | `extract_citations(text)` | `「법령명」 제N조` 패턴 추출 |
+| | `extract_law_names(text)` | `「법령명」` 패턴 추출 |
+| | `extract_case_numbers(text)` | 사건번호 (`2022다12345`) 추출 |
+| | `extract_statute_names_plain(text)` | 꺾쇠 없는 법령명 추출 |
+
+### 데이터 레지스트리 (`eda/data_registry.py`)
+
+11개 카테고리, 48개 JSON 파일을 관리합니다.
+
+| 카테고리 | label | 파일 수 | 주요 필드 |
+|----------|-------|---------|-----------|
+| `precedent` | 판례 | 1 | 판례내용, 판결요지, 판시사항, 이유 |
+| `law` | 법령 | 1 | 조문 |
+| `constitutional` | 헌재결정례 | 1 | 판시사항, 결정요지, 이유 |
+| `administration` | 행정심판례 | 1 | 주문, 이유 |
+| `special_tribunal` | 특별행정심판 | 2 | 주문, 이유, 청구취지 |
+| `legislation` | 법령해석례 | 1 | 질의요지, 회답, 이유 |
+| `committee` | 위원회 결정문 | 10 | 이유, 결정요지, 주문 |
+| `cgm_expc` | 부처 해석례 | 27 | 질의요지, 회답 |
+| `law_term` | 법률용어사전 | 1 | 법령용어정의 |
+| `treaty` | 조약 | 1 | 조약내용 |
+| `school` | 행정규칙 | 1 | 조문내용 |
+
+### 노트북 사용법
+
+```python
+# 노트북 공통 패턴
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd().parent.parent))
+
+from scripts.eda.common import get_sample, head_sample, load_all, save_result, DATA_DIR
+from scripts.eda.data_registry import CATEGORIES
+
+# USE_FULL_DATA 토글 (모든 노트북 공통)
+USE_FULL_DATA = False  # True: load_all(), False: head_sample(n=1000)
+
+path = DATA_DIR / "[DONE]precedents-4.json"
+if USE_FULL_DATA:
+    records = load_all(path)
+else:
+    records = head_sample(path, n=1000)
+```
+
+### 관련 문서
+
+- `docs/architecture/EDA_DB_TRANSITION_DESIGN.md` - EDA→DB 전환 설계
+- `docs/01-plan/features/data-analysis.plan.md` - PDCA Plan
+- `docs/02-design/features/data-analysis.design.md` - PDCA Design

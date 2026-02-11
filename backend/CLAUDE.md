@@ -985,3 +985,20 @@ driver.close()
 | RAG 컨텍스트 보강 | HIERARCHY_OF, CITES, RELATED_TO | 검색 결과에 관련 법령/판례 추가 |
 | 법령 탐색 UI | HIERARCHY_OF, RELATED_TO | 계급도 시각화, 관련 법령 탐색 |
 | 판례 추천 | CITES_CASE, CITES | 유사 판례 찾기 (같은 법령 인용) |
+
+## EDA (탐색적 데이터 분석)
+
+법률 데이터 48개 JSON 파일(~4.9GB)의 품질, 구조, 관계를 분석하는 노트북 + 공유 모듈입니다.
+
+```
+scripts/eda/
+├── common.py           # 공유 유틸리티 (21개 함수: I/O, 샘플링, 인용 추출)
+└── data_registry.py    # 11개 카테고리, 48개 파일 레지스트리
+
+notebooks/eda/
+├── 01_inventory_schema.ipynb  ~ 07_citation_recovery.ipynb  # 7개 노트북
+
+eda_output/              # 분석 결과 JSON (phase1~phase7)
+```
+
+상세: `scripts/CLAUDE.md` "탐색적 데이터 분석 (EDA)" 섹션 참조
