@@ -70,6 +70,13 @@ lancedb_data/
 .env.docker
 docker-compose.override.yml
 
+# Backups
+backups/
+
+# Google Drive backup secrets
+secrets/
+rclone.conf
+
 # bkit local state files
 docs/.bkit-memory.json
 docs/.pdca-status.json

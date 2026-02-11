@@ -9,7 +9,7 @@
 - **Backend**: FastAPI (Python)
 - **Frontend**: Next.js 14 (React, TypeScript)
 - **Database**: PostgreSQL, Neo4j (Graph DB)
-- **Vector DB**: LanceDB (RAG)
+- **Vector DB**: LanceDB (임베디드 또는 Docker 마이크로서비스)
 - **AI/ML**: Solar (Upstage), LangChain
 - **Embedding**: KURE-v1 (로컬) / OpenAI (선택)
 
@@ -17,6 +17,12 @@
 
 ```
 law-3-team/
+├── services/
+│   └── lancedb/                    # LanceDB 마이크로서비스 (Docker)
+│       ├── Dockerfile
+│       ├── main.py                 # FastAPI 앱 (검색 API)
+│       ├── store.py                # LanceDB 래퍼
+│       └── tokenizer.py            # MeCab 토크나이저
 ├── backend/
 │   ├── app/
 │   │   ├── api/router/              # 통합 API (채팅 등)
@@ -397,17 +403,23 @@ ENABLED_MODULES=["lawyer_finder","small_claims"]
 
 Docker를 사용하면 PostgreSQL 설치 없이 빠르게 개발 환경을 구축할 수 있습니다.
 
-#### 1. PostgreSQL 컨테이너 시작
+#### 1. 컨테이너 시작
 ```bash
-# PostgreSQL 컨테이너 시작
-docker-compose up -d postgres
+# PostgreSQL + Neo4j 시작
+docker compose up -d postgres neo4j
+
+# LanceDB 마이크로서비스도 사용하려면 (선택)
+docker compose up -d lancedb
 
 # 컨테이너 상태 확인
-docker-compose ps
-
-# DB 연결 확인
-docker-compose exec postgres psql -U lawuser -d lawdb -c "SELECT 1;"
+docker compose ps
 ```
+
+| 컨테이너 | 포트 | 용도 |
+|----------|------|------|
+| `law-platform-db` | 5432 | PostgreSQL |
+| `neo4j-law-graph` | 7474, 7687 | Neo4j Graph DB |
+| `lancedb-service` | 8100 | LanceDB 벡터 검색 (선택) |
 
 #### 2. 환경 변수 설정
 ```bash
@@ -434,11 +446,12 @@ npm run dev
 
 #### Docker 명령어 요약
 ```bash
-docker-compose up -d postgres     # PostgreSQL 시작
-docker-compose logs -f postgres   # 로그 확인
-docker-compose stop postgres      # 중지
-docker-compose down               # 중지 및 삭제 (데이터 유지)
-docker-compose down -v            # 중지 및 볼륨까지 삭제
+docker compose up -d postgres neo4j  # DB 시작
+docker compose up -d lancedb         # LanceDB 마이크로서비스 시작 (선택)
+docker compose logs -f postgres      # 로그 확인
+docker compose stop                  # 전체 중지
+docker compose down                  # 중지 및 삭제 (데이터 유지)
+docker compose down -v               # 중지 및 볼륨까지 삭제
 ```
 
 ---
@@ -534,6 +547,8 @@ npm run dev               # 개발 서버 (localhost:3000)
 | `EMBEDDING_BATCH_SIZE` | 임베딩 API 배치 크기 | `100` |
 | `USE_LOCAL_EMBEDDING` | 로컬 임베딩 사용 여부 (무료) | `true` |
 | `LOCAL_EMBEDDING_MODEL` | 로컬 임베딩 모델 | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
+| `LANCEDB_MODE` | LanceDB 모드 (`local`: 임베디드, `remote`: Docker 마이크로서비스) | `local` |
+| `LANCEDB_SERVICE_URL` | remote 모드 시 LanceDB 서비스 URL | `http://localhost:8100` |
 
 ### .env 파일 예시
 
@@ -564,6 +579,24 @@ EMBEDDING_BATCH_SIZE=100
 USE_LOCAL_EMBEDDING=true
 LOCAL_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 ```
+
+## DB 백업 / 복원
+
+PostgreSQL, Neo4j, LanceDB 백업을 Google Drive에 자동 업로드/복원합니다.
+
+```bash
+# 사전 준비 (1회)
+brew install rclone
+# 팀에서 rclone.conf를 받아 프로젝트 루트에 배치
+
+# 백업
+./scripts/backup_to_gdrive.sh
+
+# 복원
+./scripts/restore_from_gdrive.sh latest
+```
+
+상세 옵션 및 설정: `CLAUDE.md`의 "DB 백업 / 복원" 섹션 참조
 
 ## Docker 프로덕션 배포
 
@@ -620,13 +653,15 @@ docker/
 │   ┌──────────┐    ┌──────────────┐    ┌──────────────┐ │
 │   │  Vercel  │    │ ECS Fargate  │    │     RDS      │ │
 │   │ Frontend │───▶│   Backend    │───▶│  PostgreSQL  │ │
-│   └──────────┘    └──────────────┘    └──────────────┘ │
+│   └──────────┘    └──────┬───────┘    └──────────────┘ │
 │                          │                              │
-│                          ▼                              │
-│                   ┌──────────────┐                      │
-│                   │     EFS      │                      │
-│                   │ ChromaDB Data│                      │
-│                   └──────────────┘                      │
+│                    ┌─────┴─────┐                        │
+│                    ▼           ▼                        │
+│             ┌──────────┐ ┌──────────┐                   │
+│             │ LanceDB  │ │  Neo4j   │                   │
+│             │ Service  │ │ Graph DB │                   │
+│             │ (EFS)    │ └──────────┘                   │
+│             └──────────┘                                │
 │                                                          │
 │   Secrets: AWS Secrets Manager                          │
 │                                                          │

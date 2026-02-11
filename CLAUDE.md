@@ -286,6 +286,45 @@ backend/notebooks/
 `LANCEDB_INDEX_TYPE=IVF_FLAT` 설정 시 벡터 검색 속도가 ~14x 향상됩니다 (91ms → 6ms, Recall 100% 유지).
 빈 문자열(기본값)이면 brute-force로 동작합니다. 상세: `docs/devlog/LANCEDB_VECTOR_INDEX_20260211.md`
 
+### LanceDB 마이크로서비스 (Docker 분리)
+
+LanceDB를 별도 Docker 컨테이너로 분리하여 백엔드와 HTTP로 통신할 수 있습니다.
+
+```
+Backend Container              LanceDB Service Container
+┌──────────────────┐          ┌──────────────────────────┐
+│ FastAPI           │  HTTP    │ FastAPI (thin wrapper)    │
+│ RAG Pipeline      │ ──────→ │ LanceDBStore (embedded)   │
+│ Embedding Model   │         │ MeCab Tokenizer           │
+│ RemoteLanceDBStore│         │ lancedb_data/ (volume)    │
+└──────────────────┘          └──────────────────────────┘
+```
+
+**활성화:**
+```bash
+# 1. Docker 서비스 시작
+docker compose up -d lancedb
+
+# 2. 초기 데이터 복사 (1회)
+docker volume create law-3-team_lancedb_data
+docker run --rm -v law-3-team_lancedb_data:/data -v $(pwd)/backend/lancedb_data:/src alpine cp -r /src/. /data/
+
+# 3. 백엔드 환경변수 설정
+LANCEDB_MODE=remote
+LANCEDB_SERVICE_URL=http://localhost:8100  # 또는 docker-compose: http://lancedb:8100
+```
+
+**롤백:** `LANCEDB_MODE=local` (기본값)으로 즉시 복귀. 기존 코드 변경 없음.
+
+**관련 파일:**
+| 파일 | 설명 |
+|------|------|
+| `services/lancedb/main.py` | 마이크로서비스 FastAPI 앱 |
+| `services/lancedb/store.py` | LanceDB 래퍼 (검색 로직) |
+| `services/lancedb/tokenizer.py` | MeCab 토크나이저 (독립 버전) |
+| `services/lancedb/Dockerfile` | Docker 이미지 빌드 |
+| `backend/app/tools/vectorstore/remote_lancedb.py` | HTTP 클라이언트 어댑터 |
+
 ### 관련 문서
 - `docs/architecture/vectordb_design.md` - 벡터 DB 설계
 - `docs/architecture/lancedb_fts_guide.md` - FTS + 벡터 인덱스 가이드
@@ -573,6 +612,68 @@ uv run --no-sync python scripts/update_content_tokenized.py --userdic
 | `backend/app/tools/vectorstore/legal_term_dict.py` | 메모리 사전 (frozenset O(1) lookup + 분해맵) |
 | `backend/app/tools/vectorstore/mecab_tokenizer.py` | MeCab 토크나이저 (보강 + userdic 모드) |
 | `backend/tests/unit/test_legal_term_dict.py` | 사전 단위 테스트 |
+
+## DB 백업 / 복원 (Google Drive)
+
+PostgreSQL, Neo4j, LanceDB 3개 DB를 Google Drive에 백업/복원합니다.
+인증 방식은 **Service Account** 또는 **OAuth token** 둘 다 지원합니다 (rclone.conf에 따라 자동 감지).
+
+### 사전 준비 (1회)
+
+1. **rclone 설치**: `brew install rclone`
+2. **팀에서 받은 `rclone.conf`를 프로젝트 루트에 배치**
+   - Service Account 방식: `rclone.conf` + `secrets/<service-account>.json`
+   - OAuth token 방식: `rclone.conf` (token 포함, 별도 키 파일 불필요)
+3. 두 파일 모두 `.gitignore`에 포함되어 있으므로 git 외부로 공유
+
+### 백업
+
+```bash
+# 전체 백업 + Google Drive 업로드
+./scripts/backup_to_gdrive.sh
+
+# 로컬 덤프만 (업로드 안 함)
+./scripts/backup_to_gdrive.sh --skip-upload
+
+# 특정 DB 건너뛰기
+./scripts/backup_to_gdrive.sh --skip-neo4j
+
+# 미리보기
+./scripts/backup_to_gdrive.sh --dry-run
+```
+
+### 복원
+
+```bash
+# 최신 백업 복원
+./scripts/restore_from_gdrive.sh latest
+
+# 특정 백업 복원
+./scripts/restore_from_gdrive.sh 20260211_153000
+
+# 다운로드만 (복원 안 함)
+./scripts/restore_from_gdrive.sh latest --download-only
+```
+
+### 환경변수
+
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `POSTGRES_CONTAINER` | PostgreSQL 컨테이너명 | `law-platform-db` |
+| `NEO4J_CONTAINER` | Neo4j 컨테이너명 | `neo4j-law-graph` |
+| `LANCEDB_DATA_DIR` | LanceDB 데이터 경로 | `backend/lancedb_data` |
+| `BACKUP_KEEP_LOCAL` | 로컬 백업 보관 개수 | `5` |
+| `RCLONE_CONF` | rclone 설정 파일 경로 | `rclone.conf` |
+| `RCLONE_REMOTE` | rclone 리모트 이름 | `gdrive` |
+
+### 관련 파일
+
+| 파일 | 설명 |
+|------|------|
+| `scripts/backup_to_gdrive.sh` | 백업 + 업로드 (LanceDB는 data/ only, 인덱스 제외) |
+| `scripts/restore_from_gdrive.sh` | 다운로드 + 복원 |
+| `secrets/` | 서비스 계정 키 등 (.gitignored) |
+| `rclone.conf` | rclone 설정 (.gitignored) |
 
 ## Modules
 
