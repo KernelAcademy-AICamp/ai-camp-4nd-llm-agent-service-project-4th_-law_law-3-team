@@ -11,8 +11,8 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# 기본 리랭커 모델명
-DEFAULT_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+# 기본 리랭커 모델명 (한국어 특화, BGE v2-m3 기반)
+DEFAULT_RERANKER_MODEL = "dragonkue/bge-reranker-v2-m3-ko"
 
 # 모듈 레벨 모델 캐싱
 _reranker_model: Any = None
@@ -23,9 +23,13 @@ _reranker_model_name: Optional[str] = None
 def _load_reranker_model(model_name: str = DEFAULT_RERANKER_MODEL) -> Any:
     """리랭커 모델 로드 (캐싱)"""
     try:
+        import torch
         from sentence_transformers import CrossEncoder
 
-        model = CrossEncoder(model_name)
+        model = CrossEncoder(
+            model_name,
+            default_activation_function=torch.nn.Sigmoid(),
+        )
         logger.info("리랭커 모델 로드 완료: %s", model_name)
         return model
     except ImportError:
@@ -78,9 +82,9 @@ def rerank_documents(
         return documents[:top_k]
 
     try:
-        # 쿼리-문서 쌍 생성
+        # 쿼리-문서 쌍 생성 (bge-reranker-v2-m3-ko: 최대 8192 토큰)
         pairs = [
-            (query, doc.get("content", "")[:512])  # 최대 512자 제한
+            (query, doc.get("content", "")[:2048])
             for doc in documents
         ]
 
