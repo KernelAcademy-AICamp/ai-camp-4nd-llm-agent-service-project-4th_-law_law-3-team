@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Language
+
+모든 응답, 분석 결과, 보고서, 스킬 출력은 **한국어**로 작성합니다.
+코드 주석과 docstring은 기존 스타일(한국어)을 유지합니다.
+커밋 메시지는 기존 규칙(타입은 영어, 본문은 한국어)을 따릅니다.
+
 ## Project Overview
 
 법률 서비스 플랫폼 - 모듈형 아키텍처로 기능을 유연하게 추가/삭제할 수 있는 법률 서비스 플랫폼입니다.
