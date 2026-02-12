@@ -16,11 +16,11 @@ Neo4j Graph DB 구축 스크립트
 - ALIAS_OF: 비공식 약칭 -> 법령
 
 데이터 파일:
-- law_cleaned.json: 법령 데이터
-- lsAbrv.json: 법령 약칭 데이터 (공식)
+- law_v1.json: 법령 데이터
+- law_abbreviations.json: 법령 약칭 데이터 (공식)
 - informal_abbreviations.json: 비공식 약칭 데이터
-- [cleaned]lsStmd-full.json: 법령 계급도/관련법령
-- precedents_cleaned.json: 판례 데이터
+- law_hierarchy.json: 법령 계급도/관련법령
+- precedents_v1.json: 판례 데이터
 
 사용법:
     cd backend
@@ -48,10 +48,10 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 # 프로젝트 루트 기준 데이터 파일 경로
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
-LAW_FILE = DATA_DIR / "law_cleaned.json"
-HIERARCHY_FILE = DATA_DIR / "[cleaned]lsStmd-full.json"
-CASE_FILE = DATA_DIR / "precedents_cleaned.json"
-ABBREVIATION_FILE = DATA_DIR / "lsAbrv.json"
+LAW_FILE = DATA_DIR / "law_v1.json"
+HIERARCHY_FILE = DATA_DIR / "law_hierarchy.json"
+CASE_FILE = DATA_DIR / "precedents_v1.json"
+ABBREVIATION_FILE = DATA_DIR / "law_abbreviations.json"
 
 # 비공식 약칭 파일 (scripts 폴더)
 INFORMAL_ABBR_FILE = Path(__file__).parent / "informal_abbreviations.json"
@@ -120,7 +120,7 @@ class GraphBuilder:
         print("Constraints and indexes checked.")
 
     def load_statutes(self) -> None:
-        """법령 데이터 로드 (law_cleaned.json)"""
+        """법령 데이터 로드 (law_v1.json)"""
         print(f"Loading Statutes from {LAW_FILE}...")
 
         if not LAW_FILE.exists():
@@ -152,7 +152,7 @@ class GraphBuilder:
         print(f"Loaded {len(items)} statutes.")
 
     def load_hierarchy(self) -> None:
-        """법령 계급도 로드 ([cleaned]lsStmd-full.json)"""
+        """법령 계급도 로드 (law_hierarchy.json)"""
         print(f"Loading Hierarchy from {HIERARCHY_FILE}...")
 
         if not HIERARCHY_FILE.exists():
@@ -213,7 +213,7 @@ class GraphBuilder:
                 session.run(query, batch=batch)
 
     def load_cases(self) -> None:
-        """판례 데이터 로드 (precedents_cleaned.json)"""
+        """판례 데이터 로드 (precedents_v1.json)"""
         print(f"Loading Cases from {CASE_FILE}...")
 
         if not CASE_FILE.exists():
@@ -416,7 +416,7 @@ class GraphBuilder:
         print(f"Loaded {len(relations)} RELATED_TO relationships.")
 
     def load_abbreviations(self) -> None:
-        """법령 약칭 로드 (lsAbrv.json)"""
+        """법령 약칭 로드 (law_abbreviations.json)"""
         print(f"Loading Abbreviations from {ABBREVIATION_FILE}...")
 
         if not ABBREVIATION_FILE.exists():

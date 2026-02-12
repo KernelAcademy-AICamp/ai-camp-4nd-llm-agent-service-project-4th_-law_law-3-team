@@ -12,7 +12,7 @@ LanceDB 임베딩 생성 스크립트 (RunPod - 파일 분할 버전)
    !pip install sentence-transformers pyarrow tqdm psutil -q
 
 2. 데이터 분할
-   split_precedents('precedents_cleaned.json', chunk_size=5000)
+   split_precedents('precedents_v1.json', chunk_size=5000)
    # -> precedents_part_001.json, precedents_part_002.json, ... 생성
 
 3. 분할 파일 개별 처리

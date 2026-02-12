@@ -96,7 +96,7 @@ uv run --no-sync python scripts/runpod_lancedb_embeddings.py \
 # 법령 임베딩
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py \
   --type law \
-  --law-source "../data/law_cleaned.json"
+  --law-source "../data/law_v1.json"
 
 # 전체 (법령 + 판례)
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all
@@ -360,7 +360,7 @@ for _, row in results.iterrows():
 
 ## 법률 용어 PostgreSQL 로드 (load_legal_terms_data.py)
 
-`[DONE]lawterms.json` (81,488건 → ~72,700 고유 용어)을 PostgreSQL `legal_terms` 테이블로 로드합니다.
+`lawterms_v1.json` (81,488건 → ~72,700 고유 용어)을 PostgreSQL `legal_terms` 테이블로 로드합니다.
 fallback: `data/law_data/lawterms_full.json` (37,169건)
 MeCab 토크나이저에서 법률 복합명사를 보강하기 위한 용어 사전 데이터입니다.
 
@@ -392,7 +392,7 @@ uv run python scripts/load_legal_terms_data.py --stats
 
 ### 주요 동작
 
-1. `[DONE]lawterms.json` 로드 (fallback: `lawterms_full.json`)
+1. `lawterms_v1.json` 로드 (fallback: `lawterms_full.json`)
 2. 리스트 타입 레코드 평탄화 (flatten)
 3. 법령한영사전 역방향 한글 용어 추출 (reverse extraction)
 4. 우선순위 기반 중복 제거 + `source_count` 집계
@@ -412,7 +412,7 @@ USE_LEGAL_TERM_DICT=true  # 앱에서 사전 사용 활성화
 
 | 항목 | 수치 |
 |------|------|
-| 원본 레코드 | 81,488건 ([DONE]lawterms.json) |
+| 원본 레코드 | 81,488건 (lawterms_v1.json) |
 | 고유 용어 | ~72,700개 (평탄화+역추출 포함) |
 | 한글 전용 (2-10자) | ~35,200개 (MeCab 로드 대상) |
 | 사전유형 | 법령정의사전, 생활용어사전, 법령한영사전, 법령용어사전, 한영역추출 |
@@ -421,7 +421,7 @@ USE_LEGAL_TERM_DICT=true  # 앱에서 사전 사용 활성화
 
 ## 변호사 데이터 PostgreSQL 로드 (load_lawyers_data.py)
 
-`data/lawyers_with_coords.json` (17,326건)을 PostgreSQL `lawyers` 테이블로 로드합니다.
+`data/lawyers.json` (17,326건)을 PostgreSQL `lawyers` 테이블로 로드합니다.
 
 ### 사전 조건
 
@@ -448,7 +448,7 @@ uv run python scripts/load_lawyers_data.py --verify
 
 ### 주요 동작
 
-1. `data/lawyers_with_coords.json` 읽기
+1. `data/lawyers.json` 읽기
 2. 각 레코드에 `extract_region()` 적용 → province, district, region 계산
 3. `ON CONFLICT (detail_id) DO UPDATE`로 멱등성 보장
 4. 1,000건 단위 배치 insert
@@ -474,7 +474,7 @@ USE_DB_LAWYERS=true  # DB 모드 활성화
 ### 데이터 흐름
 
 ```
-별도 저장소 → all_lawyers.json → geocode_lawyers.py → data/lawyers_with_coords.json
+별도 저장소 → all_lawyers.json → geocode_lawyers.py → data/lawyers.json
 ```
 
 ### 사용법
@@ -482,7 +482,7 @@ USE_DB_LAWYERS=true  # DB 모드 활성화
 ```bash
 cd backend
 
-# 기본 실행 (all_lawyers.json → data/lawyers_with_coords.json)
+# 기본 실행 (all_lawyers.json → data/lawyers.json)
 uv run python scripts/geocode_lawyers.py
 
 # API 키 직접 전달
@@ -504,7 +504,7 @@ uv run python scripts/geocode_lawyers.py --stats
 |------|------|--------|
 | `--api-key` | 카카오 REST API 키 | `KAKAO_REST_API_KEY` 환경변수 |
 | `--input` | 입력 파일 경로 | `all_lawyers.json` |
-| `--output` | 출력 파일 경로 | `data/lawyers_with_coords.json` |
+| `--output` | 출력 파일 경로 | `data/lawyers.json` |
 | `--retry-failed` | 좌표 없는 항목만 재시도 | - |
 | `--stats` | 데이터 상태만 출력 | - |
 
@@ -519,8 +519,8 @@ KAKAO_REST_API_KEY=your_kakao_rest_api_key
 
 | 파일 | 설명 |
 |------|------|
-| `data/lawyers_with_coords.json` | 좌표가 추가된 변호사 데이터 |
-| `data/geocode_failed.json` | 지오코딩 실패 목록 |
+| `data/lawyers.json` | 좌표가 추가된 변호사 데이터 |
+| `data/geocode_failures.json` | 지오코딩 실패 목록 |
 
 ---
 
@@ -609,7 +609,7 @@ from scripts.eda.data_registry import CATEGORIES
 # USE_FULL_DATA 토글 (모든 노트북 공통)
 USE_FULL_DATA = False  # True: load_all(), False: head_sample(n=1000)
 
-path = DATA_DIR / "[DONE]precedents-4.json"
+path = DATA_DIR / "precedents_v1.json"
 if USE_FULL_DATA:
     records = load_all(path)
 else:

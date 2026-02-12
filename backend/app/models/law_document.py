@@ -1,7 +1,7 @@
 """
 법령 문서 모델 (LanceDB 전용)
 
-data/law_cleaned.json 데이터를 PostgreSQL에 저장하기 위한 테이블
+data/law_v1.json 데이터를 PostgreSQL에 저장하기 위한 테이블
 LanceDB 벡터 검색 후 원본 데이터 조회에 사용
 """
 
@@ -25,7 +25,7 @@ class LawDocument(Base):
     """
     법령 문서 테이블 (LanceDB 전용)
 
-    data/law_cleaned.json의 원본 데이터 저장용
+    data/law_v1.json의 원본 데이터 저장용
     LanceDB에서 벡터 검색 후 source_id로 원본 조회
 
     사용 예시:
@@ -135,7 +135,7 @@ class LawDocument(Base):
         JSON 데이터에서 인스턴스 생성
 
         Args:
-            data: law_cleaned.json의 개별 item
+            data: law_v1.json의 개별 item
 
         Returns:
             LawDocument 인스턴스

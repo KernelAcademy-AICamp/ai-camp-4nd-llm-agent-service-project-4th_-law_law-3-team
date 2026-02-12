@@ -999,7 +999,7 @@ def main() -> None:
     parser.add_argument(
         "--law-source",
         type=str,
-        default="../data/law_cleaned.json",
+        default="../data/law_v1.json",
         help="법령 JSON 경로",
     )
     parser.add_argument(

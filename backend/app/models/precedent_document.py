@@ -1,7 +1,7 @@
 """
 판례 문서 모델 (LanceDB 전용)
 
-data/precedents_cleaned.json 데이터를 PostgreSQL에 저장하기 위한 테이블
+data/precedents_v1.json 데이터를 PostgreSQL에 저장하기 위한 테이블
 LanceDB 벡터 검색 후 원본 데이터 조회에 사용
 """
 
@@ -26,7 +26,7 @@ class PrecedentDocument(Base):
     """
     판례 문서 테이블 (LanceDB 전용)
 
-    data/precedents_cleaned.json의 원본 데이터 저장용
+    data/precedents_v1.json의 원본 데이터 저장용
     LanceDB에서 벡터 검색 후 source_id로 원본 조회
 
     검색 흐름:
@@ -182,7 +182,7 @@ class PrecedentDocument(Base):
         JSON 데이터에서 인스턴스 생성
 
         Args:
-            data: precedents_cleaned.json의 개별 item
+            data: precedents_v1.json의 개별 item
 
         Returns:
             PrecedentDocument 인스턴스

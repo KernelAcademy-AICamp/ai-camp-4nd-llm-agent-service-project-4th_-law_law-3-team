@@ -5,8 +5,8 @@ Revises: 002
 Create Date: 2026-01-28
 
 LanceDB 전용 PostgreSQL 테이블 생성
-- law_documents: 법령 원본 데이터 (data/law_cleaned.json)
-- precedent_documents: 판례 원본 데이터 (data/precedents_cleaned.json)
+- law_documents: 법령 원본 데이터 (data/law_v1.json)
+- precedent_documents: 판례 원본 데이터 (data/precedents_v1.json)
 
 기존 legal_documents 테이블은 ChromaDB 호환을 위해 유지
 """

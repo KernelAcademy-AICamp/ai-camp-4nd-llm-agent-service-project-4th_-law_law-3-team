@@ -45,8 +45,8 @@ uv run alembic upgrade head
 
 ```bash
 # data/ 폴더에 법령/판례 JSON 파일 필요
-# - data/law_cleaned.json
-# - data/precedents_cleaned.json
+# - data/law_v1.json
+# - data/precedents_v1.json
 
 uv run python scripts/load_lancedb_data.py --type all
 ```
@@ -475,10 +475,10 @@ uv run alembic downgrade -1
 ### 데이터 로드
 
 ```bash
-# 법령 데이터 로드 (data/law_cleaned.json → PostgreSQL)
+# 법령 데이터 로드 (data/law_v1.json → PostgreSQL)
 uv run python scripts/load_lancedb_data.py --type law
 
-# 판례 데이터 로드 (data/precedents_cleaned.json → PostgreSQL)
+# 판례 데이터 로드 (data/precedents_v1.json → PostgreSQL)
 uv run python scripts/load_lancedb_data.py --type precedent
 
 # 전체 로드 (법령 + 판례)
@@ -551,7 +551,7 @@ uv run python scripts/load_legal_terms_data.py --verify  # 검증
 3. 예: "손해배상청구" → MeCab ["손해","배상","청구"] + 사전 ["손해배상","손해배상청구"]
 
 **데이터 현황:**
-- 총 엔트리: ~72,700개 ([DONE]lawterms.json 기반, 평탄화 + 역추출 포함)
+- 총 엔트리: ~72,700개 (lawterms_v1.json 기반, 평탄화 + 역추출 포함)
 - userdic 적재: ~37,366개 (한글 전용 + 혼합 + 괄호 변형 추출)
 - 유효 커버리지: ≥99% (구조적 제외 35,234개 차감 기준)
 - 상세 분석: `docs/tokenizer/USERDIC_COVERAGE_ANALYSIS.md`
@@ -878,7 +878,7 @@ uv run pytest tests/integration/test_neo4j_graph.py -v
 
 세 가지 방식으로 법령을 검색할 수 있습니다:
 - **정식 법령명**: `민사소송법`, `도로교통법`
-- **공식 약칭** (`lsAbrv.json`): `119법`, `특정범죄가중법`
+- **공식 약칭** (`law_abbreviations.json`): `119법`, `특정범죄가중법`
 - **비공식 약칭** (`informal_abbreviations.json`): `민소법`, `도교법`, `특가법`
 
 ```cypher

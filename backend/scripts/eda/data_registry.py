@@ -1,6 +1,6 @@
-"""[DONE] 파일 목록 + 카테고리 매핑 레지스트리.
+"""EDA 데이터 파일 목록 + 카테고리 매핑 레지스트리.
 
-48개 [DONE] JSON 파일을 카테고리별로 분류하고,
+48개 JSON 파일을 카테고리별로 분류하고,
 각 카테고리의 주요 필드, 텍스트 필드, 날짜 필드, ID 필드를 정의합니다.
 
 Usage:
@@ -9,6 +9,7 @@ Usage:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 # ── 카테고리별 파일 매핑 ──────────────────────────────────────
@@ -17,7 +18,7 @@ from typing import Any
 CATEGORIES: dict[str, dict[str, Any]] = {
     "precedent": {
         "label": "판례",
-        "files": ["[DONE]precedents-4.json"],
+        "files": ["precedents_v1.json"],
         "id_field": "판례정보일련번호",
         "text_fields": ["판례내용", "판결요지", "판시사항", "이유"],
         "summary_field": "판례요약",
@@ -26,7 +27,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     },
     "law": {
         "label": "법령",
-        "files": ["[DONE]law-2.json"],
+        "files": ["law_v1.json"],
         "id_field": "법령ID",
         "text_fields": ["조문"],
         "summary_field": "법령 요약",
@@ -35,7 +36,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     },
     "constitutional": {
         "label": "헌재결정례",
-        "files": ["[DONE]constitutional.json"],
+        "files": ["constitutional_v1.json"],
         "id_field": "헌재결정례일련번호",
         "text_fields": ["판시사항", "결정요지", "이유"],
         "summary_field": "심판례요약",
@@ -44,7 +45,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     },
     "administration": {
         "label": "행정심판례",
-        "files": ["[DONE]administration.json"],
+        "files": ["administration_v1.json"],
         "id_field": "행정심판례일련번호",
         "text_fields": ["주문", "이유"],
         "summary_field": "심판례요약",
@@ -54,8 +55,8 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     "special_tribunal": {
         "label": "특별행정심판",
         "files": [
-            "[DONE]kmstSpecialDecc.json",
-            "[DONE]ttSpecialDecc.json",
+            "special_admin_appeal/sadm_case_조세심판원_v1.json",
+            "special_admin_appeal/sadm_case_해양안전심판원_v1.json",
         ],
         "id_field": "특별행정심판재결례일련번호",
         "text_fields": ["주문", "이유", "청구취지"],
@@ -65,7 +66,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     },
     "legislation": {
         "label": "법령해석례",
-        "files": ["[DONE]legislation.json"],
+        "files": ["legislation_v1.json"],
         "id_field": "법령해석례일련번호",
         "text_fields": ["질의요지", "회답", "이유"],
         "summary_field": "해석례요약",
@@ -75,16 +76,16 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     "committee": {
         "label": "위원회 결정문",
         "files": [
-            "[DONE]acr.json",       # 국민권익위원회
-            "[DONE]ecc.json",       # 선거관리위원회
-            "[DONE]eiac.json",      # 환경분쟁조정위원회
-            "[DONE]fsc.json",       # 금융위원회
-            "[DONE]ftc.json",       # 공정거래위원회
-            "[DONE]iaciac.json",    # 정보공개위원회
-            "[DONE]nhrck.json",     # 국가인권위원회
-            "[DONE]nlrc.json",      # 노동위원회
-            "[DONE]ppc.json",       # 개인정보보호위원회
-            "[DONE]sfc.json",       # 소청심사위원회
+            "decisions_committee/dec_comm_개인정보보호위원회_v1.json",
+            "decisions_committee/dec_comm_고용보험심사위원회_v1.json",
+            "decisions_committee/dec_comm_공정거래위원회_v1.json",
+            "decisions_committee/dec_comm_국가인권위원회_v1.json",
+            "decisions_committee/dec_comm_국민권익위원회_v1.json",
+            "decisions_committee/dec_comm_금융위원회_v1.json",
+            "decisions_committee/dec_comm_노동위원회_v1.json",
+            "decisions_committee/dec_comm_산업재해보상위험재심사위원회_v1.json",
+            "decisions_committee/dec_comm_중앙환경분쟁조정위원회_v1.json",
+            "decisions_committee/dec_comm_증권선물위원회_v1.json",
         ],
         "id_field": "결정문일련번호",
         "text_fields": ["이유", "결정요지", "주문"],
@@ -95,34 +96,34 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     "cgm_expc": {
         "label": "부처 해석례",
         "files": [
-            "[DONE]dapaCgmExpc.json",
-            "[DONE]kcsCgmExpc.json",
-            "[DONE]kfsCgmExpc.json",
-            "[DONE]kipoCgmExpc.json",
-            "[DONE]kmaCgmExpc.json",
-            "[DONE]mafraCgmExpc.json",
-            "[DONE]mcstCgmExpc.json",
-            "[DONE]meCgmExpc.json",
-            "[DONE]mfdsCgmExpc.json",
-            "[DONE]mndCgmExpc.json",
-            "[DONE]moeCgmExpc.json",
-            "[DONE]moelCgmExpc.json",
-            "[DONE]mofaCgmExpc.json",
-            "[DONE]mofCgmExpc.json",
-            "[DONE]mogefCgmExpc.json",
-            "[DONE]mohwCgmExpc.json",
-            "[DONE]moisCgmExpc.json",
-            "[DONE]mojCgmExpc.json",
-            "[DONE]molitCgmExpc.json",
-            "[DONE]motieCgmExpc.json",
-            "[DONE]mouCgmExpc.json",
-            "[DONE]mpmCgmExpc.json",
-            "[Done]mpvaCgmExpc.json",  # Note: [Done] 대소문자
-            "[DONE]msitCgmExpc.json",
-            "[DONE]mssCgmExpc.json",
-            "[DONE]nfaCgmExpc.json",
-            "[DONE]npaCgmExpc.json",
-            "[DONE]rdaCgmExpc.json",
+            "interpretation_ministry/intp_min_경찰청_v1.json",
+            "interpretation_ministry/intp_min_고용노동부_v1.json",
+            "interpretation_ministry/intp_min_과학기술정보통신부_v1.json",
+            "interpretation_ministry/intp_min_관세청_v1.json",
+            "interpretation_ministry/intp_min_교육부_v1.json",
+            "interpretation_ministry/intp_min_국가보훈부_v1.json",
+            "interpretation_ministry/intp_min_국방부_v1.json",
+            "interpretation_ministry/intp_min_국토교통부_v1.json",
+            "interpretation_ministry/intp_min_기상청_v1.json",
+            "interpretation_ministry/intp_min_기후에너지환경부_v1.json",
+            "interpretation_ministry/intp_min_농림축산식품부_v1.json",
+            "interpretation_ministry/intp_min_농촌진흥청_v1.json",
+            "interpretation_ministry/intp_min_문화체육관광부_v1.json",
+            "interpretation_ministry/intp_min_방위사업청_v1.json",
+            "interpretation_ministry/intp_min_법무부_v1.json",
+            "interpretation_ministry/intp_min_보건복지부_v1.json",
+            "interpretation_ministry/intp_min_산림청_v1.json",
+            "interpretation_ministry/intp_min_산업통상자원부_v1.json",
+            "interpretation_ministry/intp_min_성평등가족부_v1.json",
+            "interpretation_ministry/intp_min_소방청_v1.json",
+            "interpretation_ministry/intp_min_식품의약품안전처_v1.json",
+            "interpretation_ministry/intp_min_외교부_v1.json",
+            "interpretation_ministry/intp_min_인사혁신처_v1.json",
+            "interpretation_ministry/intp_min_중소벤처기업부_v1.json",
+            "interpretation_ministry/intp_min_지식재산처_v1.json",
+            "interpretation_ministry/intp_min_통일부_v1.json",
+            "interpretation_ministry/intp_min_해양수산부_v1.json",
+            "interpretation_ministry/intp_min_행정안전부_v1.json",
         ],
         "id_field": "법령해석일련번호",
         "text_fields": ["질의요지", "회답"],
@@ -132,7 +133,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     },
     "law_term": {
         "label": "법률용어사전",
-        "files": ["[DONE]lawterms.json"],
+        "files": ["lawterms_v1.json"],
         "id_field": "법령용어ID",
         "text_fields": ["법령용어정의"],
         "summary_field": None,
@@ -141,7 +142,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     },
     "treaty": {
         "label": "조약",
-        "files": ["[DONE]treaty.json"],
+        "files": ["treaty_v1.json"],
         "id_field": "조약일련번호",
         "text_fields": ["조약내용"],
         "summary_field": "조약요약",
@@ -150,7 +151,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     },
     "school": {
         "label": "행정규칙",
-        "files": ["[DONE]school.json"],
+        "files": ["admin_rule_v1.json"],
         "id_field": "행정규칙ID",
         "text_fields": ["조문내용"],
         "summary_field": "행정규칙요약",
@@ -161,48 +162,48 @@ CATEGORIES: dict[str, dict[str, Any]] = {
 
 # ── 부처 해석례 세부 매핑 (파일명 → 기관명) ──────────────────
 CGM_EXPC_AGENCIES: dict[str, str] = {
-    "dapaCgmExpc": "방위사업청",
-    "kcsCgmExpc": "관세청",
-    "kfsCgmExpc": "산림청",
-    "kipoCgmExpc": "특허청",
-    "kmaCgmExpc": "기상청",
-    "mafraCgmExpc": "농림축산식품부",
-    "mcstCgmExpc": "문화체육관광부",
-    "meCgmExpc": "환경부",
-    "mfdsCgmExpc": "식품의약품안전처",
-    "mndCgmExpc": "국방부",
-    "moeCgmExpc": "교육부",
-    "moelCgmExpc": "고용노동부",
-    "mofaCgmExpc": "외교부",
-    "mofCgmExpc": "기획재정부",
-    "mogefCgmExpc": "여성가족부",
-    "mohwCgmExpc": "보건복지부",
-    "moisCgmExpc": "행정안전부",
-    "mojCgmExpc": "법무부",
-    "molitCgmExpc": "국토교통부",
-    "motieCgmExpc": "산업통상자원부",
-    "mouCgmExpc": "통일부",
-    "mpmCgmExpc": "인사혁신처",
-    "mpvaCgmExpc": "국가보훈부",
-    "msitCgmExpc": "과학기술정보통신부",
-    "mssCgmExpc": "중소벤처기업부",
-    "nfaCgmExpc": "새만금개발청",
-    "npaCgmExpc": "경찰청",
-    "rdaCgmExpc": "농촌진흥청",
+    "경찰청": "경찰청",
+    "고용노동부": "고용노동부",
+    "과학기술정보통신부": "과학기술정보통신부",
+    "관세청": "관세청",
+    "교육부": "교육부",
+    "국가보훈부": "국가보훈부",
+    "국방부": "국방부",
+    "국토교통부": "국토교통부",
+    "기상청": "기상청",
+    "기후에너지환경부": "기후에너지환경부",
+    "농림축산식품부": "농림축산식품부",
+    "농촌진흥청": "농촌진흥청",
+    "문화체육관광부": "문화체육관광부",
+    "방위사업청": "방위사업청",
+    "법무부": "법무부",
+    "보건복지부": "보건복지부",
+    "산림청": "산림청",
+    "산업통상자원부": "산업통상자원부",
+    "성평등가족부": "성평등가족부",
+    "소방청": "소방청",
+    "식품의약품안전처": "식품의약품안전처",
+    "외교부": "외교부",
+    "인사혁신처": "인사혁신처",
+    "중소벤처기업부": "중소벤처기업부",
+    "지식재산처": "지식재산처",
+    "통일부": "통일부",
+    "해양수산부": "해양수산부",
+    "행정안전부": "행정안전부",
 }
 
-# ── 위원회 세부 매핑 (파일명 → 기관명) ──────────────────────
+# ── 위원회 유효 기관명 집합 (파일명에서 직접 추출 가능) ────
 COMMITTEE_AGENCIES: dict[str, str] = {
-    "acr": "국민권익위원회",
-    "ecc": "선거관리위원회",
-    "eiac": "환경분쟁조정위원회",
-    "fsc": "금융위원회",
-    "ftc": "공정거래위원회",
-    "iaciac": "정보공개위원회",
-    "nhrck": "국가인권위원회",
-    "nlrc": "노동위원회",
-    "ppc": "개인정보보호위원회",
-    "sfc": "소청심사위원회",
+    "개인정보보호위원회": "개인정보보호위원회",
+    "고용보험심사위원회": "고용보험심사위원회",
+    "공정거래위원회": "공정거래위원회",
+    "국가인권위원회": "국가인권위원회",
+    "국민권익위원회": "국민권익위원회",
+    "금융위원회": "금융위원회",
+    "노동위원회": "노동위원회",
+    "산업재해보상위험재심사위원회": "산업재해보상위험재심사위원회",
+    "중앙환경분쟁조정위원회": "중앙환경분쟁조정위원회",
+    "증권선물위원회": "증권선물위원회",
 }
 
 
@@ -234,16 +235,33 @@ def get_category_files(category: str) -> list[str]:
 def get_agency_name(filename: str) -> str:
     """파일명에서 기관명 추출.
 
-    [DONE]moelCgmExpc.json → "고용노동부"
-    [DONE]ftc.json → "공정거래위원회"
+    dec_comm_공정거래위원회_v1.json → "공정거래위원회"
+    intp_min_고용노동부_v1.json → "고용노동부"
     """
-    # [DONE] 또는 [Done] 접두사 제거, .json 제거
-    stem = filename.split("]", 1)[-1].replace(".json", "")
+    # 서브디렉토리 경로 제거 (decisions_committee/dec_comm_... → dec_comm_...)
+    basename = Path(filename).name
+    stem = basename.replace(".json", "")
 
+    # dec_comm_{한국어명}_v1 패턴 (위원회)
+    if stem.startswith("dec_comm_"):
+        name = stem.removeprefix("dec_comm_").removesuffix("_v1")
+        if name in COMMITTEE_AGENCIES:
+            return name
+
+    # sadm_case_{한국어명}_v1 패턴 (특별행정심판)
+    if stem.startswith("sadm_case_"):
+        return stem.removeprefix("sadm_case_").removesuffix("_v1")
+
+    # intp_min_{한국어명}_v1 패턴 (부처 해석례)
+    if stem.startswith("intp_min_"):
+        name = stem.removeprefix("intp_min_").removesuffix("_v1")
+        if name in CGM_EXPC_AGENCIES:
+            return name
+
+    # 기존 [DONE] 패턴 (하위 호환)
+    stem = filename.split("]", 1)[-1].replace(".json", "")
     if stem in CGM_EXPC_AGENCIES:
         return CGM_EXPC_AGENCIES[stem]
-    if stem in COMMITTEE_AGENCIES:
-        return COMMITTEE_AGENCIES[stem]
     return stem
 
 

@@ -9,7 +9,7 @@ Google Colab에서 실행 가능한 독립형 스크립트입니다.
     1. 이 파일을 Colab에 업로드하거나 복사
     2. 셀에서 실행:
        !pip install lancedb sentence-transformers pyarrow
-    3. 데이터 파일 업로드 (law_cleaned.json 등)
+    3. 데이터 파일 업로드 (law_v1.json 등)
     4. 아래 설정 섹션 수정 후 실행
 """
 
@@ -1353,10 +1353,10 @@ def run_law_embedding(
 
     예시:
         # 자동 설정 (권장)
-        run_law_embedding("law_cleaned.json", reset=True)
+        run_law_embedding("law_v1.json", reset=True)
 
         # 수동 설정
-        run_law_embedding("law_cleaned.json", batch_size=50, auto_config=False)
+        run_law_embedding("law_v1.json", batch_size=50, auto_config=False)
     """
     print("=" * 60)
     print("법령 임베딩 시작")
@@ -1471,7 +1471,7 @@ def run_precedent_embedding(
 3. 데이터 업로드 후 함수 호출:
 
    # 자동 설정 사용 (권장) - 디바이스에 맞게 자동 최적화
-   run_law_embedding("law_cleaned.json", reset=True)
+   run_law_embedding("law_v1.json", reset=True)
    run_precedent_embedding("precedents.json", reset=True)
 
    # 수동 설정 (필요시)
@@ -1494,7 +1494,7 @@ def run_precedent_embedding(
    - Colab T4:       batch_size=100, num_workers=0
 
 CLI 사용법 (터미널):
-   python colab_lancedb_embeddings.py --type law --source law_cleaned.json --reset
+   python colab_lancedb_embeddings.py --type law --source law_v1.json --reset
 """
 
 
@@ -1528,5 +1528,5 @@ if __name__ == "__main__":
         print("  - show_stats()            # 통계 확인")
         print("  - clear_model_cache()     # 메모리 정리")
         print("\n예시:")
-        print("  run_law_embedding('law_cleaned.json', reset=True)")
+        print("  run_law_embedding('law_v1.json', reset=True)")
         print("  run_precedent_embedding('precedents.json', reset=True)")

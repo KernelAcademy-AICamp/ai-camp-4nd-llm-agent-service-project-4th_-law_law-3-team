@@ -5,7 +5,7 @@ Revises: 003
 Create Date: 2026-02-05
 
 변호사 데이터 PostgreSQL 마이그레이션
-- lawyers 테이블: data/lawyers_with_coords.json (17,326건)
+- lawyers 테이블: data/lawyers.json (17,326건)
 - GIN 인덱스: specialties ARRAY 검색 최적화
 - 좌표 복합 인덱스: 바운딩 박스 검색 최적화
 - 비정규화 지역 필드: 통계 GROUP BY 최적화
@@ -73,7 +73,7 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(), nullable=True,
                   comment='레코드 수정일시'),
         sa.PrimaryKeyConstraint('id'),
-        comment='변호사 정보 (data/lawyers_with_coords.json 마이그레이션)',
+        comment='변호사 정보 (data/lawyers.json 마이그레이션)',
     )
 
     # 단일 컬럼 인덱스

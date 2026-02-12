@@ -1,7 +1,7 @@
 # 법률 용어 사전 + MeCab 형태소 분석 리포트
 
 > 분석일: 2026-02-09
-> 분석 대상: `data/law_data/lawterms_full.json` (현재 사용), `data/[DONE]lawterms.json` (전체 크롤링)
+> 분석 대상: `data/law_data/lawterms_full.json` (현재 사용), `data/lawterms_v1.json` (전체 크롤링)
 
 ---
 
@@ -9,7 +9,7 @@
 
 ### 1.1 두 파일 비교
 
-| 항목 | lawterms_full.json (현재) | [DONE]lawterms.json (전체) |
+| 항목 | lawterms_full.json (현재) | lawterms_v1.json (전체) |
 |------|--------------------------|---------------------------|
 | 전체 레코드 | 37,169건 | 81,488건 |
 | 고유 용어 | 36,797개 | 70,939개 |
@@ -32,7 +32,7 @@
 
 ### 1.3 키 차이
 
-| 필드 | lawterms_full.json | [DONE]lawterms.json |
+| 필드 | lawterms_full.json | lawterms_v1.json |
 |------|-------------------|---------------------|
 | ID 필드명 | `법령용어 일련번호` | `법령용어ID` |
 | 나머지 필드 | 동일 | 동일 |

@@ -113,4 +113,5 @@ dev = [
     "tqdm>=4.66.0",
     "kaleido>=0.2.1",
     "jupyterlab>=4.0.0",
+    "matplotlib>=3.10.8",
 ]

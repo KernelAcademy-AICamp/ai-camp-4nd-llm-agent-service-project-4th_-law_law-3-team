@@ -46,9 +46,9 @@ pg_trgm 확장 + 6개 테이블 생성:
 **새 파일: `backend/scripts/load_graph_data.py`**
 
 기존 `build_graph.py`와 동일 소스 JSON 파일 사용:
-- `data/law_cleaned.json` → `graph_statutes`
-- `data/[cleaned]lsStmd-full.json` → `graph_statute_hierarchy` + `graph_statute_relations`
-- `data/precedents_cleaned.json` → citation 테이블 2개
+- `data/law_v1.json` → `graph_statutes`
+- `data/law_hierarchy.json` → `graph_statute_hierarchy` + `graph_statute_relations`
+- `data/precedents_v1.json` → citation 테이블 2개
 - `scripts/informal_abbreviations.json` → `graph_aliases`
 - `citation_count` 계산 (UPDATE ... SELECT COUNT)
 

@@ -1,7 +1,7 @@
 """
 법률 용어 데이터 PostgreSQL 로드 스크립트
 
-[DONE]lawterms.json (81,488건) → legal_terms 테이블
+lawterms_v1.json (81,488건) → legal_terms 테이블
 fallback: lawterms_full.json (37,169건)
 
 기능:
@@ -44,7 +44,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 DATA_DIR = PROJECT_ROOT.parent / "data"
-LAWTERMS_FILE = DATA_DIR / "[DONE]lawterms.json"
+LAWTERMS_FILE = DATA_DIR / "lawterms_v1.json"
 LAWTERMS_FALLBACK = DATA_DIR / "law_data" / "lawterms_full.json"
 
 BATCH_SIZE = 1000
@@ -68,13 +68,13 @@ _KOREAN_ONLY = re.compile(r"^[가-힣]+$")
 
 
 def load_json_data() -> tuple[list[dict], str]:
-    """JSON 파일 로드. [DONE] 파일 우선, 없으면 fallback."""
+    """JSON 파일 로드. lawterms_v1 우선, 없으면 fallback."""
     if LAWTERMS_FILE.exists():
         path = LAWTERMS_FILE
     elif LAWTERMS_FALLBACK.exists():
         path = LAWTERMS_FALLBACK
         logger.warning(
-            "[DONE]lawterms.json 없음, fallback 사용: %s", LAWTERMS_FALLBACK,
+            "lawterms_v1.json 없음, fallback 사용: %s", LAWTERMS_FALLBACK,
         )
     else:
         logger.error("데이터 파일이 없습니다: %s 또는 %s", LAWTERMS_FILE, LAWTERMS_FALLBACK)
@@ -94,7 +94,7 @@ def load_json_data() -> tuple[list[dict], str]:
 def flatten_records(data: list[dict]) -> list[dict]:
     """리스트 타입 레코드를 개별 엔트리로 분리.
 
-    [DONE]lawterms.json의 약 15%가 리스트 타입 필드를 가짐.
+    lawterms_v1.json의 약 15%가 리스트 타입 필드를 가짐.
     각 인덱스별로 분리하여 플랫 레코드로 변환.
     """
     flat: list[dict] = []

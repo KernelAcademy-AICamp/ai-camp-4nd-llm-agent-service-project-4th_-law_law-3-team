@@ -141,8 +141,8 @@ law-3-team/
 
 ```
 data/
-├── lawyers_with_coords.json   # 지오코딩된 변호사 데이터 (위경도 포함)
-└── geocode_failed.json        # 지오코딩 실패 목록
+├── lawyers.json   # 지오코딩된 변호사 데이터 (위경도 포함)
+└── geocode_failures.json        # 지오코딩 실패 목록
 ```
 
 **데이터 구조:**
@@ -215,8 +215,8 @@ uv run python scripts/geocode_lawyers.py --api-key YOUR_KAKAO_REST_API_KEY
 | 파일 | 설명 |
 |------|------|
 | `all_lawyers.json` (입력) | 원본 변호사 데이터 |
-| `data/lawyers_with_coords.json` (출력) | 좌표가 추가된 데이터 |
-| `data/geocode_failed.json` (출력) | 지오코딩 실패 목록 |
+| `data/lawyers.json` (출력) | 좌표가 추가된 데이터 |
+| `data/geocode_failures.json` (출력) | 지오코딩 실패 목록 |
 
 ```bash
 # 실패 항목 재시도

@@ -337,11 +337,11 @@ RETURN node.case_number, node.name, score LIMIT 10
 
 | 파일 | 위치 | 설명 |
 |------|------|------|
-| `lsAbrv.json` | `data/` | 공식 약칭 (2,642개) |
+| `law_abbreviations.json` | `data/` | 공식 약칭 (2,642개) |
 | `informal_abbreviations.json` | `scripts/` | 비공식 약칭 (69개, 10개 카테고리) |
-| `[cleaned]lsStmd-full.json` | `data/` | 법령 계급도 |
-| `law_cleaned.json` | `data/` | 법령 데이터 (5,841건) |
-| `precedents_cleaned.json` | `data/` | 판례 데이터 (65,107건) |
+| `law_hierarchy.json` | `data/` | 법령 계급도 |
+| `law_v1.json` | `data/` | 법령 데이터 (5,841건) |
+| `precedents_v1.json` | `data/` | 판례 데이터 (65,107건) |
 
 ### 비공식 약칭 카테고리
 

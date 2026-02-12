@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # 5 parents up = law-3-team/ (프로젝트 루트)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
-LAWYERS_FILE = DATA_DIR / "lawyers_with_coords.json"
+LAWYERS_FILE = DATA_DIR / "lawyers.json"
 FALLBACK_FILE = PROJECT_ROOT / "all_lawyers.json"
 
 # =============================================================================
@@ -155,7 +155,7 @@ def get_categories() -> List[Dict[str, Any]]:
 def load_lawyers_data() -> Dict[str, Any]:
     """변호사 데이터 로드 (캐싱)"""
     files_to_try = [
-        LAWYERS_FILE,       # data/lawyers_with_coords.json (좌표 + 전문분야 포함)
+        LAWYERS_FILE,       # data/lawyers.json (좌표 + 전문분야 포함)
         FALLBACK_FILE,      # all_lawyers.json (원본 데이터, 좌표 없음)
     ]
 

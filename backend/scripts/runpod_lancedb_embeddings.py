@@ -28,8 +28,8 @@ RunPod 사용법
    #    예: https://drive.google.com/file/d/ABC123xyz/view
    #        FILE_ID = ABC123xyz
 
-   !gdown --id YOUR_LAW_FILE_ID -O law_cleaned.json
-   !gdown --id YOUR_PRECEDENT_FILE_ID -O precedents_cleaned.json
+   !gdown --id YOUR_LAW_FILE_ID -O law_v1.json
+   !gdown --id YOUR_PRECEDENT_FILE_ID -O precedents_v1.json
 
    # 방법 B: Jupyter 파일 업로드 (느림)
    # 왼쪽 파일 브라우저에서 업로드 아이콘 클릭
@@ -43,10 +43,10 @@ RunPod 사용법
 
 6. 셀 4: 임베딩 생성
    # 법령 임베딩
-   run_law_embedding('law_cleaned.json', reset=True)
+   run_law_embedding('law_v1.json', reset=True)
 
    # 판례 임베딩
-   run_precedent_embedding('precedents_cleaned.json', reset=True)
+   run_precedent_embedding('precedents_v1.json', reset=True)
 
 7. 셀 5: 결과 다운로드
    !zip -r lancedb_data.zip ./lancedb_data
@@ -2316,8 +2316,8 @@ def main():
 
     parser = argparse.ArgumentParser(description="LanceDB 임베딩 생성 (RunPod)")
     parser.add_argument("--type", choices=["law", "precedent", "all"], default="all")
-    parser.add_argument("--law-source", type=str, default="law_cleaned.json")
-    parser.add_argument("--precedent-source", type=str, default="precedents_cleaned.json")
+    parser.add_argument("--law-source", type=str, default="law_v1.json")
+    parser.add_argument("--precedent-source", type=str, default="precedents_v1.json")
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--reset", action="store_true")
     parser.add_argument("--stats", action="store_true")
@@ -2402,5 +2402,5 @@ if __name__ == "__main__":
         print("  checker.quick_test()")
         print("")
         print("  # 분할 처리")
-        print("  split_precedents('precedents_cleaned.json', chunk_size=5000)")
+        print("  split_precedents('precedents_v1.json', chunk_size=5000)")
         print("  run_all_precedent_parts('precedents_part_*.json', batch_size=64)")

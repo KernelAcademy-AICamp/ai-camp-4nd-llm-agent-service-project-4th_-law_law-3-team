@@ -233,22 +233,32 @@ def load_result(name: str) -> Any:
 
 
 def discover_done_files() -> list[dict[str, Any]]:
-    """DATA_DIR에서 [DONE] 또는 [Done] 접두사 JSON 파일 목록 반환.
+    """DATA_DIR에서 EDA 대상 JSON 파일 목록 반환.
+
+    매칭 패턴: *_v1.json, dec_*, intp_* 접두사
+    (하위 호환: [DONE]/[Done] 접두사도 매칭)
 
     Returns:
-        각 파일의 {name, path, size_mb} 딕셔너리 리스트
+        각 파일의 {name, path, size_mb} 딕셔너리 리스트.
+        name은 DATA_DIR 기준 상대 경로 (예: "decisions_committee/dec_comm_...json").
     """
     files = []
-    for p in sorted(DATA_DIR.iterdir()):
+    for p in sorted(DATA_DIR.rglob("*.json")):
         if not p.is_file():
             continue
-        if not p.suffix.lower() == ".json":
-            continue
         name_lower = p.name.lower()
-        if not (name_lower.startswith("[done]") or name_lower.startswith("[done]")):
+        is_match = (
+            name_lower.endswith("_v1.json")
+            or name_lower.startswith("[done]")
+            or name_lower.startswith("dec_")
+            or name_lower.startswith("intp_")
+        )
+        if not is_match:
             continue
+        # DATA_DIR 기준 상대 경로 (서브디렉토리 포함)
+        rel = str(p.relative_to(DATA_DIR))
         files.append({
-            "name": p.name,
+            "name": rel,
             "path": str(p),
             "size_mb": round(get_file_size_mb(p), 2),
         })

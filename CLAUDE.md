@@ -466,7 +466,7 @@ uv run python scripts/load_lawyers_data.py --verify  # 검증
 ### 롤백
 
 `USE_DB_LAWYERS=false`로 설정하면 즉시 JSON 파일 모드로 복귀합니다.
-JSON 파일(`data/lawyers_with_coords.json`)은 변경하지 않으므로 데이터 손실 없음.
+JSON 파일(`data/lawyers.json`)은 변경하지 않으므로 데이터 손실 없음.
 
 ### 관련 파일
 
@@ -526,7 +526,7 @@ JSON 파일(`data/lawyers_with_coords.json`)은 변경하지 않으므로 데이
 
 ## Legal Terms DB (법률 용어 사전)
 
-법률 용어 데이터(`[DONE]lawterms.json`)를 PostgreSQL `legal_terms` 테이블에 저장하고, MeCab 토크나이저의 법률 복합명사 보강에 활용합니다.
+법률 용어 데이터(`lawterms_v1.json`)를 PostgreSQL `legal_terms` 테이블에 저장하고, MeCab 토크나이저의 법률 복합명사 보강에 활용합니다.
 
 ### 활성화
 
@@ -560,7 +560,7 @@ uv run python scripts/load_legal_terms_data.py --verify  # 검증
 | 유효 커버리지 | ≥99% (괄호 변형 포함, 상세: `docs/tokenizer/USERDIC_COVERAGE_ANALYSIS.md`) |
 | 사전유형 | 법령정의사전 + 법령한영사전 + 생활용어사전 + 한영역추출 |
 
-> **참고**: `[DONE]lawterms.json` (81,488 레코드) 기반. 리스트 평탄화 + 한영사전 역추출 포함.
+> **참고**: `lawterms_v1.json` (81,488 레코드) 기반. 리스트 평탄화 + 한영사전 역추출 포함.
 > 72,700개 중 35,234개(48.5%)는 MeCab userdic 대상 외 (순수 비한글 12,985 + 공백 포함 22,249).
 > 상세 분석: `docs/tokenizer/USERDIC_COVERAGE_ANALYSIS.md`
 

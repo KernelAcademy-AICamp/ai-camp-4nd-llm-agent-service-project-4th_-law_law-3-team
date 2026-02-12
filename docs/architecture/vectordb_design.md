@@ -5,8 +5,8 @@
 ### JSON 원본
 | 데이터 | 파일 경로 | 건수 |
 |--------|-----------|------|
-| 법령 | `data/law_cleaned.json` | 5,841건 |
-| 판례 | `data/precedents_cleaned.json` | 65,107건 |
+| 법령 | `data/law_v1.json` | 5,841건 |
+| 판례 | `data/precedents_v1.json` | 65,107건 |
 
 ### PostgreSQL 테이블 (LanceDB 전용)
 | 테이블 | 설명 | 비고 |
@@ -414,8 +414,8 @@ backend/scripts/
 !pip install lancedb sentence-transformers pyarrow ijson psutil tqdm gdown -q
 
 # 2. 데이터 다운로드 (Google Drive에서)
-!gdown --id YOUR_FILE_ID -O precedents_cleaned.json
-!gdown --id YOUR_FILE_ID -O law_cleaned.json
+!gdown --id YOUR_FILE_ID -O precedents_v1.json
+!gdown --id YOUR_FILE_ID -O law_v1.json
 
 # 3. 스크립트 실행
 exec(open('runpod_lancedb_embeddings.py').read())
@@ -424,11 +424,11 @@ exec(open('runpod_lancedb_embeddings.py').read())
 print_device_info()
 
 # 5. 판례 분할 처리 (권장)
-split_precedents('precedents_cleaned.json', chunk_size=5000)
+split_precedents('precedents_v1.json', chunk_size=5000)
 run_all_precedent_parts('precedents_part_*.json', batch_size=64)
 
 # 6. 법령 분할 처리
-split_laws('law_cleaned.json', chunk_size=2000)
+split_laws('law_v1.json', chunk_size=2000)
 run_all_law_parts('laws_part_*.json', batch_size=64)
 
 # 7. 결과 확인

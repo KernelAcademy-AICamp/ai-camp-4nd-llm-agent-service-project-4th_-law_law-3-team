@@ -21,8 +21,8 @@ JSON 파일에서 PostgreSQL로 법령/판례 데이터를 로드합니다.
     uv run python scripts/load_lancedb_data.py --type law --source ../data/custom_law.json
 
 데이터 소스:
-    - data/law_cleaned.json (법령 5,841건)
-    - data/precedents_cleaned.json (판례 65,107건)
+    - data/law_v1.json (법령 5,841건)
+    - data/precedents_v1.json (판례 65,107건)
 """
 
 import argparse
@@ -47,8 +47,8 @@ from app.models.precedent_document import PrecedentDocument
 # 기본 경로
 # ============================================================================
 
-DEFAULT_LAW_PATH = Path(__file__).parent.parent.parent / "data" / "law_cleaned.json"
-DEFAULT_PRECEDENT_PATH = Path(__file__).parent.parent.parent / "data" / "precedents_cleaned.json"
+DEFAULT_LAW_PATH = Path(__file__).parent.parent.parent / "data" / "law_v1.json"
+DEFAULT_PRECEDENT_PATH = Path(__file__).parent.parent.parent / "data" / "precedents_v1.json"
 
 
 # ============================================================================
@@ -162,7 +162,7 @@ def load_precedent_json(source_path: Path) -> List[Dict[str, Any]]:
     with open(source_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    # precedents_cleaned.json은 리스트 형태
+    # precedents_v1.json은 리스트 형태
     if isinstance(data, list):
         items = data
     else:

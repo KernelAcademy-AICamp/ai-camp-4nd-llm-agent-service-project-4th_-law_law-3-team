@@ -62,7 +62,7 @@ SYS_DICT_CANDIDATES = [
 
 # 법률 용어 JSON fallback 경로
 LEGAL_TERMS_JSON = PROJECT_ROOT / "data" / "lawterms_full.json"
-DONE_LAWTERMS_JSON = PROJECT_ROOT / "data" / "[DONE]lawterms.json"
+DONE_LAWTERMS_JSON = PROJECT_ROOT / "data" / "lawterms_v1.json"
 
 # userdic CSV 비용 (낮을수록 우선 선택)
 USERDIC_COST = 100
@@ -258,7 +258,7 @@ def load_terms_from_json() -> set[str]:
     for item in data:
         raw_val = item.get("법령용어명_한글", "")
 
-        # 리스트 타입 레코드 평탄화 ([DONE]lawterms.json의 ~15%가 리스트)
+        # 리스트 타입 레코드 평탄화 (lawterms_v1.json의 ~15%가 리스트)
         if isinstance(raw_val, list):
             term_list = raw_val
         else:

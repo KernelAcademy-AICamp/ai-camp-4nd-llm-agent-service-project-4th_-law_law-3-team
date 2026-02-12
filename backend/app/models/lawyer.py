@@ -1,7 +1,7 @@
 """
 변호사 ORM 모델
 
-lawyers 테이블: data/lawyers_with_coords.json 데이터를 PostgreSQL에 저장
+lawyers 테이블: data/lawyers.json 데이터를 PostgreSQL에 저장
 """
 
 from datetime import datetime
@@ -81,7 +81,7 @@ class Lawyer(Base):
         ),
         # 지역 인덱스 (GROUP BY 통계 쿼리 최적화)
         Index("idx_lawyers_region", "region"),
-        {"comment": "변호사 정보 (data/lawyers_with_coords.json 마이그레이션)"},
+        {"comment": "변호사 정보 (data/lawyers.json 마이그레이션)"},
     )
 
     def __repr__(self) -> str:

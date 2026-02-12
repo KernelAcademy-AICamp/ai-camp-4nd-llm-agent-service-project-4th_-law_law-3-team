@@ -37,8 +37,8 @@ BACKEND_ENV = BACKEND_ROOT / ".env"
 
 # 기본 파일 경로
 DEFAULT_INPUT = PROJECT_ROOT / "all_lawyers.json"
-DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "lawyers_with_coords.json"
-FAILED_FILE = PROJECT_ROOT / "data" / "geocode_failed.json"
+DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "lawyers.json"
+FAILED_FILE = PROJECT_ROOT / "data" / "geocode_failures.json"
 
 # API 설정
 KAKAO_GEOCODE_URL = "https://dapi.kakao.com/v2/local/search/address.json"

@@ -1,7 +1,7 @@
 """
 변호사 데이터 PostgreSQL 로드 스크립트
 
-data/lawyers_with_coords.json → lawyers 테이블
+data/lawyers.json → lawyers 테이블
 
 Usage:
     uv run python scripts/load_lawyers_data.py           # 로드
@@ -40,7 +40,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 DATA_DIR = PROJECT_ROOT.parent / "data"
-LAWYERS_FILE = DATA_DIR / "lawyers_with_coords.json"
+LAWYERS_FILE = DATA_DIR / "lawyers.json"
 
 BATCH_SIZE = 1000
 
