@@ -12,7 +12,6 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
-    Index,
     Integer,
     String,
     Text,
@@ -130,6 +129,13 @@ class PrecedentDocument(Base):
         comment="판례내용 (전문)",
     )
 
+    # AI 생성 요약
+    ai_summary = Column(
+        Text,
+        nullable=True,
+        comment="AI 생성 판례요약",
+    )
+
     # 참조 정보
     reference_provisions = Column(
         Text,
@@ -160,14 +166,6 @@ class PrecedentDocument(Base):
         default=datetime.utcnow,
         onupdate=datetime.utcnow,
         comment="레코드 수정일시",
-    )
-
-    # 인덱스
-    __table_args__ = (
-        Index("idx_precedent_docs_case_number", "case_number"),
-        Index("idx_precedent_docs_court", "court_name"),
-        Index("idx_precedent_docs_case_type", "case_type"),
-        Index("idx_precedent_docs_date", "decision_date"),
     )
 
     def __repr__(self) -> str:
@@ -203,6 +201,7 @@ class PrecedentDocument(Base):
             claim=data.get("청구취지"),
             full_reason=data.get("이유"),
             full_text=data.get("판례내용"),
+            ai_summary=data.get("판례요약"),
             reference_provisions=data.get("참조조문"),
             reference_cases=data.get("참조판례"),
             raw_data=data,
@@ -238,8 +237,12 @@ class PrecedentDocument(Base):
         """
         임베딩용 텍스트 생성
 
-        판시사항 + 판결요지를 조합하여 반환 (prefix는 임베딩 생성 시 추가)
+        ai_summary가 있으면 그것만 반환 (1문서=1벡터 요약 기반 RAG).
+        없으면 기존 fallback (판시사항 + 판결요지).
         """
+        if self.ai_summary:
+            return self.ai_summary
+
         parts = []
 
         if self.case_name:

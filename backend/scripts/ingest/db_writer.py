@@ -1,0 +1,247 @@
+"""
+PostgreSQL 적재 + FTS 동시 생성
+
+1패스로 JSON → PostgreSQL ORM 인스턴스 + fts_index tsvector를 동시 처리합니다.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+# 백엔드 app 모듈 import를 위한 경로 추가
+_backend_root = Path(__file__).parent.parent.parent
+if str(_backend_root) not in sys.path:
+    sys.path.insert(0, str(_backend_root))
+
+from sqlalchemy import delete, func, select
+
+from app.core.database import sync_session_factory
+from app.models.fts_index import FtsIndex
+from app.services.rag.tsvector_builder import build_tsvector_string
+from scripts.ingest.config import IngestConfig
+from scripts.ingest.shared import get_tokenizer, upsert_fts_batch
+
+logger = logging.getLogger(__name__)
+
+BATCH_SIZE = 1000
+
+
+def _load_json(source_path: Path) -> list[dict[str, Any]]:
+    """JSON 파일 로드"""
+    if not source_path.exists():
+        raise FileNotFoundError(f"소스 파일을 찾을 수 없습니다: {source_path}")
+
+    logger.info("JSON 로드: %s", source_path)
+    with open(source_path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    if isinstance(data, list):
+        items = data
+    else:
+        items = data.get("items", [])
+
+    logger.info("총 %d건 로드", len(items))
+    return items
+
+
+def run_db_ingest(
+    config: IngestConfig,
+    source_path: Path | None = None,
+    reset: bool = False,
+    batch_size: int = BATCH_SIZE,
+) -> dict[str, int]:
+    """
+    JSON → PostgreSQL ORM + fts_index 동시 적재
+
+    Args:
+        config: 인제스트 설정
+        source_path: JSON 소스 경로 (None이면 config.source_path)
+        reset: 기존 데이터 삭제 후 재실행
+        batch_size: 배치 크기
+
+    Returns:
+        통계 dict: total, db_inserted, db_skipped, fts_inserted, errors
+    """
+    source = source_path or config.source_path
+    items = _load_json(source)
+
+    stats: dict[str, int] = {
+        "total": len(items),
+        "db_inserted": 0,
+        "db_skipped": 0,
+        "fts_inserted": 0,
+        "errors": 0,
+    }
+
+    if not items:
+        return stats
+
+    # MeCab 토크나이저 초기화 (필수)
+    tokenizer = get_tokenizer()
+    if not tokenizer.is_available:
+        raise RuntimeError(
+            "MeCab 토크나이저를 사용할 수 없습니다. "
+            "FTS 품질을 위해 MeCab 설치가 필수입니다: "
+            "apt install mecab libmecab-dev mecab-ko-dic"
+        )
+
+    start_time = time.time()
+
+    with sync_session_factory() as session:
+        # 리셋
+        if reset:
+            logger.info("기존 데이터 삭제 중...")
+            # fts_index에서 해당 data_type 삭제
+            session.execute(
+                delete(FtsIndex).where(
+                    FtsIndex.data_type == config.data_type_label
+                )
+            )
+            # ORM 테이블 전체 삭제
+            orm_table = config.orm_class.__table__
+            session.execute(delete(orm_table))
+            session.commit()
+            logger.info("기존 데이터 삭제 완료")
+            existing_ids: set[str] = set()
+        else:
+            # 기존 ID 조회 (config.orm_id_attr 사용)
+            id_col = getattr(config.orm_class, config.orm_id_attr)
+            result = session.execute(select(id_col))
+            existing_ids = {str(row[0]) for row in result.fetchall()}
+            logger.info("기존 문서: %d건", len(existing_ids))
+
+        # 중복 추적
+        seen_ids: set[str] = set(existing_ids)
+
+        # 배치 축적
+        orm_batch: list[Any] = []
+        fts_batch: list[dict[str, Any]] = []
+
+        for idx, item in enumerate(items):
+            doc_id = str(item.get(config.id_field, ""))
+
+            if not doc_id:
+                stats["errors"] += 1
+                continue
+
+            if doc_id in seen_ids:
+                stats["db_skipped"] += 1
+                continue
+
+            seen_ids.add(doc_id)
+
+            # 1. ORM 인스턴스 생성
+            try:
+                orm_instance = config.orm_class.from_json(item)
+                orm_batch.append(orm_instance)
+            except Exception as e:
+                logger.error("ORM 생성 실패 (id=%s): %s", doc_id, e)
+                stats["errors"] += 1
+                continue
+
+            # 2. FTS 데이터 생성
+            try:
+                fulltext = config.fulltext_fn(item)
+                if fulltext.strip():
+                    tokens = tokenizer.morphs(fulltext)
+                    tsvector_str = build_tsvector_string(tokens)
+
+                    fts_meta = config.fts_metadata_fn(item)
+                    fts_meta["content_tsvector"] = tsvector_str or None
+                    fts_batch.append(fts_meta)
+            except Exception as e:
+                logger.error("FTS 생성 실패 (id=%s): %s", doc_id, e)
+                # FTS 실패해도 DB 적재는 계속 진행
+
+            # 배치 커밋
+            if len(orm_batch) >= batch_size:
+                session.add_all(orm_batch)
+                upsert_fts_batch(session, fts_batch)
+                session.commit()
+
+                stats["db_inserted"] += len(orm_batch)
+                stats["fts_inserted"] += len(fts_batch)
+
+                orm_batch = []
+                fts_batch = []
+
+                # 진행률
+                progress = idx + 1
+                pct = progress / len(items) * 100
+                elapsed = time.time() - start_time
+                speed = stats["db_inserted"] / elapsed if elapsed > 0 else 0
+                logger.info(
+                    "진행: %d/%d (%.1f%%) | DB: %d | FTS: %d | %.1f docs/s",
+                    progress,
+                    len(items),
+                    pct,
+                    stats["db_inserted"],
+                    stats["fts_inserted"],
+                    speed,
+                )
+
+        # 잔여 배치 커밋
+        if orm_batch:
+            session.add_all(orm_batch)
+            upsert_fts_batch(session, fts_batch)
+            session.commit()
+            stats["db_inserted"] += len(orm_batch)
+            stats["fts_inserted"] += len(fts_batch)
+
+    elapsed = time.time() - start_time
+    logger.info(
+        "DB+FTS 적재 완료: DB %d건, FTS %d건, %.1f초",
+        stats["db_inserted"],
+        stats["fts_inserted"],
+        elapsed,
+    )
+
+    return stats
+
+
+def verify_db(config: IngestConfig) -> dict[str, Any]:
+    """PostgreSQL + fts_index 데이터 검증"""
+    result: dict[str, Any] = {}
+
+    with sync_session_factory() as session:
+        # ORM 테이블 건수
+        orm_count = session.execute(
+            select(func.count()).select_from(config.orm_class)
+        ).scalar_one()
+        result["orm_count"] = orm_count
+
+        # fts_index 건수 (해당 data_type)
+        fts_count = session.execute(
+            select(func.count())
+            .select_from(FtsIndex)
+            .where(FtsIndex.data_type == config.data_type_label)
+        ).scalar_one()
+        result["fts_count"] = fts_count
+
+        # tsvector 보유 비율
+        fts_with_tsvector = session.execute(
+            select(func.count())
+            .select_from(FtsIndex)
+            .where(FtsIndex.data_type == config.data_type_label)
+            .where(FtsIndex.content_tsvector.isnot(None))
+        ).scalar_one()
+        result["fts_with_tsvector"] = fts_with_tsvector
+
+    logger.info("=== %s DB 검증 ===", config.data_type_label)
+    logger.info("  ORM 테이블: %d건", result["orm_count"])
+    logger.info("  FTS 인덱스: %d건", result["fts_count"])
+    logger.info(
+        "  tsvector 보유: %d/%d (%.1f%%)",
+        result["fts_with_tsvector"],
+        result["fts_count"],
+        (result["fts_with_tsvector"] / result["fts_count"] * 100)
+        if result["fts_count"]
+        else 0,
+    )
+
+    return result

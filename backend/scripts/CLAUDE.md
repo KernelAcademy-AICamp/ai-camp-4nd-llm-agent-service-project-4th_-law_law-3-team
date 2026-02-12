@@ -8,7 +8,6 @@
 |----------|------|
 | `runpod_lancedb_embeddings.py` | 메인 임베딩 스크립트 (RunPod/클라우드 GPU) |
 | `local_lancedb_embeddings.py` | 로컬 임베딩 스크립트 (멀티 하드웨어 지원) |
-| `update_content_tokenized.py` | content_tokenized 컬럼만 업데이트 (벡터 유지) |
 | `colab_lancedb_embeddings.py` | Google Colab 전용 |
 | `test_precedent_embedding.py` | 임베딩 테스트 |
 
