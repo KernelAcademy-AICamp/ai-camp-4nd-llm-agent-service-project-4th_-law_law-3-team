@@ -543,10 +543,10 @@ scripts/ingest/
 
 ### 새 타입 추가 패턴
 
-1. `types/new_type.py` 생성 — `_orm_factory`, `_vector_metadata_fn`, FTS 함수, `IngestConfig`, `register_config()`
+1. `types/_template.py`를 복사하여 `types/new_type.py` 생성 → TODO 주석 따라 수정
 2. `models/new_type_document.py` 생성 — 컬럼 정의만 (from_json 없음, raw_data 없음, ai_summary 포함)
 3. `alembic migration` 작성 — 테이블 생성
-4. `types/__init__.py` 에 import 추가
+4. 자동 등록됨 (`__init__.py` 수정 불필요, `_`로 시작하지 않는 .py 파일 자동 스캔)
 
 ### 사용법
 

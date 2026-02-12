@@ -9,9 +9,9 @@
 - **Backend**: FastAPI (Python)
 - **Frontend**: Next.js 14 (React, TypeScript)
 - **Database**: PostgreSQL, Neo4j (Graph DB)
-- **Vector DB**: LanceDB (RAG)
-- **AI/ML**: Solar (Upstage), LangChain
-- **Embedding**: KURE-v1 (로컬) / OpenAI (선택)
+- **Vector DB**: LanceDB (RAG, 1문서=1벡터)
+- **AI/ML**: Solar (Upstage), LangGraph
+- **Embedding**: KURE-v1 (로컬, 1024차원) / OpenAI (선택)
 
 ## 프로젝트 구조
 
@@ -299,8 +299,8 @@ data/law_data/
 | **합계** | ~1.5GB | ~108,756건 |
 
 **저장 구조:**
-- **PostgreSQL**: 문서 메타데이터 및 전문 텍스트 (검색, 필터링용)
-- **ChromaDB**: 문서 임베딩 벡터 (RAG 유사도 검색용)
+- **PostgreSQL**: 문서 메타데이터 및 전문 텍스트 + FTS 인덱스 (검색, 필터링용)
+- **LanceDB**: 문서 임베딩 벡터 (RAG 유사도 검색용, 1문서=1벡터)
 
 #### 데이터베이스 마이그레이션
 
@@ -314,34 +314,48 @@ uv run alembic upgrade head
 uv run alembic current
 ```
 
-#### 데이터 로드 및 임베딩 생성
+#### 인제스트 파이프라인 (PostgreSQL + FTS 적재)
+
+config-driven 파이프라인으로 데이터 타입별 설정(`scripts/ingest/types/`)을 정의하면 PostgreSQL + FTS를 일괄 처리합니다.
 
 ```bash
 cd backend
 
-# 1. PostgreSQL에 데이터 로드
-uv run python scripts/load_legal_data.py
+# 판례 인제스트
+uv run python -m scripts.ingest.cli precedent --reset
 
-# 특정 유형만 로드
-uv run python scripts/load_legal_data.py --type precedent
+# 법령 인제스트
+uv run python -m scripts.ingest.cli law --reset
 
-# 기존 데이터 삭제 후 재로드
-uv run python scripts/load_legal_data.py --reset
+# 검증
+uv run python -m scripts.ingest.cli precedent --verify
+```
 
-# 2. ChromaDB에 임베딩 생성 (OpenAI API 호출)
-uv run python scripts/create_embeddings.py
+**새 데이터 타입 추가:**
+1. `scripts/ingest/types/_template.py`를 복사하여 `types/new_type.py` 생성 (TODO 주석 따라 수정)
+2. `app/models/new_type_document.py` 생성 (순수 테이블 정의, ai_summary 포함)
+3. Alembic 마이그레이션 작성
+4. 자동 등록됨 (`__init__.py` 수정 불필요)
 
-# 특정 유형만 임베딩
-uv run python scripts/create_embeddings.py --type constitutional
+#### LanceDB 임베딩 생성
 
-# 3. 데이터 검증
-uv run python scripts/validate_data.py
+```bash
+cd backend
+
+# 임베딩 모델 다운로드 (약 2.3GB, 최초 1회)
+uv run python scripts/download_models.py
+
+# 로컬 임베딩 생성 (하드웨어 자동 감지)
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --reset
+
+# 통계 확인
+uv run --no-sync python scripts/local_lancedb_embeddings.py --stats
 ```
 
 **주의사항:**
-- 임베딩 생성 시 OpenAI API 비용 발생 (~$2 for 108K documents)
-- 전체 임베딩 생성에 상당한 시간 소요
-- `--batch-size` 옵션으로 API 호출 배치 크기 조정 가능
+- PyTorch 환경별 수동 설치 필요 (`uv pip install torch`)
+- `--no-sync` 플래그 필수 (torch 버전 유지)
+- GPU VRAM에 따라 batch_size 자동 설정
 
 ## 모듈 추가/삭제 방법
 
@@ -528,12 +542,10 @@ npm run dev               # 개발 서버 (localhost:3000)
 | `KAKAO_MAP_API_KEY` | 카카오맵 JavaScript API 키 (변호사 찾기 기능) | - |
 | `KAKAO_REST_API_KEY` | 카카오 REST API 키 (주소 검색 등) | - |
 | `ENABLED_MODULES` | 활성화할 모듈 목록 (빈 배열이면 모두 활성화) | `[]` |
-| `CHROMA_PERSIST_DIR` | ChromaDB 저장 경로 | `./data/chroma` |
-| `CHROMA_COLLECTION_NAME` | ChromaDB 컬렉션 이름 | `legal_documents` |
-| `EMBEDDING_MODEL` | OpenAI 임베딩 모델 | `text-embedding-3-small` |
-| `EMBEDDING_BATCH_SIZE` | 임베딩 API 배치 크기 | `100` |
+| `LANCEDB_URI` | LanceDB 데이터 경로 | `./lancedb_data` |
+| `LANCEDB_TABLE_NAME` | LanceDB 테이블명 | `legal_chunks` |
 | `USE_LOCAL_EMBEDDING` | 로컬 임베딩 사용 여부 (무료) | `true` |
-| `LOCAL_EMBEDDING_MODEL` | 로컬 임베딩 모델 | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
+| `LOCAL_EMBEDDING_MODEL` | 로컬 임베딩 모델 | `nlpai-lab/KURE-v1` |
 
 ### .env 파일 예시
 
@@ -552,17 +564,13 @@ ENVIRONMENT=development
 CORS_ORIGINS=["http://localhost:3000"]
 ENABLED_MODULES=[]
 
-# ChromaDB (벡터 저장소)
-CHROMA_PERSIST_DIR=./data/chroma
-CHROMA_COLLECTION_NAME=legal_documents
-
-# 임베딩 설정
-EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_BATCH_SIZE=100
+# LanceDB (벡터 저장소)
+LANCEDB_URI=./lancedb_data
+LANCEDB_TABLE_NAME=legal_chunks
 
 # 로컬 임베딩 (무료, 권장)
 USE_LOCAL_EMBEDDING=true
-LOCAL_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+LOCAL_EMBEDDING_MODEL=nlpai-lab/KURE-v1
 ```
 
 ## Docker 프로덕션 배포
@@ -625,7 +633,7 @@ docker/
 │                          ▼                              │
 │                   ┌──────────────┐                      │
 │                   │     EFS      │                      │
-│                   │ ChromaDB Data│                      │
+│                   │ LanceDB Data │                      │
 │                   └──────────────┘                      │
 │                                                          │
 │   Secrets: AWS Secrets Manager                          │
