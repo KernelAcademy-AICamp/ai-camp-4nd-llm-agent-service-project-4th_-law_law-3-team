@@ -37,6 +37,7 @@ class IngestConfig:
         title_field: 제목 필드명
         orm_class: SQLAlchemy ORM 클래스
         orm_id_attr: ORM 클래스의 고유 ID 속성명 (예: "serial_number")
+        orm_factory_fn: JSON item → ORM 인스턴스 (적재용 Single Source of Truth)
         vector_metadata_fn: JSON item + vector → LanceDB record dict
         fulltext_fn: JSON item → FTS용 원문 텍스트 concat
         fts_metadata_fn: JSON item → fts_index 메타데이터 dict
@@ -52,6 +53,7 @@ class IngestConfig:
     title_field: str
     orm_class: Type[DeclarativeBase]
     orm_id_attr: str
+    orm_factory_fn: Callable[[dict[str, Any]], Any]
     vector_metadata_fn: Callable[[dict[str, Any], list[float]], dict[str, Any]]
     fulltext_fn: Callable[[dict[str, Any]], str]
     fts_metadata_fn: Callable[[dict[str, Any]], dict[str, Any]]

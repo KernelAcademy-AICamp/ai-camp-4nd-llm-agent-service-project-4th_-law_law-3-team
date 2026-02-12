@@ -502,7 +502,7 @@ app/models/
 
 | 테이블 | 설명 | 주요 컬럼 |
 |--------|------|-----------|
-| `law_documents` | 법령 원본 | law_id, law_name, content, raw_data |
+| `law_documents` | 법령 원본 | law_id, law_name, content, ai_summary |
 | `precedent_documents` | 판례 원본 | serial_number, case_name, ruling, reasoning |
 | `lawyers` | 변호사 정보 (17,326건) | name, address, specialties(ARRAY), latitude, longitude, region |
 | `legal_terms` | 법률 용어 사전 (~72,700건) | term(UNIQUE), definition, source_code, source_count, term_length, is_korean_only |

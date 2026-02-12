@@ -9,8 +9,9 @@ data/raw/precedents.json (92,055건, 19필드)을 대상으로:
 from __future__ import annotations
 
 import sys
+from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 # 백엔드 app 모듈 import를 위한 경로 추가
 _backend_root = Path(__file__).parent.parent.parent.parent
@@ -23,6 +24,58 @@ from scripts.ingest.config import DATA_DIR, IngestConfig, register_config  # noq
 
 # 기본 데이터 소스 경로
 _DEFAULT_SOURCE = DATA_DIR / "raw" / "precedents.json"
+
+
+# ---------------------------------------------------------------------------
+# ORM 팩토리: JSON item → PrecedentDocument 인스턴스 (적재용 SSOT)
+# ---------------------------------------------------------------------------
+
+
+def _parse_date(date_str: Optional[str]) -> Optional[date]:
+    """날짜 문자열 파싱 (YYYYMMDD 또는 YYYY-MM-DD)"""
+    if not date_str:
+        return None
+
+    date_str = str(date_str).strip()
+
+    # 숫자만 있는 경우 (20170731)
+    if date_str.isdigit() and len(date_str) == 8:
+        try:
+            return date(
+                int(date_str[:4]),
+                int(date_str[4:6]),
+                int(date_str[6:8]),
+            )
+        except ValueError:
+            return None
+
+    # ISO 형식 (2017-07-31)
+    try:
+        return date.fromisoformat(date_str[:10])
+    except (ValueError, IndexError):
+        return None
+
+
+def _orm_factory(item: dict[str, Any]) -> PrecedentDocument:
+    """JSON item → PrecedentDocument 인스턴스"""
+    return PrecedentDocument(
+        serial_number=item.get("판례정보일련번호", ""),
+        case_name=item.get("사건명"),
+        case_number=item.get("사건번호"),
+        decision_date=_parse_date(item.get("선고일자")),
+        court_name=item.get("법원명"),
+        case_type=item.get("사건종류명"),
+        judgment_type=item.get("판결유형"),
+        summary=item.get("판시사항"),
+        reasoning=item.get("판결요지"),
+        ruling=item.get("주문"),
+        claim=item.get("청구취지"),
+        full_reason=item.get("이유"),
+        full_text=item.get("판례내용"),
+        ai_summary=item.get("판례요약"),
+        reference_provisions=item.get("참조조문"),
+        reference_cases=item.get("참조판례"),
+    )
 
 
 def _vector_metadata_fn(
@@ -151,6 +204,7 @@ PRECEDENT_CONFIG = IngestConfig(
     title_field="사건명",
     orm_class=PrecedentDocument,
     orm_id_attr="serial_number",
+    orm_factory_fn=_orm_factory,
     vector_metadata_fn=_vector_metadata_fn,
     fulltext_fn=_fulltext_fn,
     fts_metadata_fn=_fts_metadata_fn,

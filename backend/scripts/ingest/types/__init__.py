@@ -5,6 +5,6 @@
 이 패키지를 import하면 자동으로 모든 타입이 등록됩니다.
 """
 
-from scripts.ingest.types import precedent  # noqa: F401
+from scripts.ingest.types import law, precedent  # noqa: F401
 
-__all__ = ["precedent"]
+__all__ = ["law", "precedent"]

@@ -137,7 +137,7 @@ def run_db_ingest(
 
             # 1. ORM 인스턴스 생성
             try:
-                orm_instance = config.orm_class.from_json(item)
+                orm_instance = config.orm_factory_fn(item)
                 orm_batch.append(orm_instance)
             except Exception as e:
                 logger.error("ORM 생성 실패 (id=%s): %s", doc_id, e)

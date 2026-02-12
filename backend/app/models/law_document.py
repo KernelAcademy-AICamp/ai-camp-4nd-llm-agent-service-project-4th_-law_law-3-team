@@ -1,22 +1,22 @@
 """
-법령 문서 모델 (LanceDB 전용)
+법령 문서 모델 (순수 테이블 정의)
 
-data/law_cleaned.json 데이터를 PostgreSQL에 저장하기 위한 테이블
-LanceDB 벡터 검색 후 원본 데이터 조회에 사용
+data/raw/law.json 데이터를 PostgreSQL에 저장하기 위한 테이블.
+LanceDB 벡터 검색 후 원본 데이터 조회에 사용.
+
+적재 로직(JSON→ORM 변환)은 scripts/ingest/types/law.py 에 위치.
 """
 
-from datetime import date, datetime
+from datetime import datetime
 
 from sqlalchemy import (
     Column,
     Date,
     DateTime,
-    Index,
     Integer,
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 
 from app.core.database import Base
 
@@ -98,11 +98,11 @@ class LawDocument(Base):
         comment="부칙",
     )
 
-    # 원본 데이터
-    raw_data = Column(
-        JSONB,
-        nullable=False,
-        comment="원본 JSON 데이터 전체",
+    # AI 생성 요약
+    ai_summary = Column(
+        Text,
+        nullable=True,
+        comment="AI 생성 법령요약",
     )
 
     # 메타데이터
@@ -118,54 +118,5 @@ class LawDocument(Base):
         comment="레코드 수정일시",
     )
 
-    # 인덱스
-    __table_args__ = (
-        Index("idx_law_docs_name", "law_name"),
-        Index("idx_law_docs_type", "law_type"),
-        Index("idx_law_docs_ministry", "ministry"),
-        Index("idx_law_docs_enforcement", "enforcement_date"),
-    )
-
     def __repr__(self) -> str:
         return f"<LawDocument(id={self.id}, law_id={self.law_id}, name={self.law_name})>"
-
-    @classmethod
-    def from_json(cls, data: dict) -> "LawDocument":
-        """
-        JSON 데이터에서 인스턴스 생성
-
-        Args:
-            data: law_cleaned.json의 개별 item
-
-        Returns:
-            LawDocument 인스턴스
-        """
-        enforcement_date = None
-        enforcement_str = data.get("enforcement_date", "")
-        if enforcement_str:
-            try:
-                enforcement_date = date.fromisoformat(enforcement_str[:10])
-            except (ValueError, TypeError):
-                pass
-
-        return cls(
-            law_id=data.get("law_id", ""),
-            law_name=data.get("law_name", ""),
-            law_type=data.get("law_type"),
-            ministry=data.get("ministry"),
-            promulgation_date=data.get("promulgation_date"),
-            promulgation_no=data.get("promulgation_no"),
-            enforcement_date=enforcement_date,
-            content=data.get("content"),
-            supplementary=data.get("supplementary"),
-            raw_data=data,
-        )
-
-    @property
-    def embedding_text(self) -> str:
-        """
-        임베딩용 텍스트 생성
-
-        조문 내용을 반환 (prefix는 임베딩 생성 시 추가)
-        """
-        return self.content or ""

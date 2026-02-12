@@ -1,12 +1,13 @@
 """
-판례 문서 모델 (LanceDB 전용)
+판례 문서 모델 (순수 테이블 정의)
 
-data/precedents_cleaned.json 데이터를 PostgreSQL에 저장하기 위한 테이블
-LanceDB 벡터 검색 후 원본 데이터 조회에 사용
+data/raw/precedents.json 데이터를 PostgreSQL에 저장하기 위한 테이블.
+LanceDB 벡터 검색 후 원본 데이터 조회에 사용.
+
+적재 로직(JSON→ORM 변환)은 scripts/ingest/types/precedent.py 에 위치.
 """
 
-from datetime import date, datetime
-from typing import Optional
+from datetime import datetime
 
 from sqlalchemy import (
     Column,
@@ -16,7 +17,6 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 
 from app.core.database import Base
 
@@ -148,13 +148,6 @@ class PrecedentDocument(Base):
         comment="참조판례",
     )
 
-    # 원본 데이터
-    raw_data = Column(
-        JSONB,
-        nullable=False,
-        comment="원본 JSON 데이터 전체",
-    )
-
     # 메타데이터
     created_at = Column(
         DateTime,
@@ -173,85 +166,3 @@ class PrecedentDocument(Base):
             f"<PrecedentDocument(id={self.id}, serial={self.serial_number}, "
             f"case_number={self.case_number})>"
         )
-
-    @classmethod
-    def from_json(cls, data: dict) -> "PrecedentDocument":
-        """
-        JSON 데이터에서 인스턴스 생성
-
-        Args:
-            data: precedents_cleaned.json의 개별 item
-
-        Returns:
-            PrecedentDocument 인스턴스
-        """
-        decision_date = cls._parse_date(data.get("선고일자"))
-
-        return cls(
-            serial_number=data.get("판례정보일련번호", ""),
-            case_name=data.get("사건명"),
-            case_number=data.get("사건번호"),
-            decision_date=decision_date,
-            court_name=data.get("법원명"),
-            case_type=data.get("사건종류명"),
-            judgment_type=data.get("판결유형"),
-            summary=data.get("판시사항"),
-            reasoning=data.get("판결요지"),
-            ruling=data.get("주문"),
-            claim=data.get("청구취지"),
-            full_reason=data.get("이유"),
-            full_text=data.get("판례내용"),
-            ai_summary=data.get("판례요약"),
-            reference_provisions=data.get("참조조문"),
-            reference_cases=data.get("참조판례"),
-            raw_data=data,
-        )
-
-    @staticmethod
-    def _parse_date(date_str: Optional[str]) -> Optional[date]:
-        """날짜 문자열 파싱 (YYYYMMDD 또는 YYYY-MM-DD)"""
-        if not date_str:
-            return None
-
-        date_str = str(date_str).strip()
-
-        # 숫자만 있는 경우 (20170731)
-        if date_str.isdigit() and len(date_str) == 8:
-            try:
-                return date(
-                    int(date_str[:4]),
-                    int(date_str[4:6]),
-                    int(date_str[6:8])
-                )
-            except ValueError:
-                return None
-
-        # ISO 형식 (2017-07-31)
-        try:
-            return date.fromisoformat(date_str[:10])
-        except (ValueError, IndexError):
-            return None
-
-    @property
-    def embedding_text(self) -> str:
-        """
-        임베딩용 텍스트 생성
-
-        ai_summary가 있으면 그것만 반환 (1문서=1벡터 요약 기반 RAG).
-        없으면 기존 fallback (판시사항 + 판결요지).
-        """
-        if self.ai_summary:
-            return self.ai_summary
-
-        parts = []
-
-        if self.case_name:
-            parts.append(f"[{self.case_name}]")
-
-        if self.summary:
-            parts.append(self.summary)
-
-        if self.reasoning:
-            parts.append(self.reasoning)
-
-        return "\n".join(parts)

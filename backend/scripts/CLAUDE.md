@@ -520,3 +520,45 @@ KAKAO_REST_API_KEY=your_kakao_rest_api_key
 |------|------|
 | `data/lawyers_with_coords.json` | 좌표가 추가된 변호사 데이터 |
 | `data/geocode_failed.json` | 지오코딩 실패 목록 |
+
+---
+
+## 인제스트 파이프라인 (scripts/ingest/)
+
+config-driven 인제스트 파이프라인. 데이터 타입별 설정을 `types/` 하위에 정의하면 벡터 DB + PostgreSQL + FTS를 일괄 처리합니다.
+
+### 구조
+
+```
+scripts/ingest/
+├── cli.py           # CLI 진입점 (python -m scripts.ingest.cli)
+├── config.py        # IngestConfig dataclass + 레지스트리
+├── db_writer.py     # PostgreSQL + FTS 적재
+├── shared.py        # 공유 유틸 (토크나이저, FTS 배치)
+└── types/           # 데이터 타입별 설정
+    ├── __init__.py  # 타입 자동 등록
+    ├── precedent.py # 판례 (벡터/FTS/ORM 팩토리)
+    └── law.py       # 법령 (벡터/FTS/ORM 팩토리)
+```
+
+### 새 타입 추가 패턴
+
+1. `types/new_type.py` 생성 — `_orm_factory`, `_vector_metadata_fn`, FTS 함수, `IngestConfig`, `register_config()`
+2. `models/new_type_document.py` 생성 — 컬럼 정의만 (from_json 없음, raw_data 없음, ai_summary 포함)
+3. `alembic migration` 작성 — 테이블 생성
+4. `types/__init__.py` 에 import 추가
+
+### 사용법
+
+```bash
+cd backend
+
+# 판례 인제스트 (PostgreSQL + FTS)
+uv run python -m scripts.ingest.cli precedent --reset
+
+# 법령 인제스트
+uv run python -m scripts.ingest.cli law --reset
+
+# 검증
+uv run python -m scripts.ingest.cli precedent --verify
+```
