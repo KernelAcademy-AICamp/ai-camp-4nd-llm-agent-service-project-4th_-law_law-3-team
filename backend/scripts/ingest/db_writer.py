@@ -69,10 +69,32 @@ def _upsert_orm_batch(
     session.execute(stmt)
 
 
+def _extract_group_from_filename(filename: str) -> str:
+    """파일명에서 그룹명(위원회/부처/기관명) 추출
+
+    패턴: prefix_그룹명_v숫자.json
+    예: dec_comm_공정거래위원회_v1.json → 공정거래위원회
+        intp_min_고용노동부_v1.json → 고용노동부
+        sadm_case_조세심판원_v1.json → 조세심판원
+    """
+    import re
+
+    m = re.search(r"(?:dec_comm|intp_min|sadm_case)_(.+?)_v\d+\.json", filename)
+    return m.group(1) if m else Path(filename).stem
+
+
 def _load_json(source_path: Path) -> list[dict[str, Any]]:
-    """JSON 파일 로드"""
+    """JSON 파일 또는 디렉토리 로드
+
+    단일 파일이면 그대로 로드.
+    디렉토리이면 내부 .json 파일을 모두 합산하고
+    각 item에 __source_group__ 키를 추가 (파일명에서 추출).
+    """
     if not source_path.exists():
-        raise FileNotFoundError(f"소스 파일을 찾을 수 없습니다: {source_path}")
+        raise FileNotFoundError(f"소스를 찾을 수 없습니다: {source_path}")
+
+    if source_path.is_dir():
+        return _load_json_directory(source_path)
 
     logger.info("JSON 로드: %s", source_path)
     with open(source_path, encoding="utf-8") as f:
@@ -85,6 +107,45 @@ def _load_json(source_path: Path) -> list[dict[str, Any]]:
 
     logger.info("총 %d건 로드", len(items))
     return items
+
+
+def _load_json_directory(dir_path: Path) -> list[dict[str, Any]]:
+    """디렉토리 내 모든 .json 파일을 합산 로드
+
+    각 item에 __source_group__ 키를 추가하여
+    어느 파일(위원회/부처)에서 왔는지 식별 가능하게 함.
+    JSON 파싱 실패 파일은 경고 후 건너뜀.
+    """
+    json_files = sorted(dir_path.glob("*.json"))
+    if not json_files:
+        raise FileNotFoundError(f"디렉토리에 .json 파일이 없습니다: {dir_path}")
+
+    logger.info("디렉토리 로드: %s (%d개 파일)", dir_path, len(json_files))
+
+    all_items: list[dict[str, Any]] = []
+    for json_file in json_files:
+        group_name = _extract_group_from_filename(json_file.name)
+
+        try:
+            with open(json_file, encoding="utf-8") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            logger.warning("JSON 파싱 실패, 건너뜀: %s (%s)", json_file.name, e)
+            continue
+
+        if isinstance(data, list):
+            items = data
+        else:
+            items = data.get("items", [])
+
+        for item in items:
+            item["__source_group__"] = group_name
+
+        logger.info("  %s: %d건 (%s)", json_file.name, len(items), group_name)
+        all_items.extend(items)
+
+    logger.info("총 %d건 로드 (디렉토리)", len(all_items))
+    return all_items
 
 
 def run_db_ingest(
@@ -225,7 +286,7 @@ def run_db_ingest(
 
         # 잔여 배치 커밋
         if orm_batch:
-            session.add_all(orm_batch)
+            _upsert_orm_batch(session, config, orm_batch)
             upsert_fts_batch(session, fts_batch)
             session.commit()
             stats["db_inserted"] += len(orm_batch)
