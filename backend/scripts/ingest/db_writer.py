@@ -19,6 +19,7 @@ if str(_backend_root) not in sys.path:
     sys.path.insert(0, str(_backend_root))
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert
 
 from app.core.database import sync_session_factory
 from app.models.fts_index import FtsIndex
@@ -29,6 +30,43 @@ from scripts.ingest.shared import get_tokenizer, upsert_fts_batch
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 1000
+
+# auto-increment PK와 타임스탬프는 upsert SET 대상에서 제외
+_UPSERT_EXCLUDE_COLUMNS = {"id", "created_at"}
+
+
+def _upsert_orm_batch(
+    session: Any,
+    config: IngestConfig,
+    orm_batch: list[Any],
+) -> None:
+    """ORM 인스턴스 배치를 ON CONFLICT DO UPDATE로 upsert."""
+    if not orm_batch:
+        return
+
+    orm_table = config.orm_class.__table__
+    value_columns = [
+        c.name for c in orm_table.columns
+        if c.name not in _UPSERT_EXCLUDE_COLUMNS
+    ]
+
+    values = [
+        {col: getattr(instance, col, None) for col in value_columns}
+        for instance in orm_batch
+    ]
+
+    stmt = insert(orm_table).values(values)
+    update_columns = {
+        col: stmt.excluded[col]
+        for col in value_columns
+        if col != config.orm_id_attr
+    }
+
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[config.orm_id_attr],
+        set_=update_columns,
+    )
+    session.execute(stmt)
 
 
 def _load_json(source_path: Path) -> list[dict[str, Any]]:
@@ -160,7 +198,7 @@ def run_db_ingest(
 
             # 배치 커밋
             if len(orm_batch) >= batch_size:
-                session.add_all(orm_batch)
+                _upsert_orm_batch(session, config, orm_batch)
                 upsert_fts_batch(session, fts_batch)
                 session.commit()
 

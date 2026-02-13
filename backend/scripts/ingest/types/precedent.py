@@ -1,7 +1,7 @@
 """
 판례 인제스트 설정
 
-data/raw/precedents.json (92,055건, 19필드)을 대상으로:
+data/ingest_source/precedents.json (92,055건, 19필드)을 대상으로:
 - 벡터 DB: 판례요약 1문서=1벡터
 - PostgreSQL: 원문 전체 + FTS 인덱스
 """
@@ -19,11 +19,11 @@ if str(_backend_root) not in sys.path:
     sys.path.insert(0, str(_backend_root))
 
 from app.models.precedent_document import PrecedentDocument  # noqa: E402
-from scripts.embedding_common.schema import create_precedent_chunk  # noqa: E402
+from scripts.embedding_common.schema import create_chunk  # noqa: E402
 from scripts.ingest.config import DATA_DIR, IngestConfig, register_config  # noqa: E402
 
 # 기본 데이터 소스 경로
-_DEFAULT_SOURCE = DATA_DIR / "raw" / "precedents.json"
+_DEFAULT_SOURCE = DATA_DIR / "ingest_source" / "precedents_v1.json"
 
 
 # ---------------------------------------------------------------------------
@@ -83,27 +83,16 @@ def _vector_metadata_fn(
     vector: list[float],
 ) -> dict[str, Any]:
     """JSON item + embedding vector → LanceDB record dict"""
-    source_id = str(item.get("판례정보일련번호", ""))
-    title = item.get("사건명", "") or ""
-    content = item.get("판례요약", "") or ""
-    decision_date = str(item.get("선고일자", "") or "")
-    court_name = item.get("법원명", "") or ""
-
-    return create_precedent_chunk(
-        source_id=source_id,
-        chunk_index=0,
-        title=title,
-        content=content,
+    return create_chunk(
+        data_type="판례",
+        source_id=str(item.get("판례정보일련번호", "")),
+        title=item.get("사건명", "") or "",
+        content=item.get("판례요약", "") or "",
         vector=vector,
-        decision_date=decision_date,
-        court_name=court_name,
+        source_name=item.get("법원명", "") or "",
+        date=str(item.get("선고일자", "") or "") or None,
+        chunk_index=0,
         total_chunks=1,
-        case_number=item.get("사건번호"),
-        case_type=item.get("사건종류명"),
-        judgment_type=item.get("판결유형"),
-        judgment_status=item.get("판결상태"),
-        reference_provisions=item.get("참조조문"),
-        reference_cases=item.get("참조판례"),
     )
 
 

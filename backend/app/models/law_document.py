@@ -1,7 +1,7 @@
 """
 법령 문서 모델 (순수 테이블 정의)
 
-data/raw/law.json 데이터를 PostgreSQL에 저장하기 위한 테이블.
+data/ingest_source/law.json 데이터를 PostgreSQL에 저장하기 위한 테이블.
 LanceDB 벡터 검색 후 원본 데이터 조회에 사용.
 
 적재 로직(JSON→ORM 변환)은 scripts/ingest/types/law.py 에 위치.

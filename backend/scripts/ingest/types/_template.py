@@ -33,7 +33,7 @@ from scripts.ingest.config import (  # noqa: E402, F401
 )
 
 # TODO: 데이터 소스 경로 변경
-_DEFAULT_SOURCE = DATA_DIR / "raw" / "new_type.json"
+_DEFAULT_SOURCE = DATA_DIR / "ingest_source" / "new_type.json"
 
 
 # ---------------------------------------------------------------------------

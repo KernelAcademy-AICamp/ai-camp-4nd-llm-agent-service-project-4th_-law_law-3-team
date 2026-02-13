@@ -99,16 +99,13 @@ class VectorStore(VectorStoreBase):
 from app.tools.vectorstore.schema_v2 import (  # noqa: E402
     ALL_COLUMNS,
     COMMON_COLUMNS,
-    LAW_COLUMNS,
     LEGAL_CHUNKS_SCHEMA,
-    PRECEDENT_COLUMNS,
     TABLE_NAME,
     VECTOR_DIM,
     LegalChunk,
+    create_chunk,
     create_law_chunk,
     create_precedent_chunk,
-    get_law_columns,
-    get_precedent_columns,
 )
 
 # 직접 import할 수 있도록 export
@@ -124,12 +121,9 @@ __all__ = [
     "TABLE_NAME",
     "VECTOR_DIM",
     "COMMON_COLUMNS",
-    "LAW_COLUMNS",
-    "PRECEDENT_COLUMNS",
     "ALL_COLUMNS",
     "LegalChunk",
+    "create_chunk",
     "create_law_chunk",
     "create_precedent_chunk",
-    "get_law_columns",
-    "get_precedent_columns",
 ]

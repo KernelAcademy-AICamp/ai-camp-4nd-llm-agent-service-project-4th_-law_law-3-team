@@ -1,7 +1,7 @@
 """
 법령 인제스트 설정
 
-data/raw/law.json (한국어 키)을 대상으로:
+data/ingest_source/law.json (한국어 키)을 대상으로:
 - 벡터 DB: 법령 요약 1문서=1벡터
 - PostgreSQL: 원문 전체 + FTS 인덱스
 """
@@ -9,8 +9,9 @@ data/raw/law.json (한국어 키)을 대상으로:
 from __future__ import annotations
 
 import sys
+from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 # 백엔드 app 모듈 import를 위한 경로 추가
 _backend_root = Path(__file__).parent.parent.parent.parent
@@ -18,11 +19,11 @@ if str(_backend_root) not in sys.path:
     sys.path.insert(0, str(_backend_root))
 
 from app.models.law_document import LawDocument  # noqa: E402
-from scripts.embedding_common.schema import create_law_chunk  # noqa: E402
+from scripts.embedding_common.schema import create_chunk  # noqa: E402
 from scripts.ingest.config import DATA_DIR, IngestConfig, register_config  # noqa: E402
 
 # 기본 데이터 소스 경로
-_DEFAULT_SOURCE = DATA_DIR / "raw" / "law.json"
+_DEFAULT_SOURCE = DATA_DIR / "ingest_source" / "law_v1.json"
 
 
 # ---------------------------------------------------------------------------
@@ -30,8 +31,35 @@ _DEFAULT_SOURCE = DATA_DIR / "raw" / "law.json"
 # ---------------------------------------------------------------------------
 
 
+def _parse_date(date_str: Optional[str]) -> Optional[date]:
+    """날짜 문자열 파싱 (YYYYMMDD 또는 YYYY-MM-DD)"""
+    if not date_str:
+        return None
+
+    date_str = str(date_str).strip()
+
+    if date_str.isdigit() and len(date_str) == 8:
+        try:
+            return date(
+                int(date_str[:4]),
+                int(date_str[4:6]),
+                int(date_str[6:8]),
+            )
+        except ValueError:
+            return None
+
+    try:
+        return date.fromisoformat(date_str[:10])
+    except (ValueError, IndexError):
+        return None
+
+
 def _orm_factory(item: dict[str, Any]) -> LawDocument:
-    """JSON item → LawDocument 인스턴스"""
+    """JSON item → LawDocument 인스턴스
+
+    한국어 키(법령구분, 소관부처명 등)와 영문 키(law_type, ministry 등)
+    양쪽 모두 대응합니다. 없는 키는 None으로 처리됩니다.
+    """
     # 조문 리스트 → 텍스트 concat
     content = _concat_articles(item.get("조문"))
 
@@ -39,11 +67,18 @@ def _orm_factory(item: dict[str, Any]) -> LawDocument:
     supplementary = _concat_supplementary(item.get("부칙"))
 
     return LawDocument(
-        law_id=item.get("법령ID", ""),
-        law_name=item.get("법령명_한글", ""),
+        law_id=item.get("법령ID", "") or item.get("law_id", ""),
+        law_name=item.get("법령명_한글", "") or item.get("law_name", ""),
+        law_type=item.get("법령구분") or item.get("law_type"),
+        ministry=item.get("소관부처명") or item.get("ministry"),
+        promulgation_date=item.get("공포일자") or item.get("promulgation_date"),
+        promulgation_no=item.get("공포번호") or item.get("promulgation_no"),
+        enforcement_date=_parse_date(
+            item.get("시행일자") or item.get("enforcement_date")
+        ),
         content=content,
         supplementary=supplementary,
-        ai_summary=item.get("법령 요약"),
+        ai_summary=item.get("법령 요약") or item.get("ai_summary"),
     )
 
 
@@ -105,18 +140,18 @@ def _vector_metadata_fn(
     vector: list[float],
 ) -> dict[str, Any]:
     """JSON item + embedding vector → LanceDB record dict"""
-    source_id = str(item.get("법령ID", ""))
-    title = item.get("법령명_한글", "") or ""
-    content = item.get("법령 요약", "") or ""
+    enforcement = item.get("시행일자") or item.get("enforcement_date")
+    ministry = item.get("소관부처명") or item.get("ministry")
 
-    return create_law_chunk(
-        source_id=source_id,
-        chunk_index=0,
-        title=title,
-        content=content,
+    return create_chunk(
+        data_type="법령",
+        source_id=str(item.get("법령ID", "") or item.get("law_id", "")),
+        title=item.get("법령명_한글", "") or item.get("law_name", "") or "",
+        content=item.get("법령 요약", "") or item.get("ai_summary", "") or "",
         vector=vector,
-        enforcement_date="",
-        department="",
+        source_name=ministry or "",
+        date=str(enforcement) if enforcement else None,
+        chunk_index=0,
         total_chunks=1,
     )
 
@@ -157,12 +192,15 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
 
 def _fts_metadata_fn(item: dict[str, Any]) -> dict[str, Any]:
     """JSON item → fts_index 메타데이터 dict"""
+    enforcement = item.get("시행일자") or item.get("enforcement_date")
+    ministry = item.get("소관부처명") or item.get("ministry")
+
     return {
-        "source_id": str(item.get("법령ID", "")),
+        "source_id": str(item.get("법령ID", "") or item.get("law_id", "")),
         "data_type": "법령",
-        "title": item.get("법령명_한글", "") or "",
-        "date": None,
-        "source_name": None,
+        "title": item.get("법령명_한글", "") or item.get("law_name", "") or "",
+        "date": str(enforcement) if enforcement else None,
+        "source_name": ministry,
         "case_number": None,
     }
 
@@ -188,12 +226,18 @@ def _orm_fulltext_fn(row: Any) -> str:
 
 def _orm_fts_metadata_fn(row: Any) -> dict[str, Any]:
     """LawDocument ORM 인스턴스 → fts_index 메타데이터 dict"""
+    date_str = (
+        row.enforcement_date.strftime("%Y%m%d")
+        if row.enforcement_date
+        else row.promulgation_date
+    )
+
     return {
         "source_id": row.law_id,
         "data_type": "법령",
         "title": row.law_name or "",
-        "date": None,
-        "source_name": None,
+        "date": date_str,
+        "source_name": row.ministry,
         "case_number": None,
     }
 

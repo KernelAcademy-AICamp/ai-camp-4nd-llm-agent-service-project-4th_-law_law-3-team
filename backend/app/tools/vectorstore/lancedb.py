@@ -20,8 +20,7 @@ from app.core.config import settings
 from app.tools.vectorstore.base import SearchResult, VectorStoreBase
 from app.tools.vectorstore.schema_v2 import (
     LEGAL_CHUNKS_SCHEMA,
-    create_law_chunk,
-    create_precedent_chunk,
+    create_chunk,
 )
 
 logger = logging.getLogger(__name__)
@@ -153,10 +152,7 @@ class LanceDBStore(VectorStoreBase):
         enforcement_dates: List[str],
         departments: List[str],
         total_chunks_list: Optional[List[int]] = None,
-        promulgation_dates: Optional[List[str]] = None,
-        promulgation_nos: Optional[List[str]] = None,
-        law_types: Optional[List[str]] = None,
-        article_nos: Optional[List[str]] = None,
+        **_kwargs: Any,
     ) -> None:
         """법령 문서 배치 추가"""
         if not source_ids:
@@ -166,19 +162,16 @@ class LanceDBStore(VectorStoreBase):
         data = []
 
         for i in range(len(source_ids)):
-            chunk = create_law_chunk(
+            chunk = create_chunk(
+                data_type="법령",
                 source_id=source_ids[i],
-                chunk_index=chunk_indices[i],
                 title=titles[i],
                 content=contents[i],
                 vector=embeddings[i],
-                enforcement_date=enforcement_dates[i],
-                department=departments[i],
+                source_name=departments[i],
+                date=enforcement_dates[i] or None,
+                chunk_index=chunk_indices[i],
                 total_chunks=total_chunks_list[i] if total_chunks_list else 1,
-                promulgation_date=promulgation_dates[i] if promulgation_dates else None,
-                promulgation_no=promulgation_nos[i] if promulgation_nos else None,
-                law_type=law_types[i] if law_types else None,
-                article_no=article_nos[i] if article_nos else None,
             )
             data.append(chunk)
 
@@ -195,12 +188,7 @@ class LanceDBStore(VectorStoreBase):
         decision_dates: List[str],
         court_names: List[str],
         total_chunks_list: Optional[List[int]] = None,
-        case_numbers: Optional[List[str]] = None,
-        case_types: Optional[List[str]] = None,
-        judgment_types: Optional[List[str]] = None,
-        judgment_statuses: Optional[List[str]] = None,
-        reference_provisions_list: Optional[List[str]] = None,
-        reference_cases_list: Optional[List[str]] = None,
+        **_kwargs: Any,
     ) -> None:
         """판례 문서 배치 추가"""
         if not source_ids:
@@ -210,21 +198,16 @@ class LanceDBStore(VectorStoreBase):
         data = []
 
         for i in range(len(source_ids)):
-            chunk = create_precedent_chunk(
+            chunk = create_chunk(
+                data_type="판례",
                 source_id=source_ids[i],
-                chunk_index=chunk_indices[i],
                 title=titles[i],
                 content=contents[i],
                 vector=embeddings[i],
-                decision_date=decision_dates[i],
-                court_name=court_names[i],
+                source_name=court_names[i],
+                date=decision_dates[i] or None,
+                chunk_index=chunk_indices[i],
                 total_chunks=total_chunks_list[i] if total_chunks_list else 1,
-                case_number=case_numbers[i] if case_numbers else None,
-                case_type=case_types[i] if case_types else None,
-                judgment_type=judgment_types[i] if judgment_types else None,
-                judgment_status=judgment_statuses[i] if judgment_statuses else None,
-                reference_provisions=reference_provisions_list[i] if reference_provisions_list else None,
-                reference_cases=reference_cases_list[i] if reference_cases_list else None,
             )
             data.append(chunk)
 
@@ -255,38 +238,17 @@ class LanceDBStore(VectorStoreBase):
             source_id = parts[0] if len(parts) > 1 else doc_id
             chunk_index = int(parts[1]) if len(parts) > 1 else 0
 
-            if data_type == "법령":
-                record = create_law_chunk(
-                    source_id=source_id,
-                    chunk_index=chunk_index,
-                    title=meta.get("title", ""),
-                    content=text,
-                    vector=embeddings[i],
-                    enforcement_date=meta.get("date", meta.get("enforcement_date", "")),
-                    department=meta.get("source_name", meta.get("department", "")),
-                    total_chunks=int(meta.get("total_chunks", 1)),
-                    promulgation_date=meta.get("promulgation_date"),
-                    promulgation_no=meta.get("promulgation_no"),
-                    law_type=meta.get("law_type"),
-                    article_no=meta.get("article_no"),
-                )
-            else:
-                record = create_precedent_chunk(
-                    source_id=source_id,
-                    chunk_index=chunk_index,
-                    title=meta.get("title", meta.get("case_name", "")),
-                    content=text,
-                    vector=embeddings[i],
-                    decision_date=meta.get("date", meta.get("decision_date", "")),
-                    court_name=meta.get("source_name", meta.get("court_name", "")),
-                    total_chunks=int(meta.get("total_chunks", 1)),
-                    case_number=meta.get("case_number"),
-                    case_type=meta.get("case_type"),
-                    judgment_type=meta.get("judgment_type"),
-                    judgment_status=meta.get("judgment_status"),
-                    reference_provisions=meta.get("reference_provisions"),
-                    reference_cases=meta.get("reference_cases"),
-                )
+            record = create_chunk(
+                data_type=data_type,
+                source_id=source_id,
+                title=meta.get("title", ""),
+                content=text,
+                vector=embeddings[i],
+                source_name=meta.get("source_name", ""),
+                date=meta.get("date") or None,
+                chunk_index=chunk_index,
+                total_chunks=int(meta.get("total_chunks", 1)),
+            )
 
             # id 덮어쓰기 (원래 전달된 id 사용)
             record["id"] = doc_id
@@ -467,7 +429,7 @@ class LanceDBStore(VectorStoreBase):
         return conditions
 
     def _extract_metadatas(self, df: Any) -> List[Dict[str, Any]]:
-        """DataFrame에서 메타데이터 추출"""
+        """DataFrame에서 메타데이터 추출 (schema_v2 10컬럼 기준)"""
         metadatas = []
         for _, row in df.iterrows():
             meta: Dict[str, Any] = {
@@ -479,25 +441,6 @@ class LanceDBStore(VectorStoreBase):
                 "chunk_index": row.get("chunk_index"),
                 "total_chunks": row.get("total_chunks"),
             }
-
-            # data_type에 따라 해당 필드만 추가
-            if row.get("data_type") == "법령":
-                meta.update({
-                    "promulgation_date": row.get("promulgation_date"),
-                    "promulgation_no": row.get("promulgation_no"),
-                    "law_type": row.get("law_type"),
-                    "article_no": row.get("article_no"),
-                })
-            elif row.get("data_type") == "판례":
-                meta.update({
-                    "case_number": row.get("case_number"),
-                    "case_type": row.get("case_type"),
-                    "judgment_type": row.get("judgment_type"),
-                    "judgment_status": row.get("judgment_status"),
-                    "reference_provisions": row.get("reference_provisions"),
-                    "reference_cases": row.get("reference_cases"),
-                })
-
             metadatas.append(meta)
         return metadatas
 
