@@ -60,6 +60,7 @@ npm-debug.log*
 .eslintcache
 
 data/
+!docs/data/
 !frontend/public/data/
 all_lawyers.json
 

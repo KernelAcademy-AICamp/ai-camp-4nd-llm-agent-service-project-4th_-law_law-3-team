@@ -9,11 +9,18 @@ Usage:
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
 # ── 카테고리별 파일 매핑 ──────────────────────────────────────
 # streaming: True면 200MB 이상이라 ijson 스트리밍 필요
+
+_THIS_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = _THIS_DIR.parent.parent  # backend/
+PROJECT_ROOT = BACKEND_DIR.parent  # law-3-team/
+DATA_DIR = PROJECT_ROOT / "data"
 
 CATEGORIES: dict[str, dict[str, Any]] = {
     "precedent": {
@@ -160,6 +167,79 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     },
 }
 
+
+_VERSIONED_FILE_RE = re.compile(r"^(?P<base>.+)_v(?P<ver>\d+)\.json$")
+
+
+def _resolve_latest_version(rel_path: str) -> str:
+    """_vN 파일 경로를 data 디렉터리에서 최신 버전으로 해석."""
+    rel = Path(rel_path)
+    m = _VERSIONED_FILE_RE.match(rel.name)
+    if not m:
+        return rel_path
+
+    base = m.group("base")
+    norm_base = unicodedata.normalize("NFC", base)
+    parent_dir = DATA_DIR / rel.parent
+    if not parent_dir.exists():
+        return rel_path
+
+    best_ver = -1
+    best_name: str | None = None
+    pattern = re.compile(r"^(?P<base>.+)_v(?P<ver>\d+)\.json$")
+    for cand in parent_dir.glob("*_v*.json"):
+        cand_name = unicodedata.normalize("NFC", cand.name)
+        mm = pattern.match(cand_name)
+        if not mm:
+            continue
+        if mm.group("base") != norm_base:
+            continue
+        ver = int(mm.group("ver"))
+        if ver > best_ver:
+            best_ver = ver
+            best_name = cand.name
+
+    if best_name is None:
+        return rel_path
+    return str((rel.parent / best_name).as_posix()) if rel.parent != Path(".") else best_name
+
+
+def _normalize_category_files() -> None:
+    """CATEGORIES의 파일 목록을 최신 버전(_vN) 기준으로 정규화."""
+    dynamic_patterns: dict[str, str] = {
+        "committee": "decisions_committee/dec_comm_*_v*.json",
+        "cgm_expc": "interpretation_ministry/intp_min_*_v*.json",
+        "special_tribunal": "special_admin_appeal/sadm_case_*_v*.json",
+    }
+
+    for cat_info in CATEGORIES.values():
+        files = cat_info.get("files", [])
+        resolved = [_resolve_latest_version(p) for p in files]
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for path in resolved:
+            if path in seen:
+                continue
+            seen.add(path)
+            deduped.append(path)
+        cat_info["files"] = deduped
+
+    # 디렉터리 기반 카테고리는 신규 파일도 자동 포함
+    for cat_key, glob_pattern in dynamic_patterns.items():
+        if cat_key not in CATEGORIES:
+            continue
+        matches: list[str] = []
+        for p in sorted(DATA_DIR.glob(glob_pattern)):
+            if not p.is_file():
+                continue
+            matches.append(str(p.relative_to(DATA_DIR).as_posix()))
+        if matches:
+            CATEGORIES[cat_key]["files"] = matches
+
+
+_normalize_category_files()
+
 # ── 부처 해석례 세부 매핑 (파일명 → 기관명) ──────────────────
 CGM_EXPC_AGENCIES: dict[str, str] = {
     "경찰청": "경찰청",
@@ -244,17 +324,26 @@ def get_agency_name(filename: str) -> str:
 
     # dec_comm_{한국어명}_v1 패턴 (위원회)
     if stem.startswith("dec_comm_"):
-        name = stem.removeprefix("dec_comm_").removesuffix("_v1")
+        name = unicodedata.normalize(
+            "NFC",
+            re.sub(r"_v\d+$", "", stem.removeprefix("dec_comm_")),
+        )
         if name in COMMITTEE_AGENCIES:
             return name
 
     # sadm_case_{한국어명}_v1 패턴 (특별행정심판)
     if stem.startswith("sadm_case_"):
-        return stem.removeprefix("sadm_case_").removesuffix("_v1")
+        return unicodedata.normalize(
+            "NFC",
+            re.sub(r"_v\d+$", "", stem.removeprefix("sadm_case_")),
+        )
 
     # intp_min_{한국어명}_v1 패턴 (부처 해석례)
     if stem.startswith("intp_min_"):
-        name = stem.removeprefix("intp_min_").removesuffix("_v1")
+        name = unicodedata.normalize(
+            "NFC",
+            re.sub(r"_v\d+$", "", stem.removeprefix("intp_min_")),
+        )
         if name in CGM_EXPC_AGENCIES:
             return name
 

@@ -243,15 +243,27 @@ def discover_done_files() -> list[dict[str, Any]]:
         name은 DATA_DIR 기준 상대 경로 (예: "decisions_committee/dec_comm_...json").
     """
     files = []
-    for p in sorted(DATA_DIR.rglob("*.json")):
+    all_json_paths = sorted(DATA_DIR.rglob("*.json"))
+    for p in all_json_paths:
         if not p.is_file():
             continue
         name_lower = p.name.lower()
+        # _v2 등 데이터 폴더 구조 지원을 위한 로직 추가
+        rel_path = p.relative_to(DATA_DIR)
+
+        target_dirs = {
+            "decisions_committee",
+            "interpretation_ministry",
+            "special_admin_appeal",
+            "trial_statistics_data",
+        }
+        # 상위 디렉토리가 target_dirs에 포함되는지 확인
+        is_in_target = (len(rel_path.parts) > 1 and rel_path.parts[0] in target_dirs)
+
         is_match = (
-            name_lower.endswith("_v1.json")
-            or name_lower.startswith("[done]")
-            or name_lower.startswith("dec_")
-            or name_lower.startswith("intp_")
+            # _v*.json 패턴 매칭 (정규식 사용)
+            bool(re.search(r"_v\d+\.json$", name_lower))
+            or is_in_target
         )
         if not is_match:
             continue
