@@ -264,11 +264,30 @@ def populated_store(lancedb_store, make_random_vector):
 
 @pytest.fixture
 def mecab_tokenizer():
-    """MeCab 토크나이저 (미설치 시 테스트 skip)"""
+    """MeCab 토크나이저 (userdic 필수). MeCab 또는 userdic 미설치 시 skip."""
+    import json
+    from pathlib import Path
+
+    from app.core.config import settings
     from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer, is_mecab_available
+
     if not is_mecab_available():
         pytest.skip("MeCab이 설치되지 않았습니다")
-    return MeCabTokenizer()
+
+    dic_path = Path(settings.MECAB_USERDIC_PATH)
+    if not dic_path.exists():
+        pytest.skip(f"userdic 미빌드: {dic_path}")
+
+    decomp_path = dic_path.parent / "decomposition_map.json"
+    decomposition_map: dict[str, list[str]] = {}
+    if decomp_path.exists():
+        with open(decomp_path, encoding="utf-8") as f:
+            decomposition_map = json.load(f)
+
+    return MeCabTokenizer(
+        userdic_path=str(dic_path),
+        decomposition_map=decomposition_map,
+    )
 
 
 @pytest.fixture

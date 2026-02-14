@@ -82,22 +82,80 @@ def _orm_factory(item: dict[str, Any]) -> LawDocument:
     )
 
 
+def _extract_ho(ho_data: Any) -> list[str]:
+    """호 데이터 → 텍스트 리스트 추출
+
+    호는 문자열 하나에 여러 호가 공백 구분 연결된 형태:
+      "'1. 내용1' '2. 내용2' '3. 내용3'"
+    또는 리스트일 수 있음.
+    """
+    if not ho_data:
+        return []
+
+    if isinstance(ho_data, list):
+        return [str(h) for h in ho_data if h]
+
+    if isinstance(ho_data, str):
+        # 작은따옴표로 묶인 호 분리: '1. ...' '2. ...'
+        import re
+
+        items = re.findall(r"'([^']+)'", ho_data)
+        if items:
+            return items
+        # 따옴표 없으면 그대로 반환
+        return [ho_data]
+
+    return []
+
+
+def _extract_article_body(article: dict[str, Any]) -> list[str]:
+    """단일 조문 dict → 항·호 포함 텍스트 리스트 추출"""
+    parts: list[str] = []
+
+    hang_data = article.get("항")
+
+    if isinstance(hang_data, list):
+        # 항이 리스트인 경우 (제3조, 제5조, 제6조, 제7조 등)
+        for hang in hang_data:
+            if isinstance(hang, dict):
+                hang_text = hang.get("항내용", "")
+                if hang_text:
+                    parts.append(hang_text)
+                # 항 내부의 호
+                for ho_text in _extract_ho(hang.get("호")):
+                    parts.append(ho_text)
+    elif isinstance(hang_data, dict):
+        # 항이 단일 dict인 경우 (제2조 등)
+        hang_text = hang_data.get("항내용", "")
+        if hang_text:
+            parts.append(hang_text)
+        for ho_text in _extract_ho(hang_data.get("호")):
+            parts.append(ho_text)
+
+    return parts
+
+
 def _concat_articles(articles: Any) -> str | None:
-    """조문 리스트 → 텍스트 concat"""
+    """조문 리스트 → 텍스트 concat (항·호 포함)"""
     if not articles or not isinstance(articles, list):
         return None
 
-    parts: list[str] = []
+    article_blocks: list[str] = []
     for article in articles:
+        parts: list[str] = []
         if isinstance(article, dict):
             no = article.get("조문번호", "")
             text = article.get("조문내용", "")
             if text:
                 parts.append(f"{no} {text}" if no else text)
+            # 항·호 추가
+            parts.extend(_extract_article_body(article))
         elif isinstance(article, str):
             parts.append(article)
+        if parts:
+            article_blocks.append("\n".join(parts))
 
-    return "\n".join(parts) if parts else None
+    return "\n\n".join(article_blocks) if article_blocks else None
 
 
 def _flatten_list(data: Any) -> list[Any]:
@@ -169,7 +227,7 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
     if law_name:
         parts.append(f"[{law_name}]")
 
-    # 조문 텍스트
+    # 조문 텍스트 (항·호 포함)
     articles = item.get("조문")
     if articles and isinstance(articles, list):
         for article in articles:
@@ -177,6 +235,8 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
                 text = article.get("조문내용", "")
                 if text:
                     parts.append(text)
+                # 항·호 추가
+                parts.extend(_extract_article_body(article))
 
     # 부칙 텍스트 (중첩 리스트 [[{...}]] 대응)
     supplementary = item.get("부칙")

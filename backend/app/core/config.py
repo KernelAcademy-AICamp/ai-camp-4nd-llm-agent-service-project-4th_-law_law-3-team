@@ -93,8 +93,7 @@ class Settings(BaseSettings):
     # 하이브리드 검색 (벡터 + 키워드)
     USE_HYBRID_SEARCH: bool = True
 
-    # MeCab 사용자 사전 (법률 복합명사 인식)
-    USE_MECAB_USERDIC: bool = False
+    # MeCab 사용자 사전 경로 (법률 복합명사 인식)
     MECAB_USERDIC_PATH: str = "data/mecab_userdic/legal_terms.dic"
 
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)

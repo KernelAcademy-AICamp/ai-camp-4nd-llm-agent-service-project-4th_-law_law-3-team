@@ -31,6 +31,13 @@ _COMMITTEE = "공정거래위원회"
 
 def _orm_factory(item: dict[str, Any]) -> DecFairTradeDocument:
     """JSON item -> DecFairTradeDocument 인스턴스"""
+    # 각주목록은 list[str]일 수 있으므로 "\n" 조인
+    footnotes_raw = item.get("각주목록")
+    if isinstance(footnotes_raw, list):
+        footnotes = "\n".join(str(f) for f in footnotes_raw if f)
+    else:
+        footnotes = footnotes_raw
+
     return DecFairTradeDocument(
         serial_number=item.get("결정문일련번호", ""),
         case_name=item.get("사건명"),
@@ -43,7 +50,7 @@ def _orm_factory(item: dict[str, Any]) -> DecFairTradeDocument:
         reason=item.get("이유"),
         appendix=item.get("별지"),
         resolution_text=item.get("의결문"),
-        footnotes=item.get("각주목록"),
+        footnotes=footnotes,
         ai_summary=item.get("결정문요약"),
     )
 

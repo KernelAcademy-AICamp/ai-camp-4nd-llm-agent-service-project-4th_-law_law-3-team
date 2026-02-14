@@ -527,38 +527,204 @@ KAKAO_REST_API_KEY=your_kakao_rest_api_key
 
 config-driven 인제스트 파이프라인. 데이터 타입별 설정을 `types/` 하위에 정의하면 벡터 DB + PostgreSQL + FTS를 일괄 처리합니다.
 
-### 구조
+### 1. DB 적재 데이터 소스 위치
+
+모든 소스는 프로젝트 루트 `data/ingest_source/` 하위에 위치합니다. (`config.py`의 `DATA_DIR`)
 
 ```
-scripts/ingest/
-├── cli.py           # CLI 진입점 (python -m scripts.ingest.cli)
-├── config.py        # IngestConfig dataclass + 레지스트리
-├── db_writer.py     # PostgreSQL + FTS 적재
-├── shared.py        # 공유 유틸 (토크나이저, FTS 배치)
-└── types/           # 데이터 타입별 설정
-    ├── __init__.py  # 타입 자동 등록
-    ├── precedent.py # 판례 (벡터/FTS/ORM 팩토리)
-    └── law.py       # 법령 (벡터/FTS/ORM 팩토리)
+data/ingest_source/
+├── law_v1.json                    # 법령
+├── precedents_v1.json             # 판례
+├── admin_rule_v1.json             # 행정규칙
+├── constitutional_v1.json         # 헌재결정례
+├── administration_v1.json         # 행정심판례
+├── legislation_v1.json            # 법령해석례
+├── treaty_v1.json                 # 조약
+├── interpretation_ministry/       # 부처해석례 (28개 부처별 JSON)
+│   ├── intp_min_경찰청_v1.json
+│   ├── intp_min_고용노동부_v1.json
+│   └── ...
+├── special_admin_appeal/          # 특별행정심판례 (2개 기관별 JSON)
+│   ├── sadm_case_조세심판원_v1.json
+│   └── sadm_case_해양안전심판원_v1.json
+└── decisions_committee/           # 위원회 결정문 (10개 위원회별 JSON)
+    ├── dec_comm_개인정보보호위원회_v1.json
+    ├── dec_comm_고용보험심사위원회_v1.json
+    ├── dec_comm_공정거래위원회_v2.json
+    ├── dec_comm_국가인권위원회_v1.json
+    ├── dec_comm_국민권익위원회_v1.json
+    ├── dec_comm_금융위원회_v1.json
+    ├── dec_comm_노동위원회_v1.json
+    ├── dec_comm_산업재해보상위험재심사위원회_v1.json
+    ├── dec_comm_중앙환경분쟁조정위원회_v1.json
+    └── dec_comm_증권선물위원회_v1.json
 ```
 
-### 새 타입 추가 패턴
+### 2. 데이터 타입 구성 (19개)
 
-1. `types/_template.py`를 복사하여 `types/new_type.py` 생성 → TODO 주석 따라 수정
-2. `models/new_type_document.py` 생성 — 컬럼 정의만 (from_json 없음, raw_data 없음, ai_summary 포함)
-3. `alembic migration` 작성 — 테이블 생성
-4. 자동 등록됨 (`__init__.py` 수정 불필요, `_`로 시작하지 않는 .py 파일 자동 스캔)
+| `--type` 타입명 | 데이터 | 건수 | 소스 형식 |
+|-----------------|--------|------|----------|
+| `law` | 법령 | 5,548 | 단일 JSON |
+| `precedent` | 판례 | 92,055 | 단일 JSON |
+| `admin_rule` | 행정규칙 | 5,258 | 단일 JSON |
+| `constitutional` | 헌재결정례 | 31,718 | 단일 JSON |
+| `administration` | 행정심판례 | 34,254 | 단일 JSON |
+| `legislation` | 법령해석례 | 8,597 | 단일 JSON |
+| `treaty` | 조약 | 3,589 | 단일 JSON |
+| `interpretation_ministry` | 부처해석례 (28개 부처) | 37,325 | 디렉토리 |
+| `special_admin_appeal` | 특별행정심판례 (2개 기관) | 148,778 | 디렉토리 |
+| `dec_privacy` | 개인정보보호위원회 결정문 | 1,448 | 개별 JSON |
+| `dec_employment` | 고용보험심사위원회 결정문 | 118 | 개별 JSON |
+| `dec_fair_trade` | 공정거래위원회 결정문 | ~7,728 | 개별 JSON |
+| `dec_human_rights` | 국가인권위원회 결정문 | 3,721 | 개별 JSON |
+| `dec_civil_rights` | 국민권익위원회 결정문 | 635 | 개별 JSON |
+| `dec_financial` | 금융위원회 결정문 | 662 | 개별 JSON |
+| `dec_labor` | 노동위원회 결정문 | 40,714 | 개별 JSON |
+| `dec_industrial` | 산업재해보상보험재심사위원회 결정문 | 782 | 개별 JSON |
+| `dec_environment` | 중앙환경분쟁조정위원회 결정문 | 358 | 개별 JSON |
+| `dec_securities` | 증권선물위원회 결정문 | 636 | 개별 JSON |
+| **합계** | **19개 타입** | **~423,924** | |
 
-### 사용법
+### 3. 사전 조건
+
+인제스트 파이프라인 실행 전 아래 환경이 준비되어야 합니다.
+
+| 조건 | 필요 단계 | 확인 방법 |
+|------|----------|----------|
+| PostgreSQL 실행 | `db`, `fts` | `docker compose up -d postgres` → `docker logs law-platform-db` |
+| Alembic 마이그레이션 | `db`, `fts` | `uv run alembic upgrade head` → `uv run alembic current` |
+| MeCab 시스템 패키지 | `db` (FTS 동시 생성), `fts` | `mecab --version` (미설치 시 에러 발생, fallback 없음) |
+| 임베딩 모델 (2.3GB) | `vector` | `uv run python scripts/download_models.py --check` |
+| PyTorch | `vector` | `uv pip install torch` (환경별 수동 설치, `--no-sync` 필수) |
+| `DATABASE_URL` 환경변수 | `db`, `fts` | `backend/.env`에 `DATABASE_URL=postgresql://lawuser:lawpassword@localhost:5432/lawdb` |
+| JSON 소스 파일 | 전체 | `data/ingest_source/` 하위에 배치 (위 섹션 1 참조) |
+
+### 4. CLI 전체 옵션
+
+```bash
+cd backend
+uv run python -m scripts.ingest.cli --type <타입명|all> [옵션]
+```
+
+| 옵션 | 값 | 기본값 | 설명 |
+|------|-----|--------|------|
+| `--type` | `all` 또는 19개 타입명 | (필수) | 인제스트 대상 (`all`: 전체 19개, 또는 `precedent`, `dec_fair_trade` 등 개별 타입) |
+| `--step` | `all`, `db`, `vector`, `fts`, `index` | `all` | 실행 단계 |
+| `--reset` | - | `false` | 기존 데이터 삭제 후 재실행 |
+| `--source` | 파일 경로 | 타입별 기본 경로 | 커스텀 JSON 소스 경로 (`--type all`과 함께 사용 불가) |
+| `--batch-size` | 정수 | DB: 1000, 벡터: 하드웨어 자동 | 배치 크기 |
+| `--stats` | - | - | 통계만 출력 (적재 안 함) |
+| `--verify` | - | - | 검증만 실행 (적재 안 함) |
+| `--device` | `cuda`, `mps`, `cpu` | 자동 감지 | 임베딩 디바이스 (`vector` 단계용) |
+| `--profile` | `desktop`, `laptop`, `mac`, `cpu` | 자동 감지 | 하드웨어 프로필 (`vector` 단계용) |
+| `--no-cache` | - | `false` | 임베딩 캐시 비활성화 (`vector` 단계용) |
+
+### 5. 단계별 실행 가이드
+
+| 단계 | 설명 | 의존성 | 사용 시점 |
+|------|------|--------|----------|
+| `db` | JSON → PostgreSQL ORM + FTS tsvector 동시 적재 | PostgreSQL, Alembic, (MeCab) | 최초 적재, 데이터 갱신 |
+| `vector` | JSON → LanceDB 벡터 임베딩 (1문서=1벡터) | 임베딩 모델, PyTorch | 최초 적재, 데이터 갱신 |
+| `fts` | PostgreSQL ORM에서 읽어 tsvector만 재빌드 | PostgreSQL, (MeCab), `db` 완료 | 토크나이저/userdic 변경 후 |
+| `index` | LanceDB ANN 인덱스 재빌드 (IVF_FLAT) | `vector` 완료 | 벡터 데이터 변경 후 |
+| `all` | `db` → `vector` → `index` 순차 실행 | 전체 | 최초 적재 |
+
+**FTS 재빌드 워크플로우** (토크나이저/userdic 변경 후):
+```bash
+# MeCab userdic 재빌드
+uv run python scripts/build_mecab_userdic.py
+
+# FTS만 재빌드 (ORM 재적재 없이 tsvector만 갱신)
+uv run python -m scripts.ingest.cli --type precedent --step fts --reset
+```
+
+### 6. 사용 예시
 
 ```bash
 cd backend
 
-# 판례 인제스트 (PostgreSQL + FTS)
-uv run python -m scripts.ingest.cli precedent --reset
+# 전체 타입 × 전체 파이프라인 (최초 적재 시)
+uv run python -m scripts.ingest.cli --type all --step all --reset
 
-# 법령 인제스트
-uv run python -m scripts.ingest.cli law --reset
+# 특정 타입 전체 파이프라인
+uv run python -m scripts.ingest.cli --type precedent --step all --reset
 
-# 검증
-uv run python -m scripts.ingest.cli precedent --verify
+# DB+FTS만 적재
+uv run python -m scripts.ingest.cli --type precedent --step db --reset
+
+# 벡터만 적재 (GPU 환경)
+uv run python -m scripts.ingest.cli --type precedent --step vector --device cuda
+
+# FTS만 재빌드 (토크나이저 변경 후)
+uv run python -m scripts.ingest.cli --type precedent --step fts --reset
+
+# ANN 인덱스만 재빌드
+uv run python -m scripts.ingest.cli --type precedent --step index
+
+# 전체 타입 통계 / 검증
+uv run python -m scripts.ingest.cli --type all --stats
+uv run python -m scripts.ingest.cli --type all --verify
+
+# 특정 타입 통계 / 검증
+uv run python -m scripts.ingest.cli --type precedent --stats
+uv run python -m scripts.ingest.cli --type precedent --verify
+
+# 저장 구조 상세 → scripts/ingest/ingest.md 참조
 ```
+
+### 참고: 코드 구조
+
+```
+scripts/ingest/
+├── cli.py              # CLI 진입점 (python -m scripts.ingest.cli)
+├── config.py           # IngestConfig dataclass + 레지스트리
+├── db_writer.py        # PostgreSQL + FTS 적재
+├── shared.py           # 공유 유틸 (토크나이저, FTS 배치)
+├── ingest.md           # 19개 타입 저장 구조 상세 문서
+└── types/              # 데이터 타입별 설정 (19개 타입)
+    ├── __init__.py     # 타입 자동 등록
+    ├── _template.py    # 신규 타입 템플릿
+    ├── _dec_comm_common.py  # 위원회 결정례 공통 (벡터/FTS 메타)
+    ├── law.py          # 법령
+    ├── precedent.py    # 판례
+    ├── admin_rule.py   # 행정규칙
+    ├── constitutional.py    # 헌재결정례
+    ├── administration.py    # 행정심판례
+    ├── legislation.py       # 법령해석례
+    ├── treaty.py            # 조약
+    ├── interpretation_ministry.py  # 부처해석례 (디렉토리 소스)
+    ├── special_admin_appeal.py     # 특별행정심판례 (디렉토리 소스)
+    ├── dec_privacy.py       # 개인정보보호위원회 결정문
+    ├── dec_employment.py    # 고용보험심사위원회 결정문
+    ├── dec_fair_trade.py    # 공정거래위원회 결정문
+    ├── dec_human_rights.py  # 국가인권위원회 결정문
+    ├── dec_civil_rights.py  # 국민권익위원회 결정문
+    ├── dec_financial.py     # 금융위원회 결정문
+    ├── dec_labor.py         # 노동위원회 결정문
+    ├── dec_industrial.py    # 산업재해보상보험재심사위원회 결정문
+    ├── dec_environment.py   # 중앙환경분쟁조정위원회 결정문
+    └── dec_securities.py    # 증권선물위원회 결정문
+```
+
+### 참고: 비문자열 필드 처리
+
+대부분의 타입은 JSON 필드가 모두 `str`이지만, 아래 2개 타입은 `list` 필드를 포함하므로 `"\n".join()` 처리:
+
+| 타입 | 필드 | JSON 타입 | 처리 |
+|------|------|----------|------|
+| admin_rule | 조문내용 | `list[str]` | `"\n".join()` → Text 칼럼 |
+| dec_fair_trade | 각주목록 | `list[str]` | `"\n".join()` → Text 칼럼 |
+
+### 참고: 새 타입 추가 패턴
+
+아래 순서대로 진행합니다. (기존 타입 예: `dec_fair_trade` 참고)
+
+| # | 파일 | 작업 | 참고 |
+|---|------|------|------|
+| 1 | `app/models/ingest/new_type_document.py` | **생성** — ORM 테이블 정의 | `id`(PK) + `serial_number`(unique) + 데이터 칼럼 + `ai_summary` + `created_at`/`updated_at` |
+| 2 | `app/models/ingest/__init__.py` | **수정** — import + `__all__` 추가 | |
+| 3 | `app/models/__init__.py` | **수정** — import + `__all__` 추가 | |
+| 4 | `alembic/env.py` | **수정** — import 추가 (autogenerate 감지용) | |
+| 5 | `alembic/versions/NNN_*.py` | **생성** — `op.create_table()` 마이그레이션 | |
+| 6 | `scripts/ingest/types/new_type.py` | **생성** — `_template.py` 복사 후 TODO 수정 | 자동 등록 (`__init__.py` 수정 불필요) |
+| 7 | `data/ingest_source/` | JSON 소스 파일 배치 | |

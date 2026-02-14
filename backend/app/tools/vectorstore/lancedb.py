@@ -61,17 +61,9 @@ def _get_thread_tokenizer() -> "MeCabTokenizer":  # noqa: F821
 
     from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
 
-    userdic_path = None
-    decomposition_map = None
-    if settings.USE_MECAB_USERDIC:
-        _p = Path(settings.MECAB_USERDIC_PATH)
-        if _p.exists():
-            userdic_path = str(_p)
-            decomposition_map = _load_decomposition_map()
-
     _thread_local.tokenizer = MeCabTokenizer(
-        userdic_path=userdic_path,
-        decomposition_map=decomposition_map,
+        userdic_path=str(Path(settings.MECAB_USERDIC_PATH)),
+        decomposition_map=_load_decomposition_map(),
     )
     return _thread_local.tokenizer
 

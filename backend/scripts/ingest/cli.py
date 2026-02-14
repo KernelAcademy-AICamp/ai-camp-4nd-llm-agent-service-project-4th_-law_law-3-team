@@ -4,7 +4,10 @@
 Usage:
     cd backend
 
-    # 전체 파이프라인 (DB+FTS → Vector+ANN)
+    # 전체 타입 × 전체 파이프라인
+    uv run python -m scripts.ingest.cli --type all --step all --reset
+
+    # 특정 타입 전체 파이프라인 (DB+FTS → Vector+ANN)
     uv run python -m scripts.ingest.cli --type precedent --step all
 
     # 단계별 실행
@@ -15,7 +18,7 @@ Usage:
 
     # 옵션
     --reset         # 기존 데이터 삭제 후 재실행
-    --source PATH   # 커스텀 JSON 경로
+    --source PATH   # 커스텀 JSON 경로 (단일 타입만)
     --batch-size N  # 배치 크기 (기본: 1000)
     --stats         # 통계만 출력
     --verify        # 검증만 실행
@@ -36,7 +39,7 @@ if str(_backend_root) not in sys.path:
 
 # 타입 등록을 위해 types 패키지 import (자동 등록)
 import scripts.ingest.types  # noqa: F401
-from scripts.ingest.config import get_config, list_configs
+from scripts.ingest.config import IngestConfig, get_config, list_configs
 from scripts.ingest.db_writer import run_db_ingest, verify_db
 from scripts.ingest.fts_builder import run_fts_rebuild
 from scripts.ingest.vector_writer import build_ann_index, run_vector_ingest
@@ -90,12 +93,65 @@ def _print_stats(config_name: str) -> None:
     print(f"\n{'=' * 60}")
 
 
+def _run_single_type(
+    config: IngestConfig,
+    step: str,
+    source_path: Path | None,
+    batch_size: int | None,
+    reset: bool,
+    device: str | None,
+    profile: str | None,
+    no_cache: bool,
+) -> dict[str, dict[str, int]]:
+    """단일 타입 인제스트 실행. 결과 dict 반환."""
+    results: dict[str, dict[str, int]] = {}
+
+    # Step: DB + FTS
+    if step in ("all", "db"):
+        logger.info("=== DB + FTS 적재 시작 ===")
+        db_batch = batch_size or BATCH_SIZE_DB
+        results["db"] = run_db_ingest(
+            config=config,
+            source_path=source_path,
+            reset=reset,
+            batch_size=db_batch,
+        )
+
+    # Step: Vector (LanceDB)
+    if step in ("all", "vector"):
+        logger.info("=== 벡터 임베딩 시작 ===")
+        # 명시 시 64 상한 적용, 미지정 시 None(하드웨어 자동)
+        vector_batch = min(batch_size, 64) if batch_size else None
+        results["vector"] = run_vector_ingest(
+            config=config,
+            source_path=source_path,
+            reset=reset,
+            batch_size=vector_batch,
+            device=device,
+            profile=profile,
+            use_cache=not no_cache,
+        )
+
+    # Step: FTS 재빌드
+    if step == "fts":
+        logger.info("=== FTS 재빌드 시작 ===")
+        results["fts"] = run_fts_rebuild(
+            config=config,
+            reset=reset,
+        )
+
+    return results
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="인제스트 파이프라인 CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 예시:
+  # 전체 타입 전체 파이프라인
+  uv run python -m scripts.ingest.cli --type all --step all --reset
+
   # 판례 전체 파이프라인
   uv run python -m scripts.ingest.cli --type precedent --step all --reset
 
@@ -114,11 +170,12 @@ def main() -> None:
     )
 
     available_types = list_configs()
+    type_choices = ["all"] + available_types
     parser.add_argument(
         "--type",
-        choices=available_types,
+        choices=type_choices,
         required=True,
-        help=f"인제스트 대상 타입 ({', '.join(available_types)})",
+        help=f"인제스트 대상 타입 (all: 전체, {', '.join(available_types)})",
     )
     parser.add_argument(
         "--step",
@@ -130,7 +187,7 @@ def main() -> None:
         "--source",
         type=str,
         default=None,
-        help="커스텀 JSON 소스 경로",
+        help="커스텀 JSON 소스 경로 (단일 타입만 사용 가능)",
     )
     parser.add_argument(
         "--batch-size",
@@ -173,91 +230,100 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    config = get_config(args.type)
+    # --type all + --source 조합 차단
+    if args.type == "all" and args.source:
+        parser.error("--source는 단일 타입에서만 사용 가능합니다 (--type all과 함께 사용 불가)")
+
+    # 대상 타입 목록 결정
+    target_types = available_types if args.type == "all" else [args.type]
     source_path = Path(args.source) if args.source else None
 
     # 통계 모드
     if args.stats:
-        _print_stats(args.type)
+        for type_name in target_types:
+            _print_stats(type_name)
         return
 
     # 검증 모드
     if args.verify:
-        verify_db(config)
+        for type_name in target_types:
+            config = get_config(type_name)
+            verify_db(config)
         return
 
-    # 실행
+    # ===== 실행 =====
+    overall_start = time.time()
+    succeeded: list[str] = []
+    failed: list[tuple[str, str]] = []
+
     print(f"\n{'=' * 60}")
-    print(f"  인제스트 파이프라인: {config.data_type_label}")
+    print("  인제스트 파이프라인")
     print(f"{'=' * 60}")
-    print(f"  타입: {config.name}")
+    print(f"  대상: {args.type} ({len(target_types)}개 타입)")
     print(f"  단계: {args.step}")
-    print(f"  소스: {source_path or config.source_path}")
-    print(f"  배치: {args.batch_size or '자동'}")
     print(f"  리셋: {args.reset}")
     print(f"  프로필: {args.profile or '자동'}")
     print(f"  캐시: {'비활성' if args.no_cache else '활성'}")
     print(f"{'=' * 60}\n")
 
-    overall_start = time.time()
-    results: dict[str, dict[str, int]] = {}
+    for i, type_name in enumerate(target_types, 1):
+        config = get_config(type_name)
 
-    # Step: DB + FTS
-    if args.step in ("all", "db"):
-        logger.info("=== DB + FTS 적재 시작 ===")
-        db_batch = args.batch_size or BATCH_SIZE_DB
-        results["db"] = run_db_ingest(
-            config=config,
-            source_path=source_path,
-            reset=args.reset,
-            batch_size=db_batch,
-        )
+        print(f"\n{'─' * 60}")
+        print(f"  [{i}/{len(target_types)}] {config.data_type_label} ({type_name})")
+        print(f"  소스: {source_path or config.source_path}")
+        print(f"{'─' * 60}")
 
-    # Step: Vector (LanceDB)
-    if args.step in ("all", "vector"):
-        logger.info("=== 벡터 임베딩 시작 ===")
-        # 명시 시 64 상한 적용, 미지정 시 None(하드웨어 자동)
-        vector_batch = min(args.batch_size, 64) if args.batch_size else None
-        results["vector"] = run_vector_ingest(
-            config=config,
-            source_path=source_path,
-            reset=args.reset,
-            batch_size=vector_batch,
-            device=args.device,
-            profile=args.profile,
-            use_cache=not args.no_cache,
-        )
+        type_start = time.time()
+        try:
+            results = _run_single_type(
+                config=config,
+                step=args.step,
+                source_path=source_path,
+                batch_size=args.batch_size,
+                reset=args.reset,
+                device=args.device,
+                profile=args.profile,
+                no_cache=args.no_cache,
+            )
 
-    # Step: FTS 재빌드
-    if args.step == "fts":
-        logger.info("=== FTS 재빌드 시작 ===")
-        results["fts"] = run_fts_rebuild(
-            config=config,
-            reset=args.reset,
-        )
+            # 타입별 결과 출력
+            for step_name, step_stats in results.items():
+                for key, value in step_stats.items():
+                    logger.info("  %s.%s: %s", step_name, key, f"{value:,}")
 
-    # Step: ANN 인덱스
-    if args.step in ("all", "index"):
+            type_elapsed = time.time() - type_start
+            logger.info("  %s 완료 (%.1f초)", type_name, type_elapsed)
+            succeeded.append(type_name)
+
+        except Exception as e:
+            type_elapsed = time.time() - type_start
+            logger.error("  %s 실패 (%.1f초): %s", type_name, type_elapsed, e)
+            failed.append((type_name, str(e)))
+
+    # ANN 인덱스는 전체 LanceDB 대상이므로 마지막에 1회만 실행
+    if args.step in ("all", "index") and succeeded:
         logger.info("=== ANN 인덱스 빌드 ===")
-        build_ann_index()
+        try:
+            build_ann_index()
+        except Exception as e:
+            logger.error("ANN 인덱스 빌드 실패: %s", e)
 
-    # 결과 출력
+    # ===== 최종 요약 =====
     overall_elapsed = time.time() - overall_start
 
     print(f"\n{'=' * 60}")
-    print(f"  인제스트 결과: {config.data_type_label}")
+    print("  인제스트 완료 요약")
     print(f"{'=' * 60}")
+    print(f"  성공: {len(succeeded)}/{len(target_types)}개 타입")
 
-    for step_name, step_stats in results.items():
-        print(f"\n  [{step_name}]")
-        for key, value in step_stats.items():
-            print(f"    {key}: {value:,}")
+    if failed:
+        print(f"  실패: {len(failed)}개 타입")
+        for name, err in failed:
+            print(f"    - {name}: {err}")
 
-    print(f"\n  총 소요 시간: {overall_elapsed:.1f}초")
+    print(f"  총 소요 시간: {overall_elapsed:.1f}초")
     print(f"{'=' * 60}")
-
-    # 최종 검증
-    _print_stats(args.type)
 
 
 if __name__ == "__main__":

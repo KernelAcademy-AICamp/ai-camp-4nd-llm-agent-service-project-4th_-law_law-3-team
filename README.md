@@ -314,28 +314,81 @@ uv run alembic upgrade head
 uv run alembic current
 ```
 
-#### 인제스트 파이프라인 (PostgreSQL + FTS 적재)
+#### 인제스트 파이프라인 (PostgreSQL + FTS + LanceDB)
 
-config-driven 파이프라인으로 데이터 타입별 설정(`scripts/ingest/types/`)을 정의하면 PostgreSQL + FTS를 일괄 처리합니다.
+config-driven 파이프라인으로 19개 데이터 타입별 설정(`scripts/ingest/types/`)을 정의하면 PostgreSQL + FTS + LanceDB를 일괄 처리합니다.
+타입별 저장 구조 상세는 `backend/scripts/ingest/ingest.md` 참조.
+
+**`--type` 타입명 목록 (19개, 총 ~423,924건):**
+
+| 타입명 | 데이터 | 건수 |
+|--------|--------|------|
+| `law` | 법령 | 5,548 |
+| `precedent` | 판례 | 92,055 |
+| `admin_rule` | 행정규칙 | 5,258 |
+| `constitutional` | 헌재결정례 | 31,718 |
+| `administration` | 행정심판례 | 34,254 |
+| `legislation` | 법령해석례 | 8,597 |
+| `treaty` | 조약 | 3,589 |
+| `interpretation_ministry` | 부처해석례 (28개 부처) | 37,325 |
+| `special_admin_appeal` | 특별행정심판례 (2개 기관) | 148,778 |
+| `dec_privacy` ~ `dec_securities` | 위원회 결정문 (10개) | 56,802 |
+
+**1. DB 적재 데이터 소스 위치** — 프로젝트 루트 `data/ingest_source/`:
+
+```
+data/ingest_source/
+├── law_v1.json                    # 법령
+├── precedents_v1.json             # 판례
+├── admin_rule_v1.json             # 행정규칙
+├── constitutional_v1.json         # 헌재결정례
+├── administration_v1.json         # 행정심판례
+├── legislation_v1.json            # 법령해석례
+├── treaty_v1.json                 # 조약
+├── interpretation_ministry/       # 부처해석례 (28개 부처별 JSON)
+├── special_admin_appeal/          # 특별행정심판례 (2개 기관별 JSON)
+└── decisions_committee/           # 위원회 결정문 (10개 위원회별 JSON)
+```
+
+**2. 사전 조건:**
+- PostgreSQL 실행: `docker compose up -d postgres`
+- Alembic 마이그레이션: `uv run alembic upgrade head`
+- MeCab 시스템 패키지: `mecab`, `libmecab-dev`, `mecab-ko-dic` (FTS tsvector용, 미설치 시 에러 발생)
+- 환경변수: `DATABASE_URL=postgresql://lawuser:lawpassword@localhost:5432/lawdb` (`backend/.env`)
+- 벡터 단계 추가: 임베딩 모델 다운로드 + PyTorch 설치
+
+**3. CLI 사용법:**
 
 ```bash
 cd backend
 
-# 판례 인제스트
-uv run python -m scripts.ingest.cli precedent --reset
+# 전체 타입 × 전체 파이프라인 (최초 적재 시)
+uv run python -m scripts.ingest.cli --type all --step all --reset
 
-# 법령 인제스트
-uv run python -m scripts.ingest.cli law --reset
+# 특정 타입 전체 파이프라인
+uv run python -m scripts.ingest.cli --type precedent --step all --reset
 
-# 검증
-uv run python -m scripts.ingest.cli precedent --verify
+# 단계별 실행
+uv run python -m scripts.ingest.cli --type precedent --step db       # PostgreSQL + FTS
+uv run python -m scripts.ingest.cli --type precedent --step vector   # LanceDB 벡터
+uv run python -m scripts.ingest.cli --type precedent --step fts      # FTS만 재빌드 (토크나이저 변경 후)
+uv run python -m scripts.ingest.cli --type precedent --step index    # ANN 인덱스만 재빌드
+
+# 통계 / 검증
+uv run python -m scripts.ingest.cli --type all --stats               # 전체 타입
+uv run python -m scripts.ingest.cli --type precedent --verify        # 특정 타입
 ```
 
-**새 데이터 타입 추가:**
-1. `scripts/ingest/types/_template.py`를 복사하여 `types/new_type.py` 생성 (TODO 주석 따라 수정)
-2. `app/models/new_type_document.py` 생성 (순수 테이블 정의, ai_summary 포함)
-3. Alembic 마이그레이션 작성
-4. 자동 등록됨 (`__init__.py` 수정 불필요)
+> CLI 전체 옵션(`--device`, `--profile`, `--batch-size`, `--source`, `--no-cache` 등) 상세는 `backend/scripts/CLAUDE.md` 인제스트 섹션 참조.
+
+**새 데이터 타입 추가** (7단계):
+1. `app/models/ingest/new_type_document.py` 생성 — ORM 테이블 정의 (ai_summary 포함)
+2. `app/models/ingest/__init__.py` — import + `__all__` 추가
+3. `app/models/__init__.py` — import + `__all__` 추가
+4. `alembic/env.py` — import 추가
+5. `alembic/versions/NNN_*.py` — 마이그레이션 작성
+6. `scripts/ingest/types/_template.py`를 복사하여 `types/new_type.py` 생성 (TODO 주석 따라 수정, 자동 등록)
+7. JSON 소스 파일을 `data/ingest_source/` 하위에 배치
 
 #### LanceDB 임베딩 생성
 

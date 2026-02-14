@@ -226,7 +226,7 @@ source_id, data_type, title, date, source_name, case_number + content_tsvector
 | `reason` | 이유 | `1. 신청인 적격성 신청인들은 독점규제 및 공정거래에 관한...` |
 | `appendix` | 별지 | `<별지 1>신청인별 의결내용(단위: 백만 원)...` |
 | `resolution_text` | 의결문 | `공정거래위원회는 위와 같이 의결하였다.` |
-| `footnotes` | 각주목록 | `["1. 이하 신청인명에서 회사 형태인 '주식회사'를 생략한다."...]` |
+| `footnotes` | 각주목록 | `1. 이하 신청인명에서 회사 형태인 '주식회사'를 생략한다.\n...` (list[str] → `\n` 조인) |
 | `ai_summary` | 결정문요약 | `10개 건설사가 과징금 납부기한 연장 및 분할납부를 신청함...` |
 
 - **FTS fulltext** → `[사건명] + 사건번호 + 결정요지 + 주문 + 이유`
@@ -357,7 +357,7 @@ source_id, data_type, title, date, source_name, case_number + content_tsvector
 
 ---
 
-## 7. interpretation_ministry (부처유권해석) — PostgreSQL 11개 칼럼
+## 7. interpretation_ministry (부처해석례) — PostgreSQL 11개 칼럼
 
 | 칼럼 | 원래 칼럼명(한글) | 첫 행 값 (경찰청) |
 |------|-----------------|---------|
@@ -378,7 +378,7 @@ source_id, data_type, title, date, source_name, case_number + content_tsvector
 
 ---
 
-## 8. special_admin_appeal (특별행정심판) — PostgreSQL 21개 칼럼
+## 8. special_admin_appeal (특별행정심판례) — PostgreSQL 21개 칼럼
 
 2개 기관(조세심판원, 해양안전심판원)의 스키마를 union으로 통합.
 
@@ -422,12 +422,17 @@ source_id, data_type, title, date, source_name, case_number + content_tsvector
 | `promulgation_date` | 공포일자 | null |
 | `promulgation_no` | 공포번호 | null |
 | `enforcement_date` | 시행일자 | null |
-| `content` | 조문 | `1조 제1조(목적) 이 법은 10ㆍ27법난과 관련하여...` |
+| `content` | 조문+항+호 | `1조 제1조(목적) 이 법은 10ㆍ27법난과 관련하여...` (2,015자) |
 | `supplementary` | 부칙 | `부칙 <제8995호,2008.3.28>①(시행일)...` |
 | `ai_summary` | 법령 요약 | `이 법은 1980년 10월 계엄사령부의 합동수사단이...` |
 
+**content 저장 규칙:**
+- 조문(제N조) + 항(①②③) + 호(1. 2. 3.) 전체 포함
+- 조문 간 구분: `\n\n` (빈줄), 조문 내부 항·호 간 구분: `\n`
+- 원문 접두사가 계층 구분자 역할 (제N조 / ①②③ / 1. 2. 3.)
+
 - **Vector DB content** → `법령 요약` (ai_summary)
-- **FTS fulltext** → `[법령명] + 조문내용`
+- **FTS fulltext** → `[법령명] + 조문(항·호 포함) + 부칙`
 
 ---
 
