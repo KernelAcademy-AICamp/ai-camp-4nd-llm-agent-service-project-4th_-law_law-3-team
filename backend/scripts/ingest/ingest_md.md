@@ -180,158 +180,178 @@ source_id, data_type, title, date, source_name, case_number + content_tsvector
 
 ### 6-1. dec_privacy (개인정보보호위원회) — 5개 칼럼
 
-| 칼럼 | 원래 칼럼명 |
-|------|-----------|
-| `serial_number` | 결정문일련번호 |
-| `case_name` | 안건명 |
-| `decision_date` | 의결일자 |
-| `reason` | 이유 |
-| `ai_summary` | 결정문요약 |
+| 칼럼 | 원래 칼럼명 | 첫 행 값 |
+|------|-----------|---------|
+| `serial_number` | 결정문일련번호 | `6091` |
+| `case_name` | 안건명 | (빈 문자열) |
+| `decision_date` | 의결일자 | `2024.4.24.` |
+| `reason` | 이유 | `1. 질의배경○ 신청인/신청일 : 원주시장/2023. 12. 27.○ 원주시는...` |
+| `ai_summary` | 결정문요약 | `원주시가 방범용 CCTV 영상정보를 다중운집인파사고 예방을 위해...` |
+
+- **FTS fulltext** → `[안건명] + 이유`
 
 ### 6-2. dec_employment (고용보험심사위원회) — 14개 칼럼
 
-| 칼럼 | 원래 칼럼명 |
-|------|-----------|
-| `serial_number` | 결정문일련번호 |
-| `case_name` | 사건명 |
-| `case_number` | 사건번호 |
-| `case_classification` | 사건의분류 |
-| `decision_date` | 의결일자 |
-| `resolution_type` | 의결서종류 |
-| `ruling` | 주문 |
-| `reason` | 이유 |
-| `claim` | 청구취지 |
-| `petitioner` | 청구인 |
-| `respondent` | 피청구인 |
-| `overview` | 개요 |
-| `organization_name` | 기관명 |
-| `ai_summary` | 결정문요약 |
+| 칼럼 | 원래 칼럼명 | 첫 행 값 |
+|------|-----------|---------|
+| `serial_number` | 결정문일련번호 | `11327` |
+| `case_name` | 사건명 | `고용보험 구직급여일액 결정 처분 변경 청구` |
+| `case_number` | 사건번호 | `2019재결 제117호` |
+| `case_classification` | 사건의분류 | `수급자격에 관한 사례` |
+| `decision_date` | 의결일자 | `2019.10.23` |
+| `resolution_type` | 의결서종류 | `재결서` |
+| `ruling` | 주문 | `피청구인이 2019. 4. 11. 청구인에게 행한 실업급여 수급자격...` |
+| `reason` | 이유 | `1. 사건개요가. 청구인 전○○(이하 '청구인'이라 한다)은...` |
+| `claim` | 청구취지 | `주문과 같다. ○ 사건번호 및 사건명2019재결 제117호...` |
+| `petitioner` | 청구인 | `전 ○ ○` |
+| `respondent` | 피청구인 | `○○지방고용노동청장` |
+| `overview` | 개요 | `3조2교대 근무로 인해 1주의 근로제공일이 5일에 미달...` |
+| `organization_name` | 기관명 | `고용보험심사위원회` |
+| `ai_summary` | 결정문요약 | `청구인은 3조2교대 근무로 1주 5일 미만 근무했으나...` |
+
+- **FTS fulltext** → `[사건명] + 사건번호 + 주문 + 이유 + 청구취지 + 개요`
 
 ### 6-3. dec_fair_trade (공정거래위원회) — 13개 칼럼
 
-| 칼럼 | 원래 칼럼명 |
-|------|-----------|
-| `serial_number` | 결정문일련번호 |
-| `case_name` | 사건명 |
-| `case_number` | 사건번호 |
-| `decision_number` | 결정번호 |
-| `decision_date` | 의결일자 |
-| `decision_specific_date` | 결정일자 |
-| `decision_summary` | 결정요지 |
-| `ruling` | 주문 |
-| `reason` | 이유 |
-| `appendix` | 별지 |
-| `resolution_text` | 의결문 |
-| `footnotes` | 각주목록 |
-| `ai_summary` | 결정문요약 |
+| 칼럼 | 원래 칼럼명 | 첫 행 값 |
+|------|-----------|---------|
+| `serial_number` | 결정문일련번호 | `8111` |
+| `case_name` | 사건명 | `10개 건설사의 과징금 납부기한 연장 및 분할납부 신청에 대한 건` |
+| `case_number` | 사건번호 | `2011카총0367` |
+| `decision_number` | 결정번호 | `의 결 제 2011 - 012호` |
+| `decision_date` | 의결일자 | `2011.2.22.` |
+| `decision_specific_date` | 결정일자 | `2011.2.22.` |
+| `decision_summary` | 결정요지 | `사건번호 : 2011카총0367 사건명 : 10개 건설사의...` |
+| `ruling` | 주문 | `1. 신청인 우ㅇ건설 주식회사의 신청을 각하한다.2. 신청인...` |
+| `reason` | 이유 | `1. 신청인 적격성 신청인들은 독점규제 및 공정거래에 관한...` |
+| `appendix` | 별지 | `<별지 1>신청인별 의결내용(단위: 백만 원)...` |
+| `resolution_text` | 의결문 | `공정거래위원회는 위와 같이 의결하였다.` |
+| `footnotes` | 각주목록 | `["1. 이하 신청인명에서 회사 형태인 '주식회사'를 생략한다."...]` |
+| `ai_summary` | 결정문요약 | `10개 건설사가 과징금 납부기한 연장 및 분할납부를 신청함...` |
+
+- **FTS fulltext** → `[사건명] + 사건번호 + 결정요지 + 주문 + 이유`
 
 ### 6-4. dec_human_rights (국가인권위원회) — 13개 칼럼
 
-| 칼럼 | 원래 칼럼명 |
-|------|-----------|
-| `serial_number` | 결정문일련번호 |
-| `case_name` | 사건명 |
-| `case_number` | 사건번호 |
-| `decision_date` | 의결일자 |
-| `decision_summary` | 결정요지 |
-| `judgment_summary` | 판단요지 |
-| `classification_name` | 분류명 |
-| `ruling` | 주문 |
-| `ruling_summary` | 주문요지 |
-| `reason` | 이유 |
-| `appendix` | 별지 |
-| `full_text` | 결정례전문 |
-| `ai_summary` | 결정문요약 |
+| 칼럼 | 원래 칼럼명 | 첫 행 값 |
+|------|-----------|---------|
+| `serial_number` | 결정문일련번호 | `2108` |
+| `case_name` | 사건명 | `0000공사 7직급(전기배전원) 채용 시 응시연령 제한` |
+| `case_number` | 사건번호 | `08진차67` |
+| `decision_date` | 의결일자 | `20080519` |
+| `decision_summary` | 결정요지 | `피진정인에게 7직급 배전전기원 채용 시 응시 상한 연령을...` |
+| `judgment_summary` | 판단요지 | `피진정인이 7직급 전기원 채용 시 응시 연령을 24세 미만...` |
+| `classification_name` | 분류명 | `채용-나이` |
+| `ruling` | 주문 | `피진정인에게 7직급 배전전기원 채용 시 응시 상한 연령을...` |
+| `ruling_summary` | 주문요지 | `피진정인에게 7직급 배전전기원 채용 시 응시 상한 연령을...` |
+| `reason` | 이유 | `1. 진정요지 피진정인은 7직급 배전전기원 채용 시 응시상한연 령을...` |
+| `appendix` | 별지 | `[별지]기재와 같다.4. 인정사실 가. 피진정인은 7직급...` |
+| `full_text` | 결정례전문 | `국 가 인 권 위 원 회 차 별 시 정 위 원 회 결 정...` |
+| `ai_summary` | 결정문요약 | `피진정인은 7직급 전기배전원 채용 시 응시 연령을 24세 미만...` |
+
+- **FTS fulltext** → `[사건명] + 사건번호 + 결정요지 + 판단요지 + 주문 + 이유`
 
 ### 6-5. dec_civil_rights (국민권익위원회) — 11개 칼럼
 
-| 칼럼 | 원래 칼럼명 |
-|------|-----------|
-| `serial_number` | 결정문일련번호 |
-| `case_name` | 제목 |
-| `decision_number` | 의안번호 |
-| `decision_date` | 의결일 |
-| `decision_summary` | 결정요지 |
-| `ruling` | 주문 |
-| `reason` | 이유 |
-| `appendix` | 별지 |
-| `complaint_flag` | 민원표시 |
-| `organization_name` | 기관명 |
-| `ai_summary` | 결정문요약 |
+| 칼럼 | 원래 칼럼명 | 첫 행 값 |
+|------|-----------|---------|
+| `serial_number` | 결정문일련번호 | `1281` |
+| `case_name` | 제목 | `112신고 처리 이의` |
+| `decision_number` | 의안번호 | `제2020-5소위45-경01호` |
+| `decision_date` | 의결일 | `2020.12.14.` |
+| `decision_summary` | 결정요지 | `의안번호 : 제2020-5소위45-경01호 민원표시 : 2AA-2009-0531216...` |
+| `ruling` | 주문 | `피신청인에게, 해당 경찰관을 포함하여 112종합상황실 소속...` |
+| `reason` | 이유 | `1. 신청취지 신청인은 코로나19 관련 자가격리 중 자신의...` |
+| `appendix` | 별지 | (빈 문자열) |
+| `complaint_flag` | 민원표시 | `2AA-2009-0531216  112신고 처리 이의` |
+| `organization_name` | 기관명 | `국 민 권 익 위 원 회` |
+| `ai_summary` | 결정문요약 | `민원요지: 신청인은 코로나19 자가격리 중 자녀 고열과...` |
+
+- **FTS fulltext** → `[제목] + 주문 + 이유 + 결정요지`
 
 ### 6-6. dec_financial (금융위원회) — 7개 칼럼
 
-| 칼럼 | 원래 칼럼명 |
-|------|-----------|
-| `serial_number` | 결정문일련번호 |
-| `case_name` | 안건명 |
-| `decision_number` | 의결번호 |
-| `action_reason` | 조치이유 |
-| `action_content` | 조치내용 |
-| `organization_name` | 기관명 |
-| `ai_summary` | 결정문요약 |
+| 칼럼 | 원래 칼럼명 | 첫 행 값 |
+|------|-----------|---------|
+| `serial_number` | 결정문일련번호 | `14597` |
+| `case_name` | 안건명 | `00 등 00개 가상자산에 대한 시세조종 금지 위반 조사결과 조치안` |
+| `decision_number` | 의결번호 | `의결 제2025-5호` |
+| `action_reason` | 조치이유 | `가. 지적사항□ 시세조종 금지 위반ㅇ □□□은 시세차익 극대화를...` |
+| `action_content` | 조치내용 | `□ 수사기관 고발` |
+| `organization_name` | 기관명 | `금융위원회` |
+| `ai_summary` | 결정문요약 | `위반내용: □□□은 20xx.x.xx∼x.xx 기간 중 OO 등 ◆◆개 가상자산을...` |
+
+- **FTS fulltext** → `[안건명] + 조치이유 + 조치내용`
 
 ### 6-7. dec_labor (노동위원회) — 12개 칼럼
 
-| 칼럼 | 원래 칼럼명 |
-|------|-----------|
-| `serial_number` | 결정문일련번호 |
-| `case_name` | 제목 |
-| `case_number` | 사건번호 |
-| `decision_date` | 등록일 |
-| `judgment_matter` | 판정사항 |
-| `judgment_summary` | 판정요지 |
-| `judgment_result` | 판정결과 |
-| `full_text` | 내용 |
-| `data_category` | 자료구분 |
-| `department` | 담당부서 |
-| `organization_name` | 기관명 |
-| `ai_summary` | 결정문요약 |
+| 칼럼 | 원래 칼럼명 | 첫 행 값 |
+|------|-----------|---------|
+| `serial_number` | 결정문일련번호 | `56305` |
+| `case_name` | 제목 | `○ ○ ○ 공정대표의무 위반 시정 신청` |
+| `case_number` | 사건번호 | `2023공정OOO` |
+| `decision_date` | 등록일 | `2023.6.8.` |
+| `judgment_matter` | 판정사항 | `교섭대표노동조합과 사용자가 체결한 노사합의서와 교섭과정에서는...` |
+| `judgment_summary` | 판정요지 | `가. 교섭대표노동조합과 사용자가 체결한 노사합의서 등의 내용이...` |
+| `judgment_result` | 판정결과 | `일부인정` |
+| `full_text` | 내용 | (빈 문자열) |
+| `data_category` | 자료구분 | `공정` |
+| `department` | 담당부서 | `충북지방노동위원회` |
+| `organization_name` | 기관명 | `노동위원회` |
+| `ai_summary` | 결정문요약 | `쟁점: 교섭대표노조와 사용자가 체결한 노사합의서 및 교섭과정의...` |
+
+- **FTS fulltext** → `[제목] + 사건번호 + 판정사항 + 판정요지 + 판정결과 + 내용`
 
 ### 6-8. dec_industrial (산업재해보상보험재심사위원회) — 15개 칼럼
 
-| 칼럼 | 원래 칼럼명 |
-|------|-----------|
-| `serial_number` | 결정문일련번호 |
-| `case_number` | 사건번호 |
-| `case_label` | 사건 |
-| `case_major_category` | 사건대분류 |
-| `case_mid_category` | 사건중분류 |
-| `case_sub_category` | 사건소분류 |
-| `decision_date` | 의결일자 |
-| `ruling` | 주문 |
-| `reason` | 이유 |
-| `issue` | 쟁점 |
-| `claim` | 청구취지 |
-| `petitioner` | 청구인 |
-| `original_authority` | 원처분기관 |
-| `document_provision_type` | 문서제공구분 |
-| `ai_summary` | 결정문요약 |
+| 칼럼 | 원래 칼럼명 | 첫 행 값 |
+|------|-----------|---------|
+| `serial_number` | 결정문일련번호 | `12699` |
+| `case_number` | 사건번호 | `2010-2071호` |
+| `case_label` | 사건 | `2010재결 제2071호 요양불승인처분취소` |
+| `case_major_category` | 사건대분류 | `업무상 재해 여부 관련` |
+| `case_mid_category` | 사건중분류 | `업무상 사고` |
+| `case_sub_category` | 사건소분류 | `작업시간 중 사고` |
+| `decision_date` | 의결일자 | `2010.8.27` |
+| `ruling` | 주문 | `청구인의 재심사청구를 기각한다.` |
+| `reason` | 이유 | `1.  사건개요 청구인은 1976. 7. 13. (주)△△ 창원공장에...` |
+| `issue` | 쟁점 | `2008. 10. 22. 금형 작업 중, 탄화수지 제거 약품이 튀어 우측 눈에...` |
+| `claim` | 청구취지 | `원처분기관이 2009. 11. 16. 청구인에게 행한 요양불승인처분을...` |
+| `petitioner` | 청구인 | `팽○○(남자, 60세, 생산직 , (주)△△, 입사일 : 1979. 7. 13.)` |
+| `original_authority` | 원처분기관 | `근로복지공단 서울서부지사장` |
+| `document_provision_type` | 문서제공구분 | `데이터 개방` |
+| `ai_summary` | 결정문요약 | `재해경위: 청구인은 2008.10.22. 금형 작업 중 탄화수지 제거 약품이...` |
+
+- **FTS fulltext** → `[사건번호] + 주문 + 이유 + 쟁점 + 청구취지`
 
 ### 6-9. dec_environment (중앙환경분쟁조정위원회) — 9개 칼럼
 
-| 칼럼 | 원래 칼럼명 |
-|------|-----------|
-| `serial_number` | 결정문일련번호 |
-| `case_name` | 사건명 |
-| `decision_number` | 의결번호 |
-| `ruling` | 주문 |
-| `evaluation_opinion` | 평가의견 |
-| `party_claims` | 당사자주장 |
-| `fact_investigation` | 사실조사결과 |
-| `case_overview` | 사건의개요 |
-| `ai_summary` | 결정문요약 |
+| 칼럼 | 원래 칼럼명 | 첫 행 값 |
+|------|-----------|---------|
+| `serial_number` | 결정문일련번호 | `5295` |
+| `case_name` | 사건명 | `강원 ○○군 공사야적장 먼지로 인한농작물 피해 분쟁사건` |
+| `decision_number` | 의결번호 | `중앙환조 17-3-116` |
+| `ruling` | 주문 | `• 신청인의 신청을 기각한다.` |
+| `evaluation_opinion` | 평가의견 | `4. 전문가 의견 가. 비산먼지 분야 1) 피신청인 야적장 현황...` |
+| `party_claims` | 당사자주장 | `가. 신청인• '08년부터 강원 ○○군 ○○면 ○○리 ○○번지 일원에서...` |
+| `fact_investigation` | 사실조사결과 | `가. 분쟁지역 개황• 분쟁지역은 강원도 ○○군 ○○면 ○○리...` |
+| `case_overview` | 사건의개요 | `강원 ○○군 ○○면 ○○리 ○○번지에서 농작물(산양삼)을 재배하는...` |
+| `ai_summary` | 결정문요약 | `신청인은 강원 ○○군 ○○면 ○○리에서 산양삼 재배 중 인근...` |
+
+- **FTS fulltext** → `[사건명] + 주문 + 평가의견 + 당사자주장 + 사실조사결과 + 사건의개요`
 
 ### 6-10. dec_securities (증권선물위원회) — 6개 칼럼
 
-| 칼럼 | 원래 칼럼명 |
-|------|-----------|
-| `serial_number` | 결정문일련번호 |
-| `case_name` | 안건명 |
-| `decision_number` | 의결번호 |
-| `action_reason` | 조치이유 |
-| `action_content` | 조치내용 |
-| `ai_summary` | 결정문요약 |
+| 칼럼 | 원래 칼럼명 | 첫 행 값 |
+|------|-----------|---------|
+| `serial_number` | 결정문일련번호 | `8259` |
+| `case_name` | 안건명 | `2019 사업연도 회계법인 사업보고서 제출 의무 위반혐의에 대한 조사결과 조치안` |
+| `decision_number` | 의결번호 | `의결 제2022-39호` |
+| `action_reason` | 조치이유 | `가. 지적사항< OO, OO, OO, OO, OO 회계법인 > ㅇ 사업보고서 지연제출...` |
+| `action_content` | 조치내용 | `ㅇ OO, OO, OO, OO, OO, OO 회계법인- 지정제외점수 20점...` |
+| `ai_summary` | 결정문요약 | `OO 등 5개 회계법인은 2019 사업연도 사업보고서를 법정 제출기한을...` |
+
+- **FTS fulltext** → `[안건명] + 조치이유 + 조치내용`
 
 **공통**: Vector DB content → `결정문요약` (ai_summary), data_type=`위원회결정례`, source_name=위원회명
 
