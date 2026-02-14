@@ -1,4 +1,4 @@
-"""add ingest tables: 8개 신규 인제스트 테이블 생성
+"""add ingest tables: 17개 신규 인제스트 테이블 생성
 
 Revision ID: 010
 Revises: 009
@@ -10,7 +10,16 @@ Create Date: 2026-02-13
 - administration_documents (행정심판례)
 - legislation_documents (법령해석례)
 - treaty_documents (조약)
-- decisions_committee_documents (위원회 결정례)
+- dec_privacy_documents (개인정보보호위원회 결정례)
+- dec_employment_documents (고용보험심사위원회 결정례)
+- dec_fair_trade_documents (공정거래위원회 결정례)
+- dec_human_rights_documents (국가인권위원회 결정례)
+- dec_civil_rights_documents (국민권익위원회 결정례)
+- dec_financial_documents (금융위원회 결정례)
+- dec_labor_documents (노동위원회 결정례)
+- dec_industrial_documents (산업재해보상보험재심사위원회 결정례)
+- dec_environment_documents (중앙환경분쟁조정위원회 결정례)
+- dec_securities_documents (증권선물위원회 결정례)
 - interpretation_ministry_documents (부처 유권해석)
 - special_admin_appeal_documents (특별행정심판 재결례)
 """
@@ -163,35 +172,229 @@ def upgrade() -> None:
     op.create_index("ix_treaty_documents_serial_number", "treaty_documents", ["serial_number"])
     op.create_index("ix_treaty_documents_treaty_number", "treaty_documents", ["treaty_number"])
 
-    # 6. decisions_committee_documents (위원회 결정례)
+    # 6. dec_privacy_documents (개인정보보호위원회 결정례)
     op.create_table(
-        "decisions_committee_documents",
+        "dec_privacy_documents",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("serial_number", sa.String(100), nullable=False, comment="결정문 일련번호"),
-        sa.Column("ai_summary", sa.Text(), nullable=True, comment="AI 생성 요약 (결정문요약)"),
-        sa.Column("committee_name", sa.String(200), nullable=True, comment="위원회명"),
-        sa.Column("case_name", sa.Text(), nullable=True, comment="안건명 (사건명/안건명/제목 통합)"),
-        sa.Column("decision_date", sa.String(50), nullable=True, comment="의결일자 (의결일자/의결일/결정일자/등록일 통합)"),
-        sa.Column("case_number", sa.String(200), nullable=True, comment="사건번호"),
-        sa.Column("decision_number", sa.String(200), nullable=True, comment="결정번호/의결번호/의안번호 통합"),
-        sa.Column("ruling", sa.Text(), nullable=True, comment="주문"),
+        sa.Column("case_name", sa.Text(), nullable=True, comment="안건명"),
+        sa.Column("decision_date", sa.String(50), nullable=True, comment="의결일자"),
         sa.Column("reason", sa.Text(), nullable=True, comment="이유"),
-        sa.Column("decision_summary", sa.Text(), nullable=True, comment="결정요지/판단요지/판정요지/판정사항 통합"),
-        sa.Column("claim", sa.Text(), nullable=True, comment="청구취지"),
-        sa.Column("appendix", sa.Text(), nullable=True, comment="별지"),
-        sa.Column("action_reason", sa.Text(), nullable=True, comment="조치이유 (금융위/증권선물위)"),
-        sa.Column("action_content", sa.Text(), nullable=True, comment="조치내용 (금융위/증권선물위)"),
-        sa.Column("full_text", sa.Text(), nullable=True, comment="의결문/결정례전문/내용 통합"),
+        sa.Column("ai_summary", sa.Text(), nullable=True, comment="AI 생성 요약"),
         sa.Column("created_at", sa.DateTime(), nullable=True, comment="레코드 생성일시"),
         sa.Column("updated_at", sa.DateTime(), nullable=True, comment="레코드 수정일시"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("serial_number"),
     )
-    op.create_index("ix_decisions_committee_documents_serial_number", "decisions_committee_documents", ["serial_number"])
-    op.create_index("ix_decisions_committee_documents_committee_name", "decisions_committee_documents", ["committee_name"])
-    op.create_index("ix_decisions_committee_documents_decision_date", "decisions_committee_documents", ["decision_date"])
+    op.create_index("ix_dec_privacy_documents_serial_number", "dec_privacy_documents", ["serial_number"])
+    op.create_index("ix_dec_privacy_documents_decision_date", "dec_privacy_documents", ["decision_date"])
 
-    # 7. interpretation_ministry_documents (부처 유권해석)
+    # 7. dec_employment_documents (고용보험심사위원회 결정례)
+    op.create_table(
+        "dec_employment_documents",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("serial_number", sa.String(100), nullable=False, comment="결정문 일련번호"),
+        sa.Column("case_name", sa.Text(), nullable=True, comment="사건명"),
+        sa.Column("case_number", sa.String(200), nullable=True, comment="사건번호"),
+        sa.Column("case_classification", sa.String(200), nullable=True, comment="사건의분류"),
+        sa.Column("decision_date", sa.String(50), nullable=True, comment="의결일자"),
+        sa.Column("resolution_type", sa.String(200), nullable=True, comment="의결서종류"),
+        sa.Column("ruling", sa.Text(), nullable=True, comment="주문"),
+        sa.Column("reason", sa.Text(), nullable=True, comment="이유"),
+        sa.Column("claim", sa.Text(), nullable=True, comment="청구취지"),
+        sa.Column("petitioner", sa.Text(), nullable=True, comment="청구인"),
+        sa.Column("respondent", sa.Text(), nullable=True, comment="피청구인"),
+        sa.Column("overview", sa.Text(), nullable=True, comment="개요"),
+        sa.Column("organization_name", sa.String(200), nullable=True, comment="기관명"),
+        sa.Column("ai_summary", sa.Text(), nullable=True, comment="AI 생성 요약"),
+        sa.Column("created_at", sa.DateTime(), nullable=True, comment="레코드 생성일시"),
+        sa.Column("updated_at", sa.DateTime(), nullable=True, comment="레코드 수정일시"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("serial_number"),
+    )
+    op.create_index("ix_dec_employment_documents_serial_number", "dec_employment_documents", ["serial_number"])
+    op.create_index("ix_dec_employment_documents_decision_date", "dec_employment_documents", ["decision_date"])
+
+    # 8. dec_fair_trade_documents (공정거래위원회 결정례)
+    op.create_table(
+        "dec_fair_trade_documents",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("serial_number", sa.String(100), nullable=False, comment="결정문 일련번호"),
+        sa.Column("case_name", sa.Text(), nullable=True, comment="사건명"),
+        sa.Column("case_number", sa.String(200), nullable=True, comment="사건번호"),
+        sa.Column("decision_number", sa.String(200), nullable=True, comment="결정번호"),
+        sa.Column("decision_date", sa.String(50), nullable=True, comment="의결일자"),
+        sa.Column("decision_specific_date", sa.String(50), nullable=True, comment="결정일자"),
+        sa.Column("decision_summary", sa.Text(), nullable=True, comment="결정요지"),
+        sa.Column("ruling", sa.Text(), nullable=True, comment="주문"),
+        sa.Column("reason", sa.Text(), nullable=True, comment="이유"),
+        sa.Column("appendix", sa.Text(), nullable=True, comment="별지"),
+        sa.Column("resolution_text", sa.Text(), nullable=True, comment="의결문"),
+        sa.Column("footnotes", sa.Text(), nullable=True, comment="각주목록"),
+        sa.Column("ai_summary", sa.Text(), nullable=True, comment="AI 생성 요약"),
+        sa.Column("created_at", sa.DateTime(), nullable=True, comment="레코드 생성일시"),
+        sa.Column("updated_at", sa.DateTime(), nullable=True, comment="레코드 수정일시"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("serial_number"),
+    )
+    op.create_index("ix_dec_fair_trade_documents_serial_number", "dec_fair_trade_documents", ["serial_number"])
+    op.create_index("ix_dec_fair_trade_documents_decision_date", "dec_fair_trade_documents", ["decision_date"])
+
+    # 9. dec_human_rights_documents (국가인권위원회 결정례)
+    op.create_table(
+        "dec_human_rights_documents",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("serial_number", sa.String(100), nullable=False, comment="결정문 일련번호"),
+        sa.Column("case_name", sa.Text(), nullable=True, comment="사건명"),
+        sa.Column("case_number", sa.String(200), nullable=True, comment="사건번호"),
+        sa.Column("decision_date", sa.String(50), nullable=True, comment="의결일자"),
+        sa.Column("decision_summary", sa.Text(), nullable=True, comment="결정요지"),
+        sa.Column("judgment_summary", sa.Text(), nullable=True, comment="판단요지"),
+        sa.Column("classification_name", sa.String(200), nullable=True, comment="분류명"),
+        sa.Column("ruling", sa.Text(), nullable=True, comment="주문"),
+        sa.Column("ruling_summary", sa.Text(), nullable=True, comment="주문요지"),
+        sa.Column("reason", sa.Text(), nullable=True, comment="이유"),
+        sa.Column("appendix", sa.Text(), nullable=True, comment="별지"),
+        sa.Column("full_text", sa.Text(), nullable=True, comment="결정례전문"),
+        sa.Column("ai_summary", sa.Text(), nullable=True, comment="AI 생성 요약"),
+        sa.Column("created_at", sa.DateTime(), nullable=True, comment="레코드 생성일시"),
+        sa.Column("updated_at", sa.DateTime(), nullable=True, comment="레코드 수정일시"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("serial_number"),
+    )
+    op.create_index("ix_dec_human_rights_documents_serial_number", "dec_human_rights_documents", ["serial_number"])
+    op.create_index("ix_dec_human_rights_documents_decision_date", "dec_human_rights_documents", ["decision_date"])
+
+    # 10. dec_civil_rights_documents (국민권익위원회 결정례)
+    op.create_table(
+        "dec_civil_rights_documents",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("serial_number", sa.String(100), nullable=False, comment="결정문 일련번호"),
+        sa.Column("case_name", sa.Text(), nullable=True, comment="제목"),
+        sa.Column("decision_number", sa.String(200), nullable=True, comment="의안번호"),
+        sa.Column("decision_date", sa.String(50), nullable=True, comment="의결일"),
+        sa.Column("decision_summary", sa.Text(), nullable=True, comment="결정요지"),
+        sa.Column("ruling", sa.Text(), nullable=True, comment="주문"),
+        sa.Column("reason", sa.Text(), nullable=True, comment="이유"),
+        sa.Column("appendix", sa.Text(), nullable=True, comment="별지"),
+        sa.Column("complaint_flag", sa.String(100), nullable=True, comment="민원표시"),
+        sa.Column("organization_name", sa.String(200), nullable=True, comment="기관명"),
+        sa.Column("ai_summary", sa.Text(), nullable=True, comment="AI 생성 요약"),
+        sa.Column("created_at", sa.DateTime(), nullable=True, comment="레코드 생성일시"),
+        sa.Column("updated_at", sa.DateTime(), nullable=True, comment="레코드 수정일시"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("serial_number"),
+    )
+    op.create_index("ix_dec_civil_rights_documents_serial_number", "dec_civil_rights_documents", ["serial_number"])
+    op.create_index("ix_dec_civil_rights_documents_decision_date", "dec_civil_rights_documents", ["decision_date"])
+
+    # 11. dec_financial_documents (금융위원회 결정례)
+    op.create_table(
+        "dec_financial_documents",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("serial_number", sa.String(100), nullable=False, comment="결정문 일련번호"),
+        sa.Column("case_name", sa.Text(), nullable=True, comment="안건명"),
+        sa.Column("decision_number", sa.String(200), nullable=True, comment="의결번호"),
+        sa.Column("action_reason", sa.Text(), nullable=True, comment="조치이유"),
+        sa.Column("action_content", sa.Text(), nullable=True, comment="조치내용"),
+        sa.Column("organization_name", sa.String(200), nullable=True, comment="기관명"),
+        sa.Column("ai_summary", sa.Text(), nullable=True, comment="AI 생성 요약"),
+        sa.Column("created_at", sa.DateTime(), nullable=True, comment="레코드 생성일시"),
+        sa.Column("updated_at", sa.DateTime(), nullable=True, comment="레코드 수정일시"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("serial_number"),
+    )
+    op.create_index("ix_dec_financial_documents_serial_number", "dec_financial_documents", ["serial_number"])
+
+    # 12. dec_labor_documents (노동위원회 결정례)
+    op.create_table(
+        "dec_labor_documents",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("serial_number", sa.String(100), nullable=False, comment="결정문 일련번호"),
+        sa.Column("case_name", sa.Text(), nullable=True, comment="제목"),
+        sa.Column("case_number", sa.String(200), nullable=True, comment="사건번호"),
+        sa.Column("decision_date", sa.String(50), nullable=True, comment="등록일"),
+        sa.Column("judgment_matter", sa.Text(), nullable=True, comment="판정사항"),
+        sa.Column("judgment_summary", sa.Text(), nullable=True, comment="판정요지"),
+        sa.Column("judgment_result", sa.Text(), nullable=True, comment="판정결과"),
+        sa.Column("full_text", sa.Text(), nullable=True, comment="내용"),
+        sa.Column("data_category", sa.String(200), nullable=True, comment="자료구분"),
+        sa.Column("department", sa.String(200), nullable=True, comment="담당부서"),
+        sa.Column("organization_name", sa.String(200), nullable=True, comment="기관명"),
+        sa.Column("ai_summary", sa.Text(), nullable=True, comment="AI 생성 요약"),
+        sa.Column("created_at", sa.DateTime(), nullable=True, comment="레코드 생성일시"),
+        sa.Column("updated_at", sa.DateTime(), nullable=True, comment="레코드 수정일시"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("serial_number"),
+    )
+    op.create_index("ix_dec_labor_documents_serial_number", "dec_labor_documents", ["serial_number"])
+    op.create_index("ix_dec_labor_documents_decision_date", "dec_labor_documents", ["decision_date"])
+
+    # 13. dec_industrial_documents (산업재해보상보험재심사위원회 결정례)
+    op.create_table(
+        "dec_industrial_documents",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("serial_number", sa.String(100), nullable=False, comment="결정문 일련번호"),
+        sa.Column("case_number", sa.String(200), nullable=True, comment="사건번호"),
+        sa.Column("case_label", sa.String(200), nullable=True, comment="사건"),
+        sa.Column("case_major_category", sa.String(200), nullable=True, comment="사건대분류"),
+        sa.Column("case_mid_category", sa.String(200), nullable=True, comment="사건중분류"),
+        sa.Column("case_sub_category", sa.String(200), nullable=True, comment="사건소분류"),
+        sa.Column("decision_date", sa.String(50), nullable=True, comment="의결일자"),
+        sa.Column("ruling", sa.Text(), nullable=True, comment="주문"),
+        sa.Column("reason", sa.Text(), nullable=True, comment="이유"),
+        sa.Column("issue", sa.Text(), nullable=True, comment="쟁점"),
+        sa.Column("claim", sa.Text(), nullable=True, comment="청구취지"),
+        sa.Column("petitioner", sa.Text(), nullable=True, comment="청구인"),
+        sa.Column("original_authority", sa.String(200), nullable=True, comment="원처분기관"),
+        sa.Column("document_provision_type", sa.String(100), nullable=True, comment="문서제공구분"),
+        sa.Column("ai_summary", sa.Text(), nullable=True, comment="AI 생성 요약"),
+        sa.Column("created_at", sa.DateTime(), nullable=True, comment="레코드 생성일시"),
+        sa.Column("updated_at", sa.DateTime(), nullable=True, comment="레코드 수정일시"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("serial_number"),
+    )
+    op.create_index("ix_dec_industrial_documents_serial_number", "dec_industrial_documents", ["serial_number"])
+    op.create_index("ix_dec_industrial_documents_decision_date", "dec_industrial_documents", ["decision_date"])
+
+    # 14. dec_environment_documents (중앙환경분쟁조정위원회 결정례)
+    op.create_table(
+        "dec_environment_documents",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("serial_number", sa.String(100), nullable=False, comment="결정문 일련번호"),
+        sa.Column("case_name", sa.Text(), nullable=True, comment="사건명"),
+        sa.Column("decision_number", sa.String(200), nullable=True, comment="의결번호"),
+        sa.Column("ruling", sa.Text(), nullable=True, comment="주문"),
+        sa.Column("evaluation_opinion", sa.Text(), nullable=True, comment="평가의견"),
+        sa.Column("party_claims", sa.Text(), nullable=True, comment="당사자주장"),
+        sa.Column("fact_investigation", sa.Text(), nullable=True, comment="사실조사결과"),
+        sa.Column("case_overview", sa.Text(), nullable=True, comment="사건의개요"),
+        sa.Column("ai_summary", sa.Text(), nullable=True, comment="AI 생성 요약"),
+        sa.Column("created_at", sa.DateTime(), nullable=True, comment="레코드 생성일시"),
+        sa.Column("updated_at", sa.DateTime(), nullable=True, comment="레코드 수정일시"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("serial_number"),
+    )
+    op.create_index("ix_dec_environment_documents_serial_number", "dec_environment_documents", ["serial_number"])
+
+    # 15. dec_securities_documents (증권선물위원회 결정례)
+    op.create_table(
+        "dec_securities_documents",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("serial_number", sa.String(100), nullable=False, comment="결정문 일련번호"),
+        sa.Column("case_name", sa.Text(), nullable=True, comment="안건명"),
+        sa.Column("decision_number", sa.String(200), nullable=True, comment="의결번호"),
+        sa.Column("action_reason", sa.Text(), nullable=True, comment="조치이유"),
+        sa.Column("action_content", sa.Text(), nullable=True, comment="조치내용"),
+        sa.Column("ai_summary", sa.Text(), nullable=True, comment="AI 생성 요약"),
+        sa.Column("created_at", sa.DateTime(), nullable=True, comment="레코드 생성일시"),
+        sa.Column("updated_at", sa.DateTime(), nullable=True, comment="레코드 수정일시"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("serial_number"),
+    )
+    op.create_index("ix_dec_securities_documents_serial_number", "dec_securities_documents", ["serial_number"])
+
+    # 16. interpretation_ministry_documents (부처 유권해석)
     op.create_table(
         "interpretation_ministry_documents",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -203,6 +406,7 @@ def upgrade() -> None:
         sa.Column("related_law", sa.Text(), nullable=True, comment="관련법령"),
         sa.Column("answer", sa.Text(), nullable=True, comment="회답"),
         sa.Column("reason", sa.Text(), nullable=True, comment="이유 (일부 부처만 보유)"),
+        sa.Column("business_field", sa.String(500), nullable=True, comment="업무분야 (관세청 등 일부 부처)"),
         sa.Column("ministry_name", sa.String(200), nullable=True, comment="부처명"),
         sa.Column("ai_summary", sa.Text(), nullable=True, comment="AI 생성 요약"),
         sa.Column("created_at", sa.DateTime(), nullable=True, comment="레코드 생성일시"),
@@ -256,7 +460,16 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("special_admin_appeal_documents")
     op.drop_table("interpretation_ministry_documents")
-    op.drop_table("decisions_committee_documents")
+    op.drop_table("dec_securities_documents")
+    op.drop_table("dec_environment_documents")
+    op.drop_table("dec_industrial_documents")
+    op.drop_table("dec_labor_documents")
+    op.drop_table("dec_financial_documents")
+    op.drop_table("dec_civil_rights_documents")
+    op.drop_table("dec_human_rights_documents")
+    op.drop_table("dec_fair_trade_documents")
+    op.drop_table("dec_employment_documents")
+    op.drop_table("dec_privacy_documents")
     op.drop_table("treaty_documents")
     op.drop_table("legislation_documents")
     op.drop_table("administration_documents")

@@ -73,6 +73,7 @@ def _orm_factory(item: dict[str, Any]) -> InterpretationMinistryDocument:
         related_law=item.get("관련법령"),
         answer=item.get("회답"),
         reason=item.get("이유"),
+        business_field=item.get("업무분야"),
         ministry_name=item.get("__source_group__"),
         ai_summary=item.get("해석요약"),
     )

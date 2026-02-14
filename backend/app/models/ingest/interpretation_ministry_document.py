@@ -78,6 +78,12 @@ class InterpretationMinistryDocument(Base):
         comment="이유 (일부 부처만 보유)",
     )
 
+    business_field = Column(
+        String(500),
+        nullable=True,
+        comment="업무분야 (관세청 등 일부 부처)",
+    )
+
     # 소속 부처 (파일명에서 추출)
     ministry_name = Column(
         String(200),
