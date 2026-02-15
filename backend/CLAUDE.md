@@ -45,8 +45,8 @@ uv run alembic upgrade head
 
 ```bash
 # data/ 폴더에 법령/판례 JSON 파일 필요
-# - data/law_v1.json
-# - data/precedents_v1.json
+# - data/law_v3.json
+# - data/precedents_v2.json
 
 uv run python scripts/load_lancedb_data.py --type all
 ```
@@ -475,10 +475,10 @@ uv run alembic downgrade -1
 ### 데이터 로드
 
 ```bash
-# 법령 데이터 로드 (data/law_v1.json → PostgreSQL)
+# 법령 데이터 로드 (data/law_v3.json → PostgreSQL)
 uv run python scripts/load_lancedb_data.py --type law
 
-# 판례 데이터 로드 (data/precedents_v1.json → PostgreSQL)
+# 판례 데이터 로드 (data/precedents_v2.json → PostgreSQL)
 uv run python scripts/load_lancedb_data.py --type precedent
 
 # 전체 로드 (법령 + 판례)

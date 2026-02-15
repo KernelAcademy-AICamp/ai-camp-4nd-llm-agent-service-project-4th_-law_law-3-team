@@ -1,7 +1,7 @@
 """
 행정심판례 문서 모델 (순수 테이블 정의)
 
-data/ingest_source/administration_v1.json 데이터를 PostgreSQL에 저장하기 위한 테이블.
+data/administration_v1.json 데이터를 PostgreSQL에 저장하기 위한 테이블.
 적재 로직(JSON→ORM 변환)은 scripts/ingest/types/administration.py 에 위치.
 """
 
@@ -23,7 +23,7 @@ class AdministrationDocument(Base):
     """
     행정심판례 테이블
 
-    data/ingest_source/administration_v1.json (34,254건)
+    data/administration_v1.json (34,254건)
     """
 
     __tablename__ = "administration_documents"

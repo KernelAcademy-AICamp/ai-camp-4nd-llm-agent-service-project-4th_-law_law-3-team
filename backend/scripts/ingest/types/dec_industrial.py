@@ -1,7 +1,7 @@
 """
 산업재해보상보험재심사위원회 결정례 인제스트 설정
 
-data/ingest_source/decisions_committee/dec_comm_산업재해보상위험재심사위원회_v1.json 대상:
+data/decisions_committee/dec_comm_산업재해보상위험재심사위원회_v2.json 대상:
 - 벡터 DB: 결정문요약 1문서=1벡터
 - PostgreSQL: 원문 전체 + FTS 인덱스
 
@@ -109,7 +109,6 @@ register_dec_comm(
     title_field=None,
     date_field="의결일자",
     committee_name=_COMMITTEE,
-    source_filename="dec_comm_산업재해보상위험재심사위원회_v1.json",
     orm_class=DecIndustrialDocument,
     orm_factory_fn=_orm_factory,
     fulltext_fn=_fulltext_fn,

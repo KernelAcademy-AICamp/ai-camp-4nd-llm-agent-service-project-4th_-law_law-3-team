@@ -1,7 +1,7 @@
 """
 인제스트 전용 ORM 모델
 
-data/ingest_source/ 데이터를 PostgreSQL에 저장하기 위한 테이블 정의.
+data/ 데이터를 PostgreSQL에 저장하기 위한 테이블 정의.
 적재 로직은 scripts/ingest/types/ 에 위치.
 """
 

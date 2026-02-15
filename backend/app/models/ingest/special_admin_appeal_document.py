@@ -1,7 +1,7 @@
 """
 특별행정심판 재결례 문서 모델 (순수 테이블 정의)
 
-data/ingest_source/special_admin_appeal/ 디렉토리의 JSON 파일들을 PostgreSQL에 저장.
+data/special_admin_appeal/ 디렉토리의 JSON 파일들을 PostgreSQL에 저장.
 적재 로직(JSON→ORM 변환)은 scripts/ingest/types/special_admin_appeal.py 에 위치.
 """
 
@@ -23,7 +23,7 @@ class SpecialAdminAppealDocument(Base):
     """
     특별행정심판 재결례 테이블
 
-    data/ingest_source/special_admin_appeal/ (2파일)
+    data/special_admin_appeal/ (2파일)
     조세심판원, 해양안전심판원
     """
 

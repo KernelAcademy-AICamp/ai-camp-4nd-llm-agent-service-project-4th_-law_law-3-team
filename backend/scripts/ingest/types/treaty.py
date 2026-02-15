@@ -1,7 +1,7 @@
 """
 조약 인제스트 설정
 
-data/ingest_source/treaty_v1.json (3,589건)을 대상으로:
+data/treaty_v2.json (3,589건)을 대상으로:
 - 벡터 DB: 조약요약 1문서=1벡터
 - PostgreSQL: 원문 전체 + FTS 인덱스
 """
@@ -19,9 +19,13 @@ if str(_backend_root) not in sys.path:
 
 from app.models.ingest.treaty_document import TreatyDocument  # noqa: E402
 from scripts.embedding_common.schema import create_chunk  # noqa: E402
-from scripts.ingest.config import DATA_DIR, IngestConfig, register_config  # noqa: E402
+from scripts.ingest.config import (  # noqa: E402
+    IngestConfig,
+    get_source_path,
+    register_config,
+)
 
-_DEFAULT_SOURCE = DATA_DIR / "ingest_source" / "treaty_v1.json"
+_DEFAULT_SOURCE = get_source_path("treaty")
 
 
 # ---------------------------------------------------------------------------

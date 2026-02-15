@@ -19,16 +19,17 @@ if str(_backend_root) not in sys.path:
     sys.path.insert(0, str(_backend_root))
 
 from scripts.embedding_common.schema import create_chunk  # noqa: E402
-from scripts.ingest.config import DATA_DIR, IngestConfig, register_config  # noqa: E402
-
-_DEC_COMM_SOURCE_DIR = DATA_DIR / "ingest_source" / "decisions_committee"
+from scripts.ingest.config import (  # noqa: E402
+    IngestConfig,
+    get_source_path,
+    register_config,
+)
 
 
 def register_dec_comm(
     *,
     name: str,
     committee_name: str,
-    source_filename: str,
     orm_class: Type[Any],
     orm_factory_fn: Callable[[dict[str, Any]], Any],
     fulltext_fn: Callable[[dict[str, Any]], str],
@@ -43,7 +44,6 @@ def register_dec_comm(
     Args:
         name: 설정 식별자 (예: "dec_employment")
         committee_name: 위원회명 (예: "고용보험심사위원회")
-        source_filename: JSON 소스 파일명 (decisions_committee/ 하위)
         orm_class: SQLAlchemy ORM 클래스
         orm_factory_fn: JSON item -> ORM 인스턴스
         fulltext_fn: JSON item -> FTS 원문 텍스트
@@ -56,7 +56,7 @@ def register_dec_comm(
         등록된 IngestConfig 인스턴스
     """
 
-    source_path = _DEC_COMM_SOURCE_DIR / source_filename
+    source_path = get_source_path(name)
 
     def _vector_metadata_fn(
         item: dict[str, Any],

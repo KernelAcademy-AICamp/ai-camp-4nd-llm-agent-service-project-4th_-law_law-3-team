@@ -4,12 +4,14 @@
 사용법:
     1. 이 파일을 types/new_type.py로 복사
     2. TODO 주석을 따라 수정
-    3. 자동 등록됨 (__init__.py 수정 불필요)
+    3. sources.yaml에 소스 경로 추가 (예: new_type: new_type_v1.json)
+    4. 자동 등록됨 (__init__.py 수정 불필요)
 
 필수 사전 작업:
     - app/models/new_type_document.py 생성 (순수 테이블 정의, ai_summary 포함)
     - alembic 마이그레이션 작성
     - embedding_common/schema.py에 create_xxx_chunk 함수 추가 (벡터 사용 시)
+    - scripts/ingest/sources.yaml에 소스 경로 등록
 """
 
 from __future__ import annotations
@@ -27,13 +29,13 @@ if str(_backend_root) not in sys.path:
 # TODO: 벡터 스키마 함수 import 변경
 # from scripts.embedding_common.schema import create_xxx_chunk  # noqa: E402
 from scripts.ingest.config import (  # noqa: E402, F401
-    DATA_DIR,
     IngestConfig,
+    get_source_path,
     register_config,
 )
 
-# TODO: 데이터 소스 경로 변경
-_DEFAULT_SOURCE = DATA_DIR / "ingest_source" / "new_type.json"
+# TODO: sources.yaml에 "new_type: new_type_v1.json" 추가 후 아래 이름 변경
+_DEFAULT_SOURCE = get_source_path("new_type")
 
 
 # ---------------------------------------------------------------------------

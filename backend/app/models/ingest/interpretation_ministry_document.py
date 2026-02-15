@@ -1,7 +1,7 @@
 """
 부처 유권해석 문서 모델 (순수 테이블 정의)
 
-data/ingest_source/interpretation_ministry/ 디렉토리의 JSON 파일들을 PostgreSQL에 저장.
+data/interpretation_ministry/ 디렉토리의 JSON 파일들을 PostgreSQL에 저장.
 적재 로직(JSON→ORM 변환)은 scripts/ingest/types/interpretation_ministry.py 에 위치.
 """
 
@@ -23,7 +23,7 @@ class InterpretationMinistryDocument(Base):
     """
     부처 유권해석 테이블
 
-    data/ingest_source/interpretation_ministry/ (28파일, 다수 부처)
+    data/interpretation_ministry/ (28파일, 다수 부처)
     고용노동부, 국토교통부, 행정안전부 등
     """
 

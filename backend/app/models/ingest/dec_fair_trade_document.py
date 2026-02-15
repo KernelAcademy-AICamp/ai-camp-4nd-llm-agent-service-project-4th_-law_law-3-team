@@ -1,7 +1,7 @@
 """
 공정거래위원회 결정례 문서 모델 (순수 테이블 정의)
 
-data/ingest_source/decisions_committee/ 데이터를 PostgreSQL에 저장.
+data/decisions_committee/ 데이터를 PostgreSQL에 저장.
 적재 로직(JSON->ORM 변환)은 scripts/ingest/types/dec_fair_trade.py 에 위치.
 """
 

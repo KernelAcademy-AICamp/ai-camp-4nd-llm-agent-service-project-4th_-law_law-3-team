@@ -1,7 +1,7 @@
 """
 행정규칙 인제스트 설정
 
-data/ingest_source/admin_rule_v1.json (5,258건)을 대상으로:
+data/admin_rule_v2.json (5,258건)을 대상으로:
 - 벡터 DB: 행정규칙요약 1문서=1벡터
 - PostgreSQL: 원문 전체 + FTS 인덱스
 """
@@ -18,9 +18,13 @@ if str(_backend_root) not in sys.path:
 
 from app.models.ingest.admin_rule_document import AdminRuleDocument  # noqa: E402
 from scripts.embedding_common.schema import create_chunk  # noqa: E402
-from scripts.ingest.config import DATA_DIR, IngestConfig, register_config  # noqa: E402
+from scripts.ingest.config import (  # noqa: E402
+    IngestConfig,
+    get_source_path,
+    register_config,
+)
 
-_DEFAULT_SOURCE = DATA_DIR / "ingest_source" / "admin_rule_v1.json"
+_DEFAULT_SOURCE = get_source_path("admin_rule")
 
 
 # ---------------------------------------------------------------------------

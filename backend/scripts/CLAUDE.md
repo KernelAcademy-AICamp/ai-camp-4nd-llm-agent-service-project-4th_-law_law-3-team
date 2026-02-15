@@ -95,7 +95,7 @@ uv run --no-sync python scripts/runpod_lancedb_embeddings.py \
 # 법령 임베딩
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py \
   --type law \
-  --law-source "../data/law_v1.json"
+  --law-source "../data/law_v3.json"
 
 # 전체 (법령 + 판례)
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all
@@ -529,35 +529,35 @@ config-driven 인제스트 파이프라인. 데이터 타입별 설정을 `types
 
 ### 1. DB 적재 데이터 소스 위치
 
-모든 소스는 프로젝트 루트 `data/ingest_source/` 하위에 위치합니다. (`config.py`의 `DATA_DIR`)
+모든 소스는 프로젝트 루트 `data/` 하위에 위치합니다. (`config.py`의 `DATA_DIR`)
 
 ```
-data/ingest_source/
-├── law_v1.json                    # 법령
-├── precedents_v1.json             # 판례
-├── admin_rule_v1.json             # 행정규칙
-├── constitutional_v1.json         # 헌재결정례
-├── administration_v1.json         # 행정심판례
-├── legislation_v1.json            # 법령해석례
-├── treaty_v1.json                 # 조약
+data/
+├── law_v3.json                    # 법령
+├── precedents_v2.json             # 판례
+├── admin_rule_v2.json             # 행정규칙
+├── constitutional_v2.json         # 헌재결정례
+├── administration_v2.json         # 행정심판례
+├── legislation_v2.json            # 법령해석례
+├── treaty_v2.json                 # 조약
 ├── interpretation_ministry/       # 부처해석례 (28개 부처별 JSON)
-│   ├── intp_min_경찰청_v1.json
-│   ├── intp_min_고용노동부_v1.json
+│   ├── intp_min_경찰청_v2.json
+│   ├── intp_min_고용노동부_v2.json
 │   └── ...
 ├── special_admin_appeal/          # 특별행정심판례 (2개 기관별 JSON)
-│   ├── sadm_case_조세심판원_v1.json
-│   └── sadm_case_해양안전심판원_v1.json
+│   ├── sadm_case_조세심판원_v2.json
+│   └── sadm_case_해양안전심판원_v2.json
 └── decisions_committee/           # 위원회 결정문 (10개 위원회별 JSON)
-    ├── dec_comm_개인정보보호위원회_v1.json
-    ├── dec_comm_고용보험심사위원회_v1.json
-    ├── dec_comm_공정거래위원회_v2.json
-    ├── dec_comm_국가인권위원회_v1.json
-    ├── dec_comm_국민권익위원회_v1.json
-    ├── dec_comm_금융위원회_v1.json
-    ├── dec_comm_노동위원회_v1.json
-    ├── dec_comm_산업재해보상위험재심사위원회_v1.json
-    ├── dec_comm_중앙환경분쟁조정위원회_v1.json
-    └── dec_comm_증권선물위원회_v1.json
+    ├── dec_comm_개인정보보호위원회_v2.json
+    ├── dec_comm_고용보험심사위원회_v2.json
+    ├── dec_comm_공정거래위원회_v3.json
+    ├── dec_comm_국가인권위원회_v2.json
+    ├── dec_comm_국민권익위원회_v2.json
+    ├── dec_comm_금융위원회_v2.json
+    ├── dec_comm_노동위원회_v2.json
+    ├── dec_comm_산업재해보상위험재심사위원회_v2.json
+    ├── dec_comm_중앙환경분쟁조정위원회_v2.json
+    └── dec_comm_증권선물위원회_v2.json
 ```
 
 ### 2. 데이터 타입 구성 (19개)
@@ -597,7 +597,7 @@ data/ingest_source/
 | 임베딩 모델 (2.3GB) | `vector` | `uv run python scripts/download_models.py --check` |
 | PyTorch | `vector` | `uv pip install torch` (환경별 수동 설치, `--no-sync` 필수) |
 | `DATABASE_URL` 환경변수 | `db`, `fts` | `backend/.env`에 `DATABASE_URL=postgresql://lawuser:lawpassword@localhost:5432/lawdb` |
-| JSON 소스 파일 | 전체 | `data/ingest_source/` 하위에 배치 (위 섹션 1 참조) |
+| JSON 소스 파일 | 전체 | `data/` 하위에 배치 (위 섹션 1 참조) |
 
 ### 4. CLI 전체 옵션
 
@@ -677,7 +677,8 @@ uv run python -m scripts.ingest.cli --type precedent --verify
 ```
 scripts/ingest/
 ├── cli.py              # CLI 진입점 (python -m scripts.ingest.cli)
-├── config.py           # IngestConfig dataclass + 레지스트리
+├── config.py           # IngestConfig dataclass + 레지스트리 + get_source_path()
+├── sources.yaml        # 19개 타입 데이터 소스 경로 (YAML 중앙 관리)
 ├── db_writer.py        # PostgreSQL + FTS 적재
 ├── shared.py           # 공유 유틸 (토크나이저, FTS 배치)
 ├── ingest.md           # 19개 타입 저장 구조 상세 문서
@@ -726,8 +727,9 @@ scripts/ingest/
 | 3 | `app/models/__init__.py` | **수정** — import + `__all__` 추가 | |
 | 4 | `alembic/env.py` | **수정** — import 추가 (autogenerate 감지용) | |
 | 5 | `alembic/versions/NNN_*.py` | **생성** — `op.create_table()` 마이그레이션 | |
-| 6 | `scripts/ingest/types/new_type.py` | **생성** — `_template.py` 복사 후 TODO 수정 | 자동 등록 (`__init__.py` 수정 불필요) |
-| 7 | `data/ingest_source/` | JSON 소스 파일 배치 | |
+| 6 | `scripts/ingest/sources.yaml` | **수정** — 소스 경로 등록 | `타입명: 상대경로` 형식 |
+| 7 | `scripts/ingest/types/new_type.py` | **생성** — `_template.py` 복사 후 TODO 수정 | 자동 등록 (`__init__.py` 수정 불필요) |
+| 8 | `data/` | JSON 소스 파일 배치 | |
 
 ---
 
@@ -816,7 +818,7 @@ from scripts.eda.data_registry import CATEGORIES
 # USE_FULL_DATA 토글 (모든 노트북 공통)
 USE_FULL_DATA = False  # True: load_all(), False: head_sample(n=1000)
 
-path = DATA_DIR / "precedents_v1.json"
+path = DATA_DIR / "precedents_v2.json"
 if USE_FULL_DATA:
     records = load_all(path)
 else:

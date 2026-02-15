@@ -334,10 +334,10 @@ config-driven 파이프라인으로 19개 데이터 타입별 설정(`scripts/in
 | `special_admin_appeal` | 특별행정심판례 (2개 기관) | 148,778 |
 | `dec_privacy` ~ `dec_securities` | 위원회 결정문 (10개) | 56,802 |
 
-**1. DB 적재 데이터 소스 위치** — 프로젝트 루트 `data/ingest_source/`:
+**1. DB 적재 데이터 소스 위치** — 프로젝트 루트 `data/`:
 
 ```
-data/ingest_source/
+data/
 ├── law_v1.json                    # 법령
 ├── precedents_v1.json             # 판례
 ├── admin_rule_v1.json             # 행정규칙
@@ -388,7 +388,7 @@ uv run python -m scripts.ingest.cli --type precedent --verify        # 특정 �
 4. `alembic/env.py` — import 추가
 5. `alembic/versions/NNN_*.py` — 마이그레이션 작성
 6. `scripts/ingest/types/_template.py`를 복사하여 `types/new_type.py` 생성 (TODO 주석 따라 수정, 자동 등록)
-7. JSON 소스 파일을 `data/ingest_source/` 하위에 배치
+7. JSON 소스 파일을 `data/` 하위에 배치
 
 #### LanceDB 임베딩 생성
 

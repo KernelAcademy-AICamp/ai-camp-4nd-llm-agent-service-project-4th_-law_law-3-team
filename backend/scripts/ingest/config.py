@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Type
 
+import yaml
 from sqlalchemy.orm import DeclarativeBase
 
 # backend/ 디렉토리 (scripts/ingest/config.py → scripts/ → backend/)
@@ -21,6 +22,40 @@ PROJECT_ROOT = BACKEND_ROOT.parent
 
 # 기본 데이터 디렉토리
 DATA_DIR = PROJECT_ROOT / "data"
+
+# sources.yaml 경로
+_SOURCES_YAML = Path(__file__).parent / "sources.yaml"
+_source_map: dict[str, str] | None = None
+
+
+def _load_sources() -> dict[str, str]:
+    """sources.yaml 로드 (1회 캐싱)"""
+    global _source_map  # noqa: PLW0603
+    if _source_map is None:
+        with open(_SOURCES_YAML, encoding="utf-8") as f:
+            _source_map = yaml.safe_load(f)
+    return _source_map
+
+
+def get_source_path(name: str) -> Path:
+    """타입명 → DATA_DIR 기준 소스 경로 반환
+
+    Args:
+        name: 인제스트 타입명 (예: "law", "precedent", "dec_employment")
+
+    Returns:
+        DATA_DIR 하위의 절대 경로
+
+    Raises:
+        KeyError: sources.yaml에 미등록 타입
+    """
+    sources = _load_sources()
+    if name not in sources:
+        registered = list(sources.keys())
+        raise KeyError(
+            f"sources.yaml에 '{name}' 미등록. 등록된 타입: {registered}"
+        )
+    return DATA_DIR / sources[name]
 
 
 @dataclass(frozen=True)
