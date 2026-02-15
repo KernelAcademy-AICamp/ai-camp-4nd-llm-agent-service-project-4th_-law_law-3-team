@@ -50,7 +50,15 @@ cd backend
 uv run alembic upgrade head
 ```
 
-### 5. 데이터 로드 (PostgreSQL)
+### 5. data/ JSON 파일 준비
+
+```bash
+# data/ 폴더는 .gitignore에 포함 → git clone만으로는 받을 수 없음
+# Google Drive에서 복원 (rclone + rclone.conf 필요, 루트 CLAUDE.md "사전 준비" 참조)
+rclone copy --config rclone.conf gdrive:data/ data/ --progress
+```
+
+### 6. 데이터 로드 (PostgreSQL)
 
 ```bash
 # data/ 폴더에 법령/판례 JSON 파일 필요
@@ -60,7 +68,7 @@ uv run alembic upgrade head
 uv run python scripts/load_lancedb_data.py --type all
 ```
 
-### 6. LanceDB 데이터
+### 7. LanceDB 데이터
 
 ```bash
 # 옵션 A: 기존 lancedb_data/ 폴더 복사 (권장 - 빠름)
@@ -71,7 +79,7 @@ uv pip install torch --index-url https://download.pytorch.org/whl/cu128
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all
 ```
 
-### 7. 임베딩 모델 다운로드 ⚠️ 중요
+### 8. 임베딩 모델 다운로드 ⚠️ 중요
 
 검색 API를 사용하려면 **반드시 임베딩 모델을 먼저 다운로드**해야 합니다.
 
@@ -86,14 +94,14 @@ uv run python scripts/download_models.py --check
 > **참고**: 서버 시작 시 모델이 없으면 경고만 표시하고 서버는 실행됩니다.
 > 단, 검색 API 호출 시 503 에러가 반환됩니다.
 
-### 8. 서버 실행
+### 9. 서버 실행
 
 ```bash
 uv run uvicorn app.main:app --reload
 # http://localhost:8000/docs 에서 API 문서 확인
 ```
 
-### 9. 데이터 확인 (선택)
+### 10. 데이터 확인 (선택)
 
 ```bash
 # PostgreSQL 데이터 확인

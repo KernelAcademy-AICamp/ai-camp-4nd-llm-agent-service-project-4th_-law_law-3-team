@@ -679,6 +679,37 @@ PostgreSQL, Neo4j, LanceDB 3개 DB를 Google Drive에 백업/복원합니다.
 | `secrets/` | 서비스 계정 키 등 (.gitignored) |
 | `rclone.conf` | rclone 설정 (.gitignored) |
 
+### data/ JSON 파일 (원본 데이터)
+
+법령/판례 등 원본 JSON 데이터(약 3.5GB, 63개 파일)는 `gdrive:data/`에 저장되어 있습니다.
+DB 백업/복원 스크립트와는 별개이며, 항상 최신 작업 데이터를 유지합니다.
+
+> **버전 아카이브**(`v1`, `v2` 등 과거 버전)는 별도 Google Drive에서 관리합니다.
+> `gdrive:data/`는 "현재 작업 세트"이며, 버전 히스토리 용도가 아닙니다.
+
+```bash
+# 사전 조건: rclone 설치 + rclone.conf 배치 (위 "사전 준비" 참조)
+
+# ── 다른 기기에서 복원 ──
+rclone copy --config rclone.conf gdrive:data/ data/ --progress
+
+# 특정 파일만 복원
+rclone copy --config rclone.conf gdrive:data/precedents_v2.json data/ --progress
+
+# ── 로컬 변경 후 업로드 (동기화) ──
+# sync: 로컬에 없는 파일은 드라이브에서도 삭제 (항상 로컬과 동일하게 유지)
+rclone sync data/ --config rclone.conf gdrive:data/ --progress
+
+# 현재 Google Drive 내용 확인
+rclone ls --config rclone.conf gdrive:data/
+```
+
+> **`copy` vs `sync`**: 복원 시에는 `copy` (추가만), 업로드 시에는 `sync` (삭제 반영) 사용.
+> 파일명 변경(`v2→v3`) 시 `copy`를 쓰면 이전 버전이 드라이브에 잔류하므로 `sync` 권장.
+>
+> **참고**: `data/`는 `.gitignore`에 포함되어 있어 git clone만으로는 받을 수 없습니다.
+> 새 환경 세팅 시 DB 복원(`restore_from_gdrive.sh`)과 함께 이 단계를 수행하세요.
+
 ## Modules
 
 ### lawyer-stats (변호사 통계 대시보드)
