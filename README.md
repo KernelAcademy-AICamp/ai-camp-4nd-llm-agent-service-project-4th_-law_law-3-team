@@ -9,20 +9,14 @@
 - **Backend**: FastAPI (Python)
 - **Frontend**: Next.js 14 (React, TypeScript)
 - **Database**: PostgreSQL, Neo4j (Graph DB)
-- **Vector DB**: LanceDB (임베디드 또는 Docker 마이크로서비스)
-- **AI/ML**: Solar (Upstage), LangChain
-- **Embedding**: KURE-v1 (로컬) / OpenAI (선택)
+- **Vector DB**: LanceDB (RAG, 1문서=1벡터)
+- **AI/ML**: Solar (Upstage), LangGraph
+- **Embedding**: KURE-v1 (로컬, 1024차원) / OpenAI (선택)
 
 ## 프로젝트 구조
 
 ```
 law-3-team/
-├── services/
-│   └── lancedb/                    # LanceDB 마이크로서비스 (Docker)
-│       ├── Dockerfile
-│       ├── main.py                 # FastAPI 앱 (검색 API)
-│       ├── store.py                # LanceDB 래퍼
-│       └── tokenizer.py            # MeCab 토크나이저
 ├── backend/
 │   ├── app/
 │   │   ├── api/router/              # 통합 API (채팅 등)
@@ -141,8 +135,8 @@ law-3-team/
 
 ```
 data/
-├── lawyers.json   # 지오코딩된 변호사 데이터 (위경도 포함)
-└── geocode_failures.json        # 지오코딩 실패 목록
+├── lawyers_with_coords.json   # 지오코딩된 변호사 데이터 (위경도 포함)
+└── geocode_failed.json        # 지오코딩 실패 목록
 ```
 
 **데이터 구조:**
@@ -215,8 +209,8 @@ uv run python scripts/geocode_lawyers.py --api-key YOUR_KAKAO_REST_API_KEY
 | 파일 | 설명 |
 |------|------|
 | `all_lawyers.json` (입력) | 원본 변호사 데이터 |
-| `data/lawyers.json` (출력) | 좌표가 추가된 데이터 |
-| `data/geocode_failures.json` (출력) | 지오코딩 실패 목록 |
+| `data/lawyers_with_coords.json` (출력) | 좌표가 추가된 데이터 |
+| `data/geocode_failed.json` (출력) | 지오코딩 실패 목록 |
 
 ```bash
 # 실패 항목 재시도
@@ -305,8 +299,8 @@ data/law_data/
 | **합계** | ~1.5GB | ~108,756건 |
 
 **저장 구조:**
-- **PostgreSQL**: 문서 메타데이터 및 전문 텍스트 (검색, 필터링용)
-- **ChromaDB**: 문서 임베딩 벡터 (RAG 유사도 검색용)
+- **PostgreSQL**: 문서 메타데이터 및 전문 텍스트 + FTS 인덱스 (검색, 필터링용)
+- **LanceDB**: 문서 임베딩 벡터 (RAG 유사도 검색용, 1문서=1벡터)
 
 #### 데이터베이스 마이그레이션
 
@@ -320,34 +314,101 @@ uv run alembic upgrade head
 uv run alembic current
 ```
 
-#### 데이터 로드 및 임베딩 생성
+#### 인제스트 파이프라인 (PostgreSQL + FTS + LanceDB)
+
+config-driven 파이프라인으로 19개 데이터 타입별 설정(`scripts/ingest/types/`)을 정의하면 PostgreSQL + FTS + LanceDB를 일괄 처리합니다.
+타입별 저장 구조 상세는 `backend/scripts/ingest/ingest.md` 참조.
+
+**`--type` 타입명 목록 (19개, 총 ~423,924건):**
+
+| 타입명 | 데이터 | 건수 |
+|--------|--------|------|
+| `law` | 법령 | 5,548 |
+| `precedent` | 판례 | 92,055 |
+| `admin_rule` | 행정규칙 | 5,258 |
+| `constitutional` | 헌재결정례 | 31,718 |
+| `administration` | 행정심판례 | 34,254 |
+| `legislation` | 법령해석례 | 8,597 |
+| `treaty` | 조약 | 3,589 |
+| `interpretation_ministry` | 부처해석례 (28개 부처) | 37,325 |
+| `special_admin_appeal` | 특별행정심판례 (2개 기관) | 148,778 |
+| `dec_privacy` ~ `dec_securities` | 위원회 결정문 (10개) | 56,802 |
+
+**1. DB 적재 데이터 소스 위치** — 프로젝트 루트 `data/ingest_source/`:
+
+```
+data/ingest_source/
+├── law_v1.json                    # 법령
+├── precedents_v1.json             # 판례
+├── admin_rule_v1.json             # 행정규칙
+├── constitutional_v1.json         # 헌재결정례
+├── administration_v1.json         # 행정심판례
+├── legislation_v1.json            # 법령해석례
+├── treaty_v1.json                 # 조약
+├── interpretation_ministry/       # 부처해석례 (28개 부처별 JSON)
+├── special_admin_appeal/          # 특별행정심판례 (2개 기관별 JSON)
+└── decisions_committee/           # 위원회 결정문 (10개 위원회별 JSON)
+```
+
+**2. 사전 조건:**
+- PostgreSQL 실행: `docker compose up -d postgres`
+- Alembic 마이그레이션: `uv run alembic upgrade head`
+- MeCab 시스템 패키지: `mecab`, `libmecab-dev`, `mecab-ko-dic` (FTS tsvector용, 미설치 시 에러 발생)
+- 환경변수: `DATABASE_URL=postgresql://lawuser:lawpassword@localhost:5432/lawdb` (`backend/.env`)
+- 벡터 단계 추가: 임베딩 모델 다운로드 + PyTorch 설치
+
+**3. CLI 사용법:**
 
 ```bash
 cd backend
 
-# 1. PostgreSQL에 데이터 로드
-uv run python scripts/load_legal_data.py
+# 전체 타입 × 전체 파이프라인 (최초 적재 시)
+uv run python -m scripts.ingest.cli --type all --step all --reset
 
-# 특정 유형만 로드
-uv run python scripts/load_legal_data.py --type precedent
+# 특정 타입 전체 파이프라인
+uv run python -m scripts.ingest.cli --type precedent --step all --reset
 
-# 기존 데이터 삭제 후 재로드
-uv run python scripts/load_legal_data.py --reset
+# 단계별 실행
+uv run python -m scripts.ingest.cli --type precedent --step db       # PostgreSQL + FTS
+uv run python -m scripts.ingest.cli --type precedent --step vector   # LanceDB 벡터
+uv run python -m scripts.ingest.cli --type precedent --step fts      # FTS만 재빌드 (토크나이저 변경 후)
+uv run python -m scripts.ingest.cli --type precedent --step index    # ANN 인덱스만 재빌드
 
-# 2. ChromaDB에 임베딩 생성 (OpenAI API 호출)
-uv run python scripts/create_embeddings.py
+# 통계 / 검증
+uv run python -m scripts.ingest.cli --type all --stats               # 전체 타입
+uv run python -m scripts.ingest.cli --type precedent --verify        # 특정 타입
+```
 
-# 특정 유형만 임베딩
-uv run python scripts/create_embeddings.py --type constitutional
+> CLI 전체 옵션(`--device`, `--profile`, `--batch-size`, `--source`, `--no-cache` 등) 상세는 `backend/scripts/CLAUDE.md` 인제스트 섹션 참조.
 
-# 3. 데이터 검증
-uv run python scripts/validate_data.py
+**새 데이터 타입 추가** (7단계):
+1. `app/models/ingest/new_type_document.py` 생성 — ORM 테이블 정의 (ai_summary 포함)
+2. `app/models/ingest/__init__.py` — import + `__all__` 추가
+3. `app/models/__init__.py` — import + `__all__` 추가
+4. `alembic/env.py` — import 추가
+5. `alembic/versions/NNN_*.py` — 마이그레이션 작성
+6. `scripts/ingest/types/_template.py`를 복사하여 `types/new_type.py` 생성 (TODO 주석 따라 수정, 자동 등록)
+7. JSON 소스 파일을 `data/ingest_source/` 하위에 배치
+
+#### LanceDB 임베딩 생성
+
+```bash
+cd backend
+
+# 임베딩 모델 다운로드 (약 2.3GB, 최초 1회)
+uv run python scripts/download_models.py
+
+# 로컬 임베딩 생성 (하드웨어 자동 감지)
+uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --reset
+
+# 통계 확인
+uv run --no-sync python scripts/local_lancedb_embeddings.py --stats
 ```
 
 **주의사항:**
-- 임베딩 생성 시 OpenAI API 비용 발생 (~$2 for 108K documents)
-- 전체 임베딩 생성에 상당한 시간 소요
-- `--batch-size` 옵션으로 API 호출 배치 크기 조정 가능
+- PyTorch 환경별 수동 설치 필요 (`uv pip install torch`)
+- `--no-sync` 플래그 필수 (torch 버전 유지)
+- GPU VRAM에 따라 batch_size 자동 설정
 
 ## 모듈 추가/삭제 방법
 
@@ -403,23 +464,17 @@ ENABLED_MODULES=["lawyer_finder","small_claims"]
 
 Docker를 사용하면 PostgreSQL 설치 없이 빠르게 개발 환경을 구축할 수 있습니다.
 
-#### 1. 컨테이너 시작
+#### 1. PostgreSQL 컨테이너 시작
 ```bash
-# PostgreSQL + Neo4j 시작
-docker compose up -d postgres neo4j
-
-# LanceDB 마이크로서비스도 사용하려면 (선택)
-docker compose up -d lancedb
+# PostgreSQL 컨테이너 시작
+docker-compose up -d postgres
 
 # 컨테이너 상태 확인
-docker compose ps
-```
+docker-compose ps
 
-| 컨테이너 | 포트 | 용도 |
-|----------|------|------|
-| `law-platform-db` | 5432 | PostgreSQL |
-| `neo4j-law-graph` | 7474, 7687 | Neo4j Graph DB |
-| `lancedb-service` | 8100 | LanceDB 벡터 검색 (선택) |
+# DB 연결 확인
+docker-compose exec postgres psql -U lawuser -d lawdb -c "SELECT 1;"
+```
 
 #### 2. 환경 변수 설정
 ```bash
@@ -446,12 +501,11 @@ npm run dev
 
 #### Docker 명령어 요약
 ```bash
-docker compose up -d postgres neo4j  # DB 시작
-docker compose up -d lancedb         # LanceDB 마이크로서비스 시작 (선택)
-docker compose logs -f postgres      # 로그 확인
-docker compose stop                  # 전체 중지
-docker compose down                  # 중지 및 삭제 (데이터 유지)
-docker compose down -v               # 중지 및 볼륨까지 삭제
+docker-compose up -d postgres     # PostgreSQL 시작
+docker-compose logs -f postgres   # 로그 확인
+docker-compose stop postgres      # 중지
+docker-compose down               # 중지 및 삭제 (데이터 유지)
+docker-compose down -v            # 중지 및 볼륨까지 삭제
 ```
 
 ---
@@ -541,14 +595,10 @@ npm run dev               # 개발 서버 (localhost:3000)
 | `KAKAO_MAP_API_KEY` | 카카오맵 JavaScript API 키 (변호사 찾기 기능) | - |
 | `KAKAO_REST_API_KEY` | 카카오 REST API 키 (주소 검색 등) | - |
 | `ENABLED_MODULES` | 활성화할 모듈 목록 (빈 배열이면 모두 활성화) | `[]` |
-| `CHROMA_PERSIST_DIR` | ChromaDB 저장 경로 | `./data/chroma` |
-| `CHROMA_COLLECTION_NAME` | ChromaDB 컬렉션 이름 | `legal_documents` |
-| `EMBEDDING_MODEL` | OpenAI 임베딩 모델 | `text-embedding-3-small` |
-| `EMBEDDING_BATCH_SIZE` | 임베딩 API 배치 크기 | `100` |
+| `LANCEDB_URI` | LanceDB 데이터 경로 | `./lancedb_data` |
+| `LANCEDB_TABLE_NAME` | LanceDB 테이블명 | `legal_chunks` |
 | `USE_LOCAL_EMBEDDING` | 로컬 임베딩 사용 여부 (무료) | `true` |
-| `LOCAL_EMBEDDING_MODEL` | 로컬 임베딩 모델 | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
-| `LANCEDB_MODE` | LanceDB 모드 (`local`: 임베디드, `remote`: Docker 마이크로서비스) | `local` |
-| `LANCEDB_SERVICE_URL` | remote 모드 시 LanceDB 서비스 URL | `http://localhost:8100` |
+| `LOCAL_EMBEDDING_MODEL` | 로컬 임베딩 모델 | `nlpai-lab/KURE-v1` |
 
 ### .env 파일 예시
 
@@ -567,36 +617,14 @@ ENVIRONMENT=development
 CORS_ORIGINS=["http://localhost:3000"]
 ENABLED_MODULES=[]
 
-# ChromaDB (벡터 저장소)
-CHROMA_PERSIST_DIR=./data/chroma
-CHROMA_COLLECTION_NAME=legal_documents
-
-# 임베딩 설정
-EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_BATCH_SIZE=100
+# LanceDB (벡터 저장소)
+LANCEDB_URI=./lancedb_data
+LANCEDB_TABLE_NAME=legal_chunks
 
 # 로컬 임베딩 (무료, 권장)
 USE_LOCAL_EMBEDDING=true
-LOCAL_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+LOCAL_EMBEDDING_MODEL=nlpai-lab/KURE-v1
 ```
-
-## DB 백업 / 복원
-
-PostgreSQL, Neo4j, LanceDB 백업을 Google Drive에 자동 업로드/복원합니다.
-
-```bash
-# 사전 준비 (1회)
-brew install rclone
-# 팀에서 rclone.conf를 받아 프로젝트 루트에 배치
-
-# 백업
-./scripts/backup_to_gdrive.sh
-
-# 복원
-./scripts/restore_from_gdrive.sh latest
-```
-
-상세 옵션 및 설정: `CLAUDE.md`의 "DB 백업 / 복원" 섹션 참조
 
 ## Docker 프로덕션 배포
 
@@ -653,15 +681,13 @@ docker/
 │   ┌──────────┐    ┌──────────────┐    ┌──────────────┐ │
 │   │  Vercel  │    │ ECS Fargate  │    │     RDS      │ │
 │   │ Frontend │───▶│   Backend    │───▶│  PostgreSQL  │ │
-│   └──────────┘    └──────┬───────┘    └──────────────┘ │
+│   └──────────┘    └──────────────┘    └──────────────┘ │
 │                          │                              │
-│                    ┌─────┴─────┐                        │
-│                    ▼           ▼                        │
-│             ┌──────────┐ ┌──────────┐                   │
-│             │ LanceDB  │ │  Neo4j   │                   │
-│             │ Service  │ │ Graph DB │                   │
-│             │ (EFS)    │ └──────────┘                   │
-│             └──────────┘                                │
+│                          ▼                              │
+│                   ┌──────────────┐                      │
+│                   │     EFS      │                      │
+│                   │ LanceDB Data │                      │
+│                   └──────────────┘                      │
 │                                                          │
 │   Secrets: AWS Secrets Manager                          │
 │                                                          │

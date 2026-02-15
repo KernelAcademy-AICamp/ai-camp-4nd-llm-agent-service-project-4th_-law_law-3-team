@@ -3,6 +3,25 @@ SQLAlchemy 모델 정의
 """
 
 from app.models.fts_index import FtsIndex
+from app.models.ingest import (
+    AdministrationDocument,
+    AdminRuleDocument,
+    ConstitutionalDocument,
+    DecCivilRightsDocument,
+    DecEmploymentDocument,
+    DecEnvironmentDocument,
+    DecFairTradeDocument,
+    DecFinancialDocument,
+    DecHumanRightsDocument,
+    DecIndustrialDocument,
+    DecLaborDocument,
+    DecPrivacyDocument,
+    DecSecuritiesDocument,
+    InterpretationMinistryDocument,
+    LegislationDocument,
+    SpecialAdminAppealDocument,
+    TreatyDocument,
+)
 from app.models.law import Law
 from app.models.law_document import LawDocument
 from app.models.lawyer import Lawyer
@@ -25,4 +44,22 @@ __all__ = [
     "LawDocument",
     "PrecedentDocument",
     "TrialStatistics",
+    # ingest 모델
+    "AdminRuleDocument",
+    "ConstitutionalDocument",
+    "AdministrationDocument",
+    "LegislationDocument",
+    "TreatyDocument",
+    "DecCivilRightsDocument",
+    "DecEmploymentDocument",
+    "DecEnvironmentDocument",
+    "DecFairTradeDocument",
+    "DecFinancialDocument",
+    "DecHumanRightsDocument",
+    "DecIndustrialDocument",
+    "DecLaborDocument",
+    "DecPrivacyDocument",
+    "DecSecuritiesDocument",
+    "InterpretationMinistryDocument",
+    "SpecialAdminAppealDocument",
 ]

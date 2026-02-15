@@ -1,0 +1,227 @@
+"""
+헌법재판소 결정례 인제스트 설정
+
+data/ingest_source/constitutional_v1.json (31,718건)을 대상으로:
+- 벡터 DB: 심판례요약 1문서=1벡터
+- PostgreSQL: 원문 전체 + FTS 인덱스
+"""
+
+from __future__ import annotations
+
+import sys
+from datetime import date
+from pathlib import Path
+from typing import Any, Optional
+
+_backend_root = Path(__file__).parent.parent.parent.parent
+if str(_backend_root) not in sys.path:
+    sys.path.insert(0, str(_backend_root))
+
+from app.models.ingest.constitutional_document import (  # noqa: E402
+    ConstitutionalDocument,
+)
+from scripts.embedding_common.schema import create_chunk  # noqa: E402
+from scripts.ingest.config import DATA_DIR, IngestConfig, register_config  # noqa: E402
+
+_DEFAULT_SOURCE = DATA_DIR / "ingest_source" / "constitutional_v1.json"
+
+
+# ---------------------------------------------------------------------------
+# 헬퍼
+# ---------------------------------------------------------------------------
+
+
+def _parse_date(date_str: Optional[str]) -> Optional[date]:
+    """날짜 문자열 파싱 (YYYYMMDD 또는 YYYY-MM-DD)"""
+    if not date_str:
+        return None
+
+    date_str = str(date_str).strip()
+
+    if date_str.isdigit() and len(date_str) == 8:
+        try:
+            return date(
+                int(date_str[:4]),
+                int(date_str[4:6]),
+                int(date_str[6:8]),
+            )
+        except ValueError:
+            return None
+
+    try:
+        return date.fromisoformat(date_str[:10])
+    except (ValueError, IndexError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# ORM 팩토리
+# ---------------------------------------------------------------------------
+
+
+def _orm_factory(item: dict[str, Any]) -> ConstitutionalDocument:
+    """JSON item → ConstitutionalDocument 인스턴스"""
+    return ConstitutionalDocument(
+        serial_number=item.get("헌재결정례일련번호", ""),
+        case_number=item.get("사건번호"),
+        case_name=item.get("사건명"),
+        case_type=item.get("사건종류명"),
+        case_type_code=item.get("사건종류코드"),
+        decision_date=_parse_date(item.get("종국일자")),
+        court_division_code=item.get("재판부구분코드"),
+        summary=item.get("판시사항"),
+        reasoning=item.get("결정요지"),
+        ruling=item.get("주문"),
+        full_text=item.get("전문"),
+        reason=item.get("이유"),
+        reference_provisions=item.get("심판대상조문"),
+        reference_statutes=item.get("참조조문"),
+        reference_cases=item.get("참조판례"),
+        ai_summary=item.get("심판례요약"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 벡터 DB 함수
+# ---------------------------------------------------------------------------
+
+
+def _vector_metadata_fn(
+    item: dict[str, Any],
+    vector: list[float],
+) -> dict[str, Any]:
+    """JSON item + embedding vector → LanceDB record dict"""
+    decision_date = str(item.get("종국일자", "") or "")
+    return create_chunk(
+        data_type="헌재결정례",
+        source_id=str(item.get("헌재결정례일련번호", "")),
+        title=item.get("사건명", "") or "",
+        content=item.get("심판례요약", "") or "",
+        vector=vector,
+        source_name="헌법재판소",
+        date=decision_date if decision_date else None,
+        chunk_index=0,
+        total_chunks=1,
+    )
+
+
+# ---------------------------------------------------------------------------
+# FTS 함수 (JSON 소스)
+# ---------------------------------------------------------------------------
+
+
+def _fulltext_fn(item: dict[str, Any]) -> str:
+    """JSON item → FTS용 원문 텍스트 concat"""
+    parts: list[str] = []
+
+    case_name = item.get("사건명")
+    if case_name:
+        parts.append(f"[{case_name}]")
+
+    case_number = item.get("사건번호")
+    if case_number:
+        parts.append(f"사건번호: {case_number}")
+
+    for field in ("판시사항", "결정요지", "주문", "이유"):
+        value = item.get(field)
+        if value:
+            parts.append(value)
+
+    ref_provisions = item.get("심판대상조문")
+    if ref_provisions:
+        parts.append(f"심판대상조문: {ref_provisions}")
+
+    ref_statutes = item.get("참조조문")
+    if ref_statutes:
+        parts.append(f"참조조문: {ref_statutes}")
+
+    ref_cases = item.get("참조판례")
+    if ref_cases:
+        parts.append(f"참조판례: {ref_cases}")
+
+    return "\n".join(parts)
+
+
+def _fts_metadata_fn(item: dict[str, Any]) -> dict[str, Any]:
+    """JSON item → fts_index 메타데이터 dict"""
+    decision_date = str(item.get("종국일자", "") or "")
+    return {
+        "source_id": str(item.get("헌재결정례일련번호", "")),
+        "data_type": "헌재결정례",
+        "title": item.get("사건명", "") or "",
+        "date": decision_date if decision_date else None,
+        "source_name": "헌법재판소",
+        "case_number": item.get("사건번호"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# FTS 함수 (ORM 소스 — DB 재빌드용)
+# ---------------------------------------------------------------------------
+
+
+def _orm_fulltext_fn(row: Any) -> str:
+    """ConstitutionalDocument ORM 인스턴스 → FTS용 원문 텍스트 concat"""
+    parts: list[str] = []
+
+    if row.case_name:
+        parts.append(f"[{row.case_name}]")
+    if row.case_number:
+        parts.append(f"사건번호: {row.case_number}")
+    if row.summary:
+        parts.append(row.summary)
+    if row.reasoning:
+        parts.append(row.reasoning)
+    if row.ruling:
+        parts.append(row.ruling)
+    if row.reason:
+        parts.append(row.reason)
+    if row.reference_provisions:
+        parts.append(f"심판대상조문: {row.reference_provisions}")
+    if row.reference_statutes:
+        parts.append(f"참조조문: {row.reference_statutes}")
+    if row.reference_cases:
+        parts.append(f"참조판례: {row.reference_cases}")
+
+    return "\n".join(parts)
+
+
+def _orm_fts_metadata_fn(row: Any) -> dict[str, Any]:
+    """ConstitutionalDocument ORM 인스턴스 → fts_index 메타데이터 dict"""
+    date_str = (
+        row.decision_date.strftime("%Y%m%d")
+        if row.decision_date
+        else None
+    )
+    return {
+        "source_id": row.serial_number,
+        "data_type": "헌재결정례",
+        "title": row.case_name or "",
+        "date": date_str,
+        "source_name": "헌법재판소",
+        "case_number": row.case_number,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 설정 등록
+# ---------------------------------------------------------------------------
+
+CONSTITUTIONAL_CONFIG = IngestConfig(
+    name="constitutional",
+    data_type_label="헌재결정례",
+    source_path=_DEFAULT_SOURCE,
+    id_field="헌재결정례일련번호",
+    summary_field="심판례요약",
+    title_field="사건명",
+    orm_class=ConstitutionalDocument,
+    orm_id_attr="serial_number",
+    orm_factory_fn=_orm_factory,
+    vector_metadata_fn=_vector_metadata_fn,
+    fulltext_fn=_fulltext_fn,
+    fts_metadata_fn=_fts_metadata_fn,
+    orm_fulltext_fn=_orm_fulltext_fn,
+    orm_fts_metadata_fn=_orm_fts_metadata_fn,
+)
+
+register_config(CONSTITUTIONAL_CONFIG)

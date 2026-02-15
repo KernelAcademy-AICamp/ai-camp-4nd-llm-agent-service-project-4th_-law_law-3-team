@@ -42,24 +42,19 @@ BATCH_SIZE = 1000
 
 
 def _get_tokenizer() -> Any:
-    """MeCab 토크나이저 인스턴스 생성 (userdic + decomposition_map)."""
+    """MeCab 토크나이저 인스턴스 생성 (userdic + decomposition_map 필수)."""
     import json
 
     from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
 
-    userdic_path = None
-    decomposition_map = None
-    if settings.USE_MECAB_USERDIC:
-        path = Path(settings.MECAB_USERDIC_PATH)
-        if path.exists():
-            userdic_path = str(path)
-            logger.info("MeCab userdic 사용: %s", userdic_path)
+    userdic_path = str(Path(settings.MECAB_USERDIC_PATH))
+    decomp_path = Path(settings.MECAB_USERDIC_PATH).parent / "decomposition_map.json"
 
-        decomp_path = path.parent / "decomposition_map.json"
-        if decomp_path.exists():
-            with open(decomp_path, encoding="utf-8") as f:
-                decomposition_map = json.load(f)
-            logger.info("분해맵 로드: %d개", len(decomposition_map))
+    decomposition_map: dict[str, list[str]] = {}
+    if decomp_path.exists():
+        with open(decomp_path, encoding="utf-8") as f:
+            decomposition_map = json.load(f)
+        logger.info("분해맵 로드: %d개", len(decomposition_map))
 
     return MeCabTokenizer(
         userdic_path=userdic_path,

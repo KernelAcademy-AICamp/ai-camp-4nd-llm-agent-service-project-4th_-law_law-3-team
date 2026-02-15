@@ -60,24 +60,29 @@ async def lifespan(app: FastAPI):
         logger.info("PostgreSQL 체크포인터를 초기화합니다...")
         await init_checkpointer(settings.DATABASE_URL)
 
-    # MeCab userdic 분해맵 검증 (실제 로드는 각 토크나이저 초기화 시)
-    if settings.USE_MECAB_USERDIC:
-        userdic_path = Path(settings.MECAB_USERDIC_PATH)
-        decomp_path = userdic_path.parent / "decomposition_map.json"
-        if userdic_path.exists() and decomp_path.exists():
-            import json
+    # MeCab userdic 필수 검증 (실제 로드는 각 토크나이저 초기화 시)
+    userdic_path = Path(settings.MECAB_USERDIC_PATH)
+    decomp_path = userdic_path.parent / "decomposition_map.json"
+    if userdic_path.exists() and decomp_path.exists():
+        import json
 
-            with open(decomp_path, encoding="utf-8") as f:
-                decomp_count = len(json.load(f))
-            logger.info(
-                "MeCab userdic 확인: %s (%d 분해맵)",
-                userdic_path, decomp_count,
-            )
-        else:
-            logger.warning(
-                "MeCab userdic 파일 없음: dic=%s, map=%s",
-                userdic_path.exists(), decomp_path.exists(),
-            )
+        with open(decomp_path, encoding="utf-8") as f:
+            decomp_count = len(json.load(f))
+        logger.info(
+            "MeCab userdic 확인: %s (%d 분해맵)",
+            userdic_path, decomp_count,
+        )
+    else:
+        missing = []
+        if not userdic_path.exists():
+            missing.append(f"dic: {userdic_path}")
+        if not decomp_path.exists():
+            missing.append(f"map: {decomp_path}")
+        logger.error(
+            "MeCab userdic 필수 파일 없음: %s\n"
+            "  빌드 명령: uv run python scripts/build_mecab_userdic.py --from-json",
+            ", ".join(missing),
+        )
 
     yield
 

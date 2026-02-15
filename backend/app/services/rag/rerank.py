@@ -7,16 +7,12 @@
 import logging
 import warnings
 from functools import lru_cache
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 # 기본 리랭커 모델명 (한국어 특화, BGE v2-m3 기반)
 DEFAULT_RERANKER_MODEL = "dragonkue/bge-reranker-v2-m3-ko"
-
-# 모듈 레벨 모델 캐싱
-_reranker_model: Any = None
-_reranker_model_name: Optional[str] = None
 
 
 @lru_cache(maxsize=1)
@@ -57,10 +53,10 @@ def is_reranker_available(model_name: str = DEFAULT_RERANKER_MODEL) -> bool:
 
 def rerank_documents(
     query: str,
-    documents: List[Dict[str, Any]],
+    documents: list[dict[str, Any]],
     top_k: int = 5,
     model_name: str = DEFAULT_RERANKER_MODEL,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     문서 리랭킹
 
@@ -134,9 +130,9 @@ class _RerankerServiceCompat:
     def rerank(
         self,
         query: str,
-        documents: List[Dict[str, Any]],
+        documents: list[dict[str, Any]],
         top_k: int = 5,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """문서 리랭킹"""
         return rerank_documents(query, documents, top_k, self._model_name)
 

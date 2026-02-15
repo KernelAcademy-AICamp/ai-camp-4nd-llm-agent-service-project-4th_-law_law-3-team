@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-LanceDB용 데이터 로드 스크립트
+LanceDB용 데이터 로드 스크립트 (레거시)
+
+.. deprecated::
+    새 인제스트 파이프라인은 ``scripts/ingest/cli.py`` 를 사용하세요.
+    이 스크립트는 ``data/law_cleaned.json`` (영어 키) 호환성을 위해 유지됩니다.
 
 JSON 파일에서 PostgreSQL로 법령/판례 데이터를 로드합니다.
 
@@ -29,19 +33,18 @@ import argparse
 import asyncio
 import json
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import select, func, delete
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import delete, func, select
 
 from app.core.database import async_session_factory
 from app.models.law_document import LawDocument
 from app.models.precedent_document import PrecedentDocument
-
+from scripts.ingest.types.precedent import _orm_factory as precedent_orm_factory
 
 # ============================================================================
 # 기본 경로
@@ -121,7 +124,25 @@ async def load_laws_to_db(
             seen_ids.add(law_id)
 
             try:
-                doc = LawDocument.from_json(item)
+                # 레거시: law_cleaned.json 영어 키 → ORM 인스턴스 직접 생성
+                enforcement_date = None
+                enforcement_str = item.get("enforcement_date", "")
+                if enforcement_str:
+                    try:
+                        enforcement_date = date.fromisoformat(enforcement_str[:10])
+                    except (ValueError, TypeError):
+                        pass
+                doc = LawDocument(
+                    law_id=item.get("law_id", ""),
+                    law_name=item.get("law_name", ""),
+                    law_type=item.get("law_type"),
+                    ministry=item.get("ministry"),
+                    promulgation_date=item.get("promulgation_date"),
+                    promulgation_no=item.get("promulgation_no"),
+                    enforcement_date=enforcement_date,
+                    content=item.get("content"),
+                    supplementary=item.get("supplementary"),
+                )
                 batch.append(doc)
             except Exception as e:
                 stats["errors"] += 1
@@ -224,7 +245,7 @@ async def load_precedents_to_db(
             seen_ids.add(serial_number)
 
             try:
-                doc = PrecedentDocument.from_json(item)
+                doc = precedent_orm_factory(item)
                 batch.append(doc)
             except Exception as e:
                 stats["errors"] += 1

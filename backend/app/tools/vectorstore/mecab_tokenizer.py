@@ -4,14 +4,11 @@ MeCab 기반 한국어 형태소 분석기 (FTS 사전 토크나이징용)
 MeCab userdic으로 법률 복합명사를 단일 NNG로 직접 인식하고,
 decomposition_map으로 FTS 부분검색용 서브 토큰을 추가한다.
 
+userdic + decomposition_map은 필수. 미빌드 시 에러 발생.
+
 Usage:
     from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
 
-    tokenizer = MeCabTokenizer()
-    tokenized = tokenizer.tokenize("손해배상청구")
-    # → "손해 배상 청구"
-
-    # userdic + 분해맵
     tokenizer = MeCabTokenizer(
         userdic_path="data/mecab_userdic/legal_terms.dic",
         decomposition_map={"소멸시효": ["소멸", "시효"]},
@@ -63,9 +60,12 @@ def is_mecab_available() -> bool:
     """MeCab 설치 여부 확인 (Python 패키지 + 시스템 라이브러리 모두 필요)"""
     if not _MECAB_AVAILABLE:
         return False
-    # Python 패키지만 설치된 경우 (시스템 라이브러리 미설치) 체크
     try:
-        _MeCab.Tagger()  # type: ignore[union-attr,unused-ignore]
+        sys_dict = _find_mecab_sys_dict()
+        if sys_dict:
+            _MeCab.Tagger(f"-d {sys_dict}")  # type: ignore[union-attr,unused-ignore]
+        else:
+            _MeCab.Tagger()  # type: ignore[union-attr,unused-ignore]
         return True
     except (RuntimeError, AttributeError):
         return False
@@ -80,59 +80,71 @@ class MeCabTokenizer:
     2. decomposition_map으로 복합어의 서브 토큰을 추가 (FTS 부분검색용)
        예: "소멸시효" → ["소멸시효"] + ["소멸", "시효"]
 
-    MeCab 미설치 시 공백 분리 fallback 동작.
+    MeCab 미설치 또는 userdic 미빌드 시 에러 발생 (silent fallback 없음).
     """
 
     def __init__(
         self,
-        userdic_path: Optional[str] = None,
-        decomposition_map: Optional[dict[str, list[str]]] = None,
+        userdic_path: str,
+        decomposition_map: dict[str, list[str]],
     ) -> None:
-        self._tagger: Optional[object] = None
-        self._decomposition_map: dict[str, list[str]] = decomposition_map or {}
-        self._userdic_active: bool = False
+        self._tagger: object
+        self._decomposition_map: dict[str, list[str]] = decomposition_map
 
-        if _MECAB_AVAILABLE and _MeCab is not None:
-            try:
-                if userdic_path:
-                    sys_dict = _find_mecab_sys_dict()
-                    if sys_dict:
-                        self._tagger = _MeCab.Tagger(
-                            f"-d {sys_dict} -u {userdic_path}"
-                        )
-                        self._userdic_active = True
-                        logger.info("MeCab userdic 활성화: %s", userdic_path)
-                    else:
-                        logger.warning("MeCab 시스템 사전 경로를 찾을 수 없어 기본 사전 사용")
-                        self._tagger = _MeCab.Tagger()
-                else:
-                    self._tagger = _MeCab.Tagger()
-            except RuntimeError:
-                logger.warning("MeCab Python 패키지는 설치되었으나 시스템 라이브러리 미설치")
-                self._tagger = None
+        if not _MECAB_AVAILABLE or _MeCab is None:
+            msg = (
+                "MeCab이 설치되지 않았습니다. "
+                "시스템에 mecab, mecab-ko-dic을 설치해주세요.\n"
+                "  macOS: brew install mecab-ko mecab-ko-dic\n"
+                "  Ubuntu: apt install mecab libmecab-dev mecab-ko-dic"
+            )
+            raise RuntimeError(msg)
 
-    @property
-    def is_available(self) -> bool:
-        """MeCab 토크나이저 사용 가능 여부"""
-        return self._tagger is not None
+        sys_dict = _find_mecab_sys_dict()
+        if not sys_dict:
+            msg = (
+                "MeCab 시스템 사전(mecab-ko-dic)을 찾을 수 없습니다.\n"
+                f"  탐색 경로: {_MECAB_SYS_DICT_CANDIDATES}"
+            )
+            raise RuntimeError(msg)
+
+        userdic = Path(userdic_path)
+        if not userdic.exists():
+            msg = (
+                f"MeCab userdic 파일이 없습니다: {userdic_path}\n"
+                "  빌드 명령: uv run python scripts/build_mecab_userdic.py --from-json"
+            )
+            raise FileNotFoundError(msg)
+
+        try:
+            self._tagger = _MeCab.Tagger(
+                f"-d {sys_dict} -u {userdic_path}"
+            )
+        except RuntimeError as e:
+            msg = (
+                f"MeCab Tagger 초기화 실패: {e}\n"
+                "  시스템 사전: {sys_dict}\n"
+                f"  userdic: {userdic_path}"
+            )
+            raise RuntimeError(msg) from e
+
+        logger.info("MeCab userdic 활성화: %s (분해맵 %d개)", userdic_path, len(decomposition_map))
 
     def morphs(self, text: str) -> list[str]:
         """
         형태소 분석 결과를 리스트로 반환
 
-        userdic이 활성화되고 decomposition_map이 있으면,
-        MeCab이 인식한 복합어에 서브 토큰을 추가한다.
+        MeCab이 인식한 복합어에 분해맵의 서브 토큰을 추가한다.
 
         Args:
             text: 분석할 한국어 텍스트
 
         Returns:
             형태소 리스트 (예: ["소멸시효", "소멸", "시효"])
-            MeCab 미설치 시 공백 분리 결과 반환
         """
         base_morphs = self._mecab_morphs(text)
 
-        if self._userdic_active and self._decomposition_map:
+        if self._decomposition_map:
             return self._decompose_compounds(base_morphs)
 
         return base_morphs
@@ -149,10 +161,6 @@ class MeCabTokenizer:
         """
         if not text or not text.strip():
             return []
-
-        if self._tagger is None:
-            logger.warning("MeCab 미설치: 공백 분리 fallback 사용")
-            return text.strip().split()
 
         # 전처리: 가운뎃점(ㆍ/·) → 공백 (MeCab UNKNOWN 오분석 방지)
         text = _MIDDOT_PATTERN.sub(" ", text)

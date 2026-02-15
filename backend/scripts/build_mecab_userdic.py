@@ -52,6 +52,8 @@ MECAB_DICT_INDEX_CANDIDATES = [
     "/usr/local/lib/mecab/mecab-dict-index",
     "/usr/local/libexec/mecab/mecab-dict-index",
     "/opt/homebrew/lib/mecab/mecab-dict-index",
+    "/opt/homebrew/libexec/mecab/mecab-dict-index",
+    "/opt/homebrew/Cellar/mecab-ko/0.996-ko-0.9.2/libexec/mecab/mecab-dict-index",
 ]
 SYS_DICT_CANDIDATES = [
     "/usr/lib/x86_64-linux-gnu/mecab/dic/mecab-ko-dic",
@@ -60,9 +62,9 @@ SYS_DICT_CANDIDATES = [
     "/opt/homebrew/lib/mecab/dic/mecab-ko-dic",
 ]
 
-# 법률 용어 JSON fallback 경로
+# 법률 용어 JSON fallback 경로 (우선순위 순)
+LAWTERMS_V1_JSON = PROJECT_ROOT / "data" / "lawterms_v1.json"
 LEGAL_TERMS_JSON = PROJECT_ROOT / "data" / "lawterms_full.json"
-DONE_LAWTERMS_JSON = PROJECT_ROOT / "data" / "lawterms_v1.json"
 
 # userdic CSV 비용 (낮을수록 우선 선택)
 USERDIC_COST = 100
@@ -245,7 +247,11 @@ def load_terms_from_json() -> set[str]:
     valid_pattern = re.compile(r"^[가-힣a-zA-Z0-9]+$")
     has_korean = re.compile(r"[가-힣]")
 
-    json_path = DONE_LAWTERMS_JSON if DONE_LAWTERMS_JSON.exists() else LEGAL_TERMS_JSON
+    # 우선순위: lawterms_v1.json > lawterms_full.json
+    if LAWTERMS_V1_JSON.exists():
+        json_path = LAWTERMS_V1_JSON
+    else:
+        json_path = LEGAL_TERMS_JSON
     if not json_path.exists():
         print(f"[ERROR] 법률 용어 JSON 파일 없음: {json_path}")
         return set()

@@ -584,9 +584,6 @@ uv run python scripts/build_mecab_userdic.py           # DB에서 빌드
 uv run python scripts/build_mecab_userdic.py --from-json  # JSON fallback
 uv run python scripts/build_mecab_userdic.py --verify   # 빌드 후 검증
 uv run python scripts/build_mecab_userdic.py --fix-regression  # 회귀 수정
-
-# content_tokenized 재생성 (userdic 적용)
-uv run --no-sync python scripts/update_content_tokenized.py --userdic
 ```
 
 **동작 방식**:
