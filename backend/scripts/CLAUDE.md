@@ -10,6 +10,7 @@
 | `local_lancedb_embeddings.py` | 로컬 임베딩 스크립트 (멀티 하드웨어 지원) |
 | `colab_lancedb_embeddings.py` | Google Colab 전용 |
 | `test_precedent_embedding.py` | 임베딩 테스트 |
+| `check_environment.py` | 데이터 로드 전 환경 검증 (Python, MeCab, Docker, Alembic 등) |
 
 ### 공통 모듈 (`embedding_common/`)
 
@@ -72,7 +73,8 @@ uv run --no-sync python scripts/local_lancedb_embeddings.py --verify
 
 ### 체크포인트/재개
 
-중단 시 자동으로 체크포인트를 저장합니다. 재실행 시 이어서 처리합니다.
+중단 시 자동으로 체크포인트를 `backend/embedding_checkpoints/`에 저장합니다. 재실행 시 이어서 처리합니다.
+체크포인트 경로는 `__file__` 기준 절대경로이므로, 어떤 디렉토리에서 실행해도 동일하게 동작합니다.
 
 ```bash
 # 재개 (기본 동작)
@@ -830,3 +832,44 @@ else:
 - `docs/architecture/EDA_DB_TRANSITION_DESIGN.md` - EDA→DB 전환 설계
 - `docs/01-plan/features/data-analysis.plan.md` - PDCA Plan
 - `docs/02-design/features/data-analysis.design.md` - PDCA Design
+
+---
+
+## 환경 검증 (check_environment.py)
+
+데이터 로드 전 필수 조건을 자동 검증하는 스크립트입니다. 새 기기에서 환경 세팅 후 실행하면 누락 항목을 한눈에 확인할 수 있습니다.
+
+### 사용법
+
+```bash
+cd backend
+
+# 전체 검증
+uv run python scripts/check_environment.py
+
+# 특정 범위만 검증
+uv run python scripts/check_environment.py --step db      # PostgreSQL 관련
+uv run python scripts/check_environment.py --step vector   # LanceDB/임베딩 관련
+uv run python scripts/check_environment.py --step neo4j    # Neo4j 관련
+```
+
+### 검증 항목
+
+| 범위 | 검증 항목 |
+|------|----------|
+| 공통 | Python 3.11+, backend/.env 존재, 필수 환경변수, 디스크 공간 |
+| db | PostgreSQL 컨테이너, Alembic 마이그레이션, 핵심 JSON 파일, MeCab 시스템 패키지 + Python 바인딩 |
+| vector | 임베딩 모델 캐시, PyTorch 설치 |
+| neo4j | Neo4j 컨테이너 |
+
+### 출력 예시
+
+```
+[공통]
+  ✅ Python 3.11.14
+  ✅ backend/.env 존재
+  ❌ DATABASE_URL 미설정 → backend/.env에 DATABASE_URL 설정 필요
+  ⚠️  디스크 여유: 8.2GB (50GB 이상 권장) → 불필요한 파일 정리
+
+총: 9/12 통과, 2 실패, 1 경고
+```

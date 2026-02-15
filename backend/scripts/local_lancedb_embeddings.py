@@ -86,7 +86,7 @@ except ImportError:
 # 체크포인트 관리
 # ============================================================================
 
-CHECKPOINT_DIR = Path("./embedding_checkpoints")
+CHECKPOINT_DIR = _backend_root / "embedding_checkpoints"
 
 
 @dataclass

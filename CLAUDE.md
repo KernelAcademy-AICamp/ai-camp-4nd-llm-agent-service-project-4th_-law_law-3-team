@@ -87,6 +87,7 @@ uv run pytest                        # 테스트 실행
 uv run pytest tests/test_file.py -k test_name  # 단일 테스트
 uv run ruff check .                  # 린트
 uv run mypy .                        # 타입 체크
+uv run python scripts/check_environment.py  # 환경 검증 (새 기기 세팅 시)
 ```
 
 ### Frontend (Next.js)

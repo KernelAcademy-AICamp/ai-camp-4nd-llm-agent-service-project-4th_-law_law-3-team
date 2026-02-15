@@ -66,6 +66,19 @@ log_ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
+# Docker 명령어 자동 감지 (WSL2 호환)
+detect_docker_cmd() {
+    if command -v docker &>/dev/null; then
+        echo "docker"
+    elif command -v docker.exe &>/dev/null; then
+        echo "docker.exe"
+    else
+        echo ""
+    fi
+}
+
+DOCKER_CMD=$(detect_docker_cmd)
+
 # 소요 시간 포맷
 format_duration() {
     local seconds=$1
@@ -129,14 +142,14 @@ preflight_check() {
     local errors=0
 
     # Docker 확인
-    if ! command -v docker &>/dev/null; then
-        log_error "docker가 설치되어 있지 않습니다"
+    if [[ -z "${DOCKER_CMD}" ]]; then
+        log_error "docker가 설치되어 있지 않습니다 (docker 또는 docker.exe)"
         errors=$((errors + 1))
     fi
 
     # PostgreSQL 컨테이너 확인
     if [[ "${SKIP_POSTGRES}" == "false" ]]; then
-        if ! docker ps --format '{{.Names}}' | grep -q "^${POSTGRES_CONTAINER}$"; then
+        if ! ${DOCKER_CMD} ps --format '{{.Names}}' | grep -q "^${POSTGRES_CONTAINER}$"; then
             log_error "PostgreSQL 컨테이너 '${POSTGRES_CONTAINER}'가 실행 중이 아닙니다"
             log_info "  실행: docker compose up -d postgres"
             errors=$((errors + 1))
@@ -147,7 +160,7 @@ preflight_check() {
 
     # Neo4j 컨테이너 확인
     if [[ "${SKIP_NEO4J}" == "false" ]]; then
-        if ! docker ps --format '{{.Names}}' | grep -q "^${NEO4J_CONTAINER}$"; then
+        if ! ${DOCKER_CMD} ps --format '{{.Names}}' | grep -q "^${NEO4J_CONTAINER}$"; then
             log_error "Neo4j 컨테이너 '${NEO4J_CONTAINER}'가 실행 중이 아닙니다"
             log_info "  실행: docker compose up -d neo4j"
             errors=$((errors + 1))
@@ -264,7 +277,7 @@ if [[ "${SKIP_POSTGRES}" == "false" ]]; then
 
     PG_DUMP_FILE="${BACKUP_DIR}/postgres.dump"
 
-    docker exec "${POSTGRES_CONTAINER}" \
+    ${DOCKER_CMD} exec "${POSTGRES_CONTAINER}" \
         pg_dump \
         --format=custom \
         --compress=6 \
@@ -292,11 +305,11 @@ if [[ "${SKIP_NEO4J}" == "false" ]]; then
 
     # Neo4j 컨테이너 정지 (dump는 오프라인 필요)
     log_info "Neo4j 컨테이너 정지 중..."
-    docker stop "${NEO4J_CONTAINER}" >/dev/null
+    ${DOCKER_CMD} stop "${NEO4J_CONTAINER}" >/dev/null
 
     # neo4j-admin database dump 실행
     log_info "Neo4j 데이터베이스 덤프 중..."
-    docker run --rm \
+    ${DOCKER_CMD} run --rm \
         --volumes-from "${NEO4J_CONTAINER}" \
         -v "${BACKUP_DIR}:/backup" \
         neo4j:5.15.0 \
@@ -304,7 +317,7 @@ if [[ "${SKIP_NEO4J}" == "false" ]]; then
         2>/dev/null || {
             # 5.x dump 명령이 다를 수 있으므로 fallback
             log_warn "neo4j-admin dump 실패, data 디렉토리 직접 복사..."
-            docker run --rm \
+            ${DOCKER_CMD} run --rm \
                 --volumes-from "${NEO4J_CONTAINER}" \
                 -v "${BACKUP_DIR}:/backup" \
                 alpine \
@@ -313,11 +326,11 @@ if [[ "${SKIP_NEO4J}" == "false" ]]; then
 
     # Neo4j 컨테이너 재시작
     log_info "Neo4j 컨테이너 재시작 중..."
-    docker start "${NEO4J_CONTAINER}" >/dev/null
+    ${DOCKER_CMD} start "${NEO4J_CONTAINER}" >/dev/null
 
     # 재시작 대기
     for i in $(seq 1 15); do
-        if docker exec "${NEO4J_CONTAINER}" wget --no-verbose --tries=1 --spider localhost:7474 2>/dev/null; then
+        if ${DOCKER_CMD} exec "${NEO4J_CONTAINER}" wget --no-verbose --tries=1 --spider localhost:7474 2>/dev/null; then
             break
         fi
         sleep 2

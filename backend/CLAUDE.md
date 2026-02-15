@@ -24,6 +24,15 @@ cp .env.example .env
 # .env 파일 편집 (API 키 등 설정)
 ```
 
+### 2-1. 환경 검증 (선택, 권장)
+
+```bash
+# 필수 조건 자동 점검 (Python, MeCab, Docker, 디스크 등)
+uv run python scripts/check_environment.py
+
+# 특정 범위만: --step db | vector | neo4j
+```
+
 ### 3. PostgreSQL 실행
 
 ```bash

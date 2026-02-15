@@ -19,6 +19,8 @@ Usage:
 
 import logging
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -49,7 +51,30 @@ _MECAB_SYS_DICT_CANDIDATES = [
 
 
 def _find_mecab_sys_dict() -> Optional[str]:
-    """MeCab 시스템 사전 경로 자동 탐지"""
+    """MeCab 시스템 사전 경로 자동 탐지 (mecab-config 우선, 하드코딩 fallback)"""
+    # 1. mecab-config로 동적 감지
+    mecab_config = shutil.which("mecab-config")
+    if mecab_config:
+        try:
+            result = subprocess.run(
+                [mecab_config, "--dicdir"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                dicdir = result.stdout.strip()
+                # mecab-ko-dic 하위 디렉토리 탐색
+                ko_dic = Path(dicdir) / "mecab-ko-dic"
+                if ko_dic.is_dir():
+                    return str(ko_dic)
+                # dicdir 자체가 사전일 수도 있음
+                if Path(dicdir).is_dir() and (Path(dicdir) / "dicrc").exists():
+                    return dicdir
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+
+    # 2. 하드코딩 후보 fallback
     for candidate in _MECAB_SYS_DICT_CANDIDATES:
         if Path(candidate).is_dir():
             return candidate
