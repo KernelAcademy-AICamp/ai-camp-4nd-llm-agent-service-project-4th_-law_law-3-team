@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 _cached_model: Optional[object] = None
 _cached_device: Optional[str] = None
+_cached_model_name: Optional[str] = None
 
 
 def get_embedding_model(
@@ -35,7 +36,7 @@ def get_embedding_model(
     Returns:
         SentenceTransformer 모델
     """
-    global _cached_model, _cached_device
+    global _cached_model, _cached_device, _cached_model_name
     from sentence_transformers import SentenceTransformer
 
     model_name = model_name or str(DEFAULT_CONFIG["EMBEDDING_MODEL"])
@@ -46,8 +47,12 @@ def get_embedding_model(
             device_id = get_optimal_cuda_device()
             device = f"cuda:{device_id}"
 
-    # 캐시된 모델이 같은 디바이스면 반환
-    if _cached_model is not None and _cached_device == device:
+    # 캐시된 모델이 같은 디바이스 + 같은 모델이면 반환
+    if (
+        _cached_model is not None
+        and _cached_device == device
+        and _cached_model_name == model_name
+    ):
         return _cached_model  # type: ignore[return-value]
 
     print(f"[INFO] Loading embedding model: {model_name} on {device}")
@@ -56,6 +61,7 @@ def get_embedding_model(
 
     _cached_model = model
     _cached_device = device
+    _cached_model_name = model_name
 
     return model
 
@@ -94,9 +100,10 @@ def create_embeddings(
 
 def clear_model_cache() -> None:
     """모델 캐시 및 GPU 메모리 해제"""
-    global _cached_model, _cached_device
+    global _cached_model, _cached_device, _cached_model_name
     _cached_model = None
     _cached_device = None
+    _cached_model_name = None
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()

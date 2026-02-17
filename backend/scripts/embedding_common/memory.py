@@ -74,9 +74,9 @@ def print_memory_status() -> None:
         print("[MEM] MPS: 시스템 메모리 공유 (별도 VRAM 없음)")
 
 
-def check_memory_pressure(threshold_percent: float = 90.0) -> bool:
+def check_memory_pressure(threshold_percent: float = 80.0) -> bool:
     """
-    메모리 압력 체크
+    메모리 압력 체크 (GPU + 시스템 RAM 동시 확인)
 
     Args:
         threshold_percent: 경고 임계값 (%)
@@ -84,9 +84,12 @@ def check_memory_pressure(threshold_percent: float = 90.0) -> bool:
     Returns:
         True면 메모리 부족 경고
     """
+    pressure = False
     if torch.cuda.is_available():
         gpu_mem = get_gpu_memory()
-        return gpu_mem.usage_percent >= threshold_percent
-
+        if gpu_mem.usage_percent >= threshold_percent:
+            pressure = True
     sys_mem = get_system_memory()
-    return sys_mem.usage_percent >= threshold_percent
+    if sys_mem.usage_percent >= threshold_percent:
+        pressure = True
+    return pressure

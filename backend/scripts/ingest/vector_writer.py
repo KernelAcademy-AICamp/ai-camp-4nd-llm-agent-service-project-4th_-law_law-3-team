@@ -69,17 +69,65 @@ ANN_NUM_PARTITIONS = 256  # sqrt(92055) ≈ 303, 보수적으로 256
 # #6 ijson 스트리밍 로드
 # ---------------------------------------------------------------------------
 
+
+def _extract_group_from_filename(filename: str) -> str:
+    """파일명에서 그룹명(위원회/부처/기관명) 추출
+
+    패턴: prefix_그룹명_v숫자.json
+    예: dec_comm_공정거래위원회_v1.json → 공정거래위원회
+        intp_min_고용노동부_v1.json → 고용노동부
+        sadm_case_조세심판원_v1.json → 조세심판원
+    """
+    import re
+
+    m = re.search(r"(?:dec_comm|intp_min|sadm_case)_(.+?)_v\d+\.json", filename)
+    return m.group(1) if m else Path(filename).stem
+
+
 def _load_json_streaming(source_path: Path) -> Iterator[dict[str, Any]]:
-    """JSON 스트리밍 로드 (ijson 필수). 전체 JSON을 메모리에 올리지 않음."""
+    """JSON 스트리밍 로드 (ijson 필수).
+
+    단일 파일이면 그대로 스트리밍 로드.
+    디렉토리이면 내부 .json 파일을 순차 스트리밍하고
+    각 item에 __source_group__ 키를 추가.
+    """
     import ijson
 
     if not source_path.exists():
-        raise FileNotFoundError(f"소스 파일을 찾을 수 없습니다: {source_path}")
+        raise FileNotFoundError(f"소스를 찾을 수 없습니다: {source_path}")
+
+    if source_path.is_dir():
+        yield from _load_json_directory_streaming(source_path)
+        return
 
     logger.info("JSON 스트리밍 로드: %s", source_path)
     with open(source_path, "rb") as f:
         for item in ijson.items(f, "item"):
             yield item
+
+
+def _load_json_directory_streaming(dir_path: Path) -> Iterator[dict[str, Any]]:
+    """디렉토리 내 모든 .json 파일을 순차 스트리밍 로드
+
+    각 item에 __source_group__ 키를 추가하여
+    어느 파일(위원회/부처)에서 왔는지 식별 가능하게 함.
+    """
+    import ijson
+
+    json_files = sorted(dir_path.glob("*.json"))
+    if not json_files:
+        raise FileNotFoundError(f"디렉토리에 .json 파일이 없습니다: {dir_path}")
+
+    logger.info("디렉토리 스트리밍 로드: %s (%d개 파일)", dir_path, len(json_files))
+
+    for json_file in json_files:
+        group_name = _extract_group_from_filename(json_file.name)
+        logger.info("  스트리밍: %s (%s)", json_file.name, group_name)
+
+        with open(json_file, "rb") as f:
+            for item in ijson.items(f, "item"):
+                item["__source_group__"] = group_name
+                yield item
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +467,11 @@ def run_vector_ingest(
             if check_memory_pressure():
                 logger.warning("메모리 압력 감지! 강제 GC 실행")
             clear_memory()
+            if cache:
+                cache_size = len(cache._memory_cache)
+                if cache_size > 0:
+                    cache.clear_memory_cache()
+                    logger.info("캐시 메모리 정리: %d 엔트리 해제", cache_size)
 
         # #4 GPU 온도 모니터링
         if thermal_monitor:

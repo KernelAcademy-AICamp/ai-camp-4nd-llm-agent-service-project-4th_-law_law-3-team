@@ -67,6 +67,9 @@ all_lawyers.json
 # LanceDB
 lancedb_data/
 
+# Embedding cache
+embedding_cache/
+
 # Docker
 .env.docker
 docker-compose.override.yml
