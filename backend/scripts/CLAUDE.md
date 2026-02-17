@@ -835,6 +835,57 @@ else:
 
 ---
 
+## 요약 품질 감사 (audit_summary_quality.py)
+
+JSON 데이터의 LLM 요약 필드를 탐색적으로 감사합니다.
+7개 검사: 기본 통계, 마크다운, LLM 아티팩트, 포맷 일관성, 이상치, 중복, 교차 비교.
+
+기존 도구와의 관계:
+- `validate_summaries.py` — 사전 정의 규칙 기반 검증 (길이, 프롬프트 누출)
+- `clean_summaries.py` — 규칙 기반 클리닝 (마크다운 제거, 불완전 문장 보정)
+- **이 스크립트** — 탐색적(EDA) 품질 감사
+
+### 사용법
+
+```bash
+cd backend
+
+# Mode 1: IngestConfig 등록 타입 (자동 필드 해석)
+uv run python scripts/audit_summary_quality.py --type special_admin_appeal --data-dir ../data
+
+# Mode 2: 임의 JSON 파일 (필드 직접 지정)
+uv run python scripts/audit_summary_quality.py \
+    --file ../data/special_admin_appeal/sadm_case_조세심판원_v2.json \
+    --summary-field 심판례요약 \
+    --id-field 특별행정심판재결례일련번호
+
+# 교차 비교 + JSON 보고서
+uv run python scripts/audit_summary_quality.py --type special_admin_appeal \
+    --data-dir ../data \
+    --compare-field 재결요지 \
+    --output eda_output/audit_special_admin_appeal.json \
+    --samples 10
+```
+
+### CLI 옵션
+
+| 옵션 | 설명 | 기본값 |
+|------|------|--------|
+| `--type` | 인제스트 타입명 (자동 필드 해석) | - |
+| `--file` | 임의 JSON 파일 경로 | - |
+| `--summary-field` | 요약 필드명 (`--file` 모드 필수) | - |
+| `--id-field` | ID 필드명 (`--file` 모드, 미지정 시 인덱스) | - |
+| `--data-dir` | 데이터 디렉토리 재매핑 (`--type` 전용) | - |
+| `--compare-field` | 교차 비교 대상 필드명 | - |
+| `--output` | JSON 보고서 저장 경로 | - |
+| `--samples` | 이상치 샘플 수 | 5 |
+
+### 관련 스킬
+
+- `.claude/skills/summary-quality-audit/SKILL.md`
+
+---
+
 ## 환경 검증 (check_environment.py)
 
 데이터 로드 전 필수 조건을 자동 검증하는 스크립트입니다. 새 기기에서 환경 세팅 후 실행하면 누락 항목을 한눈에 확인할 수 있습니다.
