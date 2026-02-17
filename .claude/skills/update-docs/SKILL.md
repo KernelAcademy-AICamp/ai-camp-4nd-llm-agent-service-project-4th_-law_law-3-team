@@ -1,3 +1,8 @@
+---
+name: update-docs
+description: 코드 변경 사항을 분석하여 관련 문서(CLAUDE.md, README.md, 스킬, 에이전트)를 자동으로 찾아 업데이트. 코드 구조 변경 후 문서 동기화 시 사용.
+---
+
 # Update Docs Skill
 
 코드 변경 사항을 분석하여 관련 문서를 자동으로 찾아 업데이트합니다.

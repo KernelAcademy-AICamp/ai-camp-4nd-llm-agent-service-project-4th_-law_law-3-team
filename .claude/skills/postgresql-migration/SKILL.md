@@ -1,3 +1,8 @@
+---
+name: postgresql-migration
+description: JSON 파일 데이터를 PostgreSQL로 마이그레이션하는 패턴 가이드. ORM 모델, Alembic 마이그레이션, 배치 로드, Feature Flag 분기. DB 마이그레이션 작업 시 사용.
+---
+
 # PostgreSQL Migration Skill
 
 JSON 파일 데이터를 PostgreSQL로 마이그레이션하는 패턴 가이드.

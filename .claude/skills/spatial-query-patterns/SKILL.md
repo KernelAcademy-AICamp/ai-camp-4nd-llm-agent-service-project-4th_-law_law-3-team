@@ -1,3 +1,8 @@
+---
+name: spatial-query-patterns
+description: PostGIS 없이 PostgreSQL에서 위치 기반 검색을 수행하는 패턴 가이드. Bounding Box, Haversine 거리 계산, 밀도 분석. 위치 기반 검색, 지역별 통계 작업 시 사용.
+---
+
 # Spatial Query Patterns Skill
 
 PostGIS 없이 PostgreSQL에서 위치 기반 검색을 수행하는 패턴 가이드.

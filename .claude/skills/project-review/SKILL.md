@@ -1,3 +1,8 @@
+---
+name: project-review
+description: 법률 서비스 플랫폼에 특화된 코드 리뷰 스킬. staged 변경 사항 분석, 린트/타입/보안/API 동기화 검증, 구조화된 리뷰 리포트 생성. 코드 리뷰, 커밋 전 검증 시 사용.
+---
+
 # Project Review Skill
 
 법률 서비스 플랫폼에 특화된 코드 리뷰 스킬.

@@ -1,3 +1,8 @@
+---
+name: summary-quality-audit
+description: LLM 요약 필드의 품질을 탐색적으로 감사하는 프로토콜. 길이/공백/중복/환각 패턴 탐지, 샘플링 기반 품질 점검. 요약 품질 검증, 데이터 클리닝 시 사용.
+---
+
 # Summary Quality Audit Skill
 
 LLM 요약 필드의 품질을 탐색적으로 감사하는 프로토콜.

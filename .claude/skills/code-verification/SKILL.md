@@ -1,3 +1,8 @@
+---
+name: code-verification
+description: 코드 변경 시 빌드/린트/타입체크 및 API 계약 동기화를 검증하는 상세 가이드. Backend(ruff, mypy), Frontend(tsc, ESLint) 정적 검증. 코드 수정 후 검증 시 사용.
+---
+
 # Code Verification Skill
 
 코드 변경 시 빌드/린트/타입체크 및 API 계약 동기화를 검증하는 상세 가이드.

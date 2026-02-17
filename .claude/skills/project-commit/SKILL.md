@@ -1,3 +1,8 @@
+---
+name: project-commit
+description: 법률 서비스 플랫폼의 커밋 워크플로우. 변경 분석 → 정적 검증 → 커밋 메시지 생성 → 커밋 수행. 코드 변경 후 커밋 시 사용.
+---
+
 # Project Commit Skill
 
 법률 서비스 플랫폼의 커밋 워크플로우.
