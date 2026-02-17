@@ -64,6 +64,7 @@ git diff --name-only HEAD~1
 | AI 오케스트레이터 | `.claude/agents/ai-orchestrator.md` | CLI 도구, 라우팅 로직 변경 |
 | 코드 리팩토러 | `.claude/agents/code-refactorer.md` | 리팩토링 패턴 변경 |
 | 각 스킬 | `.claude/skills/*/SKILL.md` | 해당 스킬이 참조하는 코드 경로/패턴 변경 |
+| 스킬 카탈로그 | `.claude/skills/CATALOG.md` | 스킬/에이전트/규칙 추가·삭제·이동, description 변경 |
 
 ### 3. 변경 → 문서 매핑 규칙
 
@@ -107,6 +108,9 @@ pyproject.toml                          → backend/CLAUDE.md (Commands, 의존�
 package.json                            → frontend/CLAUDE.md (Commands, 의존성)
 
 .claude/skills/*, .claude/agents/*      → 해당 파일 자체 (참조 경로 변경 확인)
+                                          .claude/skills/CATALOG.md (추가/삭제/이동 시)
+
+.claude/rules/*                         → .claude/skills/CATALOG.md (규칙 추가/삭제 시)
 ```
 
 ### 4. 모듈 4곳 동기화 확인
@@ -129,7 +133,59 @@ grep -r "변경전_경로" .claude/skills/ .claude/agents/
 
 참조가 발견되면 해당 스킬/에이전트 파일도 업데이트합니다.
 
-### 6. AGENTS.md 동기화
+### 6. CATALOG.md 동기화
+
+스킬/에이전트/규칙이 **추가·삭제·이동**되거나, YAML frontmatter의 `description`이 변경된 경우 `.claude/skills/CATALOG.md`를 업데이트합니다.
+
+#### 트리거 조건
+
+| 변경 유형 | CATALOG.md 업데이트 내용 |
+|----------|------------------------|
+| 스킬 디렉토리 추가 | 해당 카테고리 테이블에 행 추가 + 크기 분포 갱신 |
+| 스킬 디렉토리 삭제 | 해당 카테고리 테이블에서 행 제거 + 크기 분포 갱신 |
+| 스킬 description 변경 | 해당 행의 설명 컬럼 업데이트 |
+| 에이전트 파일 추가/삭제 | 해당 카테고리 에이전트 테이블 + 카테고리 요약 테이블 갱신 |
+| 규칙 파일 추가/삭제 | 규칙 목록 테이블 갱신 |
+| 스킬 카테고리 변경 | 이전 카테고리에서 제거 → 새 카테고리에 추가 |
+
+#### 업데이트 절차
+
+1. **현황 수집**: 실제 디렉토리를 스캔하여 최신 목록 확보
+   ```bash
+   # 스킬 목록 + 줄 수
+   for d in .claude/skills/*/; do
+     name=$(basename "$d")
+     [ -f "$d/SKILL.md" ] && echo "$name $(wc -l < "$d/SKILL.md")"
+   done
+
+   # 에이전트 목록
+   ls .claude/agents/*.md
+
+   # 규칙 목록
+   ls .claude/rules/*.md
+   ```
+
+2. **CATALOG.md 읽기**: 현재 카탈로그 내용을 읽는다
+
+3. **차이 비교**: 실제 파일 시스템 vs CATALOG.md 내용을 비교
+   - 누락된 스킬/에이전트/규칙 → 추가
+   - 삭제된 스킬/에이전트/규칙 → 제거
+   - 줄 수 변경 → 크기 분포 섹션 갱신
+
+4. **카테고리 판단** (신규 스킬일 때): SKILL.md의 description을 읽고 기존 9개 카테고리 중 가장 적합한 곳에 배치
+   - 워크플로우 / 코드 품질 / 프론트엔드 / RAG·검색 / 데이터·DB / 도메인 지식 / 멀티에이전트 / 외부 CLI / 운영
+   - 기존 카테고리에 맞지 않으면 새 카테고리 추가
+
+5. **업데이트 적용**: Edit 도구로 최소 변경
+   - 카테고리 요약 테이블의 스킬/에이전트 수
+   - 해당 카테고리 섹션의 테이블 행
+   - 스킬 크기 분포 섹션
+   - 총 줄 수 / 평균
+   - `최종 업데이트` 날짜
+
+6. **의존관계 확인**: 새 스킬이 기존 스킬을 참조하면 의존관계 메모도 갱신
+
+### 7. AGENTS.md 동기화
 
 CLAUDE.md가 변경될 때 AGENTS.md도 함께 동기화합니다.
 
@@ -154,7 +210,7 @@ AGENTS.md가 아직 없습니다. Codex 등 범용 AI 에이전트를 위해 생
 
 사용자가 승인하면 CLAUDE.md를 기반으로 AGENTS.md를 생성합니다.
 
-### 7. 문서 업데이트 실행
+### 8. 문서 업데이트 실행
 
 각 대상 문서에 대해:
 
@@ -173,7 +229,7 @@ AGENTS.md가 아직 없습니다. Codex 등 범용 AI 에이전트를 위해 생
 - **삭제된 코드**: 문서에서도 해당 항목 제거 (주석 처리 금지)
 - **존재하지 않는 문서**: 건너뛰고 결과 보고에 표기
 
-### 8. 결과 보고
+### 9. 결과 보고
 
 ```
 ## 문서 업데이트 결과
@@ -187,7 +243,7 @@ AGENTS.md가 아직 없습니다. Codex 등 범용 AI 에이전트를 위해 생
 | ... | ... | ... |
 ```
 
-### 9. 인자 사용법
+### 10. 인자 사용법
 
 | 명령 | 동작 |
 |------|------|
@@ -196,5 +252,5 @@ AGENTS.md가 아직 없습니다. Codex 등 범용 AI 에이전트를 위해 생
 | `/update-docs frontend` | `frontend/CLAUDE.md`, 루트 `CLAUDE.md`의 프론트 관련 섹션 |
 | `/update-docs root` | 루트 `CLAUDE.md`, `README.md`, `AGENTS.md` |
 | `/update-docs docs` | `docs/` 디렉토리 내 모든 문서 |
-| `/update-docs skills` | `.claude/skills/`, `.claude/agents/` 내 참조 경로 검증 및 업데이트 |
+| `/update-docs skills` | `.claude/skills/`, `.claude/agents/` 참조 경로 검증 + `CATALOG.md` 동기화 |
 | `/update-docs all` | 위 전체 (`/update-docs`와 동일) |
