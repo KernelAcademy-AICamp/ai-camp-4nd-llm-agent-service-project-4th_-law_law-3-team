@@ -127,13 +127,11 @@ class TestAddDocuments:
             contents=["내용"],
             decision_dates=["2023-05-15"],
             court_names=["대법원"],
-            case_numbers=["2023다12345"],
-            case_types=["민사"],
         )
         result = lancedb_store.get_by_ids(["76396_0"])
         assert len(result["ids"]) == 1
         assert result["metadatas"][0]["data_type"] == "판례"
-        assert result["metadatas"][0]["case_number"] == "2023다12345"
+        assert result["metadatas"][0]["source_name"] == "대법원"
 
 
 

@@ -4,8 +4,14 @@ Pytest 공통 설정 및 픽스처
 테스트 환경 설정 및 공유 픽스처 정의
 """
 
+import os
 import sys
 from pathlib import Path
+
+# WSL2 환경: mecab-python3가 /usr/local/etc/mecabrc를 찾지만
+# 실제 mecabrc는 /etc/mecabrc에 위치. 환경변수로 보정.
+if "MECABRC" not in os.environ and Path("/etc/mecabrc").exists():
+    os.environ["MECABRC"] = "/etc/mecabrc"
 
 # 프로젝트 루트를 Python 경로에 추가
 PROJECT_ROOT = Path(__file__).parent.parent
