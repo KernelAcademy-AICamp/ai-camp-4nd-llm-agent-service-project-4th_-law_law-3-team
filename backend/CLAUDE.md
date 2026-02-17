@@ -1003,6 +1003,47 @@ driver.close()
 | 법령 탐색 UI | HIERARCHY_OF, RELATED_TO | 계급도 시각화, 관련 법령 탐색 |
 | 판례 추천 | CITES_CASE, CITES | 유사 판례 찾기 (같은 법령 인용) |
 
+## Trial Statistics DB (재판 통계)
+
+법원별/카테고리별/연도별 사건 처리 건수를 PostgreSQL `trial_statistics` 테이블에 저장합니다.
+
+### 테이블 구조
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `category` | VARCHAR(50) NOT NULL | 사건 카테고리 (민사_본안_단독, 형사_공판 등) |
+| `court_name` | VARCHAR(100) NOT NULL | 법원명 (서울중앙지방법원, 고양지원 등) |
+| `court_type` | VARCHAR(20) NOT NULL | 법원 유형 (main: 본원, branch: 지원) |
+| `parent_court` | VARCHAR(100) NULL | 지원의 상위 본원명 (본원은 NULL) |
+| `year` | INTEGER NOT NULL | 연도 (2015~2024) |
+| `case_count` | INTEGER NOT NULL | 사건 처리 건수 |
+| UNIQUE | (category, court_name, year) | 중복 방지 제약조건 |
+
+### 카테고리 매핑
+
+| CSV 파일 | category |
+|----------|----------|
+| 제2항_민사_민사본안_단독_제1심 | `민사_본안_단독` |
+| 제2항_민사_민사본안_합의_제1심 | `민사_본안_합의` |
+| 제3항_가사_가사소송_제1심 | `가사` |
+| 제4항_행정_행정소송_제1심 | `행정` |
+| 제6항_형사_형사공판_제1심 | `형사_공판` |
+| 제6항_형사_약식명령 | `형사_약식` |
+| 제7항_소년보호_소년보호 | `소년보호` |
+| 제8항_가정보호_가정보호 | `가정보호` |
+
+### 저장 규칙
+- 소계/합계 행: 저장하지 않음 (쿼리로 SUM 계산)
+- 보정값: 저장하지 않음 (원본값만 사용)
+- 평균 열: 저장하지 않음 (AVG로 계산)
+
+### 관련 파일
+
+| 파일 | 설명 |
+|------|------|
+| `app/models/trial_statistics.py` | TrialStatistics ORM 모델 |
+| `alembic/versions/005_add_trial_statistics_table.py` | 마이그레이션 |
+
 ## EDA (탐색적 데이터 분석)
 
 법률 데이터 48개 JSON 파일(~4.9GB)의 품질, 구조, 관계를 분석하는 노트북 + 공유 모듈입니다.

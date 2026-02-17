@@ -35,113 +35,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 디버깅 도중 보안 감사 등 관련 없는 작업을 혼합하지 않음
 - 목적이 다르면 별도 세션으로 분리
 
-## Claude Code Hooks 설정 (팀원 필수)
+## Claude Code Hooks
 
-프로젝트에 `Edit`/`Write` 후 자동 린트 검증 훅이 포함되어 있습니다.
-훅 스크립트(`.claude/hooks/post-write-verify.sh`)는 git에 포함되지만, 활성화 설정은 **각자 로컬에서** 해야 합니다.
-
-### 설정 방법
-
-`.claude/settings.local.json` 파일에 아래 내용을 추가하세요 (파일이 없으면 새로 생성):
-
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-write-verify.sh",
-            "timeout": 30
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-### 동작 방식
-
-| 파일 타입 | 검증 도구 | 실패 시 |
-|-----------|----------|---------|
-| `*.py` (backend/) | `uv run ruff check` | 수정 후 재검증 |
-| `*.ts, *.tsx` (frontend/) | `npx tsc --noEmit` | 수정 후 재검증 |
-
-### 참고
-- `.claude/settings.local.json`은 `.gitignore`에 포함되어 있으므로 커밋되지 않습니다
-- 훅이 실패하면 Claude가 자동으로 코드를 수정하고 재검증합니다
-- `jq`가 설치되어 있어야 합니다 (`brew install jq`)
+`Edit`/`Write` 후 자동 린트 검증 훅 포함. 활성화 설정은 각자 로컬에서 수행.
+→ 상세: `.claude/hooks/README.md`
 
 ## Commands
 
-### Backend (uv + FastAPI)
-```bash
-cd backend
-uv sync                              # 의존성 설치
-uv sync --dev                        # 개발 의존성 포함
-uv run uvicorn app.main:app --reload # 서버 실행 (localhost:8000)
-uv run pytest                        # 테스트 실행
-uv run pytest tests/test_file.py -k test_name  # 단일 테스트
-uv run ruff check .                  # 린트
-uv run mypy .                        # 타입 체크
-uv run python scripts/check_environment.py  # 환경 검증 (새 기기 세팅 시)
-```
+| 영역 | 핵심 명령어 |
+|------|-----------|
+| Backend | `cd backend && uv sync --dev && uv run uvicorn app.main:app --reload` |
+| Frontend | `cd frontend && npm install && npm run dev` |
+| 모듈 추가 | `python3 scripts/add_module.py <module_name> "<description>"` |
 
-### Frontend (Next.js)
-```bash
-cd frontend
-npm install
-npm run dev      # 개발 서버 (localhost:3000)
-npm run build    # 빌드
-npm run lint     # 린트
-```
-
-### Module Management
-```bash
-# 새 모듈 추가 (Backend + Frontend 자동 생성)
-python3 scripts/add_module.py <module_name> "<description>"
-
-# 모듈 삭제
-python3 scripts/add_module.py remove <module_name>
-```
+→ 상세: `backend/CLAUDE.md`, `frontend/CLAUDE.md`
 
 ## Architecture
 
-### 모듈 자동 등록 시스템
+### 모듈 자동 등록
 
 **Backend**: `backend/app/core/registry.py`의 `ModuleRegistry`가 `backend/app/modules/` 폴더를 스캔하여 자동으로 라우터 등록. 각 모듈의 `router/__init__.py`에 `router = APIRouter()` 정의 필요.
 
 **Frontend**: `frontend/src/lib/modules.ts`에서 모듈 정의 후 `getEnabledModules()`로 활성화된 모듈만 표시.
 
-### 모듈 구조
+### API 경로 규칙
 
-Backend 모듈 (`backend/app/modules/<module_name>/`):
-- `router/` - API 라우터 (필수: `router` 변수)
-- `schema/` - Pydantic 스키마
-- `model/` - DB 모델
-
-> **Note**: 비즈니스 로직은 `app/services/service_function/`에 통합 관리됩니다.
-> 모듈의 router는 services를 import하여 사용합니다.
-
-Frontend 모듈:
-- `src/app/<module-name>/page.tsx` - 페이지
-- `src/features/<module-name>/services/` - API 서비스
-- `src/features/<module-name>/components/` - 컴포넌트
-- `src/lib/api.ts` - endpoints 정의
-- `src/lib/modules.ts` - 모듈 메타데이터
+Backend 모듈명 `snake_case` → API 경로 `/api/kebab-case` (예: `lawyer_finder` → `/api/lawyer-finder`)
 
 ### 모듈 비활성화
 
 Backend: `.env`에서 `ENABLED_MODULES=["module1","module2"]` (빈 배열이면 모두 활성화)
 Frontend: `modules.ts`에서 `enabled: false`
-
-### API 경로 규칙
-
-Backend 모듈명 `snake_case` → API 경로 `/api/kebab-case`
-예: `lawyer_finder` → `/api/lawyer-finder`
 
 ## Key Files
 
@@ -153,596 +77,52 @@ Backend 모듈명 `snake_case` → API 경로 `/api/kebab-case`
 - `frontend/src/lib/api.ts` - API 클라이언트 및 endpoints
 - `scripts/add_module.py` - 모듈 생성 스크립트
 
+## 모듈 매핑
+
+| Backend 모듈 | API 경로 | Frontend ID | api.ts key |
+|-------------|---------|-------------|-----------|
+| `case_precedent` | `/api/case-precedent` | `case-precedent` | `casePrecedent` |
+| `lawyer_finder` | `/api/lawyer-finder` | `lawyer-finder` | `lawyerFinder` |
+| `lawyer_stats` | `/api/lawyer-stats` | `lawyer-stats` | `lawyerStat` |
+| `small_claims` | `/api/small-claims` | `small-claims` | `smallClaims` |
+| `storyboard` | `/api/storyboard` | `storyboard` | `storyboard` |
+| `law_study` | `/api/law-study` | `law-study` | `lawStudy` |
+
 ## Backend Architecture
 
-### 폴더 구조
+통합 채팅 API (`POST /api/chat`)와 7개 에이전트 기반 멀티에이전트 시스템 (LangGraph).
+→ 상세: `backend/CLAUDE.md`
 
-```
-backend/app/
-├── api/router/          # 통합 API (채팅 등)
-│   └── chat.py          # /api/chat 엔드포인트
-├── core/                # 핵심 인프라
-│   ├── config.py        # 환경 설정
-│   ├── database.py      # DB 연결
-│   ├── errors.py        # 공통 예외
-│   ├── context.py       # 요청 컨텍스트
-│   ├── policies/        # 법률 안전정책
-│   └── state/           # 세션 저장소
-├── multi_agent/         # LangGraph 멀티 에이전트 시스템
-│   ├── graph.py         # LangGraph StateGraph 빌드/컴파일
-│   ├── nodes.py         # router_node + 에이전트 노드 함수
-│   ├── router.py        # RulesRouter, AgentType, UserRole, ROLE_AGENTS
-│   ├── state.py         # ChatState TypedDict, 변환 함수
-│   ├── agents/          # 에이전트 구현체 (BaseChatAgent 상속)
-│   ├── subgraphs/       # 서브그래프 (small_claims)
-│   └── schemas/         # 스키마 (AgentPlan, AgentResult)
-├── services/            # 비즈니스 로직 서비스
-│   ├── rag/             # RAG 검색 (retrieval, rerank, pipeline)
-│   └── service_function/ # 통합 서비스 함수
-│       ├── lawyer_service.py       # 변호사 검색/클러스터링
-│       ├── lawyer_stats_service.py # 변호사 통계
-│       ├── precedent_service.py    # 판례 조회
-│       ├── law_service.py          # 법령 조회
-│       └── small_claims_service.py # 소액소송 가이드
-├── tools/               # 외부 도구 클라이언트
-│   ├── llm/             # LLM 클라이언트 (Solar)
-│   ├── vectorstore/     # 벡터 DB (LanceDB)
-│   ├── graph/           # Neo4j 그래프 서비스
-│   └── geo/             # 거리 계산
-├── modules/             # 독립 API 모듈 (자동 등록)
-│   ├── case_precedent/
-│   ├── lawyer_finder/
-│   ├── lawyer_stats/
-│   └── small_claims/
-└── models/              # ORM 모델
-```
+## DB / 인프라 요약
 
-### Multi-Agent 시스템 (LangGraph)
+| 인프라 | 용도 | Feature Flag | 상세 문서 |
+|--------|------|-------------|----------|
+| **PostgreSQL** | 변호사(17,326건), 법률용어(72,700건), 재판통계, 법령/판례 원본 | `USE_DB_LAWYERS`, `USE_LEGAL_TERM_DICT` | `backend/CLAUDE.md` |
+| **LanceDB** | 법령+판례 벡터 임베딩 (253,768 청크), FTS | `LANCEDB_MODE`, `LANCEDB_INDEX_TYPE` | `backend/CLAUDE.md` |
+| **Neo4j** | 법령 계급, 판례 인용 그래프 (5,572 법령 + 65,107 판례) | - | `backend/CLAUDE.md` |
+| **MeCab userdic** | 법률 복합명사 사전 (37,366 엔트리) | `USE_MECAB_USERDIC` | `backend/CLAUDE.md` |
 
-```
-START → router_node ──(Command)──→ legal_search_node ───→ END
-                      ├──────────→ lawyer_finder_node ──→ END
-                      ├──────────→ small_claims_subgraph ─→ END
-                      ├──────────→ storyboard_node ─────→ END
-                      ├──────────→ lawyer_stats_node ───→ END
-                      ├──────────→ law_study_node ──────→ END
-                      └──────────→ simple_chat_node ────→ END
-```
-
-**에이전트 목록:**
-| 에이전트 | 역할 | 노드 | RAG 사용 |
-|---------|------|------|---------|
-| `LegalSearchAgent` | 판례/법령 RAG 검색 (search_focus로 분기) | `legal_search_node` | ✅ |
-| `LawyerFinderAgent` | 변호사 찾기 페이지 이동 | `lawyer_finder_node` | ❌ |
-| `SmallClaimsAgent` | 소액소송 단계별 가이드 (서브그래프) | `small_claims_subgraph` | ✅ |
-| `StoryboardAgent` | 사건 타임라인 LLM 생성 | `storyboard_node` | ❌ |
-| `LawyerStatsAgent` | 변호사 통계 대시보드 안내 | `lawyer_stats_node` | ❌ |
-| `LawStudyAgent` | 로스쿨 학습 가이드 (RAG+LLM) | `law_study_node` | ✅ |
-| `SimpleChatAgent` | 일반 LLM 채팅 (폴백) | `simple_chat_node` | ❌ |
-
-### 통합 채팅 API
-
-```bash
-# 새 통합 채팅 API
-POST /api/chat
-{
-  "message": "손해배상 판례 알려줘",
-  "history": [],
-  "session_data": {}
-}
-```
-
-프론트엔드 `ChatWidget`은 `/api/chat` 사용 (기존 `/api/multi-agent/chat` 대체)
-
-## Vector DB (LanceDB)
-
-법령/판례 임베딩 데이터를 LanceDB에 저장합니다.
-
-### 임베딩 스크립트
-```bash
-cd backend
-
-# PyTorch 설치 (환경에 맞게)
-uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-
-# 로컬 임베딩 (권장 - 하드웨어 자동 감지, 체크포인트 지원)
-uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --reset
-
-# RunPod/클라우드 임베딩
-uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all --reset
-
-# 통계 확인
-uv run --no-sync python scripts/local_lancedb_embeddings.py --stats
-```
-
-### 임베딩 인프라 구조
-
-```
-backend/scripts/
-├── local_lancedb_embeddings.py       # 로컬 임베딩 (데스크톱/노트북/Mac)
-├── runpod_lancedb_embeddings.py      # 클라우드 GPU 임베딩 (RunPod)
-├── embedding_common/                  # 공통 모듈 패키지
-│   ├── device.py                      # GPU/CPU/MPS 감지
-│   ├── config.py                      # 하드웨어 프로필 설정
-│   ├── model.py                       # 임베딩 모델 로딩
-│   ├── store.py                       # LanceDB 연결/테이블
-│   ├── chunking.py                    # 텍스트 청킹
-│   ├── schema.py                      # 스키마 검증
-│   ├── cache.py                       # 임베딩 캐시
-│   ├── temperature.py                 # GPU 온도 모니터링
-│   └── memory.py                      # 메모리 모니터링
-└── CLAUDE.md                          # 스크립트 상세 가이드
-
-backend/notebooks/
-├── runpod_lancedb_embeddings.ipynb    # RunPod 환경 노트북
-└── colab_lancedb_embeddings.ipynb     # Google Colab 노트북
-```
-
-### 저장 위치
-- `backend/lancedb_data/` - LanceDB 데이터
-- 테이블: `legal_chunks` (법령 + 판례 통합)
-
-### 데이터 현황
-| 타입 | 원본 건수 | 임베딩 청크 |
-|------|-----------|-------------|
-| 판례 | 65,107건 | 134,846개 |
-| 법령 | 5,841건 | 118,922개 |
-
-### 벡터 인덱스 (검색 속도 최적화)
-
-`LANCEDB_INDEX_TYPE=IVF_FLAT` 설정 시 벡터 검색 속도가 ~14x 향상됩니다 (91ms → 6ms, Recall 100% 유지).
-빈 문자열(기본값)이면 brute-force로 동작합니다. 상세: `docs/devlog/LANCEDB_VECTOR_INDEX_20260211.md`
-
-### LanceDB 마이크로서비스 (Docker 분리)
-
-LanceDB를 별도 Docker 컨테이너로 분리하여 백엔드와 HTTP로 통신할 수 있습니다.
-
-```
-Backend Container              LanceDB Service Container
-┌──────────────────┐          ┌──────────────────────────┐
-│ FastAPI           │  HTTP    │ FastAPI (thin wrapper)    │
-│ RAG Pipeline      │ ──────→ │ LanceDBStore (embedded)   │
-│ Embedding Model   │         │ MeCab Tokenizer           │
-│ RemoteLanceDBStore│         │ lancedb_data/ (volume)    │
-└──────────────────┘          └──────────────────────────┘
-```
-
-**활성화:**
-```bash
-# 1. Docker 서비스 시작
-docker compose up -d lancedb
-
-# 2. 초기 데이터 복사 (1회)
-docker volume create law-3-team_lancedb_data
-docker run --rm -v law-3-team_lancedb_data:/data -v $(pwd)/backend/lancedb_data:/src alpine cp -r /src/. /data/
-
-# 3. 백엔드 환경변수 설정
-LANCEDB_MODE=remote
-LANCEDB_SERVICE_URL=http://localhost:8100  # 또는 docker-compose: http://lancedb:8100
-```
-
-**롤백:** `LANCEDB_MODE=local` (기본값)으로 즉시 복귀. 기존 코드 변경 없음.
-
-**관련 파일:**
-| 파일 | 설명 |
-|------|------|
-| `services/lancedb/main.py` | 마이크로서비스 FastAPI 앱 |
-| `services/lancedb/store.py` | LanceDB 래퍼 (검색 로직) |
-| `services/lancedb/tokenizer.py` | MeCab 토크나이저 (독립 버전) |
-| `services/lancedb/Dockerfile` | Docker 이미지 빌드 |
-| `backend/app/tools/vectorstore/remote_lancedb.py` | HTTP 클라이언트 어댑터 |
-
-### 관련 문서
-- `docs/architecture/vectordb_design.md` - 벡터 DB 설계
-- `docs/architecture/lancedb_fts_guide.md` - FTS + 벡터 인덱스 가이드
-- `backend/scripts/CLAUDE.md` - 임베딩 스크립트 가이드
-- `docs/devlog/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
-
-## Embedding Model (임베딩 모델)
-
-검색 API 사용 전 임베딩 모델(약 2.3GB)을 먼저 다운로드해야 합니다.
-
-```bash
-cd backend
-
-# 모델 다운로드
-uv run python scripts/download_models.py
-
-# 캐시 상태 확인
-uv run python scripts/download_models.py --check
-```
-
-| 항목 | 값 |
-|------|-----|
-| 모델명 | `nlpai-lab/KURE-v1` |
-| 크기 | 약 2.3GB |
-| 캐시 경로 | `backend/data/models/` |
-
-> **참고**: 서버는 모델 없이도 시작되지만, 검색 API 호출 시 503 에러가 반환됩니다.
-> 상세 내용은 `backend/CLAUDE.md`의 "Embedding Model" 섹션 참조.
+임베딩 모델: `nlpai-lab/KURE-v1` (2.3GB), `uv run python scripts/download_models.py`로 다운로드 필요.
 
 ## RAG 평가 시스템
 
-RAG 챗봇 평가 데이터셋 생성 및 Gradio 분석 UI 제공
+RAG 검색 품질 평가. 목표: Recall@10 ≥ 0.8, MRR ≥ 0.7, Hit Rate ≥ 0.9.
+→ 상세: `backend/evaluation/CLAUDE.md`
 
-### 빠른 시작
-```bash
-cd backend
+## DB 백업 / 복원
 
-# Gradio UI 실행
-uv run python -m evaluation
-# → http://localhost:7860 접속
+PostgreSQL, Neo4j, LanceDB → Google Drive (rclone).
+→ 상세: `docs/operations/backup-restore.md`
 
-# Solar 자동 질문 생성
-uv run python -m evaluation.tools.solar_generator --count 30
+## 상세 참조 인덱스
 
-# 평가 실행
-uv run python -m evaluation.runners.evaluation_runner \
-    --dataset evaluation/datasets/eval_dataset_v1.json
-
-# 데이터셋 검증
-uv run python -m evaluation.tools.validate_dataset eval_dataset_v1.json
-```
-
-### 성능 목표
-| 지표 | 목표값 |
-|------|--------|
-| Recall@5 | ≥ 0.7 |
-| Recall@10 | ≥ 0.8 |
-| MRR | ≥ 0.7 |
-| Hit Rate | ≥ 0.9 |
-| NDCG@10 | ≥ 0.75 |
-
-### 관련 문서
-- `backend/evaluation/CLAUDE.md` - 평가 시스템 상세 가이드
-
-## Graph DB (Neo4j)
-
-법령 계급, 판례 인용 관계를 Neo4j 그래프로 저장합니다.
-
-### 빠른 시작
-```bash
-# Neo4j 컨테이너 실행
-docker compose up -d neo4j
-
-# 그래프 구축 (초기 1회)
-cd backend
-uv run python scripts/build_graph.py
-
-# 검증
-NEO4J_PASSWORD=password uv run python scripts/verify_graph.py
-
-# Gradio UI 검증
-NEO4J_PASSWORD=password uv run python scripts/verify_gradio.py
-# → http://localhost:7860
-```
-
-### 그래프 스키마
-
-**노드 (Nodes)**
-| Label | 설명 | 개수 |
-|-------|------|------|
-| Statute | 법령 | 5,572 |
-| Case | 판례 | 65,107 |
-
-**관계 (Relationships)**
-| Type | 설명 | 개수 |
-|------|------|------|
-| HIERARCHY_OF | 법령 계급 (시행령→법률) | 3,624 |
-| CITES | 판례→법령 인용 | 72,414 |
-| CITES_CASE | 판례→판례 인용 | 87,654 |
-| RELATED_TO | 법령→법령 관련 | 93 |
-
-### 환경 변수
-```bash
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=password
-```
-
-### 테스트
-```bash
-NEO4J_PASSWORD=password uv run python tests/integration/test_neo4j_graph.py
-```
-
-### 활용 시나리오
-1. **RAG 컨텍스트 보강** - 검색된 법령/판례의 관련 정보 추가
-2. **법령 탐색 UI** - 법령 계급도 시각화, 인용 네트워크
-3. **판례 추천** - 유사 판례 찾기 (같은 법령 인용, 인용 관계)
-
-### 관련 문서
-- `.claude/skills/neo4j-graph-construction/SKILL.md` - 그래프 구축 스킬
-
-## Lawyer DB (PostgreSQL)
-
-변호사 데이터(17,326건)를 PostgreSQL `lawyers` 테이블에 저장하고, DB 기반으로 검색/통계를 수행합니다.
-
-### 활성화
-
-```bash
-# backend/.env
-USE_DB_LAWYERS=true
-
-# 마이그레이션 + 데이터 로드
-cd backend
-uv run alembic upgrade head
-uv run python scripts/load_lawyers_data.py
-uv run python scripts/load_lawyers_data.py --verify  # 검증
-```
-
-### 롤백
-
-`USE_DB_LAWYERS=false`로 설정하면 즉시 JSON 파일 모드로 복귀합니다.
-JSON 파일(`data/lawyers.json`)은 변경하지 않으므로 데이터 손실 없음.
-
-### 관련 파일
-
-| 파일 | 설명 |
+| 문서 | 설명 |
 |------|------|
-| `backend/app/models/lawyer.py` | Lawyer ORM 모델 |
-| `backend/alembic/versions/004_add_lawyers_table.py` | 마이그레이션 |
-| `backend/scripts/load_lawyers_data.py` | 데이터 로드 스크립트 |
-| `backend/app/services/service_function/lawyer_db_service.py` | DB 기반 검색 서비스 |
-| `backend/app/services/service_function/lawyer_stats_db_service.py` | DB 기반 통계 서비스 |
-| `backend/tests/integration/test_lawyer_db.py` | 통합 테스트 |
-
-### 관련 스킬
-- `.claude/skills/postgresql-migration/SKILL.md` - PostgreSQL 마이그레이션 패턴
-- `.claude/skills/spatial-query-patterns/SKILL.md` - 위치 기반 검색 패턴
-
-## Trial Statistics DB (재판 통계)
-
-법원별/카테고리별/연도별 사건 처리 건수를 PostgreSQL `trial_statistics` 테이블에 저장합니다.
-
-### 테이블 구조
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `category` | VARCHAR(50) NOT NULL | 사건 카테고리 (민사_본안_단독, 형사_공판 등) |
-| `court_name` | VARCHAR(100) NOT NULL | 법원명 (서울중앙지방법원, 고양지원 등) |
-| `court_type` | VARCHAR(20) NOT NULL | 법원 유형 (main: 본원, branch: 지원) |
-| `parent_court` | VARCHAR(100) NULL | 지원의 상위 본원명 (본원은 NULL) |
-| `year` | INTEGER NOT NULL | 연도 (2015~2024) |
-| `case_count` | INTEGER NOT NULL | 사건 처리 건수 |
-| UNIQUE | (category, court_name, year) | 중복 방지 제약조건 |
-
-### 카테고리 매핑
-
-| CSV 파일 | category |
-|----------|----------|
-| 제2항_민사_민사본안_단독_제1심 | `민사_본안_단독` |
-| 제2항_민사_민사본안_합의_제1심 | `민사_본안_합의` |
-| 제3항_가사_가사소송_제1심 | `가사` |
-| 제4항_행정_행정소송_제1심 | `행정` |
-| 제6항_형사_형사공판_제1심 | `형사_공판` |
-| 제6항_형사_약식명령 | `형사_약식` |
-| 제7항_소년보호_소년보호 | `소년보호` |
-| 제8항_가정보호_가정보호 | `가정보호` |
-
-### 저장 규칙
-- 소계/합계 행: 저장하지 않음 (쿼리로 SUM 계산)
-- 보정값: 저장하지 않음 (원본값만 사용)
-- 평균 열: 저장하지 않음 (AVG로 계산)
-
-### 관련 파일
-
-| 파일 | 설명 |
-|------|------|
-| `backend/app/models/trial_statistics.py` | TrialStatistics ORM 모델 |
-| `backend/alembic/versions/005_add_trial_statistics_table.py` | 마이그레이션 |
-
-## Legal Terms DB (법률 용어 사전)
-
-법률 용어 데이터(`lawterms_v1.json`)를 PostgreSQL `legal_terms` 테이블에 저장하고, MeCab 토크나이저의 법률 복합명사 보강에 활용합니다.
-
-### 활성화
-
-```bash
-# backend/.env
-USE_LEGAL_TERM_DICT=true
-
-# 마이그레이션 + 데이터 로드
-cd backend
-uv run alembic upgrade head
-uv run python scripts/load_legal_terms_data.py
-uv run python scripts/load_legal_terms_data.py --verify  # 검증
-```
-
-### 동작 방식
-
-앱 시작(lifespan) 시 PostgreSQL에서 법률 용어를 메모리(frozenset)에 로드하고, MeCab 토크나이징 결과에 법률 복합명사를 추가 토큰으로 삽입합니다.
-
-```
-"손해배상청구권의 소멸시효"
-  → MeCab:  [손해, 배상, 청구, 권, 의, 소멸, 시효]
-  → 보강:   [손해, 배상, 청구, 권, 의, 소멸, 시효] + [배상청구권, 배상청구, 소멸시효]
-```
-
-### 데이터 현황
-
-| 항목 | 수치 |
-|------|------|
-| 전체 고유 용어 | ~72,700개 |
-| userdic 적재 | ~37,366개 |
-| 유효 커버리지 | ≥99% (괄호 변형 포함, 상세: `docs/tokenizer/USERDIC_COVERAGE_ANALYSIS.md`) |
-| 사전유형 | 법령정의사전 + 법령한영사전 + 생활용어사전 + 한영역추출 |
-
-> **참고**: `lawterms_v1.json` (81,488 레코드) 기반. 리스트 평탄화 + 한영사전 역추출 포함.
-> 72,700개 중 35,234개(48.5%)는 MeCab userdic 대상 외 (순수 비한글 12,985 + 공백 포함 22,249).
-> 상세 분석: `docs/tokenizer/USERDIC_COVERAGE_ANALYSIS.md`
-
-### MeCab userdic (사용자 사전)
-
-법률 복합명사를 MeCab이 직접 인식하도록 userdic에 등록합니다. 사후 복원보다 정확한 토크나이징이 가능합니다.
-
-```bash
-# backend/.env (사전 빌드 후 활성화)
-USE_MECAB_USERDIC=true
-
-# userdic 빌드
-cd backend
-uv run python scripts/build_mecab_userdic.py           # DB에서 빌드
-uv run python scripts/build_mecab_userdic.py --from-json  # JSON fallback
-uv run python scripts/build_mecab_userdic.py --verify   # 빌드 후 검증
-uv run python scripts/build_mecab_userdic.py --fix-regression  # 회귀 수정
-```
-
-**동작 방식**:
-```
-현재: MeCab(기본사전) → 오분석 → 사후 복원(불완전)
-변경: MeCab(기본+userdic) → 정확한 인식 → 분해 토큰 추가(FTS용)
-```
-
-**출력 파일**:
-- `backend/data/mecab_userdic/legal_terms.csv` - userdic 소스 CSV (37,366 엔트리)
-- `backend/data/mecab_userdic/legal_terms.dic` - 컴파일된 바이너리
-- `backend/data/mecab_userdic/decomposition_map.json` - 복합어 분해맵 (31,732 엔트리)
-- `backend/data/mecab_userdic/priority_terms.json` - 회귀 수정 용어 (683개, cost=-3000)
-
-**롤백**: `USE_MECAB_USERDIC=false` (기본값)로 설정하면 기존 사후 복원 방식으로 즉시 복귀.
-
-### 롤백
-
-`USE_LEGAL_TERM_DICT=false`로 설정하면 기존 MeCab 동작으로 즉시 복귀합니다.
-
-### 관련 파일
-
-| 파일 | 설명 |
-|------|------|
-| `backend/app/models/legal_term.py` | LegalTerm ORM 모델 |
-| `backend/alembic/versions/006_add_legal_terms_table.py` | 마이그레이션 |
-| `backend/scripts/load_legal_terms_data.py` | 데이터 로드 스크립트 |
-| `backend/scripts/build_mecab_userdic.py` | userdic 빌드 스크립트 |
-| `backend/app/tools/vectorstore/legal_term_dict.py` | 메모리 사전 (frozenset O(1) lookup + 분해맵) |
-| `backend/app/tools/vectorstore/mecab_tokenizer.py` | MeCab 토크나이저 (보강 + userdic 모드) |
-| `backend/tests/unit/test_legal_term_dict.py` | 사전 단위 테스트 |
-
-## DB 백업 / 복원 (Google Drive)
-
-PostgreSQL, Neo4j, LanceDB 3개 DB를 Google Drive에 백업/복원합니다.
-인증 방식은 **Service Account** 또는 **OAuth token** 둘 다 지원합니다 (rclone.conf에 따라 자동 감지).
-
-### 사전 준비 (1회)
-
-1. **rclone 설치**: `brew install rclone`
-2. **팀에서 받은 `rclone.conf`를 프로젝트 루트에 배치**
-   - Service Account 방식: `rclone.conf` + `secrets/<service-account>.json`
-   - OAuth token 방식: `rclone.conf` (token 포함, 별도 키 파일 불필요)
-3. 두 파일 모두 `.gitignore`에 포함되어 있으므로 git 외부로 공유
-
-### 백업
-
-```bash
-# 전체 백업 + Google Drive 업로드
-./scripts/backup_to_gdrive.sh
-
-# 로컬 덤프만 (업로드 안 함)
-./scripts/backup_to_gdrive.sh --skip-upload
-
-# 특정 DB 건너뛰기
-./scripts/backup_to_gdrive.sh --skip-neo4j
-
-# 미리보기
-./scripts/backup_to_gdrive.sh --dry-run
-```
-
-### 복원
-
-```bash
-# 최신 백업 복원
-./scripts/restore_from_gdrive.sh latest
-
-# 특정 백업 복원
-./scripts/restore_from_gdrive.sh 20260211_153000
-
-# 다운로드만 (복원 안 함)
-./scripts/restore_from_gdrive.sh latest --download-only
-```
-
-### 환경변수
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `POSTGRES_CONTAINER` | PostgreSQL 컨테이너명 | `law-platform-db` |
-| `NEO4J_CONTAINER` | Neo4j 컨테이너명 | `neo4j-law-graph` |
-| `LANCEDB_DATA_DIR` | LanceDB 데이터 경로 | `backend/lancedb_data` |
-| `BACKUP_KEEP_LOCAL` | 로컬 백업 보관 개수 | `5` |
-| `RCLONE_CONF` | rclone 설정 파일 경로 | `rclone.conf` |
-| `RCLONE_REMOTE` | rclone 리모트 이름 | `gdrive` |
-
-### 관련 파일
-
-| 파일 | 설명 |
-|------|------|
-| `scripts/backup_to_gdrive.sh` | 백업 + 업로드 (LanceDB는 data/ only, 인덱스 제외) |
-| `scripts/restore_from_gdrive.sh` | 다운로드 + 복원 |
-| `secrets/` | 서비스 계정 키 등 (.gitignored) |
-| `rclone.conf` | rclone 설정 (.gitignored) |
-
-### data/ JSON 파일 (원본 데이터)
-
-법령/판례 등 원본 JSON 데이터(약 3.5GB, 63개 파일)는 `gdrive:data/`에 저장되어 있습니다.
-DB 백업/복원 스크립트와는 별개이며, 항상 최신 작업 데이터를 유지합니다.
-
-> **버전 아카이브**(`v1`, `v2` 등 과거 버전)는 별도 Google Drive에서 관리합니다.
-> `gdrive:data/`는 "현재 작업 세트"이며, 버전 히스토리 용도가 아닙니다.
-
-```bash
-# 사전 조건: rclone 설치 + rclone.conf 배치 (위 "사전 준비" 참조)
-
-# ── 다른 기기에서 복원 ──
-rclone copy --config rclone.conf gdrive:data/ data/ --progress
-
-# 특정 파일만 복원
-rclone copy --config rclone.conf gdrive:data/precedents_v2.json data/ --progress
-
-# ── 로컬 변경 후 업로드 (동기화) ──
-# sync: 로컬에 없는 파일은 드라이브에서도 삭제 (항상 로컬과 동일하게 유지)
-rclone sync data/ --config rclone.conf gdrive:data/ --progress
-
-# 현재 Google Drive 내용 확인
-rclone ls --config rclone.conf gdrive:data/
-```
-
-> **`copy` vs `sync`**: 복원 시에는 `copy` (추가만), 업로드 시에는 `sync` (삭제 반영) 사용.
-> 파일명 변경(`v2→v3`) 시 `copy`를 쓰면 이전 버전이 드라이브에 잔류하므로 `sync` 권장.
->
-> **참고**: `data/`는 `.gitignore`에 포함되어 있어 git clone만으로는 받을 수 없습니다.
-> 새 환경 세팅 시 DB 복원(`restore_from_gdrive.sh`)과 함께 이 단계를 수행하세요.
-
-## Modules
-
-### lawyer-stats (변호사 통계 대시보드)
-
-지역별·전문분야별 변호사 분포 및 시장 분석 대시보드
-
-**주요 기능:**
-- 지역별 변호사 현황 (시/도 → 시/군/구 드릴다운)
-- 인구 대비 밀도 분석 (변호사 수 / 인구 × 10만명)
-- 향후 예측 모드 (2030/2035/2040년 추계인구 기반)
-- 사건 수요 분석 (법원 단위 마커 시각화, 부담지수 중앙값 비교)
-- 전문분야별 변호사 분포
-- 지역×전문분야 교차 분석 히트맵
-
-**지표 그룹 (IndicatorGroup):**
-- `supply` (공급): 변호사 수, 인구 대비 밀도, 향후 예측
-- `demand` (수요): 법원별 사건 접수 수 (민사/형사/가사/행정 등)
-
-**API 엔드포인트:**
-- `GET /api/lawyer-stats/overview` - 전체 현황 요약
-- `GET /api/lawyer-stats/by-region` - 지역별 변호사 수
-- `GET /api/lawyer-stats/density-by-region` - 지역별 밀도 (year, include_change 파라미터)
-- `GET /api/lawyer-stats/by-specialty` - 전문분야별 통계
-- `GET /api/lawyer-stats/cross-analysis` - 지역×전문분야 교차 분석
-- `GET /api/lawyer-stats/region/{region}/specialties` - 특정 지역 전문분야 상세
-- `GET /api/lawyer-stats/demand` - 사건 수요 통계 (category, year 파라미터)
-
-**프론트엔드 컴포넌트:**
-- `RegionGeoMap` - 대한민국 시군구 지도 시각화 (TopoJSON), 수요 모드 시 법원 마커 표시
-- `RegionDetailList` - 지역 상세 목록, 예측 상세 뷰, 법원 상세 뷰 (사건 수/변호사 수/부담지수/관할 지역)
-- `CrossAnalysisHeatmap` - 지역×전문분야 히트맵
-- `SpecialtyBarChart` - 전문분야별 바 차트
-- `StickyTabNav` - 스크롤 연동 탭 네비게이션
-
-**정적 데이터:**
-- `frontend/public/data/court_coordinates.json` - 법원 좌표 (약 66개)
+| `backend/CLAUDE.md` | Backend 아키텍처, 폴더 구조, 에이전트, DB, 벡터 DB, 환경변수 |
+| `frontend/CLAUDE.md` | Frontend 컴포넌트, 모듈 시스템, API 프록시, 스타일 |
+| `backend/scripts/CLAUDE.md` | 임베딩, EDA, 데이터 로드 스크립트 |
+| `backend/evaluation/CLAUDE.md` | RAG 평가 시스템 상세 |
+| `docs/operations/backup-restore.md` | DB 백업/복원 상세 (rclone) |
+| `docs/operations/wsl2-docker-guide.md` | WSL2 Docker 상세 명령어 |
+| `.claude/hooks/README.md` | Hooks 설정 상세 (JSON 예시) |
+| `.claude/skills/CATALOG.md` | 스킬/에이전트/규칙 카탈로그 |

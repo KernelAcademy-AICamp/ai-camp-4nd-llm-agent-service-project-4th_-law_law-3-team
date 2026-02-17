@@ -1,6 +1,6 @@
 # Skills & Agents Catalog
 
-스킬 27개, 에이전트 5개, 규칙 5개의 분류 및 의존관계 인덱스.
+스킬 27개, 에이전트 5개, 규칙 6개의 분류 및 의존관계 인덱스.
 
 > 최종 업데이트: 2026-02-18
 
@@ -28,9 +28,9 @@
 
 | 스킬 | 줄 수 | 트리거 | 설명 |
 |------|------|--------|------|
-| `project-commit` | 81 | `/commit` | 변경 분석 → 정적 검증 → 커밋 |
+| `project-commit` | 151 | `/commit` | 변경 분석 → 정적 검증 → 머지/충돌 해결 → 커밋 |
 | `project-review` | 64 | `/review` | staged 변경 코드 리뷰 |
-| `update-docs` | 200 | `/update-docs` | 코드 변경 후 문서 동기화 |
+| `update-docs` | 292 | `/update-docs` | 코드 변경 후 문서 동기화 + 크기 가드레일 |
 | `plan-review` | 203 | 플랜 작성 후 | Gemini/Codex CLI로 플랜 교차 검토 |
 
 **의존관계**: `project-review` → `project-commit` → `update-docs` (순서)
@@ -142,7 +142,7 @@ LangGraph 기반 멀티 에이전트 시스템.
 |------|------|----------|------|
 | `gemini-cli-delegation` | 249 | 대규모 분석 시 | 1M 토큰, 멀티모달, Deep Think |
 | `codex-cli-delegation` | 381 | 코드 리뷰/실행 시 | /review, 샌드박스, 웹 검색 |
-| `multi-cli-integration` | 435 | CLI 조합 시 | Claude+Gemini+Codex 복합 워크플로우 |
+| `multi-cli-integration` | 496 | CLI 조합 시 | Claude+Gemini+Codex 복합 워크플로우 + 결정 흐름도 |
 
 | 에이전트 | 설명 |
 |---------|------|
@@ -182,15 +182,15 @@ LangGraph 기반 멀티 에이전트 시스템.
 ```
 800+ 줄 : multi-agent-patterns (797)
 600+ 줄 : error-handling-patterns (626), langchain-rag-patterns (601)
-400+ 줄 : code-verification (463), korean-legal-domain (443), multi-cli-integration (435)
+400+ 줄 : multi-cli-integration (496), code-verification (463), korean-legal-domain (443)
 300+ 줄 : codex-cli-delegation (381), ui-ux-pro-max (377), neo4j-graph-construction (357)
-200+ 줄 : python-coding-standards (298), gemini-cli-delegation (249), langgraph-debugging (225)
-           legal-rag-experiment-tracking (219), plan-review (203), update-docs (200)
+200+ 줄 : python-coding-standards (298), update-docs (292), gemini-cli-delegation (249)
+           langgraph-debugging (225), legal-rag-experiment-tracking (219), plan-review (203)
            api-contract-sync (199), rag-evaluation-workflow (182), react-nextjs-frontend (180)
-           summary-quality-audit (179), alembic-migration-safety (166)
+           summary-quality-audit (179), alembic-migration-safety (166), project-commit (151)
 100+ 줄 : tdd-methodology (145), postgresql-migration (138), ingest-pipeline (135)
            spatial-query-patterns (133), vercel-react-best-practices (120)
- ~80 줄 : project-commit (81), project-review (64)
+ ~64 줄 : project-review (64)
 ```
 
-**총 줄 수**: ~7,596줄 (평균 281줄/스킬)
+**총 줄 수**: ~7,819줄 (평균 290줄/스킬)

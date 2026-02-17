@@ -39,6 +39,67 @@ Claude, Gemini CLI, Codex CLI의 강점을 조합하여 단일 도구로는 어�
 
 ---
 
+## 1-A. CLI 선택 결정 흐름도
+
+```
+사용자 요청 수신
+    │
+    ├─ 이미지/스크린샷/다이어그램 입력?
+    │   └─ YES → Gemini CLI (멀티모달, 대체 불가)
+    │
+    ├─ 파일 10개 이상 OR 컨텍스트 100K+ 토큰?
+    │   └─ YES → Gemini CLI (설치 확인 → 미설치면 Task/Explore)
+    │
+    ├─ 복잡한 추론 필요? (GPQA 수준)
+    │   └─ YES → Gemini CLI (Deep Think 모드)
+    │
+    ├─ 빠른 프로토타입/실험 코드?
+    │   └─ YES → Gemini CLI (제로샷) → Claude가 정제
+    │
+    ├─ 코드 리뷰 요청? (PR/커밋 diff)
+    │   └─ YES → Codex CLI (/review, 미설치면 git diff 분석)
+    │
+    ├─ 수학/논리 추론?
+    │   └─ YES → Codex CLI (AIME 100%, 미설치면 Claude)
+    │
+    ├─ 샌드박스 실행 필요?
+    │   └─ YES → Codex CLI (미설치면 실행 불가 안내)
+    │
+    ├─ 웹 검색 + 코딩?
+    │   └─ YES → Codex CLI --search (미설치면 WebSearch)
+    │
+    └─ 그 외 → Claude 직접 수행
+```
+
+## 1-B. Fallback 전략
+
+### Gemini CLI 미설치 시
+
+| 원래 작업 | Fallback 방법 | 품질 영향 |
+|----------|--------------|----------|
+| 대규모 파일 분석 | Task(Explore) + Glob/Grep | 중간 |
+| 아키텍처 파악 | Task(Explore) + 핵심 파일만 | 중간 |
+| 보안 감사 | 패턴 Grep + 순차 파일 읽기 | 낮음 |
+
+### Codex CLI 미설치 시
+
+| 원래 작업 | Fallback 방법 | 품질 영향 |
+|----------|--------------|----------|
+| 코드 리뷰 | git diff 직접 분석 | 낮음 |
+| 샌드박스 실행 | 실행 불가, 코드 설명만 | 높음 |
+| 웹 검색 + 코딩 | WebSearch 도구 | 낮음 |
+
+### 보고 형식
+
+모든 CLI 사용 후 보고:
+```
+사용 도구: [Gemini CLI / Codex CLI / Fallback]
+작업 유형: [분석 / 리뷰 / 실행]
+결과 검증: 통과 (N/M 항목)
+```
+
+---
+
 ## 2. 설치 상태별 조합 모드
 
 ### 설치 확인

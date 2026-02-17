@@ -210,7 +210,43 @@ AGENTS.md가 아직 없습니다. Codex 등 범용 AI 에이전트를 위해 생
 
 사용자가 승인하면 CLAUDE.md를 기반으로 AGENTS.md를 생성합니다.
 
-### 8. 문서 업데이트 실행
+### 8. 문서 크기 가드레일
+
+업데이트 시 다음 줄 수 제한을 유지하여 항상-로드 문서가 비대해지는 것을 방지합니다.
+
+| 파일 | 줄 수 제한 | 초과 시 행동 |
+|------|-----------|-------------|
+| 루트 `CLAUDE.md` | **200줄 이하** | 상세 내용을 서브 CLAUDE.md로 이동, 요약+포인터로 대체 |
+| 각 `.claude/rules/*.md` | **120줄 이하** | 상세 예제/가이드를 해당 스킬 SKILL.md로 이동 |
+| `backend/CLAUDE.md` | 제한 없음 | 서브 문서이므로 자유롭게 상세 기술 |
+| `frontend/CLAUDE.md` | 제한 없음 | 서브 문서이므로 자유롭게 상세 기술 |
+
+#### 줄 수 확인 방법
+
+```bash
+wc -l CLAUDE.md .claude/rules/*.md
+```
+
+#### 초과 시 이동 대상
+
+| 루트 CLAUDE.md 섹션 | 이동처 |
+|---------------------|--------|
+| Backend 상세 | `backend/CLAUDE.md` |
+| Frontend 상세 | `frontend/CLAUDE.md` |
+| DB/인프라 상세 | `docs/architecture/` 또는 `docs/operations/` |
+| 스크립트 상세 | `backend/scripts/CLAUDE.md` |
+
+| Rules 파일 내용 | 이동처 |
+|----------------|--------|
+| Python 코드 예제 | `.claude/skills/python-coding-standards/SKILL.md` |
+| TS/React 코드 예제 | `.claude/skills/react-nextjs-frontend/SKILL.md` |
+| Git 머지/복구 가이드 | `.claude/skills/project-commit/SKILL.md` |
+| CLI 상세 흐름도 | `.claude/skills/multi-cli-integration/SKILL.md` |
+| Docker 상세 명령어 | `docs/operations/wsl2-docker-guide.md` |
+| 배치 처리 예제 | `.claude/skills/postgresql-migration/SKILL.md` |
+| Zod 패턴 상세 | `.claude/skills/code-verification/SKILL.md` |
+
+### 9. 문서 업데이트 실행
 
 각 대상 문서에 대해:
 
@@ -229,7 +265,7 @@ AGENTS.md가 아직 없습니다. Codex 등 범용 AI 에이전트를 위해 생
 - **삭제된 코드**: 문서에서도 해당 항목 제거 (주석 처리 금지)
 - **존재하지 않는 문서**: 건너뛰고 결과 보고에 표기
 
-### 9. 결과 보고
+### 10. 결과 보고
 
 ```
 ## 문서 업데이트 결과
@@ -243,7 +279,7 @@ AGENTS.md가 아직 없습니다. Codex 등 범용 AI 에이전트를 위해 생
 | ... | ... | ... |
 ```
 
-### 10. 인자 사용법
+### 11. 인자 사용법
 
 | 명령 | 동작 |
 |------|------|
