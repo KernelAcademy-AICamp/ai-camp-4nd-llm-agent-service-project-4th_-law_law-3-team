@@ -7,10 +7,10 @@ LLM 요약 필드 후처리(클리닝) 스크립트
   Phase 1: 마크다운/HTML 잔여 제거 (**볼드**, ##헤딩, <p> 등)
   Phase 2: 불완전 문장 보정 (트레일링 "...", 열린 괄호)
   Phase 3: null/empty → 제목 필드 fallback
+  Phase 4: LLM 아티팩트 제거 (핵심키워드 리스트, (NNN자), [쟁점]/[판단] 브라켓, 자기참조, 무한 반복)
 
 수정하지 않는 항목:
   - 길이 초과 (내용 정상이면 허용)
-  - 반복 패턴 (대부분 정상 법률 문구)
   - 언어 혼용 (대부분 법률 고유명사)
   - 극단적 단문 (실제 짧은 내용일 수 있음)
 
@@ -74,6 +74,7 @@ class FieldCleanReport:
     markdown_removed: int = 0
     incomplete_fixed: int = 0
     null_replaced: int = 0
+    artifact_removed: int = 0
 
 
 @dataclass
@@ -107,6 +108,25 @@ _RE_BACKTICK = re.compile(r"`([^`]+)`")
 _RE_BLOCKQUOTE = re.compile(r"^>\s+", re.MULTILINE)
 _RE_HORIZONTAL_RULE = re.compile(r"^[-*_]{3,}\s*$", re.MULTILINE)
 
+# Phase 4: LLM 아티팩트 제거
+# (NNN자) 글자수 표기
+_RE_CHAR_COUNT = re.compile(r"\s*\(\s*\d{2,5}\s*자\s*\)\s*")
+# 핵심키워드: 리스트 (줄 끝에 위치하는 경우)
+_RE_KEYWORD_LIST = re.compile(
+    r"[\s.。]*(?:핵심\s*키워드|키워드|핵심\s*쟁점\s*키워드|관련\s*키워드|주요\s*키워드)\s*[:：]\s*.+$",
+    re.MULTILINE,
+)
+# [쟁점], [판단], [결론] 등 브라켓 헤더
+_RE_BRACKET_HEADER = re.compile(r"\[(?:쟁점|판단|결론|판결|요지|사실관계|주문|이유)\]\s*[:：]?\s*")
+# 자기참조 ("이 요약은", "본 요약문은", "위 판례는" 등)
+_RE_SELF_REFERENCE = re.compile(
+    r"(?:이|본|위|해당)\s*(?:요약|요약문|판례요약|결정요약|해석요약|심판례요약)(?:은|는|에서|의)\s*",
+)
+# 무한 반복 탐지: 15자 이상 구문이 5회 이상 반복
+_INFINITE_LOOP_MIN_PHRASE = 15
+_INFINITE_LOOP_MIN_REPEATS = 5
+_INFINITE_LOOP_MAX_LENGTH = 1000  # 반복 제거 후 최대 길이
+
 # Phase 2: 불완전 문장 보정
 _RE_TRAILING_DOTS = re.compile(r"\.{2,}\s*$")
 _RE_TRAILING_OPEN_PAREN = re.compile(r"\([^)]*$")
@@ -126,20 +146,27 @@ _RE_LAST_COMPLETE_SENTENCE = re.compile(
 class SummaryCleaner:
     """LLM 요약 필드 후처리기"""
 
-    def clean_text(self, text: str) -> tuple[str, bool, bool, bool]:
-        """단일 요약 텍스트 클리닝 (Phase 1→2 순차 적용)
+    def clean_text(self, text: str) -> tuple[str, bool, bool, bool, bool]:
+        """단일 요약 텍스트 클리닝 (Phase 1→4→2 순차 적용)
 
         Returns:
-            (클리닝된 텍스트, 마크다운_제거됨, 불완전_보정됨, 변경됨)
+            (클리닝된 텍스트, 마크다운_제거됨, 불완전_보정됨, 아티팩트_제거됨, 변경됨)
         """
         original = text
         markdown_removed = False
         incomplete_fixed = False
+        artifact_removed = False
 
         # Phase 1: 마크다운/HTML 제거
         cleaned = self._remove_markdown_html(text)
         if cleaned != text:
             markdown_removed = True
+            text = cleaned
+
+        # Phase 4: LLM 아티팩트 제거 (Phase 2 전에 실행)
+        cleaned = self._remove_llm_artifacts(text)
+        if cleaned != text:
+            artifact_removed = True
             text = cleaned
 
         # Phase 2: 불완전 문장 보정
@@ -149,7 +176,7 @@ class SummaryCleaner:
             text = cleaned
 
         changed = text != original
-        return text, markdown_removed, incomplete_fixed, changed
+        return text, markdown_removed, incomplete_fixed, artifact_removed, changed
 
     def _remove_markdown_html(self, text: str) -> str:
         """Phase 1: 마크다운/HTML 잔여 제거"""
@@ -203,6 +230,49 @@ class SummaryCleaner:
 
         return text.strip()
 
+    def _remove_llm_artifacts(self, text: str) -> str:
+        """Phase 4: LLM 아티팩트 제거"""
+        # (NNN자) 글자수 표기 제거
+        text = _RE_CHAR_COUNT.sub(" ", text)
+        # 핵심키워드: 리스트 제거 (줄 끝 패턴)
+        text = _RE_KEYWORD_LIST.sub("", text)
+        # [쟁점], [판단] 등 브라켓 헤더 → 제거 (내용은 유지)
+        text = _RE_BRACKET_HEADER.sub("", text)
+        # 자기참조 표현 제거
+        text = _RE_SELF_REFERENCE.sub("", text)
+        # 무한 반복 탐지 및 잘라내기
+        text = self._truncate_infinite_loop(text)
+        # 연속 공백/줄바꿈 정리
+        text = _RE_MULTI_SPACE.sub(" ", text)
+        text = _RE_MULTI_NEWLINE.sub("\n\n", text)
+        return text.strip()
+
+    def _truncate_infinite_loop(self, text: str) -> str:
+        """무한 반복 구간을 탐지하여 첫 등장까지만 남기고 잘라냄"""
+        if len(text) <= _INFINITE_LOOP_MAX_LENGTH:
+            return text
+        # 15자 이상 구문이 5회 이상 반복되는지 검사
+        for phrase_len in range(30, _INFINITE_LOOP_MIN_PHRASE - 1, -1):
+            # 텍스트 중반부터 반복 구문 후보 추출
+            mid = len(text) // 2
+            candidate = text[mid : mid + phrase_len]
+            count = text.count(candidate)
+            if count >= _INFINITE_LOOP_MIN_REPEATS:
+                # 첫 2회 등장까지 유지
+                first = text.find(candidate)
+                second = text.find(candidate, first + phrase_len)
+                if second != -1:
+                    # 두 번째 등장 이후 적절한 문장 종결 위치에서 잘라냄
+                    cut_pos = second + phrase_len
+                    # 문장 종결 위치 탐색 (다, 함, 됨, 임, 음, .)
+                    for end_marker in ("다.", "함.", "됨.", "임.", "음.", ". "):
+                        end_idx = text.find(end_marker, cut_pos)
+                        if end_idx != -1 and end_idx < cut_pos + 200:
+                            return text[: end_idx + len(end_marker)].strip()
+                    # 마커 못 찾으면 cut_pos에서 자르기
+                    return text[:cut_pos].rstrip(",;: ") + "."
+        return text
+
     def _make_fallback_summary(self, title: str) -> str:
         """Phase 3: null/empty에 대한 fallback 요약 생성"""
         if title:
@@ -236,13 +306,15 @@ class SummaryCleaner:
                     title = item.get(cfg.title_field, "")
                     item["법령 요약"] = self._make_fallback_summary(str(title))
             elif isinstance(summary, str):
-                cleaned, md, inc, changed = self.clean_text(summary)
+                cleaned, md, inc, art, changed = self.clean_text(summary)
                 if changed:
                     overall_rpt.cleaned += 1
                     if md:
                         overall_rpt.markdown_removed += 1
                     if inc:
                         overall_rpt.incomplete_fixed += 1
+                    if art:
+                        overall_rpt.artifact_removed += 1
                     if not dry_run:
                         item["법령 요약"] = cleaned
 
@@ -266,13 +338,15 @@ class SummaryCleaner:
                                 str(art_title)
                             )
                     elif isinstance(art_summary, str):
-                        cleaned, md, inc, changed = self.clean_text(art_summary)
+                        cleaned, md, inc, artf, changed = self.clean_text(art_summary)
                         if changed:
                             article_rpt.cleaned += 1
                             if md:
                                 article_rpt.markdown_removed += 1
                             if inc:
                                 article_rpt.incomplete_fixed += 1
+                            if artf:
+                                article_rpt.artifact_removed += 1
                             if not dry_run:
                                 article["조문요약"] = cleaned
 
@@ -300,13 +374,15 @@ class SummaryCleaner:
                     title = item.get(cfg.title_field, "")
                     item[cfg.summary_field] = self._make_fallback_summary(str(title))
             elif isinstance(summary, str):
-                cleaned, md, inc, changed = self.clean_text(summary)
+                cleaned, md, inc, art, changed = self.clean_text(summary)
                 if changed:
                     fld_rpt.cleaned += 1
                     if md:
                         fld_rpt.markdown_removed += 1
                     if inc:
                         fld_rpt.incomplete_fixed += 1
+                    if art:
+                        fld_rpt.artifact_removed += 1
                     if not dry_run:
                         item[cfg.summary_field] = cleaned
 
@@ -519,6 +595,7 @@ def _format_terminal_report(results: list[TypeCleanReport]) -> str:
     total_md = 0
     total_inc = 0
     total_null = 0
+    total_art = 0
 
     lines.append("")
     lines.append("=" * 55)
@@ -536,6 +613,7 @@ def _format_terminal_report(results: list[TypeCleanReport]) -> str:
             total_md += fld.markdown_removed
             total_inc += fld.incomplete_fixed
             total_null += fld.null_replaced
+            total_art += fld.artifact_removed
 
             pct = (fld.cleaned / fld.total * 100) if fld.total else 0
             lines.append(f"  {fld.field_name}:")
@@ -547,6 +625,8 @@ def _format_terminal_report(results: list[TypeCleanReport]) -> str:
                 details.append(f"마크다운 제거: {fld.markdown_removed:,}건")
             if fld.incomplete_fixed:
                 details.append(f"불완전 보정: {fld.incomplete_fixed:,}건")
+            if fld.artifact_removed:
+                details.append(f"아티팩트 제거: {fld.artifact_removed:,}건")
             if fld.null_replaced:
                 details.append(f"null 대체: {fld.null_replaced:,}건")
             if details:
@@ -562,6 +642,7 @@ def _format_terminal_report(results: list[TypeCleanReport]) -> str:
     lines.append(f"  수정됨: {total_cleaned:,}건 ({pct_total:.1f}%)")
     lines.append(f"  마크다운/HTML 제거: {total_md:,}건")
     lines.append(f"  불완전 문장 보정: {total_inc:,}건")
+    lines.append(f"  LLM 아티팩트 제거: {total_art:,}건")
     lines.append(f"  null 대체: {total_null:,}건")
     lines.append("")
 
@@ -576,6 +657,7 @@ def _to_json_report(results: list[TypeCleanReport]) -> dict[str, Any]:
     total_md = 0
     total_inc = 0
     total_null = 0
+    total_art = 0
 
     for tr in results:
         type_data: dict[str, Any] = {"label": tr.label, "fields": {}}
@@ -585,12 +667,14 @@ def _to_json_report(results: list[TypeCleanReport]) -> dict[str, Any]:
             total_md += fld.markdown_removed
             total_inc += fld.incomplete_fixed
             total_null += fld.null_replaced
+            total_art += fld.artifact_removed
 
             type_data["fields"][fld.field_name] = {
                 "total": fld.total,
                 "cleaned": fld.cleaned,
                 "markdown_removed": fld.markdown_removed,
                 "incomplete_fixed": fld.incomplete_fixed,
+                "artifact_removed": fld.artifact_removed,
                 "null_replaced": fld.null_replaced,
             }
         report["types"][tr.type_name] = type_data
@@ -600,6 +684,7 @@ def _to_json_report(results: list[TypeCleanReport]) -> dict[str, Any]:
         "total_cleaned": total_cleaned,
         "markdown_removed": total_md,
         "incomplete_fixed": total_inc,
+        "artifact_removed": total_art,
         "null_replaced": total_null,
     }
     return report
