@@ -198,7 +198,7 @@ preflight_check() {
         fi
 
         # rclone.conf 인증 방식 확인 (Service Account 또는 OAuth token)
-        SA_FILE=$(grep -i 'service_account_file' "${RCLONE_CONF}" 2>/dev/null | head -1 | sed 's/.*=[[:space:]]*//')
+        SA_FILE=$(grep -i 'service_account_file' "${RCLONE_CONF}" 2>/dev/null | head -1 | sed 's/.*=[[:space:]]*//' || true)
         HAS_TOKEN=$(grep -c 'token' "${RCLONE_CONF}" 2>/dev/null || echo 0)
         if [[ -n "${SA_FILE}" ]]; then
             if [[ ! -f "${PROJECT_ROOT}/${SA_FILE}" ]]; then
