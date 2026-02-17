@@ -61,6 +61,29 @@ logger = logging.getLogger(__name__)
 # 임베딩 텍스트 최대 길이 (모델 토큰 제한 방지)
 MAX_TEXT_LENGTH = 4000
 
+# 더미 벡터 (source_name 감지용, 실제 저장하지 않음)
+_DUMMY_VECTOR = [0.0] * 1024
+
+
+def _build_reset_filter(config: IngestConfig) -> str:
+    """config의 vector_metadata_fn으로 source_name을 감지하여 삭제 필터 생성
+
+    같은 data_type_label을 공유하는 타입(예: 위원회결정례 10개)은
+    source_name으로 구분해야 이전 타입 데이터를 보존할 수 있음.
+    """
+    base = f"data_type = '{config.data_type_label}'"
+
+    try:
+        dummy_item = {config.id_field: "__dummy__", config.summary_field: "__dummy__"}
+        record = config.vector_metadata_fn(dummy_item, _DUMMY_VECTOR)
+        source_name = record.get("source_name", "")
+        if source_name:
+            return f"{base} AND source_name = '{source_name}'"
+    except Exception:
+        pass
+
+    return base
+
 # ANN 인덱스 파라미터
 ANN_NUM_PARTITIONS = 256  # sqrt(92055) ≈ 303, 보수적으로 256
 
@@ -405,8 +428,13 @@ def run_vector_ingest(
     store = EmbeddingStore()
 
     if reset:
-        logger.info("기존 %s 데이터 삭제 중...", config.data_type_label)
-        store.reset()
+        store.ensure_table()
+        # source_name 감지: 더미 호출로 해당 config가 source_name을 설정하는지 확인
+        filter_expr = _build_reset_filter(config)
+        logger.info("기존 데이터 삭제 중 (필터: %s)", filter_expr)
+        deleted = store.delete_by_filter(filter_expr)
+        if deleted > 0:
+            logger.info("기존 레코드 %d건 삭제", deleted)
         existing_ids: set[str] = set()
     else:
         # #1 LanceDB 기반 자동 재개: 이미 임베딩된 문서는 자동 스킵

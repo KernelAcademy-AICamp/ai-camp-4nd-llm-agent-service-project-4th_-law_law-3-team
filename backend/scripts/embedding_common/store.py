@@ -70,6 +70,50 @@ class EmbeddingStore:
                     shutil.rmtree(lance_dir)
         self._table = None
 
+    def delete_by_filter(self, filter_expr: str) -> int:
+        """필터 조건에 해당하는 레코드 삭제
+
+        Args:
+            filter_expr: LanceDB 필터 표현식
+                (예: "data_type = '판례'",
+                     "data_type = '위원회결정례' AND source_name = '공정거래위원회'")
+
+        Returns:
+            삭제된 레코드 수
+        """
+        if self._table is None:
+            return 0
+
+        before = self.count_by_filter(filter_expr)
+        if before == 0:
+            return 0
+
+        self._table.delete(filter_expr)
+
+        import logging
+
+        logging.getLogger(__name__).info(
+            "필터 '%s' 레코드 %d건 삭제 완료", filter_expr, before
+        )
+        return before
+
+    def count_by_filter(self, filter_expr: str) -> int:
+        """필터 조건에 해당하는 레코드 수"""
+        if self._table is None:
+            return 0
+        try:
+            result = (
+                self._table.search()
+                .where(filter_expr)
+                .select(["id"])
+                .limit(1_000_000)
+                .to_arrow()
+            )
+            return result.num_rows
+        except (ValueError, KeyError, AttributeError) as e:
+            print(f"[WARN] count_by_filter failed: {e}")
+            return 0
+
     def count(self) -> int:
         """총 레코드 수"""
         if self._table is None:
