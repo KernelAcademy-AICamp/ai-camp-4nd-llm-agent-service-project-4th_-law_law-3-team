@@ -63,6 +63,17 @@ def _parse_date(date_str: Optional[str]) -> Optional[date]:
 # ---------------------------------------------------------------------------
 
 
+def _stringify(value: Any) -> Optional[str]:
+    """dict/list 값을 문자열로 변환 (str/None은 그대로 반환)"""
+    if value is None or isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return "\n".join(f"{k}: {v}" for k, v in value.items())
+    if isinstance(value, list):
+        return "\n".join(str(v) for v in value)
+    return str(value)
+
+
 def _orm_factory(item: dict[str, Any]) -> ConstitutionalDocument:
     """JSON item → ConstitutionalDocument 인스턴스"""
     return ConstitutionalDocument(
@@ -73,15 +84,15 @@ def _orm_factory(item: dict[str, Any]) -> ConstitutionalDocument:
         case_type_code=item.get("사건종류코드"),
         decision_date=_parse_date(item.get("종국일자")),
         court_division_code=item.get("재판부구분코드"),
-        summary=item.get("판시사항"),
-        reasoning=item.get("결정요지"),
-        ruling=item.get("주문"),
-        full_text=item.get("전문"),
-        reason=item.get("이유"),
-        reference_provisions=item.get("심판대상조문"),
-        reference_statutes=item.get("참조조문"),
-        reference_cases=item.get("참조판례"),
-        ai_summary=item.get("심판례요약"),
+        summary=_stringify(item.get("판시사항")),
+        reasoning=_stringify(item.get("결정요지")),
+        ruling=_stringify(item.get("주문")),
+        full_text=_stringify(item.get("전문")),
+        reason=_stringify(item.get("이유")),
+        reference_provisions=_stringify(item.get("심판대상조문")),
+        reference_statutes=_stringify(item.get("참조조문")),
+        reference_cases=_stringify(item.get("참조판례")),
+        ai_summary=_stringify(item.get("심판례요약")),
     )
 
 
@@ -127,19 +138,19 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
         parts.append(f"사건번호: {case_number}")
 
     for field in ("판시사항", "결정요지", "주문", "이유"):
-        value = item.get(field)
+        value = _stringify(item.get(field))
         if value:
             parts.append(value)
 
-    ref_provisions = item.get("심판대상조문")
+    ref_provisions = _stringify(item.get("심판대상조문"))
     if ref_provisions:
         parts.append(f"심판대상조문: {ref_provisions}")
 
-    ref_statutes = item.get("참조조문")
+    ref_statutes = _stringify(item.get("참조조문"))
     if ref_statutes:
         parts.append(f"참조조문: {ref_statutes}")
 
-    ref_cases = item.get("참조판례")
+    ref_cases = _stringify(item.get("참조판례"))
     if ref_cases:
         parts.append(f"참조판례: {ref_cases}")
 

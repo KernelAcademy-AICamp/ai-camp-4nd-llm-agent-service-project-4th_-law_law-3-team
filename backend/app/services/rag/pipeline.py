@@ -1,13 +1,16 @@
 """
 RAG 파이프라인
 
-검색, 리랭킹, 쿼리 리라이팅을 통합한 파이프라인 함수
+검색, 원문 조회, 리랭킹, 쿼리 리라이팅을 통합한 파이프라인.
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from app.core.config import settings
 from app.services.rag.query_rewrite import rewrite_query
@@ -17,14 +20,18 @@ from app.services.rag.retrieval import search_relevant_documents
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# 설정 / 결과 데이터 클래스
+# ---------------------------------------------------------------------------
+
+
 @dataclass
 class PipelineConfig:
-    """
-    파이프라인 설정
+    """파이프라인 설정.
 
     Attributes:
-        n_results: 검색 결과 수
-        doc_type: 문서 유형 필터 (precedent, law, constitutional)
+        n_results: 검색할 후보 수
+        doc_type: 문서 유형 필터 ("precedent", "law" 또는 한국어 data_type)
         enable_rewrite: 쿼리 리라이팅 활성화
         num_rewrite_queries: 리라이팅 시 생성할 쿼리 수
         enable_rerank: 리랭킹 활성화
@@ -42,9 +49,27 @@ class PipelineConfig:
 
 
 @dataclass
-class PipelineResult:
+class PipelineMetrics:
+    """파이프라인 실행 메트릭.
+
+    Attributes:
+        search_time_ms: 검색 + 원문 조회 소요 시간 (ms)
+        rerank_time_ms: 리랭킹 소요 시간 (ms)
+        total_time_ms: 전체 소요 시간 (ms)
+        total_searched: 검색된 총 후보 수
+        total_reranked: 리랭킹 후 반환 수
     """
-    파이프라인 결과
+
+    search_time_ms: float = 0.0
+    rerank_time_ms: float = 0.0
+    total_time_ms: float = 0.0
+    total_searched: int = 0
+    total_reranked: int = 0
+
+
+@dataclass
+class PipelineResult:
+    """파이프라인 결과.
 
     Attributes:
         documents: 검색된 문서 목록
@@ -53,78 +78,170 @@ class PipelineResult:
         reranked: 리랭킹 적용 여부
         total_retrieved: 리랭킹 전 검색 결과 수
         hybrid_search_used: 하이브리드 검색 사용 여부
+        metrics: 실행 메트릭
     """
 
-    documents: List[Dict[str, Any]] = field(default_factory=list)
+    documents: list[dict[str, Any]] = field(default_factory=list)
     original_query: str = ""
-    rewritten_queries: List[str] = field(default_factory=list)
+    rewritten_queries: list[str] = field(default_factory=list)
     reranked: bool = False
     total_retrieved: int = 0
-    hybrid_search_used: bool = field(default_factory=lambda: settings.USE_HYBRID_SEARCH)
+    hybrid_search_used: bool = field(
+        default_factory=lambda: settings.USE_HYBRID_SEARCH
+    )
+    metrics: PipelineMetrics = field(default_factory=PipelineMetrics)
+
+
+# ---------------------------------------------------------------------------
+# 프리셋
+# ---------------------------------------------------------------------------
+
+PRESETS: dict[str, PipelineConfig] = {
+    "legal_search_precedent": PipelineConfig(
+        n_results=15,
+        doc_type="precedent",
+        enable_rerank=True,
+        rerank_top_k=5,
+    ),
+    "legal_search_law": PipelineConfig(
+        n_results=15,
+        doc_type="law",
+        enable_rerank=True,
+        rerank_top_k=5,
+    ),
+    "legal_search_all": PipelineConfig(
+        n_results=20,
+        enable_rerank=True,
+        rerank_top_k=7,
+    ),
+    "law_study": PipelineConfig(
+        n_results=10,
+        enable_rerank=True,
+        rerank_top_k=5,
+        enable_rewrite=True,
+    ),
+    "small_claims": PipelineConfig(
+        n_results=10,
+        doc_type="precedent",
+        enable_rerank=True,
+        rerank_top_k=3,
+    ),
+    "quick_search": PipelineConfig(
+        n_results=5,
+        enable_rerank=False,
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
+# RAGPipeline
+# ---------------------------------------------------------------------------
+
+
+class RAGPipeline:
+    """RAG 파이프라인.
+
+    1. 쿼리 리라이팅 (선택)
+    2. 하이브리드 검색 + 원문 조회
+    3. Cross-encoder 리랭킹 (선택)
+    4. 결과 포맷팅 + 메트릭
+    """
+
+    def execute(
+        self,
+        query: str,
+        config: Optional[PipelineConfig] = None,
+    ) -> PipelineResult:
+        """파이프라인 실행 (동기)."""
+        config = config or PipelineConfig()
+        pipeline_start = time.monotonic()
+
+        result = PipelineResult(original_query=query)
+        metrics = result.metrics
+
+        # Step 1: 쿼리 리라이팅 (선택)
+        queries = [query]
+        if config.enable_rewrite:
+            queries = rewrite_query(
+                query=query,
+                num_queries=config.num_rewrite_queries,
+                use_llm=config.use_llm_rewrite,
+            )
+            result.rewritten_queries = queries
+
+        # Step 2: 검색 (원문 포함)
+        search_start = time.monotonic()
+
+        all_documents: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+
+        for q in queries:
+            docs = search_relevant_documents(
+                query=q,
+                n_results=config.n_results,
+                doc_type=config.doc_type,
+            )
+            for doc in docs:
+                doc_id = doc.get("metadata", {}).get("doc_id", "")
+                if doc_id and doc_id not in seen_ids:
+                    seen_ids.add(doc_id)
+                    all_documents.append(doc)
+
+        metrics.search_time_ms = (time.monotonic() - search_start) * 1000
+        metrics.total_searched = len(all_documents)
+        result.total_retrieved = len(all_documents)
+
+        # Step 3: 리랭킹 (선택)
+        if config.enable_rerank and all_documents:
+            rerank_start = time.monotonic()
+            result.documents = rerank_documents(
+                query=query,
+                documents=all_documents,
+                top_k=config.rerank_top_k,
+            )
+            metrics.rerank_time_ms = (time.monotonic() - rerank_start) * 1000
+            metrics.total_reranked = len(result.documents)
+            result.reranked = True
+        else:
+            # 리랭킹 미사용 시 similarity 기준 정렬
+            all_documents.sort(
+                key=lambda x: x.get("similarity", 0), reverse=True
+            )
+            result.documents = all_documents[: config.n_results]
+
+        metrics.total_time_ms = (time.monotonic() - pipeline_start) * 1000
+
+        logger.info(
+            "RAG 파이프라인 완료: %d건 검색 → %d건 반환 (%.0fms)",
+            result.total_retrieved,
+            len(result.documents),
+            metrics.total_time_ms,
+        )
+
+        return result
+
+    async def execute_async(
+        self,
+        query: str,
+        config: Optional[PipelineConfig] = None,
+    ) -> PipelineResult:
+        """파이프라인 실행 (비동기)."""
+        return await asyncio.to_thread(self.execute, query, config)
+
+
+# ---------------------------------------------------------------------------
+# 편의 함수 (하위 호환)
+# ---------------------------------------------------------------------------
+
+_default_pipeline = RAGPipeline()
 
 
 def search_with_pipeline(
     query: str,
     config: Optional[PipelineConfig] = None,
 ) -> PipelineResult:
-    """
-    통합 RAG 파이프라인으로 검색 수행
-
-    Args:
-        query: 검색 쿼리
-        config: 파이프라인 설정 (기본값: 검색만 수행)
-
-    Returns:
-        파이프라인 결과
-    """
-    config = config or PipelineConfig()
-
-    result = PipelineResult(original_query=query)
-
-    # 1. 쿼리 리라이팅 (선택)
-    queries = [query]
-    if config.enable_rewrite:
-        queries = rewrite_query(
-            query=query,
-            num_queries=config.num_rewrite_queries,
-            use_llm=config.use_llm_rewrite,
-        )
-        result.rewritten_queries = queries
-
-    # 2. 검색 수행 (모든 쿼리에 대해)
-    all_documents: List[Dict[str, Any]] = []
-    seen_ids: set = set()
-
-    for q in queries:
-        docs = search_relevant_documents(
-            query=q,
-            n_results=config.n_results,
-            doc_type=config.doc_type,
-        )
-
-        # 중복 제거
-        for doc in docs:
-            doc_id = doc.get("id")
-            if doc_id and doc_id not in seen_ids:
-                seen_ids.add(doc_id)
-                all_documents.append(doc)
-
-    result.total_retrieved = len(all_documents)
-
-    # 3. 리랭킹 (선택)
-    if config.enable_rerank and all_documents:
-        result.documents = rerank_documents(
-            query=query,
-            documents=all_documents,
-            top_k=config.rerank_top_k,
-        )
-        result.reranked = True
-    else:
-        # 리랭킹 미사용 시 similarity 기준 정렬
-        all_documents.sort(key=lambda x: x.get("similarity", 0), reverse=True)
-        result.documents = all_documents[: config.n_results]
-
-    return result
+    """통합 RAG 파이프라인으로 검색 수행."""
+    return _default_pipeline.execute(query, config)
 
 
 def search_with_rerank(
@@ -132,26 +249,15 @@ def search_with_rerank(
     n_results: int = 10,
     top_k: int = 5,
     doc_type: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    """
-    검색 + 리랭킹 간편 함수
-
-    Args:
-        query: 검색 쿼리
-        n_results: 검색 결과 수
-        top_k: 리랭킹 후 반환할 결과 수
-        doc_type: 문서 유형 필터
-
-    Returns:
-        리랭킹된 문서 목록
-    """
+) -> list[dict[str, Any]]:
+    """검색 + 리랭킹 간편 함수."""
     config = PipelineConfig(
         n_results=n_results,
         doc_type=doc_type,
         enable_rerank=True,
         rerank_top_k=top_k,
     )
-    result = search_with_pipeline(query, config)
+    result = _default_pipeline.execute(query, config)
     return result.documents
 
 
@@ -160,26 +266,15 @@ def search_with_rewrite(
     n_results: int = 10,
     doc_type: Optional[str] = None,
     use_llm: bool = True,
-) -> List[Dict[str, Any]]:
-    """
-    쿼리 리라이팅 + 검색 간편 함수
-
-    Args:
-        query: 검색 쿼리
-        n_results: 검색 결과 수
-        doc_type: 문서 유형 필터
-        use_llm: LLM 기반 리라이팅 사용
-
-    Returns:
-        검색된 문서 목록
-    """
+) -> list[dict[str, Any]]:
+    """쿼리 리라이팅 + 검색 간편 함수."""
     config = PipelineConfig(
         n_results=n_results,
         doc_type=doc_type,
         enable_rewrite=True,
         use_llm_rewrite=use_llm,
     )
-    result = search_with_pipeline(query, config)
+    result = _default_pipeline.execute(query, config)
     return result.documents
 
 
@@ -187,16 +282,5 @@ async def search_with_pipeline_async(
     query: str,
     config: Optional[PipelineConfig] = None,
 ) -> PipelineResult:
-    """
-    통합 RAG 파이프라인 비동기 검색
-
-    sync 함수를 별도 스레드에서 실행하여 FastAPI 이벤트 루프 블로킹 방지.
-
-    Args:
-        query: 검색 쿼리
-        config: 파이프라인 설정 (기본값: 검색만 수행)
-
-    Returns:
-        파이프라인 결과
-    """
-    return await asyncio.to_thread(search_with_pipeline, query, config)
+    """통합 RAG 파이프라인 비동기 검색."""
+    return await _default_pipeline.execute_async(query, config)
