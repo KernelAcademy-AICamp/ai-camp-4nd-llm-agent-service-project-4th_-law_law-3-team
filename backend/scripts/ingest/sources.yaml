@@ -3,26 +3,26 @@
 # 버전 변경 시 이 파일만 수정하면 19개 타입에 자동 반영됩니다.
 
 # 단일 JSON
-law: law_v3.json
-precedent: precedents_v2.json
-admin_rule: admin_rule_v2.json
-administration: administration_v2.json
-constitutional: constitutional_v2.json
-legislation: legislation_v2.json
-treaty: treaty_v2.json
+law: ingest_source/law_v1.json
+precedent: ingest_source/precedents_v1.json
+admin_rule: ingest_source/admin_rule_v1.json
+administration: ingest_source/administration_v1.json
+constitutional: ingest_source/constitutional_v1.json
+legislation: ingest_source/legislation_v1.json
+treaty: ingest_source/treaty_v1.json
 
 # 디렉토리 (하위 JSON 파일 자동 합산)
-interpretation_ministry: interpretation_ministry
-special_admin_appeal: special_admin_appeal
+interpretation_ministry: ingest_source/interpretation_ministry
+special_admin_appeal: ingest_source/special_admin_appeal
 
 # 위원회 결정례 (decisions_committee/ 하위)
-dec_privacy: decisions_committee/dec_comm_개인정보보호위원회_v2.json
-dec_employment: decisions_committee/dec_comm_고용보험심사위원회_v2.json
-dec_fair_trade: decisions_committee/dec_comm_공정거래위원회_v3.json
-dec_human_rights: decisions_committee/dec_comm_국가인권위원회_v2.json
-dec_civil_rights: decisions_committee/dec_comm_국민권익위원회_v2.json
-dec_financial: decisions_committee/dec_comm_금융위원회_v2.json
-dec_labor: decisions_committee/dec_comm_노동위원회_v2.json
-dec_industrial: decisions_committee/dec_comm_산업재해보상위험재심사위원회_v2.json
-dec_environment: decisions_committee/dec_comm_중앙환경분쟁조정위원회_v2.json
-dec_securities: decisions_committee/dec_comm_증권선물위원회_v2.json
+dec_privacy: ingest_source/decisions_committee/dec_comm_개인정보보호위원회_v1.json
+dec_employment: ingest_source/decisions_committee/dec_comm_고용보험심사위원회_v1.json
+dec_fair_trade: ingest_source/decisions_committee/dec_comm_공정거래위원회_v2.json
+dec_human_rights: ingest_source/decisions_committee/dec_comm_국가인권위원회_v1.json
+dec_civil_rights: ingest_source/decisions_committee/dec_comm_국민권익위원회_v1.json
+dec_financial: ingest_source/decisions_committee/dec_comm_금융위원회_v1.json
+dec_labor: ingest_source/decisions_committee/dec_comm_노동위원회_v1.json
+dec_industrial: ingest_source/decisions_committee/dec_comm_산업재해보상위험재심사위원회_v1.json
+dec_environment: ingest_source/decisions_committee/dec_comm_중앙환경분쟁조정위원회_v1.json
+dec_securities: ingest_source/decisions_committee/dec_comm_증권선물위원회_v1.json

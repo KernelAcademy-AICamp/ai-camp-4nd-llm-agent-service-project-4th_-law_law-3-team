@@ -53,9 +53,9 @@ def run_fts_rebuild(
         "errors": 0,
     }
 
-    # MeCab 토크나이저 초기화
+    # MeCab 토크나이저 초기화 (실패 시 __init__에서 예외 발생)
     tokenizer = get_tokenizer()
-    logger.info("MeCab 토크나이저 초기화 (available=%s)", tokenizer.is_available)
+    logger.info("MeCab 토크나이저 초기화 완료")
 
     start_time = time.time()
 

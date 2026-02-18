@@ -65,9 +65,9 @@ class FtsIndex(Base):
         comment="소관부처(법령) 또는 법원명(판례)",
     )
     case_number = Column(
-        String(100),
+        Text,
         nullable=True,
-        comment="판례 사건번호 (법령은 NULL)",
+        comment="판례 사건번호 (법령은 NULL, 병합사건은 수백자 가능)",
     )
     content_tsvector = Column(
         TSVECTOR,

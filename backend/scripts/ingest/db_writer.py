@@ -31,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 1000
 
+# PostgreSQL tsvector 최대 1MB (1,048,575 bytes)
+# 한글 1자 ≈ 3 bytes UTF-8, 안전 마진 고려하여 300,000자 제한
+_MAX_FULLTEXT_CHARS = 300_000
+
 # auto-increment PK와 타임스탬프는 upsert SET 대상에서 제외
 _UPSERT_EXCLUDE_COLUMNS = {"id", "created_at"}
 
@@ -180,14 +184,8 @@ def run_db_ingest(
     if not items:
         return stats
 
-    # MeCab 토크나이저 초기화 (필수)
+    # MeCab 토크나이저 초기화 (필수 — 실패 시 __init__에서 예외 발생)
     tokenizer = get_tokenizer()
-    if not tokenizer.is_available:
-        raise RuntimeError(
-            "MeCab 토크나이저를 사용할 수 없습니다. "
-            "FTS 품질을 위해 MeCab 설치가 필수입니다: "
-            "apt install mecab libmecab-dev mecab-ko-dic"
-        )
 
     start_time = time.time()
 
@@ -247,6 +245,9 @@ def run_db_ingest(
             try:
                 fulltext = config.fulltext_fn(item)
                 if fulltext.strip():
+                    # PostgreSQL tsvector 1MB 제한 방지
+                    if len(fulltext) > _MAX_FULLTEXT_CHARS:
+                        fulltext = fulltext[:_MAX_FULLTEXT_CHARS]
                     tokens = tokenizer.morphs(fulltext)
                     tsvector_str = build_tsvector_string(tokens)
 
