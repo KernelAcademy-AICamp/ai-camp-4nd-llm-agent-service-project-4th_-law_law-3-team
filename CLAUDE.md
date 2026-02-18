@@ -40,6 +40,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `Edit`/`Write` 후 자동 린트 검증 훅 포함. 활성화 설정은 각자 로컬에서 수행.
 → 상세: `.claude/hooks/README.md`
 
+## Git Branch Strategy
+
+- 기본 브랜치: `main` (프로덕션), `dev` (개발 통합)
+- feature 브랜치는 **`dev` 기반**으로 생성 (`main` 기반 X)
+- 워크플로우: `dev` → `feature/xxx` → PR → `dev` → `main`
+- PR 타이틀: `git-convention.md`의 커밋 타입 규칙 준수 (GitHub Actions로 자동 검증)
+
 ## Commands
 
 | 영역 | 핵심 명령어 |

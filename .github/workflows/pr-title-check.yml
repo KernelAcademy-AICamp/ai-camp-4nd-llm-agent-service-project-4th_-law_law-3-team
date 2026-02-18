@@ -1,0 +1,27 @@
+name: PR Title Convention
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  check-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title format
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title;
+            const pattern = /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore)(\(.+\))?: .{1,72}$/;
+
+            if (!pattern.test(title)) {
+              core.setFailed(
+                `PR 타이틀이 컨벤션을 따르지 않습니다.\n` +
+                `현재: "${title}"\n` +
+                `형식: <타입>(<범위>): <제목>\n` +
+                `타입: feat|fix|docs|style|refactor|perf|test|build|ci|chore\n` +
+                `예시: feat(chat): 멀티에이전트 라우팅 추가`
+              );
+            }
