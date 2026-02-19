@@ -38,7 +38,7 @@ def _load_reranker_model(model_name: str = DEFAULT_RERANKER_MODEL) -> Any:
 
         model = CrossEncoder(
             model_name,
-            default_activation_function=torch.nn.Sigmoid(),
+            activation_fn=torch.nn.Sigmoid(),
         )
         logger.info("리랭커 모델 로드 완료: %s", model_name)
         return model

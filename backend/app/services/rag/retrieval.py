@@ -359,55 +359,43 @@ def _populate_content(
             doc["content"] = contents[sid]
 
 
-def search_relevant_documents(
+def search_without_content(
     query: str,
     n_results: int = 5,
     doc_type: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """
-    관련 법률 문서 하이브리드 검색.
+    하이브리드 검색 (content 미포함).
 
-    1. 벡터 검색 (LanceDB) → source_id 랭킹
-    2. 키워드 검색 (PostgreSQL FTS) → source_id 랭킹
-    3. RRF 병합 (source_id 단위) → 최종 랭킹
-    4. 원문 배치 조회 (PostgreSQL) → content 채움
+    벡터 + FTS + RRF 병합까지 수행하되, 원문 조회는 하지 않음.
+    리랭킹 파이프라인에서 요약문 기반 리랭킹 후 top-k만 원문 조회할 때 사용.
 
     Args:
         query: 검색 쿼리
         n_results: 반환할 결과 수
-        doc_type: 문서 유형 필터 ("precedent", "law" 또는 한국어 data_type)
+        doc_type: 문서 유형 필터
 
     Returns:
-        관련 문서 목록 (content는 PostgreSQL 원문)
+        관련 문서 목록 (content는 빈 문자열)
     """
     vector_fetch = n_results * 3 if settings.USE_HYBRID_SEARCH else n_results
     vector_results = _search_vector_ids(query, vector_fetch, doc_type)
 
     if not settings.USE_HYBRID_SEARCH:
-        docs = vector_results[:n_results]
-        contents = fetch_document_contents(_extract_id_data_type_map(docs))
-        _populate_content(docs, contents)
-        return docs
+        return vector_results[:n_results]
 
-    # 키워드 검색
     from app.services.rag.keyword_search import is_fts_available, search_by_keyword
 
     if not is_fts_available():
         logger.info("fts_index 비어있음 → 벡터 검색만 사용")
-        docs = vector_results[:n_results]
-        contents = fetch_document_contents(_extract_id_data_type_map(docs))
-        _populate_content(docs, contents)
-        return docs
+        return vector_results[:n_results]
 
     keyword_results = search_by_keyword(
         query, n_results=vector_fetch, doc_type=doc_type
     )
 
     if not keyword_results:
-        docs = vector_results[:n_results]
-        contents = fetch_document_contents(_extract_id_data_type_map(docs))
-        _populate_content(docs, contents)
-        return docs
+        return vector_results[:n_results]
 
     # keyword_results에 data_type 보강 (doc_type → data_type 변환)
     for doc in keyword_results:
@@ -436,11 +424,65 @@ def search_relevant_documents(
         if len(merged) >= n_results:
             break
 
-    # 원문 배치 조회
-    contents = fetch_document_contents(_extract_id_data_type_map(merged))
-    _populate_content(merged, contents)
-
     return merged
+
+
+def search_relevant_documents(
+    query: str,
+    n_results: int = 5,
+    doc_type: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """
+    관련 법률 문서 하이브리드 검색 (원문 포함).
+
+    search_without_content() + 원문 배치 조회.
+
+    Args:
+        query: 검색 쿼리
+        n_results: 반환할 결과 수
+        doc_type: 문서 유형 필터
+
+    Returns:
+        관련 문서 목록 (content는 PostgreSQL 원문)
+    """
+    docs = search_without_content(query, n_results, doc_type)
+    contents = fetch_document_contents(_extract_id_data_type_map(docs))
+    _populate_content(docs, contents)
+    return docs
+
+
+def fetch_lancedb_summaries(source_ids: list[str]) -> dict[str, str]:
+    """LanceDB에서 source_id별 요약문(청크 텍스트) 조회.
+
+    Args:
+        source_ids: 조회할 source_id 목록
+
+    Returns:
+        {source_id: 요약문 텍스트} 매핑
+    """
+    if not source_ids:
+        return {}
+
+    try:
+        import lancedb
+
+        db = lancedb.connect(settings.LANCEDB_URI)
+        table = db.open_table(settings.LANCEDB_TABLE_NAME)
+
+        ids_str = ", ".join(f"'{sid}'" for sid in source_ids)
+        df = table.search().where(
+            f"source_id IN ({ids_str})", prefilter=True
+        ).select(["source_id", "content"]).limit(len(source_ids) * 2).to_pandas()
+
+        result: dict[str, str] = {}
+        for _, row in df.iterrows():
+            sid = row["source_id"]
+            if sid not in result:
+                result[sid] = row["content"]
+        return result
+    except Exception as e:
+        logger.warning("LanceDB 요약문 조회 실패: %s", e)
+        return {}
 
 
 async def search_relevant_documents_async(

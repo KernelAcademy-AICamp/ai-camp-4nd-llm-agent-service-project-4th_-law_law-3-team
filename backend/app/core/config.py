@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     LANCEDB_URI: str = "./lancedb_data"
     LANCEDB_TABLE_NAME: str = "legal_chunks"
     LANCEDB_INDEX_TYPE: str = ""  # 빈 문자열이면 brute-force, "IVF_FLAT" 등 설정 가능
+    LANCEDB_NPROBES: int = 40  # IVF 인덱스 검색 시 탐색할 파티션 수 (높을수록 정확, 느림)
     LANCEDB_MODE: str = "local"  # "local" | "remote"
     LANCEDB_SERVICE_URL: str = "http://localhost:8100"  # remote 모드 시 마이크로서비스 URL
     LANCEDB_SERVICE_TIMEOUT: float = 30.0  # HTTP timeout (초)

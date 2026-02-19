@@ -15,7 +15,14 @@ from typing import Any, Optional
 from app.core.config import settings
 from app.services.rag.query_rewrite import rewrite_query
 from app.services.rag.rerank import rerank_documents
-from app.services.rag.retrieval import search_relevant_documents
+from app.services.rag.retrieval import (
+    _extract_id_data_type_map,
+    _populate_content,
+    fetch_document_contents,
+    fetch_lancedb_summaries,
+    search_relevant_documents,
+    search_without_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -142,9 +149,10 @@ class RAGPipeline:
     """RAG 파이프라인.
 
     1. 쿼리 리라이팅 (선택)
-    2. 하이브리드 검색 + 원문 조회
-    3. Cross-encoder 리랭킹 (선택)
-    4. 결과 포맷팅 + 메트릭
+    2. 하이브리드 검색 (content 미포함)
+    3. 요약문 기반 Cross-encoder 리랭킹 (선택)
+    4. top-k만 원문 배치 조회 (PostgreSQL)
+    5. 결과 포맷팅 + 메트릭
     """
 
     def execute(
@@ -169,14 +177,19 @@ class RAGPipeline:
             )
             result.rewritten_queries = queries
 
-        # Step 2: 검색 (원문 포함)
+        # Step 2: 검색
         search_start = time.monotonic()
 
         all_documents: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
 
+        search_fn = (
+            search_without_content if config.enable_rerank
+            else search_relevant_documents
+        )
+
         for q in queries:
-            docs = search_relevant_documents(
+            docs = search_fn(
                 query=q,
                 n_results=config.n_results,
                 doc_type=config.doc_type,
@@ -193,15 +206,30 @@ class RAGPipeline:
 
         # Step 3: 리랭킹 (선택)
         if config.enable_rerank and all_documents:
+            # 요약문 조회 (LanceDB) → 리랭킹용 content 주입
+            source_ids = [
+                d.get("metadata", {}).get("doc_id", "")
+                for d in all_documents
+            ]
+            summaries = fetch_lancedb_summaries(source_ids)
+            _populate_content(all_documents, summaries)
+
             rerank_start = time.monotonic()
-            result.documents = rerank_documents(
+            reranked = rerank_documents(
                 query=query,
                 documents=all_documents,
                 top_k=config.rerank_top_k,
             )
             metrics.rerank_time_ms = (time.monotonic() - rerank_start) * 1000
-            metrics.total_reranked = len(result.documents)
+            metrics.total_reranked = len(reranked)
             result.reranked = True
+
+            # top-k만 원본 조회 (PostgreSQL)
+            contents = fetch_document_contents(
+                _extract_id_data_type_map(reranked)
+            )
+            _populate_content(reranked, contents)
+            result.documents = reranked
         else:
             # 리랭킹 미사용 시 similarity 기준 정렬
             all_documents.sort(

@@ -35,6 +35,18 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error("임베딩 모델 로드 실패: %s", e)
 
+    # 리랭커 모델 미리 로드 (Eager Loading)
+    from app.services.rag.rerank import is_reranker_available
+
+    logger.info("리랭커 모델을 미리 로드합니다...")
+    try:
+        if is_reranker_available():
+            logger.info("리랭커 모델 로드 완료")
+        else:
+            logger.warning("리랭커 모델 로드 실패 → 리랭킹 비활성화")
+    except Exception as e:
+        logger.error("리랭커 모델 로드 실패: %s", e)
+
     # 벡터 인덱스 생성 (LANCEDB_INDEX_TYPE이 설정된 경우에만)
     if settings.LANCEDB_INDEX_TYPE:
         try:

@@ -260,8 +260,8 @@ class LanceDBStore(VectorStoreBase):
         if self._table is None:
             return SearchResult(ids=[[]], distances=[[]], metadatas=[[]], documents=[[]])
 
-        # 쿼리 빌더
-        query = self._table.search(query_embedding).limit(n_results)
+        # 쿼리 빌더 (IVF 인덱스 시 nprobes 적용)
+        query = self._table.search(query_embedding).nprobes(settings.LANCEDB_NPROBES).limit(n_results)
 
         # 필터 적용 (SQL 스타일)
         if where:
