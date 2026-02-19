@@ -86,7 +86,7 @@ pa.field("content_tokenized", pa.utf8()),  # MeCab 사전 토크나이징된 con
 
 - 실제 임베딩 모델(KURE-v1) 로딩 및 임베딩 생성 테스트 (GPU 필요)
 - PostgreSQL 연동 원본 조회 테스트 (별도 DB 의존)
-- 임베딩 스크립트(`create_lancedb_embeddings.py`, `runpod_lancedb_embeddings.py`) 테스트
+- 인제스트 파이프라인(`scripts/ingest/`) 및 thin wrapper 테스트
 - 프론트엔드 검색 UI 테스트
 
 ---

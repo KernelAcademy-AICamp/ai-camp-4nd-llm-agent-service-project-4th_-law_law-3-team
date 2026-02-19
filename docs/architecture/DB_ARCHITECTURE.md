@@ -336,20 +336,14 @@ def embedding_text(self) -> str:
 ### 5.3 생성 명령어
 
 ```bash
-# 전체 임베딩 생성 (리셋 포함)
-uv run python scripts/create_embeddings.py --type all --reset
+# 전체 임베딩 생성 (리셋 포함, ingest 파이프라인)
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
 
 # 특정 유형만
-uv run python scripts/create_embeddings.py --type precedent
-
-# 청킹 설정 변경
-uv run python scripts/create_embeddings.py --chunk-size 500 --chunk-overlap 50
-
-# OpenAI API 사용
-uv run python scripts/create_embeddings.py --use-openai
+uv run --no-sync python -m scripts.ingest.cli --type precedent --step vector
 
 # 통계 확인
-uv run python scripts/create_embeddings.py --stats
+uv run --no-sync python -m scripts.ingest.cli --type all --stats
 ```
 
 ---
@@ -484,14 +478,14 @@ uv run python scripts/load_legal_data.py --stats
 ### 8.2 임베딩 생성
 
 ```bash
-# 전체 생성 (기존 삭제 후)
-uv run python scripts/create_embeddings.py --type all --reset
+# 전체 생성 (기존 삭제 후, ingest 파이프라인)
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
 
 # 개별 타입
-uv run python scripts/create_embeddings.py --type precedent
+uv run --no-sync python -m scripts.ingest.cli --type precedent --step vector
 
 # 통계 확인
-uv run python scripts/create_embeddings.py --stats
+uv run --no-sync python -m scripts.ingest.cli --type all --stats
 ```
 
 ### 8.3 데이터 검증
@@ -594,7 +588,7 @@ backend/
 │       └── config.py            # 설정
 ├── scripts/
 │   ├── load_legal_data.py       # PostgreSQL 데이터 로드
-│   ├── create_embeddings.py     # 임베딩 생성
+│   ├── ingest/                  # 인제스트 파이프라인 (DB+벡터+FTS)
 │   ├── validate_data.py         # 데이터 검증
 │   └── backup_data.py           # 백업
 ├── data/

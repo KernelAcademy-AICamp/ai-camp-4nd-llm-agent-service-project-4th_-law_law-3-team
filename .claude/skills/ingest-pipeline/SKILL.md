@@ -8,7 +8,8 @@ description: Config-driven 인제스트 파이프라인. 19개 데이터 타입�
 Config-driven 인제스트 파이프라인. 19개 데이터 타입의 DB 적재, 벡터 임베딩, FTS 빌드, ANN 인덱스를 일괄 처리합니다.
 
 > **중요**: 벡터 DB 임베딩 작업은 이 파이프라인(`scripts/ingest/`)이 기준입니다.
-> 기존 `scripts/local_lancedb_embeddings.py`, `scripts/runpod_lancedb_embeddings.py`는 **레거시**이며 신규 작업에 사용하지 않습니다.
+> `scripts/runpod_lancedb_embeddings.py`, `scripts/colab_lancedb_embeddings.py`는 노트북용 **thin wrapper** (내부적으로 이 파이프라인 호출)입니다.
+> 기존 독자 구현 스크립트(`local_lancedb_embeddings.py`, `create_lancedb_embeddings.py` 등)는 **삭제**되었습니다.
 
 ## 개요
 
@@ -129,7 +130,7 @@ scripts/embedding_common/  # 임베딩 공통 모듈 (store, model, cache 등)
 
 ## 주의사항
 
-- 기존 `scripts/local_lancedb_embeddings.py`, `scripts/runpod_lancedb_embeddings.py`는 레거시
+- `scripts/runpod_lancedb_embeddings.py`, `scripts/colab_lancedb_embeddings.py`는 노트북용 thin wrapper (ingest 파이프라인 호출)
 - `--type all --reset`은 각 타입별로 해당 타입 레코드만 삭제 (전체 테이블 DROP 아님)
 - 벡터 단계는 `uv run --no-sync` 불필요 (CLI가 자동 처리)
 - ANN 인덱스(`--step index`)는 전체 LanceDB 대상이므로 마지막에 1회만 실행

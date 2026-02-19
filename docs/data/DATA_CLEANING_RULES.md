@@ -58,7 +58,7 @@ def normalize_year(year: int) -> int:
 ### 적용 위치
 
 - [ ] PostgreSQL 적재 스크립트 (`scripts/load_lancedb_data.py` 등)
-- [ ] LanceDB 임베딩 스크립트 (`scripts/local_lancedb_embeddings.py`, `scripts/runpod_lancedb_embeddings.py`)
+- [ ] 인제스트 파이프라인 (`scripts/ingest/`, `scripts/runpod_lancedb_embeddings.py`)
 - [ ] Neo4j 그래프 구축 스크립트 (`scripts/build_graph.py`)
 
 ### 상태

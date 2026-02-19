@@ -224,7 +224,10 @@ backend/
 │           ├── chroma.py            # ChromaDB 구현체 (기존)
 │           └── qdrant.py            # Qdrant 구현체 (기존)
 ├── scripts/
-│   └── create_lancedb_embeddings.py # LanceDB 임베딩 생성 스크립트
+│   ├── ingest/                      # 인제스트 파이프라인 (DB+벡터+FTS)
+│   ├── embedding_common/            # 임베딩 공통 모듈 (모델, 스토어, 캐시)
+│   ├── runpod_lancedb_embeddings.py # RunPod thin wrapper (ingest 호출)
+│   └── colab_lancedb_embeddings.py  # Colab thin wrapper (runpod re-export)
 └── lancedb_data/                    # LanceDB 데이터 저장소
 
 services/
@@ -256,11 +259,11 @@ services/
 - [x] PostgreSQL 모델 (`law_document.py`, `precedent_document.py`)
 - [x] Alembic 마이그레이션 (`003_add_lancedb_tables.py`)
 - [x] 데이터 로드 스크립트 (`load_lancedb_data.py`) - JSON → PostgreSQL
-- [x] 임베딩 스크립트 (`create_lancedb_embeddings.py`) - PostgreSQL → LanceDB
+- [x] 인제스트 파이프라인 (`scripts/ingest/`) - JSON → LanceDB 벡터 임베딩
 - [x] ruling, claim, reasoning 제거 (메모리 효율화)
 - [x] **판례 데이터 전체 임베딩** (65,107건 → 134,846 청크)
 - [x] **법령 데이터 전체 임베딩** (5,841건 → 118,922 청크)
-- [x] **통합 임베딩 프로세서 클래스** (`StreamingEmbeddingProcessor`)
+- [x] **인제스트 파이프라인 단일화** (config-driven, 19개 타입 지원)
 - [x] **청킹 무한루프 버그 수정** (2026-01-29)
 
 ### 진행 예정
@@ -320,21 +323,21 @@ uv run python scripts/load_lancedb_data.py --type all --reset
 # 통계 확인
 uv run python scripts/load_lancedb_data.py --stats
 
-# ========== Step 3: PostgreSQL → LanceDB 임베딩 생성 ==========
-# 판례 임베딩 생성 (precedent_documents 테이블에서)
-uv run python scripts/create_lancedb_embeddings.py --type precedent
+# ========== Step 3: LanceDB 벡터 임베딩 생성 (ingest 파이프라인) ==========
+# 판례 벡터 임베딩 생성
+uv run --no-sync python -m scripts.ingest.cli --type precedent --step vector
 
-# 법령 임베딩 생성 (law_documents 테이블에서)
-uv run python scripts/create_lancedb_embeddings.py --type law
+# 법령 벡터 임베딩 생성
+uv run --no-sync python -m scripts.ingest.cli --type law --step vector
 
-# 전체 (판례 + 법령)
-uv run python scripts/create_lancedb_embeddings.py --type all
+# 전체 (19개 타입)
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector
 
 # 전체 재생성 (기존 데이터 삭제)
-uv run python scripts/create_lancedb_embeddings.py --type all --reset
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
 
 # 통계 확인
-uv run python scripts/create_lancedb_embeddings.py --stats
+uv run --no-sync python -m scripts.ingest.cli --type all --stats
 
 # ========== 옵션 ==========
 # 판례 옵션
@@ -388,13 +391,15 @@ uv run python scripts/create_lancedb_embeddings.py --stats
 ## 10. RunPod/Colab 임베딩 (GPU 환경)
 
 대용량 데이터 임베딩을 위한 GPU 환경 스크립트입니다.
+내부적으로 ingest 파이프라인의 `run_vector_ingest()`를 호출하는 thin wrapper입니다.
 
 ### 스크립트 위치
 ```
 backend/scripts/
-├── runpod_lancedb_embeddings.py  # RunPod GPU용 (분할 처리 포함)
-├── runpod_split_embeddings.py    # 분할 전용 (간소화 버전)
-└── colab_lancedb_embeddings.py   # Google Colab용
+├── ingest/                         # 메인 인제스트 파이프라인
+├── embedding_common/               # 공통 임베딩 모듈
+├── runpod_lancedb_embeddings.py    # RunPod thin wrapper (ingest 호출)
+└── colab_lancedb_embeddings.py     # Colab thin wrapper (runpod re-export)
 ```
 
 ### 분할 처리 방식 (권장)
@@ -478,52 +483,20 @@ show_stats()
 
 ## 10.5. 통합 임베딩 프로세서 (v2)
 
-### 클래스 구조
+### 아키텍처
 
-2026-01-29 리팩토링으로 법령/판례 임베딩 로직이 통합되었습니다.
+ingest 파이프라인(`scripts/ingest/`)이 config-driven 방식으로 19개 데이터 타입의 벡터 임베딩을 처리합니다.
 
 ```python
-# 추상 베이스 클래스
-class StreamingEmbeddingProcessor(ABC):
-    """스트리밍 방식 임베딩 프로세서"""
+# 설정 기반 벡터 임베딩
+from scripts.ingest.vector_writer import run_vector_ingest
+from scripts.ingest.config import get_config
 
-    def __init__(self, data_type: str):
-        self.data_type = data_type  # "법령" | "판례"
-        self.device_info = get_device_info()
-        self.optimal_config = get_optimal_config(self.device_info)
-        self.store = LanceDBStore()
-
-    def load_streaming(self, source_path: str) -> tuple:
-        """개수 세기 스킵, 즉시 시작"""
-
-    def run(self, source_path: str, reset: bool, batch_size: int) -> dict:
-        """통합 실행 로직"""
-
-    # 추상 메서드 (서브클래스에서 구현)
-    @abstractmethod
-    def get_chunk_config(self) -> Any: ...
-    @abstractmethod
-    def extract_source_id(self, item: dict, idx: int) -> str: ...
-    @abstractmethod
-    def extract_text_for_embedding(self, item: dict) -> str: ...
-    @abstractmethod
-    def chunk_text(self, text: str, config: Any) -> List[tuple]: ...
-    @abstractmethod
-    def extract_metadata(self, item: dict) -> dict: ...
-    @abstractmethod
-    def create_batch_data(self) -> dict: ...
-    @abstractmethod
-    def add_to_batch(self, batch_data, source_id, chunk_idx, ...): ...
-    @abstractmethod
-    def save_batch(self, batch_data, embeddings) -> int: ...
-
-# 구현 클래스
-class LawEmbeddingProcessor(StreamingEmbeddingProcessor):
-    """법령 임베딩 프로세서"""
-
-class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor):
-    """판례 임베딩 프로세서"""
+config = get_config("precedent")  # IngestConfig dataclass
+stats = run_vector_ingest(config, reset=True)
 ```
+
+공통 모듈(`scripts/embedding_common/`)이 디바이스 감지, 모델 로딩, 캐시, 스토어 등을 제공합니다.
 
 ### 통일된 동작
 
@@ -536,15 +509,15 @@ class PrecedentEmbeddingProcessor(StreamingEmbeddingProcessor):
 ### 사용 예시
 
 ```python
-# 새 클래스 직접 사용
-processor = PrecedentEmbeddingProcessor()
-stats = processor.run(
-    source_path="precedents.json",
-    reset=True,
-    batch_size=100
-)
+# ingest 파이프라인 직접 사용 (권장)
+from scripts.ingest.vector_writer import run_vector_ingest
+from scripts.ingest.config import get_config
 
-# 기존 함수 (래퍼) 사용 - 하위 호환
+config = get_config("precedent")
+stats = run_vector_ingest(config, reset=True)
+
+# thin wrapper (노트북 하위 호환)
+from scripts.runpod_lancedb_embeddings import run_precedent_embedding, run_law_embedding
 stats = run_precedent_embedding("precedents.json", reset=True, batch_size=100)
 stats = run_law_embedding("laws.json", reset=True, batch_size=100)
 ```
@@ -615,7 +588,8 @@ precedent_count = store.count_by_type("판례")
 ### 사용법
 
 ```python
-from scripts.runpod_lancedb_embeddings import EmbeddingCache, create_embeddings
+from scripts.embedding_common.cache import EmbeddingCache
+from scripts.embedding_common.model import create_embeddings
 
 # 캐시 초기화
 cache = EmbeddingCache("./embedding_cache")
@@ -733,10 +707,9 @@ print_memory_status()
 |------|------|------|
 | 단일 테이블 스키마 | ✅ 완료 | 20개 컬럼 |
 | JSON → PostgreSQL 로드 | ✅ 완료 | load_lancedb_data.py |
-| PostgreSQL → LanceDB 임베딩 | ✅ 완료 | create_lancedb_embeddings.py |
-| RunPod 스크립트 | ✅ 완료 | runpod_lancedb_embeddings.py |
+| 인제스트 파이프라인 | ✅ 완료 | scripts/ingest/ (19개 타입) |
+| RunPod/Colab thin wrapper | ✅ 완료 | ingest 파이프라인 호출 |
 | 분할 처리 (대용량) | ✅ 완료 | split_precedents, split_laws |
-| 통합 프로세서 클래스 | ✅ 완료 | StreamingEmbeddingProcessor |
 | 임베딩 캐싱 | ✅ 완료 | EmbeddingCache |
 | 품질 검증 | ✅ 완료 | EmbeddingQualityChecker |
 | PyTorch 최적화 | ✅ 완료 | clear_memory, set_seed 등 |
@@ -748,7 +721,7 @@ print_memory_status()
 
 ### 판례 메타데이터 누락 필드 (해결됨)
 
-2026-02-05 업데이트: `runpod_lancedb_embeddings.py` 및 `create_lancedb_embeddings.py` 수정으로 해결되었습니다.
+2026-02-05 업데이트: ingest 파이프라인 타입별 설정(`scripts/ingest/types/`)에서 해결되었습니다.
 
 | 필드 | JSON 원본 | 상태 | 비고 |
 |------|-----------|------|------|

@@ -650,19 +650,37 @@ results = retrieval.search("손해배상 판례", n_results=5, doc_type="precede
 
 ## Vector DB (LanceDB)
 
-### 임베딩 스크립트
+### 임베딩 생성 (ingest 파이프라인 - 메인)
 
 ```bash
 # PyTorch CUDA 설치 (환경에 맞게 선택)
 uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 
 # 임베딩 생성 (--no-sync 필수: torch 버전 유지)
-uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type precedent
-uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type law
-uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all --reset
+uv run --no-sync python -m scripts.ingest.cli --type precedent --step vector
+uv run --no-sync python -m scripts.ingest.cli --type law --step vector
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
 
 # 통계 확인
-uv run --no-sync python scripts/runpod_lancedb_embeddings.py --stats
+uv run --no-sync python -m scripts.ingest.cli --type all --stats
+```
+
+### 노트북용 thin wrapper
+
+RunPod/Colab 노트북에서는 하위 호환 API를 유지하는 thin wrapper를 사용합니다.
+내부적으로 ingest 파이프라인의 `run_vector_ingest()`를 호출합니다.
+
+```python
+# RunPod/Colab 노트북에서 사용
+from scripts.runpod_lancedb_embeddings import (
+    run_law_embedding,          # 법령 임베딩
+    run_precedent_embedding,    # 판례 임베딩
+    show_stats,                 # 통계 출력
+    split_precedents,           # 판례 분할
+    split_laws,                 # 법령 분할
+    EmbeddingQualityChecker,    # 품질 검증
+    EmbeddingCache,             # 임베딩 캐시
+)
 ```
 
 ### 저장 위치
@@ -672,41 +690,16 @@ backend/
 ├── lancedb_data/           # LanceDB 데이터
 │   └── legal_chunks.lance/ # 법령 + 판례 통합 테이블
 └── scripts/
-    ├── runpod_lancedb_embeddings.py  # 메인 임베딩 스크립트
-    └── CLAUDE.md                      # 스크립트 상세 가이드
-```
-
-### 핵심 클래스
-
-```python
-# 통합 임베딩 프로세서
-from scripts.runpod_lancedb_embeddings import (
-    StreamingEmbeddingProcessor,  # 추상 베이스
-    LawEmbeddingProcessor,        # 법령 임베딩
-    PrecedentEmbeddingProcessor,  # 판례 임베딩
-    EmbeddingCache,               # 임베딩 캐싱
-    EmbeddingQualityChecker,      # 품질 검증
-)
-
-# 사용 예시
-processor = PrecedentEmbeddingProcessor()
-stats = processor.run("data.json", reset=True, batch_size=100)
-```
-
-### 임베딩 캐싱
-
-```python
-from scripts.runpod_lancedb_embeddings import EmbeddingCache, create_embeddings
-
-cache = EmbeddingCache("./embedding_cache")
-embedding = cache.get_or_compute("텍스트", create_embeddings)
-print(cache.get_stats())  # {'hits': 10, 'misses': 5, 'hit_rate': '66.7%'}
+    ├── ingest/                         # 메인 인제스트 파이프라인
+    ├── embedding_common/               # 공통 임베딩 모듈
+    ├── runpod_lancedb_embeddings.py    # RunPod thin wrapper
+    └── colab_lancedb_embeddings.py     # Colab thin wrapper
 ```
 
 ### 품질 검증
 
 ```python
-from scripts.runpod_lancedb_embeddings import EmbeddingQualityChecker
+from scripts.embedding_common.quality import EmbeddingQualityChecker
 
 checker = EmbeddingQualityChecker()
 report = checker.quick_test()  # 법률 도메인 기본 테스트
@@ -717,9 +710,9 @@ report = checker.quick_test()  # 법률 도메인 기본 테스트
 
 ```python
 import lancedb
-from scripts.runpod_lancedb_embeddings import get_embedding_model
+from scripts.embedding_common.model import get_embedding_model
 
-model = get_embedding_model('cuda')
+model = get_embedding_model()
 query_vector = model.encode('손해배상 책임')
 
 db = lancedb.connect('./lancedb_data')

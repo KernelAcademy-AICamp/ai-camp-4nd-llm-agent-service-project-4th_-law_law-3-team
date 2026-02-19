@@ -6,10 +6,9 @@
 
 | 스크립트 | 용도 |
 |----------|------|
-| `runpod_lancedb_embeddings.py` | 메인 임베딩 스크립트 (RunPod/클라우드 GPU) |
-| `local_lancedb_embeddings.py` | 로컬 임베딩 스크립트 (멀티 하드웨어 지원) |
-| `colab_lancedb_embeddings.py` | Google Colab 전용 |
-| `test_precedent_embedding.py` | 임베딩 테스트 |
+| `ingest/cli.py` | **메인** 인제스트 파이프라인 CLI (`python -m scripts.ingest.cli`) |
+| `runpod_lancedb_embeddings.py` | RunPod 노트북용 thin wrapper (ingest 파이프라인 호출) |
+| `colab_lancedb_embeddings.py` | Google Colab 노트북용 thin wrapper (runpod wrapper re-export) |
 | `check_environment.py` | 데이터 로드 전 환경 검증 (Python, MeCab, Docker, Alembic 등) |
 
 ### 범용 공통 모듈 (`common/`)
@@ -41,6 +40,7 @@ from scripts.common import load_items, setup_logging, create_sync_session_factor
 | `chunking.py` | 텍스트 청킹 (법령/판례) |
 | `schema.py` | 스키마 v2 re-export + 검증 유틸 |
 | `cache.py` | MD5 기반 임베딩 캐시 |
+| `quality.py` | 임베딩 품질 검증 (유사/비유사 쌍 평가) |
 | `temperature.py` | GPU 온도 모니터링 (nvidia-smi) |
 | `memory.py` | GPU/시스템 메모리 모니터링 |
 
@@ -53,7 +53,7 @@ from scripts.common import load_items, setup_logging, create_sync_session_factor
 
 ## 빠른 시작
 
-### 로컬 실행 (권장: `local_lancedb_embeddings.py`)
+### 메인: ingest 파이프라인 (권장)
 
 ```bash
 cd backend
@@ -62,109 +62,51 @@ cd backend
 uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128  # CUDA
 # uv pip install --reinstall torch torchvision torchaudio  # CPU/MPS
 
-# 전체 임베딩 (하드웨어 자동 감지)
-uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --reset
+# 벡터 임베딩 생성 (--no-sync 필수: torch 버전 유지)
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
 
-# 판례만
-uv run --no-sync python scripts/local_lancedb_embeddings.py --type precedent
-
-# 법령만
-uv run --no-sync python scripts/local_lancedb_embeddings.py --type law
-
-# 프로필 수동 지정
-uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --profile laptop  # 발열 보호
-uv run --no-sync python scripts/local_lancedb_embeddings.py --type all --profile mac     # MPS 백엔드
-
-# 통계 / 검증
-uv run --no-sync python scripts/local_lancedb_embeddings.py --stats
-uv run --no-sync python scripts/local_lancedb_embeddings.py --verify
-```
-
-### 하드웨어 프로필
-
-| 프로필 | batch_size | 온도 모니터링 | 비고 |
-|--------|-----------|--------------|------|
-| desktop | 128 | OFF | 5060Ti 등 데스크톱 GPU |
-| laptop | 50 | ON (85°C) | 3060 Laptop 등 발열 보호 |
-| mac | 50 | OFF | Apple Silicon MPS |
-| cpu | 20 | OFF | CPU 전용 |
-
-### 체크포인트/재개
-
-중단 시 자동으로 체크포인트를 `backend/embedding_checkpoints/`에 저장합니다. 재실행 시 이어서 처리합니다.
-체크포인트 경로는 `__file__` 기준 절대경로이므로, 어떤 디렉토리에서 실행해도 동일하게 동작합니다.
-
-```bash
-# 재개 (기본 동작)
-uv run --no-sync python scripts/local_lancedb_embeddings.py --type precedent
-
-# 처음부터 다시
-uv run --no-sync python scripts/local_lancedb_embeddings.py --type precedent --no-resume
-```
-
-### RunPod/클라우드 실행
-
-```bash
-cd backend
-
-# 판례 임베딩
-uv run --no-sync python scripts/runpod_lancedb_embeddings.py \
-  --type precedent \
-  --precedent-source "../data/[cleaned]precedents_partial_done.json"
-
-# 법령 임베딩
-uv run --no-sync python scripts/runpod_lancedb_embeddings.py \
-  --type law \
-  --law-source "../data/law_v3.json"
-
-# 전체 (법령 + 판례)
-uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all
-
-# 리셋 후 재생성
-uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all --reset
+# 특정 타입만
+uv run --no-sync python -m scripts.ingest.cli --type precedent --step vector
+uv run --no-sync python -m scripts.ingest.cli --type law --step vector
 
 # 통계 확인
+uv run --no-sync python -m scripts.ingest.cli --type all --stats
+```
+
+### RunPod/Colab 노트북용 thin wrapper
+
+RunPod/Colab 노트북에서는 하위 호환 API를 사용합니다.
+내부적으로 ingest 파이프라인의 `run_vector_ingest()`를 호출합니다.
+
+```bash
+# RunPod CLI (노트북 외부에서 사용 시)
+uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all --reset
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py --stats
 ```
 
 ### Python API
 
 ```python
-from runpod_lancedb_embeddings import (
-    LawEmbeddingProcessor,
-    PrecedentEmbeddingProcessor,
+# 방법 1: ingest 파이프라인 직접 사용 (권장)
+from scripts.ingest.vector_writer import run_vector_ingest
+from scripts.ingest.config import get_config
+
+config = get_config("precedent")
+stats = run_vector_ingest(config, reset=True)
+
+# 방법 2: thin wrapper (노트북 하위 호환)
+from scripts.runpod_lancedb_embeddings import (
     run_law_embedding,
     run_precedent_embedding,
+    show_stats,
 )
 
-# 방법 1: 클래스 직접 사용
-processor = PrecedentEmbeddingProcessor()
-stats = processor.run("precedents.json", reset=True, batch_size=100)
-
-# 방법 2: 함수 사용 (하위 호환)
 stats = run_precedent_embedding("precedents.json", reset=True)
 ```
 
-## 클래스 구조
-
-```
-StreamingEmbeddingProcessor (ABC)
-├── LawEmbeddingProcessor      # 법령 임베딩
-└── PrecedentEmbeddingProcessor # 판례 임베딩
-```
-
-### 주요 메서드
-
-| 메서드 | 설명 |
-|--------|------|
-| `run(source_path, reset, batch_size)` | 임베딩 실행 |
-| `load_streaming(source_path)` | 스트리밍 로드 (개수 세기 스킵) |
-| `get_chunk_config()` | 청킹 설정 반환 |
-| `extract_text_for_embedding(item)` | 임베딩 텍스트 추출 |
-
 ## 설정값
 
-### 청킹 설정 (CONFIG)
+### 청킹 설정 (`embedding_common/chunking.py`)
 
 ```python
 # 판례
@@ -177,7 +119,7 @@ LAW_MAX_TOKENS = 800            # 최대 토큰 수
 LAW_MIN_TOKENS = 100            # 최소 토큰 수
 ```
 
-### 자동 감지 설정
+### 하드웨어 자동 감지 (`embedding_common/config.py`)
 
 GPU VRAM에 따라 자동 설정:
 
@@ -193,7 +135,7 @@ GPU VRAM에 따라 자동 설정:
 ```
 JSON 파일
     ↓ (ijson 스트리밍)
-청킹 (LawChunkConfig / PrecedentChunkConfig)
+청킹 (embedding_common/chunking.py)
     ↓
 배치 수집 (batch_size개)
     ↓
@@ -220,6 +162,11 @@ backend/lancedb_data/
 ## 유틸리티 함수
 
 ```python
+from scripts.embedding_common.device import print_device_info
+from scripts.embedding_common.memory import print_memory_status
+from scripts.embedding_common.model import clear_memory, clear_model_cache, set_seed
+from scripts.embedding_common.store import EmbeddingStore
+
 # 디바이스 정보
 print_device_info()
 
@@ -236,7 +183,8 @@ clear_model_cache()
 set_seed(42, deterministic=False)
 
 # LanceDB 통계
-show_stats()
+store = EmbeddingStore()
+print(f"Total rows: {store.count()}")
 ```
 
 ## 임베딩 캐싱
@@ -244,7 +192,8 @@ show_stats()
 동일 텍스트 재임베딩 방지를 위한 해시 기반 디스크 캐시.
 
 ```python
-from runpod_lancedb_embeddings import EmbeddingCache, create_embeddings
+from scripts.embedding_common.cache import EmbeddingCache
+from scripts.embedding_common.model import create_embeddings
 
 # 캐시 초기화
 cache = EmbeddingCache("./embedding_cache")
@@ -284,7 +233,7 @@ embedding_cache/
 유사/비유사 문서 쌍으로 임베딩 품질 평가.
 
 ```python
-from runpod_lancedb_embeddings import EmbeddingQualityChecker
+from scripts.embedding_common.quality import EmbeddingQualityChecker
 
 checker = EmbeddingQualityChecker()
 
@@ -334,9 +283,9 @@ run_all_law_parts('laws_part_*.json', batch_size=64)
 
 ```python
 import lancedb
-from runpod_lancedb_embeddings import get_embedding_model
+from scripts.embedding_common.model import get_embedding_model
 
-model = get_embedding_model('cuda')
+model = get_embedding_model()
 query_vector = model.encode('임대차 보증금 반환')
 
 db = lancedb.connect('./lancedb_data')
@@ -358,15 +307,15 @@ for _, row in results.iterrows():
 
 ## PyTorch 최적화 패턴
 
-스크립트에 적용된 최적화 패턴:
+`embedding_common/` 모듈에 적용된 최적화 패턴:
 
-| 패턴 | 함수/클래스 | 설명 |
-|------|------------|------|
-| 디바이스 자동 선택 | `get_device_info()` | CUDA > MPS > CPU 우선순위 |
-| 멀티 GPU 지원 | `get_optimal_cuda_device()` | VRAM 최대 GPU 선택 |
-| 메모리 정리 | `clear_memory()` | GC + CUDA cache 통합 |
-| 재현성 | `set_seed()` | 랜덤 시드 고정 |
-| VRAM 기반 설정 | `get_optimal_config()` | 배치 크기 자동 조정 |
+| 패턴 | 모듈/함수 | 설명 |
+|------|----------|------|
+| 디바이스 자동 선택 | `device.get_device_info()` | CUDA > MPS > CPU 우선순위 |
+| 멀티 GPU 지원 | `device.get_optimal_cuda_device()` | VRAM 최대 GPU 선택 |
+| 메모리 정리 | `model.clear_memory()` | GC + CUDA cache 통합 |
+| 재현성 | `model.set_seed()` | 랜덤 시드 고정 |
+| VRAM 기반 설정 | `config.get_optimal_config()` | 배치 크기 자동 조정 |
 
 ## 관련 문서
 

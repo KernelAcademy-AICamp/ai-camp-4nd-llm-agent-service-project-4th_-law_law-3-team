@@ -154,7 +154,7 @@ PostgreSQL도 훌륭한 FTS(tsvector)를 지원하지만, 다음과 같은 이�
 ### 6.2 데이터 동기화 (Sync Strategy)
 현재는 **배치(Batch)** 방식으로 동기화를 수행합니다.
 
-*   **Law/Precedent Update**: PostgreSQL에 데이터 적재 완료 후, 별도 스크립트(`create_lancedb_embeddings.py`)를 실행하여 LanceDB를 갱신합니다.
+*   **Law/Precedent Update**: PostgreSQL에 데이터 적재 완료 후, ingest 파이프라인(`python -m scripts.ingest.cli --step vector`)을 실행하여 LanceDB를 갱신합니다.
 *   **주의**: LanceDB는 `upsert`를 지원하지 않으므로, 중복 방지를 위해 기존 데이터를 지우고 다시 넣거나(`overwrite`), `merge` 로직을 구현해야 합니다.
 
 ---
