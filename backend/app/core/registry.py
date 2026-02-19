@@ -1,5 +1,5 @@
 import importlib
-import os
+from pathlib import Path
 from typing import List
 
 from fastapi import FastAPI
@@ -11,7 +11,7 @@ class ModuleRegistry:
     """모듈을 동적으로 등록/해제하는 레지스트리"""
 
     MODULES_PATH = "app.modules"
-    MODULES_DIR = os.path.join(os.path.dirname(__file__), "..", "modules")
+    MODULES_DIR = Path(__file__).resolve().parent.parent / "modules"
 
     def __init__(self, app: FastAPI):
         self.app = app
@@ -24,15 +24,14 @@ class ModuleRegistry:
               (__pycache__만 남은 빈 폴더 무시)
         """
         modules = []
-        for item in os.listdir(self.MODULES_DIR):
-            module_path = os.path.join(self.MODULES_DIR, item)
-            router_init = os.path.join(module_path, "router", "__init__.py")
+        for item in self.MODULES_DIR.iterdir():
+            router_init = item / "router" / "__init__.py"
             if (
-                os.path.isdir(module_path)
-                and not item.startswith("_")
-                and os.path.isfile(router_init)
+                item.is_dir()
+                and not item.name.startswith("_")
+                and router_init.is_file()
             ):
-                modules.append(item)
+                modules.append(item.name)
         return modules
 
     def _is_module_enabled(self, module_name: str) -> bool:

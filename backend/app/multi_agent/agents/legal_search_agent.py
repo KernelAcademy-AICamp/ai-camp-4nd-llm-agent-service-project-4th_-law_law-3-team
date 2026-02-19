@@ -120,7 +120,7 @@ class LegalSearchAgent(BaseChatAgent):
 
         precedent_details: dict[str, dict[str, Any]] = {}
         if source_ids:
-            precedent_details = self.precedent_service.get_details(source_ids)
+            precedent_details = await self.precedent_service.get_details(source_ids)
 
         # 3. 그래프 컨텍스트 보강 (판례용)
         graph_contexts = self._get_graph_contexts(precedent_results)

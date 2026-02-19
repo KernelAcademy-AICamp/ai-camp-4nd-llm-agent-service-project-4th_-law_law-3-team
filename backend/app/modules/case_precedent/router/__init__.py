@@ -8,7 +8,6 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from app.common.chat_service import generate_chat_response
 from app.core.errors import EmbeddingModelNotFoundError
 from app.services.rag import search_relevant_documents_async
 from app.services.service_function.precedent_service import fetch_precedent_details
@@ -145,55 +144,92 @@ async def chat(request: ChatRequest) -> ChatResponse:
     """
     RAG 기반 법률 챗봇
 
-    사용자 메시지를 받아 관련 판례를 검색하고 AI 응답 생성
+    사용자 메시지를 받아 관련 판례를 검색하고 AI 응답 생성.
+    통합 채팅 API(/api/chat)와 별개로, 판례 모듈 전용 간이 챗봇.
     """
     try:
-        # 대화 기록 변환
-        history = None
-        if request.history:
-            history = [{"role": msg.role, "content": msg.content} for msg in request.history]
+        from app.tools.llm import get_chat_model
 
-        # 응답 생성
-        result = generate_chat_response(
-            user_message=request.message,
-            chat_history=history,
+        # 1. RAG 검색 (판례 + 법령)
+        search_results = await search_relevant_documents_async(
+            query=request.message,
+            n_results=5,
         )
 
-        # chat_service가 반환하는 모든 필드를 ChatSource로 매핑
+        # 2. 판례 상세 정보 조회
+        source_ids = [
+            doc.get("metadata", {}).get("doc_id")
+            for doc in search_results
+            if doc.get("metadata", {}).get("doc_id")
+        ]
+        precedent_details = await fetch_precedent_details(source_ids) if source_ids else {}
+
+        # 3. 컨텍스트 구성
+        context_parts: list[str] = []
+        for doc in search_results:
+            metadata = doc.get("metadata", {})
+            doc_id = metadata.get("doc_id", "")
+            detail = precedent_details.get(doc_id, {})
+            content = detail.get("reasoning") or doc.get("content", "")
+            case_name = detail.get("case_name") or metadata.get("case_name", "")
+            case_number = detail.get("case_number") or metadata.get("case_number", "")
+            if content:
+                context_parts.append(
+                    f"[{metadata.get('doc_type', '')}] {case_name} ({case_number})\n{content[:1000]}"
+                )
+
+        context_text = "\n\n---\n\n".join(context_parts) if context_parts else "관련 문서를 찾지 못했습니다."
+
+        # 4. LLM 응답 생성
+        chat_model = get_chat_model()
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "당신은 한국 법률 전문 AI 어시스턴트입니다. "
+                    "제공된 판례와 법령을 참고하여 정확하고 이해하기 쉽게 답변해주세요. "
+                    "법률 용어는 쉽게 풀어 설명하고, 구체적인 법률 상담은 변호사에게 의뢰하도록 안내하세요."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"[참고 자료]\n{context_text}\n\n[질문]\n{request.message}",
+            },
+        ]
+        if request.history:
+            # 대화 기록을 system과 user 사이에 삽입
+            history_messages = [{"role": msg.role, "content": msg.content} for msg in request.history]
+            messages = [messages[0]] + history_messages + [messages[1]]
+
+        ai_response = await chat_model.ainvoke(messages)
+        content = ai_response.content if hasattr(ai_response, "content") else str(ai_response)
+        response_text = content if isinstance(content, str) else str(content)
+
+        # 5. 소스 정보 구성
         sources = []
-        for s in result["sources"]:
-            content = s.get("content", "")
+        for doc in search_results:
+            metadata = doc.get("metadata", {})
+            content = doc.get("content", "")
             sources.append(
                 ChatSource(
-                    # 판례 필드
-                    case_name=s.get("case_name"),
-                    case_number=s.get("case_number"),
-                    # 법령 필드
-                    law_name=s.get("law_name"),
-                    law_type=s.get("law_type"),
-                    # 공통 필드
-                    doc_type=s.get("doc_type", ""),
-                    similarity=s.get("similarity", 0),
+                    case_name=metadata.get("case_name"),
+                    case_number=metadata.get("case_number"),
+                    doc_type=metadata.get("doc_type", ""),
+                    similarity=doc.get("similarity", 0),
                     content=content[:500] if content else None,
                     summary=content[:300] + "..." if content and len(content) > 300 else content,
-                    # 그래프 보강 정보
-                    cited_statutes=s.get("cited_statutes"),
-                    similar_cases=s.get("similar_cases"),
                 )
             )
 
-        return ChatResponse(
-            response=result["response"],
-            sources=sources,
-        )
+        return ChatResponse(response=response_text, sources=sources)
     except EmbeddingModelNotFoundError as e:
-        logger.error(f"임베딩 모델 없음: {e}")
+        logger.error("임베딩 모델 없음: %s", e)
         raise HTTPException(
             status_code=503,
             detail="임베딩 모델이 준비되지 않았습니다. 서버 관리자에게 문의하세요.",
         )
     except Exception as e:
-        logger.error(f"챗봇 응답 생성 실패: {e}", exc_info=True)
+        logger.error("챗봇 응답 생성 실패: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="챗봇 응답 생성 중 오류가 발생했습니다")
 
 
@@ -341,7 +377,7 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
         # PostgreSQL에서 상세 필드 조회 (source_id가 serial_number에 매핑)
         source_id = metadata.get("source_id", "")
         if source_id:
-            details = fetch_precedent_details([source_id])
+            details = await fetch_precedent_details([source_id])
             if source_id in details:
                 precedent = details[source_id]
                 response_data.update({

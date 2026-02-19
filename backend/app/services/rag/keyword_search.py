@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from sqlalchemy import func, select
 
-from app.core.database import sync_session_factory
+from app.core.database import async_session_factory
 from app.models.fts_index import FtsIndex
 from app.services.rag.tsvector_builder import tokens_to_tsquery
 
@@ -46,7 +46,7 @@ def _map_data_type_to_doc_type(data_type: str) -> str:
     return mapping.get(data_type, data_type.lower() if data_type else "")
 
 
-def search_by_keyword(
+async def search_by_keyword(
     query: str,
     n_results: int = 50,
     doc_type: Optional[str] = None,
@@ -75,7 +75,7 @@ def search_by_keyword(
         return []
 
     try:
-        with sync_session_factory() as session:
+        async with async_session_factory() as session:
             tsquery_expr = func.to_tsquery("simple", tsquery_str)
             rank_expr = func.ts_rank(FtsIndex.content_tsvector, tsquery_expr)
 
@@ -95,7 +95,8 @@ def search_by_keyword(
 
             stmt = stmt.order_by(rank_expr.desc()).limit(n_results)
 
-            rows = session.execute(stmt).all()
+            result = await session.execute(stmt)
+            rows = result.all()
 
             if not rows:
                 return []
@@ -129,13 +130,14 @@ def search_by_keyword(
         return []
 
 
-def is_fts_available() -> bool:
+async def is_fts_available() -> bool:
     """fts_index 테이블에 데이터가 있는지 확인."""
     try:
-        with sync_session_factory() as session:
-            count = session.execute(
+        async with async_session_factory() as session:
+            result = await session.execute(
                 select(func.count()).select_from(FtsIndex)
-            ).scalar_one()
+            )
+            count = result.scalar_one()
             return count > 0
     except Exception:
         return False

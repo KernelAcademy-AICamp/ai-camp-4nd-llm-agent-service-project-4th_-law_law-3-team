@@ -2,7 +2,6 @@
 판례 서비스
 
 PostgreSQL에서 판례 상세 정보 조회
-chat_service.py에서 추출
 """
 
 import logging
@@ -10,13 +9,13 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 
-from app.core.database import sync_session_factory
+from app.core.database import async_session_factory
 from app.models.precedent_document import PrecedentDocument
 
 logger = logging.getLogger(__name__)
 
 
-def fetch_precedent_details(source_ids: List[str]) -> Dict[str, Dict[str, str]]:
+async def fetch_precedent_details(source_ids: List[str]) -> Dict[str, Dict[str, str]]:
     """
     source_id 목록으로 PostgreSQL에서 판례 상세 정보 조회
 
@@ -30,8 +29,8 @@ def fetch_precedent_details(source_ids: List[str]) -> Dict[str, Dict[str, str]]:
         return {}
 
     try:
-        with sync_session_factory() as session:
-            result = session.execute(
+        async with async_session_factory() as session:
+            result = await session.execute(
                 select(PrecedentDocument).where(
                     PrecedentDocument.serial_number.in_(source_ids)
                 )
@@ -64,7 +63,7 @@ def fetch_precedent_details(source_ids: List[str]) -> Dict[str, Dict[str, str]]:
 class PrecedentService:
     """판례 서비스 클래스"""
 
-    def get_details(
+    async def get_details(
         self,
         serial_numbers: List[str],
     ) -> Dict[str, Dict[str, str]]:
@@ -77,9 +76,9 @@ class PrecedentService:
         Returns:
             판례 상세 정보 딕셔너리
         """
-        return fetch_precedent_details(serial_numbers)
+        return await fetch_precedent_details(serial_numbers)
 
-    def get_by_serial_number(
+    async def get_by_serial_number(
         self,
         serial_number: str,
     ) -> Optional[Dict[str, Any]]:
@@ -93,8 +92,8 @@ class PrecedentService:
             판례 정보 또는 None
         """
         try:
-            with sync_session_factory() as session:
-                result = session.execute(
+            async with async_session_factory() as session:
+                result = await session.execute(
                     select(PrecedentDocument).where(
                         PrecedentDocument.serial_number == serial_number
                     )
@@ -118,7 +117,7 @@ class PrecedentService:
             logger.warning("판례 조회 실패: %s", e)
             return None
 
-    def search_by_case_number(
+    async def search_by_case_number(
         self,
         case_number: str,
     ) -> Optional[Dict[str, Any]]:
@@ -132,8 +131,8 @@ class PrecedentService:
             판례 정보 또는 None
         """
         try:
-            with sync_session_factory() as session:
-                result = session.execute(
+            async with async_session_factory() as session:
+                result = await session.execute(
                     select(PrecedentDocument).where(
                         PrecedentDocument.case_number == case_number
                     )

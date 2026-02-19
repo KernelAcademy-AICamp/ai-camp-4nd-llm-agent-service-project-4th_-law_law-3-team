@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     APP_NAME: str = "Law Platform API"
-    DEBUG: bool = True
+    DEBUG: bool = False
 
     # Environment: development, docker, production
     ENVIRONMENT: str = "development"

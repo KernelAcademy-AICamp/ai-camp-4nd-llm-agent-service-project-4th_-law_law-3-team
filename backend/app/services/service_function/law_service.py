@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy import or_, select
 
-from app.core.database import sync_session_factory
+from app.core.database import async_session_factory
 from app.models.law import Law
 from app.models.legal_document import LegalDocument
 
@@ -51,7 +51,7 @@ def extract_law_names(reference_articles: str) -> Set[str]:
     return law_names
 
 
-def fetch_laws_by_names(law_names: Set[str], limit: int = 5) -> List[Dict[str, Any]]:
+async def fetch_laws_by_names(law_names: Set[str], limit: int = 5) -> List[Dict[str, Any]]:
     """
     법령명으로 laws 테이블에서 법령 조회
 
@@ -66,7 +66,7 @@ def fetch_laws_by_names(law_names: Set[str], limit: int = 5) -> List[Dict[str, A
         return []
 
     try:
-        with sync_session_factory() as session:
+        async with async_session_factory() as session:
             conditions = []
             for name in law_names:
                 conditions.append(Law.law_name.ilike(f"%{name}%"))
@@ -74,7 +74,7 @@ def fetch_laws_by_names(law_names: Set[str], limit: int = 5) -> List[Dict[str, A
             if not conditions:
                 return []
 
-            result = session.execute(
+            result = await session.execute(
                 select(Law)
                 .where(or_(*conditions))
                 .limit(limit)
@@ -97,7 +97,7 @@ def fetch_laws_by_names(law_names: Set[str], limit: int = 5) -> List[Dict[str, A
         return []
 
 
-def fetch_reference_articles_from_docs(doc_ids: List[int]) -> str:
+async def fetch_reference_articles_from_docs(doc_ids: List[int]) -> str:
     """
     문서 ID 목록에서 reference_articles 수집
 
@@ -111,8 +111,8 @@ def fetch_reference_articles_from_docs(doc_ids: List[int]) -> str:
         return ""
 
     try:
-        with sync_session_factory() as session:
-            result = session.execute(
+        async with async_session_factory() as session:
+            result = await session.execute(
                 select(LegalDocument.reference_articles)
                 .where(LegalDocument.id.in_(doc_ids))
                 .where(LegalDocument.reference_articles.isnot(None))
@@ -132,19 +132,19 @@ class LawService:
         """참조조문에서 법령명 추출"""
         return extract_law_names(reference_text)
 
-    def get_laws_by_names(
+    async def get_laws_by_names(
         self,
         names: Set[str],
         limit: int = 5,
     ) -> List[Dict[str, Any]]:
         """법령명으로 법령 조회"""
-        return fetch_laws_by_names(names, limit)
+        return await fetch_laws_by_names(names, limit)
 
-    def get_reference_articles(self, doc_ids: List[int]) -> str:
+    async def get_reference_articles(self, doc_ids: List[int]) -> str:
         """문서 ID 목록에서 참조조문 수집"""
-        return fetch_reference_articles_from_docs(doc_ids)
+        return await fetch_reference_articles_from_docs(doc_ids)
 
-    def get_law_by_id(self, law_id: str) -> Optional[Dict[str, Any]]:
+    async def get_law_by_id(self, law_id: str) -> Optional[Dict[str, Any]]:
         """
         법령 ID로 단일 법령 조회
 
@@ -155,8 +155,8 @@ class LawService:
             법령 정보 또는 None
         """
         try:
-            with sync_session_factory() as session:
-                result = session.execute(
+            async with async_session_factory() as session:
+                result = await session.execute(
                     select(Law).where(Law.law_id == law_id)
                 )
                 law = result.scalar_one_or_none()

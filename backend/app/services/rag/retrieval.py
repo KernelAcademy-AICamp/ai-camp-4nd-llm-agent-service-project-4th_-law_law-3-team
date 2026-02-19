@@ -27,10 +27,10 @@ def _map_data_type(data_type: str) -> str:
     return mapping.get(data_type, data_type.lower() if data_type else "")
 
 
-def _get_chunk_content(store: Any, chunk_id: str, source_id: Optional[str] = None) -> str:
+async def _get_chunk_content(store: Any, chunk_id: str, source_id: Optional[str] = None) -> str:
     """청크 ID로 content 조회"""
     try:
-        result = store.get_by_id(chunk_id)
+        result = await asyncio.to_thread(store.get_by_id, chunk_id)
         if result:
             content = result.get("content", "")
             if content:
@@ -42,11 +42,11 @@ def _get_chunk_content(store: Any, chunk_id: str, source_id: Optional[str] = Non
         try:
             from sqlalchemy import select
 
-            from app.core.database import sync_session_factory
+            from app.core.database import async_session_factory
             from app.models.legal_document import LegalDocument
 
-            with sync_session_factory() as session:
-                result = session.execute(
+            async with async_session_factory() as session:
+                result = await session.execute(
                     select(LegalDocument.embedding_text).where(
                         LegalDocument.serial_number == source_id
                     )
@@ -60,7 +60,7 @@ def _get_chunk_content(store: Any, chunk_id: str, source_id: Optional[str] = Non
     return ""
 
 
-def _search_vector(
+async def _search_vector(
     query: str,
     n_results: int,
     doc_type: Optional[str] = None,
@@ -75,7 +75,8 @@ def _search_vector(
     else:
         where = None
 
-    results = store.search(
+    results = await asyncio.to_thread(
+        store.search,
         query_embedding=query_embedding,
         n_results=n_results,
         where=where,
@@ -107,7 +108,7 @@ def _search_vector(
             content = result_documents[i]
         else:
             source_id = raw_metadata.get("source_id")
-            content = _get_chunk_content(store, chunk_id, source_id)
+            content = await _get_chunk_content(store, chunk_id, source_id)
 
         doc = {
             "id": chunk_id,
@@ -144,7 +145,7 @@ def _best_doc_per_source(docs: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]
     return best
 
 
-def search_relevant_documents(
+async def search_relevant_documents(
     query: str,
     n_results: int = 5,
     doc_type: Optional[str] = None,
@@ -170,7 +171,7 @@ def search_relevant_documents(
     """
     # 벡터 검색 수행 (하이브리드 시 더 많은 후보 확보)
     vector_fetch = n_results * 3 if settings.USE_HYBRID_SEARCH else n_results
-    vector_results = _search_vector(query, vector_fetch, doc_type)
+    vector_results = await _search_vector(query, vector_fetch, doc_type)
 
     if not settings.USE_HYBRID_SEARCH:
         return vector_results[:n_results]
@@ -181,11 +182,11 @@ def search_relevant_documents(
         search_by_keyword,
     )
 
-    if not is_fts_available():
+    if not await is_fts_available():
         logger.info("fts_index 테이블 비어있음 → 벡터 검색만 사용")
         return vector_results[:n_results]
 
-    keyword_results = search_by_keyword(query, n_results=vector_fetch, doc_type=doc_type)
+    keyword_results = await search_by_keyword(query, n_results=vector_fetch, doc_type=doc_type)
 
     if not keyword_results:
         return vector_results[:n_results]
@@ -214,27 +215,8 @@ def search_relevant_documents(
     return merged
 
 
-async def search_relevant_documents_async(
-    query: str,
-    n_results: int = 5,
-    doc_type: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    """
-    관련 법률 문서 비동기 검색
-
-    sync 함수를 별도 스레드에서 실행하여 FastAPI 이벤트 루프 블로킹 방지.
-
-    Args:
-        query: 검색 쿼리
-        n_results: 반환할 결과 수
-        doc_type: 문서 유형 필터 (precedent, law, constitutional)
-
-    Returns:
-        관련 문서 목록
-    """
-    return await asyncio.to_thread(
-        search_relevant_documents, query, n_results, doc_type
-    )
+# 하위 호환성 별칭
+search_relevant_documents_async = search_relevant_documents
 
 
 # =============================================================================
@@ -259,14 +241,14 @@ class _RetrievalServiceCompat:
         )
         self._store = get_vector_store()
 
-    def search(
+    async def search(
         self,
         query: str,
         n_results: int = 5,
         doc_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """관련 문서 검색"""
-        return search_relevant_documents(query, n_results, doc_type)
+        return await search_relevant_documents(query, n_results, doc_type)
 
     def embed_query(self, text: str) -> List[float]:
         """텍스트 임베딩"""
