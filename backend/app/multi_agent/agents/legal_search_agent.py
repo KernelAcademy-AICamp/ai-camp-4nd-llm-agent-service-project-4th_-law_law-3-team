@@ -17,7 +17,6 @@ from app.services.service_function import (
     PrecedentService,
     get_precedent_service,
 )
-from app.tools.graph import get_graph_service
 from app.tools.llm import get_chat_model
 
 logger = logging.getLogger(__name__)
@@ -131,8 +130,8 @@ class LegalSearchAgent(BaseChatAgent):
         if source_ids:
             precedent_details = self.precedent_service.get_details(source_ids)
 
-        # 3. 그래프 컨텍스트 보강 (판례용)
-        graph_contexts = self._get_graph_contexts(precedent_results)
+        # 3. 그래프 컨텍스트 (비활성화 — Neo4j 연결 비용 대비 효과 미미)
+        graph_contexts: dict[str, dict[str, Any]] = {}
 
         # 4. 컨텍스트 구성
         context = self._build_context(
@@ -200,30 +199,6 @@ class LegalSearchAgent(BaseChatAgent):
             session_data={"active_agent": self.name, "focus": self.focus},
             agent_used=self.name,
         )
-
-    def _get_graph_contexts(
-        self,
-        documents: list[dict[str, Any]],
-    ) -> dict[str, dict[str, Any]]:
-        """검색된 판례들의 그래프 컨텍스트 조회"""
-        graph_contexts: dict[str, dict[str, Any]] = {}
-
-        try:
-            graph_service = get_graph_service()
-            if not graph_service.is_connected:
-                logger.debug("Neo4j 미연결, 그래프 컨텍스트 스킵")
-                return graph_contexts
-
-            for doc in documents:
-                case_number = doc.get("metadata", {}).get("case_number", "")
-                if case_number:
-                    context = graph_service.enrich_case_context(case_number)
-                    if context.get("cited_statutes") or context.get("similar_cases"):
-                        graph_contexts[case_number] = context
-        except Exception as e:
-            logger.warning("그래프 컨텍스트 조회 실패: %s", e)
-
-        return graph_contexts
 
     def _build_context(
         self,

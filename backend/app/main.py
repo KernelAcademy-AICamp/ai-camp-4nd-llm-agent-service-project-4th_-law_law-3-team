@@ -26,22 +26,25 @@ async def lifespan(app: FastAPI):
     # 시작 시: 임베딩 모델 캐시 상태 확인
     model_available = check_embedding_model_availability()
 
-    # 로컬 임베딩 사용 시 미리 로드 (Eager Loading)
+    # 로컬 임베딩 사용 시 미리 로드 + JIT warm-up
     if model_available and settings.USE_LOCAL_EMBEDDING:
         logger.info("임베딩 모델을 미리 로드합니다...")
         try:
-            get_local_model()
-            logger.info("임베딩 모델 로드 완료: %s", settings.LOCAL_EMBEDDING_MODEL)
+            model = get_local_model()
+            model.encode("warm-up", normalize_embeddings=True)
+            logger.info("임베딩 모델 로드 + warm-up 완료: %s", settings.LOCAL_EMBEDDING_MODEL)
         except Exception as e:
             logger.error("임베딩 모델 로드 실패: %s", e)
 
-    # 리랭커 모델 미리 로드 (Eager Loading)
-    from app.services.rag.rerank import is_reranker_available
+    # 리랭커 모델 미리 로드 + JIT warm-up
+    from app.services.rag.rerank import _load_reranker_model
 
     logger.info("리랭커 모델을 미리 로드합니다...")
     try:
-        if is_reranker_available():
-            logger.info("리랭커 모델 로드 완료")
+        reranker = _load_reranker_model()
+        if reranker is not None:
+            reranker.predict([("warm-up", "warm-up")])
+            logger.info("리랭커 모델 로드 + warm-up 완료")
         else:
             logger.warning("리랭커 모델 로드 실패 → 리랭킹 비활성화")
     except Exception as e:
