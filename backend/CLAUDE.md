@@ -275,8 +275,6 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `UPSTAGE_MODEL` | Solar 모델명 | `solar-pro3-260126` |
 | `USE_DB_LAWYERS` | 변호사 데이터 소스 (true: PostgreSQL, false: JSON) | `false` |
 | `USE_LEGAL_TERM_DICT` | 법률 용어 사전 사용 (true: MeCab 토큰 보강) | `false` |
-| `USE_MECAB_USERDIC` | MeCab userdic 사용 (true: 법률 복합명사 직접 인식) | `false` |
-| `MECAB_USERDIC_PATH` | MeCab userdic .dic 파일 경로 | `data/mecab_userdic/legal_terms.dic` |
 
 자세한 설정은 `.env.example` 참조.
 
@@ -601,29 +599,19 @@ uv run python scripts/build_mecab_userdic.py --verify   # 빌드 후 검증
 uv run python scripts/build_mecab_userdic.py --dry-run  # 통계만
 ```
 
-**환경 변수:**
-```bash
-# backend/.env
-USE_MECAB_USERDIC=true           # userdic 모드 활성화
-MECAB_USERDIC_PATH=data/mecab_userdic/legal_terms.dic  # .dic 경로 (기본값)
-```
-
 **출력 파일:**
 - `data/mecab_userdic/legal_terms.csv` - userdic 소스 CSV
 - `data/mecab_userdic/legal_terms.dic` - 컴파일된 MeCab 바이너리 사전
 - `data/mecab_userdic/decomposition_map.json` - 복합어→서브 토큰 분해맵
 
 **Fallback 체인:**
-1. MeCab + userdic + `USE_MECAB_USERDIC=true` → userdic 모드 (복합명사 직접 인식)
-2. MeCab + `USE_LEGAL_TERM_DICT=true` → 기존 사후 복원 모드
-3. MeCab 기본 → Compound 분해만
-4. MeCab 미설치 → 공백 분리
+1. MeCab + `USE_LEGAL_TERM_DICT=true` → 사후 복원 모드
+2. MeCab 기본 → Compound 분해만
+3. MeCab 미설치 → 공백 분리
 
 **시스템 요구:**
 - `mecab`, `libmecab-dev`, `mecab-ko-dic` 시스템 패키지
 - `mecab-dict-index`: `/usr/lib/mecab/mecab-dict-index`
-
-**롤백:** `USE_MECAB_USERDIC=false` (기본값)로 설정하면 기존 사후 복원 방식 즉시 복귀
 
 ### 데이터 조회 예시
 

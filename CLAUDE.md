@@ -107,7 +107,7 @@ Frontend: `modules.ts`에서 `enabled: false`
 | **PostgreSQL** | 변호사(17,326건), 법률용어(72,700건), 재판통계, 법령/판례 원본 | `USE_DB_LAWYERS`, `USE_LEGAL_TERM_DICT` | `backend/CLAUDE.md` |
 | **LanceDB** | 법령+판례 벡터 임베딩 (253,768 청크), FTS | `LANCEDB_MODE`, `LANCEDB_INDEX_TYPE` | `backend/CLAUDE.md` |
 | **Neo4j** | 법령 계급, 판례 인용 그래프 (5,572 법령 + 65,107 판례) | - | `backend/CLAUDE.md` |
-| **MeCab userdic** | 법률 복합명사 사전 (37,366 엔트리) | `USE_MECAB_USERDIC` | `backend/CLAUDE.md` |
+| **MeCab userdic** | 법률 복합명사 사전 (37,366 엔트리) | - | `backend/CLAUDE.md` |
 
 임베딩 모델: `nlpai-lab/KURE-v1` (2.3GB), `uv run python scripts/download_models.py`로 다운로드 필요.
 

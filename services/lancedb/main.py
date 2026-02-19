@@ -42,9 +42,8 @@ _store: LanceDBServiceStore | None = None
 
 
 def _init_store() -> LanceDBServiceStore:
-    """스토어 초기화 (법률 용어 사전 + userdic 로드 포함)"""
+    """스토어 초기화 (법률 용어 사전 로드 포함)"""
     legal_dict = None
-    userdic_path = None
 
     # 법률 용어 사전 로드 (JSON 기반)
     use_legal_dict = os.environ.get("USE_LEGAL_TERM_DICT", "false").lower() == "true"
@@ -69,22 +68,8 @@ def _init_store() -> LanceDBServiceStore:
         else:
             logger.warning("법률 용어 사전 JSON 없음: %s", dict_json_path)
 
-    # MeCab userdic 경로
-    use_userdic = os.environ.get("USE_MECAB_USERDIC", "false").lower() == "true"
-    if use_userdic:
-        _userdic = os.environ.get(
-            "MECAB_USERDIC_PATH",
-            "/app/mecab_userdic/legal_terms.dic",
-        )
-        if Path(_userdic).exists():
-            userdic_path = _userdic
-            logger.info("MeCab userdic: %s", userdic_path)
-        else:
-            logger.warning("MeCab userdic 없음: %s", _userdic)
-
     return LanceDBServiceStore(
         legal_dict=legal_dict,
-        userdic_path=userdic_path,
     )
 
 

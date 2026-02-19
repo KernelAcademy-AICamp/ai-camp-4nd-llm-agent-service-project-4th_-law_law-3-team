@@ -23,7 +23,6 @@ _thread_local = threading.local()
 
 def _get_thread_tokenizer(
     legal_dict: Optional[LegalTermDictionary],
-    userdic_path: Optional[str],
 ) -> MeCabTokenizer:
     """스레드별 MeCabTokenizer 인스턴스 반환 (캐싱)"""
     tokenizer = getattr(_thread_local, "tokenizer", None)
@@ -32,7 +31,6 @@ def _get_thread_tokenizer(
 
     _thread_local.tokenizer = MeCabTokenizer(
         legal_dict=legal_dict,
-        userdic_path=userdic_path,
     )
     return _thread_local.tokenizer
 
@@ -45,12 +43,10 @@ class LanceDBServiceStore:
         db_uri: Optional[str] = None,
         table_name: Optional[str] = None,
         legal_dict: Optional[LegalTermDictionary] = None,
-        userdic_path: Optional[str] = None,
     ) -> None:
         uri = db_uri or os.environ.get("LANCEDB_URI", "./lancedb_data")
         self.table_name = table_name or os.environ.get("LANCEDB_TABLE_NAME", "legal_chunks")
         self._legal_dict = legal_dict
-        self._userdic_path = userdic_path
 
         db_path = Path(uri)
         db_path.mkdir(parents=True, exist_ok=True)
@@ -138,7 +134,7 @@ class LanceDBServiceStore:
         if self._table is None:
             return empty
 
-        tokenizer = _get_thread_tokenizer(self._legal_dict, self._userdic_path)
+        tokenizer = _get_thread_tokenizer(self._legal_dict)
         tokenized_query = tokenizer.tokenize_query(query)
 
         if not tokenized_query.strip():

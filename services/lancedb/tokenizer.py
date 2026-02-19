@@ -28,22 +28,6 @@ try:
 except ImportError:
     _MeCab = None  # type: ignore[assignment,unused-ignore]
 
-# MeCab 시스템 사전 경로 후보
-_MECAB_SYS_DICT_CANDIDATES = [
-    "/usr/lib/x86_64-linux-gnu/mecab/dic/mecab-ko-dic",
-    "/usr/local/lib/mecab/dic/mecab-ko-dic",
-    "/usr/lib/mecab/dic/mecab-ko-dic",
-    "/opt/homebrew/lib/mecab/dic/mecab-ko-dic",
-]
-
-
-def _find_mecab_sys_dict() -> Optional[str]:
-    """MeCab 시스템 사전 경로 자동 탐지"""
-    for candidate in _MECAB_SYS_DICT_CANDIDATES:
-        if Path(candidate).is_dir():
-            return candidate
-    return None
-
 
 class LegalTermDictionary:
     """법률 용어 메모리 사전 (JSON 기반, DB 의존 없음)"""
@@ -169,27 +153,13 @@ class MeCabTokenizer:
     def __init__(
         self,
         legal_dict: Optional[LegalTermDictionary] = None,
-        userdic_path: Optional[str] = None,
     ) -> None:
         self._tagger: Optional[object] = None
         self._legal_dict = legal_dict
-        self._userdic_active: bool = False
 
         if _MECAB_AVAILABLE and _MeCab is not None:
             try:
-                if userdic_path:
-                    sys_dict = _find_mecab_sys_dict()
-                    if sys_dict:
-                        self._tagger = _MeCab.Tagger(
-                            f"-d {sys_dict} -u {userdic_path}"
-                        )
-                        self._userdic_active = True
-                        logger.info("MeCab userdic 활성화: %s", userdic_path)
-                    else:
-                        logger.warning("MeCab 시스템 사전 못 찾음, 기본 사전 사용")
-                        self._tagger = _MeCab.Tagger()
-                else:
-                    self._tagger = _MeCab.Tagger()
+                self._tagger = _MeCab.Tagger()
             except RuntimeError:
                 logger.warning("MeCab 시스템 라이브러리 미설치")
                 self._tagger = None
@@ -202,9 +172,7 @@ class MeCabTokenizer:
         """형태소 분석 결과 리스트 (복합명사 분해 + 법률 용어 보강)"""
         base_morphs = self._mecab_morphs(text)
 
-        if self._userdic_active and self._legal_dict:
-            return self._decompose_compounds(base_morphs)
-        elif self._legal_dict and self._legal_dict.is_loaded:
+        if self._legal_dict and self._legal_dict.is_loaded:
             return self._augment_with_legal_terms(base_morphs)
 
         return base_morphs
@@ -257,23 +225,6 @@ class MeCabTokenizer:
             return base_morphs
 
         return base_morphs + additional
-
-    def _decompose_compounds(self, morphs: list[str]) -> list[str]:
-        if not self._legal_dict:
-            return morphs
-
-        result = list(morphs)
-        additional: list[str] = []
-        existing = set(morphs)
-
-        for morph in morphs:
-            sub_tokens = self._legal_dict.get_sub_tokens(morph)
-            for st in sub_tokens:
-                if st not in existing:
-                    additional.append(st)
-                    existing.add(st)
-
-        return result + additional if additional else result
 
     @staticmethod
     def _decompose_compound(decomp_str: str) -> list[str]:
