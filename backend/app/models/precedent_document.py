@@ -66,10 +66,10 @@ class PrecedentDocument(Base):
         comment="사건명",
     )
     case_number = Column(
-        String(100),
-        index=True,
+        Text,
+        index=False,
         nullable=True,
-        comment="사건번호 (예: 84나3990)",
+        comment="사건번호 (예: 84나3990, 병합사건은 수백자 가능)",
     )
     decision_date = Column(
         Date,

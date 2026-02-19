@@ -6,11 +6,10 @@ Services 패키지
 
 # RAG 서비스
 from app.services.rag import (
+    PRESETS,
     PipelineConfig,
     PipelineResult,
-    RerankerService,
-    # 하위 호환용 (deprecated)
-    RetrievalService,
+    RAGPipeline,
     create_query_embedding,
     rerank_documents,
     rewrite_query,
@@ -30,12 +29,11 @@ __all__ = [
     "rewrite_query",
     "search_with_pipeline",
     "search_with_rerank",
+    "RAGPipeline",
+    "PRESETS",
     "PipelineConfig",
     "PipelineResult",
     # Cases
     "PrecedentService",
     "LawService",
-    # 하위 호환용 (deprecated)
-    "RetrievalService",
-    "RerankerService",
 ]

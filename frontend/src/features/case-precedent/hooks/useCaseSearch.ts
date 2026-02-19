@@ -89,6 +89,7 @@ export function useCaseSearch(): UseCaseSearchReturn {
       // aiReferences에서 모든 판례를 검색 결과 목록에 추가
       const newResults: PrecedentItem[] = refs.map((ref, idx) => ({
         id: ref.id || `ai-ref-${idx}-${Date.now()}`,
+        doc_id: ref.doc_id || '',
         case_name: ref.case_name || '',
         case_number: ref.case_number || '',
         doc_type: ref.doc_type || 'precedent',
@@ -173,12 +174,14 @@ export function useCaseSearch(): UseCaseSearchReturn {
 
     // aiReferences에서 먼저 검색 (채팅에서 전달받은 판례)
     if (refs && Array.isArray(refs)) {
-      // searchResults에서 해당 ID의 case_number를 찾아 aiReferences와 매칭
       const matchedResult = currentSearchResults.find((r) => r.id === id)
       if (matchedResult) {
-        const found = refs.find(
-          (ref) => ref.case_number === matchedResult.case_number
-        )
+        // doc_id로 매칭 (판례/법령 공통), 없으면 case_number 폴백
+        const matchDocId = matchedResult.doc_id
+        const found = refs.find((ref) => {
+          if (matchDocId && ref.doc_id) return ref.doc_id === matchDocId
+          return ref.case_number === matchedResult.case_number
+        })
         if (found) {
           setSelectedCase({ ...found, id } as PrecedentDetail)
           setIsLoadingDetail(false)

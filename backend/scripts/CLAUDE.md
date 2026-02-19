@@ -598,6 +598,18 @@ uv run python -m scripts.ingest.cli --type <타입명|all> [옵션]
 | `index` | LanceDB ANN 인덱스 재빌드 (IVF_FLAT) | `vector` 완료 | 벡터 데이터 변경 후 |
 | `all` | `db` → `vector` → `index` 순차 실행 | 전체 | 최초 적재 |
 
+**ai_summary만 업데이트** (JSON 요약 필드 변경 후):
+```bash
+# 전체 타입 ai_summary 갱신 (FTS 재빌드 없음, MeCab 불필요)
+uv run python -m scripts.ingest.summary_updater
+
+# 특정 타입 제외
+uv run python -m scripts.ingest.summary_updater --exclude admin_rule
+
+# 특정 타입만
+uv run python -m scripts.ingest.summary_updater --type precedent
+```
+
 **FTS 재빌드 워크플로우** (토크나이저/userdic 변경 후):
 ```bash
 # MeCab userdic 재빌드
@@ -649,6 +661,7 @@ scripts/ingest/
 ├── config.py           # IngestConfig dataclass + 레지스트리 + get_source_path()
 ├── sources.yaml        # 19개 타입 데이터 소스 경로 (YAML 중앙 관리)
 ├── db_writer.py        # PostgreSQL + FTS 적재
+├── summary_updater.py  # ai_summary 컬럼만 일괄 업데이트 (FTS/MeCab 불필요)
 ├── shared.py           # 공유 유틸 (토크나이저, FTS 배치)
 ├── ingest.md           # 19개 타입 저장 구조 상세 문서
 └── types/              # 데이터 타입별 설정 (19개 타입)

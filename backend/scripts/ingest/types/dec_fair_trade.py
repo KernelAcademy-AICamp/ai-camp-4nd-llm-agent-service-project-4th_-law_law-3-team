@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 _backend_root = Path(__file__).parent.parent.parent.parent
 if str(_backend_root) not in sys.path:
@@ -25,33 +25,45 @@ _COMMITTEE = "공정거래위원회"
 
 
 # ---------------------------------------------------------------------------
+# 헬퍼
+# ---------------------------------------------------------------------------
+
+
+def _stringify(value: Any) -> Optional[str]:
+    """dict/list 값을 문자열로 변환 (str/None은 그대로 반환)"""
+    if value is None or isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return "\n".join(f"{k}: {v}" for k, v in value.items())
+    if isinstance(value, list):
+        return "\n".join(str(v) for v in value)
+    return str(value)
+
+
+# ---------------------------------------------------------------------------
 # ORM 팩토리
 # ---------------------------------------------------------------------------
 
 
 def _orm_factory(item: dict[str, Any]) -> DecFairTradeDocument:
     """JSON item -> DecFairTradeDocument 인스턴스"""
-    # 각주목록은 list[str]일 수 있으므로 "\n" 조인
-    footnotes_raw = item.get("각주목록")
-    if isinstance(footnotes_raw, list):
-        footnotes = "\n".join(str(f) for f in footnotes_raw if f)
-    else:
-        footnotes = footnotes_raw
+    # 각주목록은 list[str] / dict / str 등 다양한 타입
+    footnotes = _stringify(item.get("각주목록"))
 
     return DecFairTradeDocument(
         serial_number=item.get("결정문일련번호", ""),
-        case_name=item.get("사건명"),
-        case_number=item.get("사건번호"),
-        decision_number=item.get("결정번호"),
+        case_name=_stringify(item.get("사건명")),
+        case_number=_stringify(item.get("사건번호")),
+        decision_number=_stringify(item.get("결정번호")),
         decision_date=item.get("의결일자"),
         decision_specific_date=item.get("결정일자"),
-        decision_summary=item.get("결정요지"),
-        ruling=item.get("주문"),
-        reason=item.get("이유"),
-        appendix=item.get("별지"),
-        resolution_text=item.get("의결문"),
+        decision_summary=_stringify(item.get("결정요지")),
+        ruling=_stringify(item.get("주문")),
+        reason=_stringify(item.get("이유")),
+        appendix=_stringify(item.get("별지")),
+        resolution_text=_stringify(item.get("의결문")),
         footnotes=footnotes,
-        ai_summary=item.get("결정문요약"),
+        ai_summary=_stringify(item.get("결정문요약")),
     )
 
 
@@ -64,16 +76,16 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
     """JSON item -> FTS용 원문 텍스트 concat"""
     parts: list[str] = []
 
-    case_name = item.get("사건명")
+    case_name = _stringify(item.get("사건명"))
     if case_name:
         parts.append(f"[{case_name}]")
 
-    case_number = item.get("사건번호")
+    case_number = _stringify(item.get("사건번호"))
     if case_number:
         parts.append(case_number)
 
     for field in ("결정요지", "주문", "이유"):
-        value = item.get(field)
+        value = _stringify(item.get(field))
         if value:
             parts.append(value)
 

@@ -1,5 +1,6 @@
 export interface PrecedentItem {
   id: string
+  doc_id?: string
   case_name: string
   case_number: string
   doc_type: string
@@ -17,6 +18,7 @@ export interface PrecedentListResponse {
 
 export interface PrecedentDetail {
   id: string
+  doc_id?: string
   case_name: string
   case_number: string
   doc_type: string
@@ -37,6 +39,7 @@ export interface PrecedentDetail {
 }
 
 export interface ChatSource {
+  doc_id?: string
   case_name?: string
   case_number?: string
   doc_type: string

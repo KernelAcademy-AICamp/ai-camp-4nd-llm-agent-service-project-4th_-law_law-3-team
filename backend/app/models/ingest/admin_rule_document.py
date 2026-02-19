@@ -1,7 +1,7 @@
 """
 행정규칙 문서 모델 (순수 테이블 정의)
 
-data/admin_rule_v1.json 데이터를 PostgreSQL에 저장하기 위한 테이블.
+data/admin_rule_v3.json 데이터를 PostgreSQL에 저장하기 위한 테이블.
 적재 로직(JSON→ORM 변환)은 scripts/ingest/types/admin_rule.py 에 위치.
 """
 
@@ -22,7 +22,7 @@ class AdminRuleDocument(Base):
     """
     행정규칙 문서 테이블
 
-    data/admin_rule_v1.json (5,258건)
+    data/admin_rule_v3.json (17,332건, 고유 17,092건)
     """
 
     __tablename__ = "admin_rule_documents"
@@ -58,6 +58,26 @@ class AdminRuleDocument(Base):
         String(200),
         nullable=True,
         comment="소관부처명",
+    )
+    ministry_code = Column(
+        String(50),
+        nullable=True,
+        comment="소관부처코드",
+    )
+    parent_ministry = Column(
+        String(200),
+        nullable=True,
+        comment="상위부처명",
+    )
+    promulgation_date = Column(
+        String(20),
+        nullable=True,
+        comment="발령일자",
+    )
+    enforcement_date = Column(
+        String(20),
+        nullable=True,
+        comment="시행일자",
     )
 
     content = Column(

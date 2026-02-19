@@ -11,21 +11,36 @@ from typing import Any, Literal
 
 from app.multi_agent.agents.base_chat import BaseChatAgent
 from app.multi_agent.schemas.plan import AgentResult
-from app.services.rag import search_relevant_documents_async
+from app.services.rag.pipeline import PipelineConfig, search_with_pipeline_async
 from app.services.rag.query_rewrite import rewrite_conversational_query
 from app.services.service_function import (
     PrecedentService,
     get_precedent_service,
 )
-from app.tools.graph import get_graph_service
 from app.tools.llm import get_chat_model
 
 logger = logging.getLogger(__name__)
 
-# focus별 검색 설정
-SEARCH_CONFIG = {
-    "precedent": {"n_precedents": 4, "n_laws": 1},
-    "law": {"n_precedents": 1, "n_laws": 4},
+# focus별 파이프라인 설정 (검색 + 리랭킹)
+SEARCH_CONFIG: dict[str, dict[str, PipelineConfig]] = {
+    "precedent": {
+        "precedent": PipelineConfig(
+            n_results=15, doc_type="precedent",
+            enable_rerank=True, rerank_top_k=4,
+        ),
+        "law": PipelineConfig(
+            n_results=1, doc_type="law",
+        ),
+    },
+    "law": {
+        "precedent": PipelineConfig(
+            n_results=1, doc_type="precedent",
+        ),
+        "law": PipelineConfig(
+            n_results=15, doc_type="law",
+            enable_rerank=True, rerank_top_k=4,
+        ),
+    },
 }
 
 _SYSTEM_PROMPT = """당신은 법률 전문 AI 어시스턴트입니다.
@@ -50,10 +65,10 @@ class LegalSearchAgent(BaseChatAgent):
         self.focus = focus
         self._precedent_service = precedent_service
 
-        # focus에 따른 검색 개수 설정
-        config = SEARCH_CONFIG.get(focus, SEARCH_CONFIG["precedent"])
-        self.n_precedents = config["n_precedents"]
-        self.n_laws = config["n_laws"]
+        # focus에 따른 파이프라인 설정
+        configs = SEARCH_CONFIG.get(focus, SEARCH_CONFIG["precedent"])
+        self.precedent_config = configs["precedent"]
+        self.law_config = configs["law"]
 
     @property
     def precedent_service(self) -> PrecedentService:
@@ -93,23 +108,16 @@ class LegalSearchAgent(BaseChatAgent):
             (precedent_results, law_results, precedent_details,
              graph_contexts, context, sources)
         """
-        # 1. 하이브리드 검색: 판례 + 법령 (sync → async 래핑)
-        precedent_results: list[dict[str, Any]] = []
-        law_results: list[dict[str, Any]] = []
+        # 1. 하이브리드 검색 + 리랭킹 (RAGPipeline)
+        precedent_result = await search_with_pipeline_async(
+            message, self.precedent_config
+        )
+        precedent_results = precedent_result.documents
 
-        if self.n_precedents > 0:
-            precedent_results = await search_relevant_documents_async(
-                query=message,
-                n_results=self.n_precedents,
-                doc_type="precedent",
-            )
-
-        if self.n_laws > 0:
-            law_results = await search_relevant_documents_async(
-                query=message,
-                n_results=self.n_laws,
-                doc_type="law",
-            )
+        law_result = await search_with_pipeline_async(
+            message, self.law_config
+        )
+        law_results = law_result.documents
 
         # 2. 판례 상세 정보 조회
         source_ids = [
@@ -122,8 +130,8 @@ class LegalSearchAgent(BaseChatAgent):
         if source_ids:
             precedent_details = await self.precedent_service.get_details(source_ids)
 
-        # 3. 그래프 컨텍스트 보강 (판례용)
-        graph_contexts = self._get_graph_contexts(precedent_results)
+        # 3. 그래프 컨텍스트 (비활성화 — Neo4j 연결 비용 대비 효과 미미)
+        graph_contexts: dict[str, dict[str, Any]] = {}
 
         # 4. 컨텍스트 구성
         context = self._build_context(
@@ -191,30 +199,6 @@ class LegalSearchAgent(BaseChatAgent):
             session_data={"active_agent": self.name, "focus": self.focus},
             agent_used=self.name,
         )
-
-    def _get_graph_contexts(
-        self,
-        documents: list[dict[str, Any]],
-    ) -> dict[str, dict[str, Any]]:
-        """검색된 판례들의 그래프 컨텍스트 조회"""
-        graph_contexts: dict[str, dict[str, Any]] = {}
-
-        try:
-            graph_service = get_graph_service()
-            if not graph_service.is_connected:
-                logger.debug("Neo4j 미연결, 그래프 컨텍스트 스킵")
-                return graph_contexts
-
-            for doc in documents:
-                case_number = doc.get("metadata", {}).get("case_number", "")
-                if case_number:
-                    context = graph_service.enrich_case_context(case_number)
-                    if context.get("cited_statutes") or context.get("similar_cases"):
-                        graph_contexts[case_number] = context
-        except Exception as e:
-            logger.warning("그래프 컨텍스트 조회 실패: %s", e)
-
-        return graph_contexts
 
     def _build_context(
         self,
@@ -330,6 +314,7 @@ class LegalSearchAgent(BaseChatAgent):
             case_number = metadata.get("case_number", "")
 
             source_item: dict[str, Any] = {
+                "doc_id": doc_id,
                 "doc_type": "precedent",
                 "case_name": metadata.get("case_name", ""),
                 "case_number": case_number,
@@ -368,6 +353,7 @@ class LegalSearchAgent(BaseChatAgent):
         for doc in laws:
             metadata = doc.get("metadata", {})
             sources.append({
+                "doc_id": metadata.get("doc_id", ""),
                 "doc_type": "law",
                 "law_name": metadata.get("case_name", "") or metadata.get("title", ""),
                 "similarity": round(doc.get("similarity", 0), 3),
