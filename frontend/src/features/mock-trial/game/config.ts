@@ -43,3 +43,34 @@ export const JURY_POSITIONS: { x: number; y: number }[] = [
   { x: 710, y: 200 },
   { x: 760, y: 200 },
 ]
+
+/** 로비 캐릭터 최종 도착 위치 (건물 앞 하단) */
+export const LOBBY_CHARACTER_POSITIONS: Record<string, { x: number; y: number }> = {
+  clerk: { x: 160, y: 355 },
+  defendant: { x: 300, y: 365 },
+  judge: { x: 400, y: 335 },
+  prosecutor: { x: 540, y: 365 },
+  attorney: { x: 640, y: 355 },
+}
+
+/** 로비 입장 시퀀스 설정 */
+export interface LobbyEntranceEntry {
+  role: string
+  startX: number
+  startY: number
+  delay: number
+}
+
+export const LOBBY_ENTRANCE_SEQUENCE: LobbyEntranceEntry[] = [
+  { role: 'clerk', startX: -60, startY: 355, delay: 0 },
+  { role: 'defendant', startX: -60, startY: 365, delay: 600 },
+  { role: 'prosecutor', startX: 860, startY: 365, delay: 1200 },
+  { role: 'attorney', startX: -60, startY: 355, delay: 1800 },
+  { role: 'judge', startX: 400, startY: -80, delay: 2800 },
+]
+
+/** 입장 이동 시간 (ms) */
+export const ENTRANCE_WALK_DURATION = 1200
+
+/** squash&stretch 주기 (ms) */
+export const ENTRANCE_BOUNCE_PERIOD = 150
