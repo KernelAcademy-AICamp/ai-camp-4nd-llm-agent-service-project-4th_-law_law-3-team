@@ -57,6 +57,17 @@ export interface EvidenceItem {
   source: string
 }
 
+export interface ReferenceItem {
+  id: string
+  type: 'case' | 'law'
+  title: string
+  summary: string
+  relevance_score: number
+  source: string
+  /** 채팅에서 감지된 원문 텍스트 */
+  matched_text: string
+}
+
 export interface CourtEvent {
   stage: string
   speaker: string

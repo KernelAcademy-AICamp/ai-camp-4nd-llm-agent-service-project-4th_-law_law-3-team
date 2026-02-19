@@ -51,7 +51,7 @@ export function ChatPanel({
   }
 
   return (
-    <div className="flex flex-col h-full border-t border-gray-200 bg-white">
+    <div className="flex flex-col h-full bg-white">
       {/* 메시지 목록 */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2">
         {messages.map((message, index) => {
