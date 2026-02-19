@@ -5,7 +5,7 @@
 # 단일 JSON
 law: ingest_source/law_v3.json
 precedent: ingest_source/precedents_v2.json
-admin_rule: ingest_source/admin_rule_v2.json
+admin_rule: ingest_source/admin_rule_v3.json
 administration: ingest_source/administration_v2.json
 constitutional: ingest_source/constitutional_v2.json
 legislation: ingest_source/legislation_v2.json
