@@ -272,12 +272,18 @@ export default function ChatWidget() {
   // 페이지 변경 시 모드 설정
   const prevPathnameRef = useRef<string | null>(null)
 
+  // 챗봇을 숨겨야 하는 페이지 (자체 채팅 UI가 있는 경우)
+  const isChatHiddenPage = pathname === '/mock-trial'
+
   useEffect(() => {
     // 같은 페이지에서는 모드 변경 안 함 (사용자가 토글한 상태 유지)
     if (prevPathnameRef.current === pathname) return
     prevPathnameRef.current = pathname
 
-    if (supportsFloatingMode) {
+    if (isChatHiddenPage) {
+      // 자체 채팅 UI가 있는 페이지에서는 챗봇 최소화
+      setChatOpen(false)
+    } else if (supportsFloatingMode) {
       // floating 모드 지원 페이지 첫 진입 시 floating 모드로 시작
       setChatMode('floating')
       setChatOpen(true)
@@ -285,7 +291,7 @@ export default function ChatWidget() {
       // 다른 페이지 진입 시 Split 모드 사용
       setChatMode('split')
     }
-  }, [pathname, setChatMode, setChatOpen, supportsFloatingMode])
+  }, [pathname, setChatMode, setChatOpen, supportsFloatingMode, isChatHiddenPage])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -778,8 +784,9 @@ export default function ChatWidget() {
       ? 'fixed top-0 right-0 w-1/2 h-screen z-50 flex flex-col animate-in slide-in-from-right duration-500'
       : 'fixed bottom-6 right-6 w-[380px] h-[600px] z-50 rounded-2xl flex flex-col animate-in slide-in-from-bottom zoom-in duration-300'
 
-  // Floating Button (Collapsed)
+  // Floating Button (Collapsed) - 자체 채팅 UI가 있는 페이지에서는 버튼도 숨김
   if (!isChatOpen) {
+    if (isChatHiddenPage) return null
     return (
       <button
         onClick={toggleChat}
