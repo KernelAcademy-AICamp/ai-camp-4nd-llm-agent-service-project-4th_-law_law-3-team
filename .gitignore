@@ -34,6 +34,8 @@ ENV/
 .vscode/
 .claude/settings.local.json
 .claude/worktree-context.md
+.claude/CLAUDE.md
+.omc/
 *.swp
 *.swo
 .DS_Store
