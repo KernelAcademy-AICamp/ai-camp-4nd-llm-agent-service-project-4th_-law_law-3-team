@@ -3,6 +3,9 @@
 export const GAME_WIDTH = 800
 export const GAME_HEIGHT = 480
 
+/** 픽셀아트 기본 단위 (12x16 그리드 = 48x64px) */
+export const PIXEL_SIZE = 4
+
 /** 캐릭터 색상 (Graphics API 플레이스홀더) */
 export const CHARACTER_COLORS: Record<string, number> = {
   judge: 0x1a237e, // 남색 (판사)
@@ -28,7 +31,15 @@ export const COURT_BACKGROUND_COLOR = 0xf5f0e8
 export const CHARACTER_POSITIONS: Record<string, { x: number; y: number }> = {
   judge: { x: 400, y: 140 },
   prosecutor: { x: 200, y: 260 },
-  attorney: { x: 600, y: 260 },
+  attorney: { x: 560, y: 260 },
   defendant: { x: 400, y: 340 },
   clerk: { x: 120, y: 140 },
 }
+
+/** 배심원 4명 좌표 (우측 배치) */
+export const JURY_POSITIONS: { x: number; y: number }[] = [
+  { x: 710, y: 150 },
+  { x: 760, y: 150 },
+  { x: 710, y: 200 },
+  { x: 760, y: 200 },
+]

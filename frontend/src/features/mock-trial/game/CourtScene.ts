@@ -6,9 +6,9 @@ import {
   GAME_HEIGHT,
   COURT_BACKGROUND_COLOR,
   CHARACTER_POSITIONS,
-  CHARACTER_NAMES,
 } from './config'
 import { CharacterBase } from './sprites/CharacterBase'
+import { JuryPanel } from './sprites/JuryPanel'
 import { SpeechBubble } from './ui/SpeechBubble'
 import { StageIndicator } from './ui/StageIndicator'
 import { eventBus } from './EventBus'
@@ -24,6 +24,7 @@ export class CourtScene extends Phaser.Scene {
   private characters: Map<string, CharacterBase> = new Map()
   private speechBubbles: Map<string, SpeechBubble> = new Map()
   private stageIndicator: StageIndicator | null = null
+  private juryPanel: JuryPanel | null = null
   private caseType = 'criminal'
   private unsubscribers: (() => void)[] = []
 
@@ -41,6 +42,7 @@ export class CourtScene extends Phaser.Scene {
     this.createCharacters()
     this.createSpeechBubbles()
     this.createStageIndicator()
+    this.juryPanel = new JuryPanel(this)
     this.setupEventListeners()
   }
 
@@ -61,13 +63,27 @@ export class CourtScene extends Phaser.Scene {
     graphics.fillStyle(0x795548, 1)
     graphics.fillRect(120, 230, 160, 10)
 
-    // 변호사석 (우측)
+    // 변호사석 (우측 - 배심원석 공간 확보를 위해 좌표 조정)
     graphics.fillStyle(0x795548, 1)
-    graphics.fillRect(520, 230, 160, 10)
+    graphics.fillRect(480, 230, 160, 10)
 
     // 피고인석 (중앙 하단)
     graphics.fillStyle(0x795548, 1)
     graphics.fillRect(330, 310, 140, 10)
+
+    // 배심원석 배경 (우측)
+    graphics.fillStyle(0x8d6e63, 0.4)
+    graphics.fillRoundedRect(686, 120, 96, 100, 6)
+    graphics.lineStyle(1, 0x795548, 0.6)
+    graphics.strokeRoundedRect(686, 120, 96, 100, 6)
+
+    this.add
+      .text(734, 228, '배심원석', {
+        fontSize: '9px',
+        color: '#6d4c41',
+        fontFamily: 'sans-serif',
+      })
+      .setOrigin(0.5, 0)
 
     // 방청석 구분선
     graphics.lineStyle(2, 0x8d6e63, 0.5)
@@ -94,7 +110,7 @@ export class CourtScene extends Phaser.Scene {
   }
 
   private createSpeechBubbles(): void {
-    this.characters.forEach((character, role) => {
+    this.characters.forEach((_, role) => {
       const position = CHARACTER_POSITIONS[role]
       const bubbleY = position.y - 70
       const bubble = new SpeechBubble(this, position.x - 130, bubbleY)
@@ -117,7 +133,7 @@ export class CourtScene extends Phaser.Scene {
   }
 
   private setupEventListeners(): void {
-    // agent:speak -> 말풍선 표시 + 캐릭터 애니메이션
+    // agent:speak -> 말풍선 표시 + 캐릭터 애니메이션 + 배심원 반응
     this.unsubscribers.push(
       eventBus.on('agent:speak', (data) => {
         // 이전 말풍선 숨기기
@@ -132,6 +148,8 @@ export class CourtScene extends Phaser.Scene {
         if (character) {
           character.setSpeaking(true)
         }
+
+        this.juryPanel?.reactToSpeech(data.agent, data.text)
       })
     )
 
@@ -157,5 +175,7 @@ export class CourtScene extends Phaser.Scene {
   shutdown(): void {
     this.unsubscribers.forEach((unsub) => unsub())
     this.unsubscribers = []
+    this.juryPanel?.destroy()
+    this.juryPanel = null
   }
 }

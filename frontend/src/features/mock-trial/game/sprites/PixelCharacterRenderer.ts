@@ -1,0 +1,270 @@
+/** 12x16 그리드 기반 픽셀 캐릭터 렌더러 */
+
+import Phaser from 'phaser'
+import { PIXEL_SIZE } from '../config'
+
+/** 픽셀 그리드 셀 (0 = 투명) */
+type PixelGrid = number[][]
+
+/** 캐릭터 상태 */
+export type CharacterState = 'idle' | 'speak' | 'react'
+
+const GRID_WIDTH = 12
+const GRID_HEIGHT = 16
+
+const SKIN = 0xffcc99
+const SKIN_DARK = 0xdba876
+const HAIR_BLACK = 0x2c2c2c
+const WHITE = 0xffffff
+const BLACK = 0x000000
+const BROWN_WOOD = 0x8b5e3c
+
+/** 판사: 법복(검정) + 사모 형태 머리장식 + 법봉 */
+const JUDGE_IDLE: PixelGrid = [
+  [0, 0, 0, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, 0, 0, 0],
+  [0, 0, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, 0, 0],
+  [0, 0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, SKIN, SKIN, SKIN, SKIN, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, SKIN, BLACK, SKIN, SKIN, BLACK, SKIN, 0, 0, 0],
+  [0, 0, 0, SKIN, SKIN, SKIN_DARK, SKIN_DARK, SKIN, SKIN, 0, 0, 0],
+  [0, 0, 0, 0, SKIN, SKIN, SKIN, SKIN, 0, 0, 0, 0],
+  [0, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, 0],
+  [0, 0, 0x1a1a1a, WHITE, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, WHITE, 0x1a1a1a, 0, 0],
+  [0, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, 0],
+  [0, 0, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, 0, 0],
+  [0, 0, SKIN, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, SKIN, 0, 0],
+  [0, 0, SKIN, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, BROWN_WOOD, 0, 0],
+  [0, 0, 0, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, BROWN_WOOD, 0, 0],
+  [0, 0, 0, 0, 0x1a1a1a, 0, 0, 0x1a1a1a, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0x1a1a1a, 0, 0, 0x1a1a1a, 0, 0, 0, 0],
+]
+
+const JUDGE_SPEAK: PixelGrid = [
+  [0, 0, 0, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, 0, 0, 0],
+  [0, 0, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, 0, 0],
+  [0, 0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, SKIN, SKIN, SKIN, SKIN, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, SKIN, BLACK, SKIN, SKIN, BLACK, SKIN, 0, 0, 0],
+  [0, 0, 0, SKIN, SKIN, SKIN_DARK, SKIN_DARK, SKIN, SKIN, 0, 0, 0],
+  [0, 0, 0, 0, SKIN, SKIN, SKIN, SKIN, 0, 0, 0, 0],
+  [0, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, 0],
+  [0, 0, 0x1a1a1a, WHITE, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, WHITE, 0x1a1a1a, 0, 0],
+  [0, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, 0],
+  [0, SKIN, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, 0, 0],
+  [SKIN, SKIN, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, BROWN_WOOD, 0],
+  [0, BROWN_WOOD, 0, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, SKIN, BROWN_WOOD, 0],
+  [0, BROWN_WOOD, 0, 0, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0, SKIN, 0, 0],
+  [0, 0, 0, 0, 0x1a1a1a, 0, 0, 0x1a1a1a, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0x1a1a1a, 0, 0, 0x1a1a1a, 0, 0, 0, 0],
+]
+
+/** 검사: 남색 정장 + 빨간 넥타이 + 서류 */
+const NAVY = 0x1a237e
+const RED_TIE = 0xb71c1c
+const PAPER = 0xfafafa
+
+const PROSECUTOR_IDLE: PixelGrid = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, SKIN, SKIN, SKIN, SKIN, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, SKIN, BLACK, SKIN, SKIN, BLACK, SKIN, 0, 0, 0],
+  [0, 0, 0, SKIN, SKIN, SKIN_DARK, SKIN_DARK, SKIN, SKIN, 0, 0, 0],
+  [0, 0, 0, 0, SKIN, SKIN, SKIN, SKIN, 0, 0, 0, 0],
+  [0, 0, NAVY, NAVY, NAVY, RED_TIE, NAVY, NAVY, NAVY, NAVY, 0, 0],
+  [0, 0, NAVY, WHITE, NAVY, RED_TIE, NAVY, NAVY, WHITE, NAVY, 0, 0],
+  [0, 0, NAVY, NAVY, NAVY, RED_TIE, NAVY, NAVY, NAVY, NAVY, 0, 0],
+  [0, 0, 0, NAVY, NAVY, NAVY, NAVY, NAVY, NAVY, 0, 0, 0],
+  [0, 0, SKIN, NAVY, NAVY, NAVY, NAVY, NAVY, NAVY, SKIN, 0, 0],
+  [0, 0, SKIN, 0, NAVY, NAVY, NAVY, NAVY, 0, SKIN, 0, 0],
+  [0, 0, 0, 0, NAVY, NAVY, NAVY, NAVY, 0, 0, 0, 0],
+  [0, 0, 0, 0, NAVY, 0, 0, NAVY, 0, 0, 0, 0],
+  [0, 0, 0, 0, NAVY, 0, 0, NAVY, 0, 0, 0, 0],
+]
+
+const PROSECUTOR_SPEAK: PixelGrid = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, SKIN, SKIN, SKIN, SKIN, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, SKIN, BLACK, SKIN, SKIN, BLACK, SKIN, 0, 0, 0],
+  [0, 0, 0, SKIN, SKIN, SKIN_DARK, SKIN_DARK, SKIN, SKIN, 0, 0, 0],
+  [0, 0, 0, 0, SKIN, SKIN, SKIN, SKIN, 0, 0, 0, 0],
+  [0, 0, NAVY, NAVY, NAVY, RED_TIE, NAVY, NAVY, NAVY, NAVY, 0, 0],
+  [0, 0, NAVY, WHITE, NAVY, RED_TIE, NAVY, NAVY, WHITE, NAVY, 0, 0],
+  [0, 0, NAVY, NAVY, NAVY, RED_TIE, NAVY, NAVY, NAVY, NAVY, 0, 0],
+  [0, SKIN, 0, NAVY, NAVY, NAVY, NAVY, NAVY, NAVY, 0, 0, 0],
+  [SKIN, PAPER, 0, NAVY, NAVY, NAVY, NAVY, NAVY, NAVY, 0, SKIN, 0],
+  [0, PAPER, 0, 0, NAVY, NAVY, NAVY, NAVY, 0, SKIN, PAPER, 0],
+  [0, PAPER, 0, 0, NAVY, NAVY, NAVY, NAVY, 0, 0, PAPER, 0],
+  [0, 0, 0, 0, NAVY, 0, 0, NAVY, 0, 0, 0, 0],
+  [0, 0, 0, 0, NAVY, 0, 0, NAVY, 0, 0, 0, 0],
+]
+
+/** 변호사: 차콜 정장 + 초록 넥타이 + 법전 */
+const CHARCOAL = 0x37474f
+const GREEN_TIE = 0x1b5e20
+const BOOK = 0x1b5e20
+const BOOK_PAGE = 0xfff8e1
+
+const ATTORNEY_IDLE: PixelGrid = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, SKIN, SKIN, SKIN, SKIN, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, SKIN, BLACK, SKIN, SKIN, BLACK, SKIN, 0, 0, 0],
+  [0, 0, 0, SKIN, SKIN, SKIN_DARK, SKIN_DARK, SKIN, SKIN, 0, 0, 0],
+  [0, 0, 0, 0, SKIN, SKIN, SKIN, SKIN, 0, 0, 0, 0],
+  [0, 0, CHARCOAL, CHARCOAL, CHARCOAL, GREEN_TIE, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, 0, 0],
+  [0, 0, CHARCOAL, WHITE, CHARCOAL, GREEN_TIE, CHARCOAL, CHARCOAL, WHITE, CHARCOAL, 0, 0],
+  [0, 0, CHARCOAL, CHARCOAL, CHARCOAL, GREEN_TIE, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, 0, 0],
+  [0, 0, 0, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, 0, 0, 0],
+  [0, 0, SKIN, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, SKIN, 0, 0],
+  [0, 0, SKIN, 0, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, 0, SKIN, 0, 0],
+  [0, 0, 0, 0, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, 0, 0, 0, 0],
+  [0, 0, 0, 0, CHARCOAL, 0, 0, CHARCOAL, 0, 0, 0, 0],
+  [0, 0, 0, 0, CHARCOAL, 0, 0, CHARCOAL, 0, 0, 0, 0],
+]
+
+const ATTORNEY_SPEAK: PixelGrid = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, SKIN, SKIN, SKIN, SKIN, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, SKIN, BLACK, SKIN, SKIN, BLACK, SKIN, 0, 0, 0],
+  [0, 0, 0, SKIN, SKIN, SKIN_DARK, SKIN_DARK, SKIN, SKIN, 0, 0, 0],
+  [0, 0, 0, 0, SKIN, SKIN, SKIN, SKIN, 0, 0, 0, 0],
+  [0, 0, CHARCOAL, CHARCOAL, CHARCOAL, GREEN_TIE, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, 0, 0],
+  [0, 0, CHARCOAL, WHITE, CHARCOAL, GREEN_TIE, CHARCOAL, CHARCOAL, WHITE, CHARCOAL, 0, 0],
+  [0, 0, CHARCOAL, CHARCOAL, CHARCOAL, GREEN_TIE, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, 0, 0],
+  [0, 0, 0, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, 0, SKIN, 0],
+  [0, SKIN, 0, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, SKIN, BOOK, 0],
+  [SKIN, BOOK, 0, 0, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, 0, 0, BOOK, 0],
+  [0, BOOK_PAGE, 0, 0, CHARCOAL, CHARCOAL, CHARCOAL, CHARCOAL, 0, 0, BOOK_PAGE, 0],
+  [0, 0, 0, 0, CHARCOAL, 0, 0, CHARCOAL, 0, 0, 0, 0],
+  [0, 0, 0, 0, CHARCOAL, 0, 0, CHARCOAL, 0, 0, 0, 0],
+]
+
+/** 피고인: 수수한 회색 옷 + 처진 어깨 */
+const GRAY_CLOTH = 0x78909c
+const GRAY_DARK = 0x546e7a
+
+const DEFENDANT_IDLE: PixelGrid = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, SKIN, SKIN, SKIN, SKIN, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, SKIN, BLACK, SKIN, SKIN, BLACK, SKIN, 0, 0, 0],
+  [0, 0, 0, SKIN, SKIN, SKIN_DARK, SKIN_DARK, SKIN, SKIN, 0, 0, 0],
+  [0, 0, 0, 0, SKIN, SKIN, SKIN, SKIN, 0, 0, 0, 0],
+  [0, 0, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, 0, 0, 0],
+  [0, 0, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, 0, 0, 0],
+  [0, 0, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_DARK, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, 0, 0, 0],
+  [0, 0, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, 0, 0, 0],
+  [0, 0, SKIN, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, SKIN, 0, 0],
+  [0, 0, SKIN, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, 0, SKIN, 0, 0],
+  [0, 0, 0, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, 0, 0, 0, 0],
+  [0, 0, 0, 0, GRAY_CLOTH, 0, 0, GRAY_CLOTH, 0, 0, 0, 0],
+  [0, 0, 0, 0, GRAY_CLOTH, 0, 0, GRAY_CLOTH, 0, 0, 0, 0],
+]
+
+const DEFENDANT_SPEAK: PixelGrid = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, SKIN, SKIN, SKIN, SKIN, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, SKIN, BLACK, SKIN, SKIN, BLACK, SKIN, 0, 0, 0],
+  [0, 0, 0, SKIN, SKIN, SKIN_DARK, SKIN_DARK, SKIN, SKIN, 0, 0, 0],
+  [0, 0, 0, 0, SKIN, SKIN, SKIN, SKIN, 0, 0, 0, 0],
+  [0, 0, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, 0, 0, 0],
+  [0, 0, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, 0, 0, 0],
+  [0, 0, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_DARK, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, 0, 0, 0],
+  [0, SKIN, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, 0, 0, 0],
+  [SKIN, SKIN, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, SKIN, 0, 0],
+  [0, 0, 0, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, 0, SKIN, 0, 0],
+  [0, 0, 0, 0, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, GRAY_CLOTH, 0, 0, 0, 0],
+  [0, 0, 0, 0, GRAY_CLOTH, 0, 0, GRAY_CLOTH, 0, 0, 0, 0],
+  [0, 0, 0, 0, GRAY_CLOTH, 0, 0, GRAY_CLOTH, 0, 0, 0, 0],
+]
+
+/** 서기: 안경 + 문서/노트북 + 앉은 자세 */
+const CLERK_SUIT = 0x546e7a
+const GLASSES = 0x87ceeb
+const NOTEBOOK = 0xe0e0e0
+
+const CLERK_IDLE: PixelGrid = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, SKIN, SKIN, SKIN, SKIN, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, SKIN, GLASSES, SKIN, SKIN, GLASSES, SKIN, 0, 0, 0],
+  [0, 0, 0, SKIN, SKIN, SKIN_DARK, SKIN_DARK, SKIN, SKIN, 0, 0, 0],
+  [0, 0, 0, 0, SKIN, SKIN, SKIN, SKIN, 0, 0, 0, 0],
+  [0, 0, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, 0, 0],
+  [0, 0, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, 0, 0],
+  [0, 0, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, 0, 0],
+  [0, 0, SKIN, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, SKIN, 0, 0],
+  [0, 0, SKIN, NOTEBOOK, NOTEBOOK, NOTEBOOK, NOTEBOOK, NOTEBOOK, NOTEBOOK, SKIN, 0, 0],
+  [0, 0, 0, NOTEBOOK, NOTEBOOK, NOTEBOOK, NOTEBOOK, NOTEBOOK, NOTEBOOK, 0, 0, 0],
+  [0, 0, 0, 0, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, 0, 0, 0, 0],
+  [0, 0, 0, 0, CLERK_SUIT, 0, 0, CLERK_SUIT, 0, 0, 0, 0],
+  [0, 0, 0, 0, CLERK_SUIT, 0, 0, CLERK_SUIT, 0, 0, 0, 0],
+]
+
+const CLERK_SPEAK: PixelGrid = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, HAIR_BLACK, SKIN, SKIN, SKIN, SKIN, HAIR_BLACK, 0, 0, 0],
+  [0, 0, 0, SKIN, GLASSES, SKIN, SKIN, GLASSES, SKIN, 0, 0, 0],
+  [0, 0, 0, SKIN, SKIN, SKIN_DARK, SKIN_DARK, SKIN, SKIN, 0, 0, 0],
+  [0, 0, 0, 0, SKIN, SKIN, SKIN, SKIN, 0, 0, 0, 0],
+  [0, 0, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, 0, 0],
+  [0, 0, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, 0, 0],
+  [0, 0, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, 0, 0],
+  [0, SKIN, 0, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, 0, SKIN, 0],
+  [SKIN, NOTEBOOK, 0, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, SKIN, NOTEBOOK, 0],
+  [0, NOTEBOOK, 0, 0, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, 0, 0, NOTEBOOK, 0],
+  [0, 0, 0, 0, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, CLERK_SUIT, 0, 0, 0, 0],
+  [0, 0, 0, 0, CLERK_SUIT, 0, 0, CLERK_SUIT, 0, 0, 0, 0],
+  [0, 0, 0, 0, CLERK_SUIT, 0, 0, CLERK_SUIT, 0, 0, 0, 0],
+]
+
+/** 역할별 그리드 데이터 매핑 */
+const CHARACTER_GRIDS: Record<string, Record<CharacterState, PixelGrid>> = {
+  judge: { idle: JUDGE_IDLE, speak: JUDGE_SPEAK, react: JUDGE_IDLE },
+  prosecutor: { idle: PROSECUTOR_IDLE, speak: PROSECUTOR_SPEAK, react: PROSECUTOR_IDLE },
+  attorney: { idle: ATTORNEY_IDLE, speak: ATTORNEY_SPEAK, react: ATTORNEY_IDLE },
+  defendant: { idle: DEFENDANT_IDLE, speak: DEFENDANT_SPEAK, react: DEFENDANT_IDLE },
+  clerk: { idle: CLERK_IDLE, speak: CLERK_SPEAK, react: CLERK_IDLE },
+}
+
+/** 그리드 데이터를 Graphics에 그린다 */
+export function drawPixelCharacter(
+  graphics: Phaser.GameObjects.Graphics,
+  role: string,
+  state: CharacterState
+): void {
+  graphics.clear()
+
+  const grids = CHARACTER_GRIDS[role]
+  if (!grids) return
+
+  const grid = grids[state]
+  const offsetX = -(GRID_WIDTH * PIXEL_SIZE) / 2
+  const offsetY = -(GRID_HEIGHT * PIXEL_SIZE) / 2
+
+  for (let row = 0; row < grid.length; row++) {
+    for (let col = 0; col < grid[row].length; col++) {
+      const color = grid[row][col]
+      if (color === 0) continue
+      graphics.fillStyle(color, 1)
+      graphics.fillRect(
+        offsetX + col * PIXEL_SIZE,
+        offsetY + row * PIXEL_SIZE,
+        PIXEL_SIZE,
+        PIXEL_SIZE
+      )
+    }
+  }
+}

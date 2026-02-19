@@ -7,6 +7,7 @@ export interface CharacterConfig {
   name: string
   color: number
   position: { x: number; y: number }
+  palette?: Record<string, number>
 }
 
 export const CHARACTERS: CharacterConfig[] = [
