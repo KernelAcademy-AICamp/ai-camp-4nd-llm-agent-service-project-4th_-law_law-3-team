@@ -1,0 +1,833 @@
+"""
+모의 법정 서브그래프
+
+LangGraph interrupt + Command 패턴으로 형사 6단계 + 민사 6단계 재판을 구현합니다.
+small_claims.py 서브그래프 패턴을 따릅니다.
+
+Design 문서 Section 6.3 기반
+"""
+
+import logging
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command, interrupt
+from typing_extensions import TypedDict
+
+from app.multi_agent.agents.base_chat import ActionType, ChatAction
+from app.multi_agent.subgraphs.mock_trial_agents import CourtAgent
+from app.multi_agent.subgraphs.mock_trial_prompts import (
+    AGENT_CONFIGS,
+    SYSTEM_PROMPTS,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ── 상태 정의 ──
+
+
+class MockTrialState(TypedDict, total=False):
+    """모의재판 서브그래프 상태 (SmallClaimsState 패턴 준수)"""
+
+    # 부모 그래프에서 전달
+    message: str
+    history: list[dict[str, str]]
+    session_data: dict[str, Any]
+
+    # 설정 (setup 단계에서 결정)
+    case_type: str
+    case_category: str
+    user_role: str
+    case_summary: str
+
+    # 에이전트 상태
+    agents: dict[str, dict[str, Any]]
+
+    # 증거
+    evidence_cases: list[dict[str, Any]]
+    evidence_articles: list[dict[str, Any]]
+    selected_evidence: list[str]
+
+    # 재판 진행
+    stage: str
+    current_round: int
+    max_rounds: int
+    court_record: list[dict[str, Any]]
+
+    # 출력 (부모 그래프로 전달)
+    response: str
+    speaking_agent: str
+    actions: list[dict[str, Any]]
+    judgment: Optional[str]
+    feedback: Optional[str]
+    is_complete: bool
+    agent_used: str
+    output_session_data: dict[str, Any]
+
+
+# ── 헬퍼 함수 ──
+
+
+def _now_iso() -> str:
+    """현재 시각 ISO 형식"""
+    return datetime.now(tz=timezone.utc).isoformat()
+
+
+def _record(
+    court_record: list[dict[str, Any]],
+    stage: str,
+    speaker: str,
+    content: str,
+) -> list[dict[str, Any]]:
+    """서기 기록에 엔트리 추가 후 새 리스트 반환"""
+    new_record = list(court_record)
+    summary = content[:200] if len(content) > 200 else content
+    new_record.append({
+        "stage": stage,
+        "speaker": speaker,
+        "content": summary,
+        "timestamp": _now_iso(),
+    })
+    return new_record
+
+
+def _init_agents(case_type: str) -> dict[str, dict[str, Any]]:
+    """사건 유형에 맞는 에이전트 초기화"""
+    agents: dict[str, dict[str, Any]] = {}
+    for role, config in AGENT_CONFIGS.items():
+        prompt = SYSTEM_PROMPTS.get((case_type, role), "")
+        agent = CourtAgent(
+            role=role,
+            name=config["name"],
+            system_prompt=prompt,
+            temperature=config["temperature"],
+            tools=config.get("tools", []),
+        )
+        agents[role] = agent.to_state()
+    return agents
+
+
+def _get_agent(state: MockTrialState, role: str) -> CourtAgent:
+    """state에서 CourtAgent 복원"""
+    agents = state.get("agents", {})
+    agent_state = agents.get(role, {})
+    case_type = state.get("case_type", "criminal")
+    prompt = SYSTEM_PROMPTS.get((case_type, role), "")
+    temperature = AGENT_CONFIGS.get(role, {}).get("temperature", 0.5)
+    return CourtAgent.from_state(agent_state, prompt, temperature)
+
+
+def _update_agent_in_state(
+    agents: dict[str, dict[str, Any]],
+    agent: CourtAgent,
+) -> dict[str, dict[str, Any]]:
+    """에이전트 상태를 갱신한 새 dict 반환"""
+    new_agents = dict(agents)
+    new_agents[agent.role] = agent.to_state()
+    return new_agents
+
+
+def _get_opponent_role(state: MockTrialState) -> str:
+    """사용자의 상대 역할 반환"""
+    user_role = state.get("user_role", "prosecutor")
+    if user_role == "prosecutor":
+        return "attorney"
+    return "prosecutor"
+
+
+def _case_type_actions() -> list[dict[str, Any]]:
+    """사건 유형 선택 버튼"""
+    return [
+        ChatAction(
+            type=ActionType.BUTTON,
+            label="형사 재판",
+            action="case_type_criminal",
+        ).model_dump(),
+        ChatAction(
+            type=ActionType.BUTTON,
+            label="민사 재판",
+            action="case_type_civil",
+        ).model_dump(),
+    ]
+
+
+def _generate_feedback(state: MockTrialState) -> str:
+    """재판 결과 피드백 생성"""
+    user_role = state.get("user_role", "")
+    court_record = state.get("court_record", [])
+    user_entries = [r for r in court_record if r.get("speaker") == user_role]
+    entry_count = len(user_entries)
+
+    feedback_parts = [
+        f"총 {entry_count}회 발언하셨습니다.",
+    ]
+
+    if entry_count >= 3:
+        feedback_parts.append("적극적으로 재판에 참여하셨습니다.")
+    elif entry_count >= 1:
+        feedback_parts.append("더 적극적으로 주장을 펼치면 좋겠습니다.")
+    else:
+        feedback_parts.append("발언 기회를 더 활용해보세요.")
+
+    feedback_parts.append(
+        "이 모의재판은 교육 목적이며 실제 법률 자문이 아닙니다."
+    )
+    return "\n".join(feedback_parts)
+
+
+# ── 공통 노드 ──
+
+
+def setup_node(state: MockTrialState) -> Command[str]:
+    """사건 설정 노드 (형사/민사 공통)"""
+    interrupt_value = interrupt({
+        "response": (
+            "모의 법정에 오신 것을 환영합니다.\n\n"
+            "사건 유형, 역할, 사건 개요를 입력해주세요.\n\n"
+            "**주의: 이 모의재판은 교육 목적이며 실제 법률 자문이 아닙니다.**"
+        ),
+        "actions": _case_type_actions(),
+        "step": "setup",
+    })
+
+    # resume 시 사용자 입력 파싱
+    user_input = interrupt_value if isinstance(interrupt_value, dict) else {}
+    case_type = str(user_input.get("case_type", "criminal"))
+    user_role = str(user_input.get("user_role", "prosecutor"))
+    case_category = str(user_input.get("case_category", ""))
+    case_summary = str(user_input.get("case_summary", state.get("message", "")))
+
+    agents = _init_agents(case_type)
+
+    first_stage = "identity_node" if case_type == "criminal" else "pretrial_node"
+
+    return Command(
+        update={
+            "case_type": case_type,
+            "case_category": case_category,
+            "user_role": user_role,
+            "case_summary": case_summary,
+            "agents": agents,
+            "stage": "setup",
+            "current_round": 1,
+            "max_rounds": 3,
+            "court_record": [],
+            "evidence_cases": [],
+            "evidence_articles": [],
+            "selected_evidence": [],
+            "is_complete": False,
+            "agent_used": "mock_trial",
+            "output_session_data": {"active_agent": "mock_trial"},
+        },
+        goto=first_stage,
+    )
+
+
+async def evidence_node(state: MockTrialState) -> Command[str]:
+    """[공통] 증거조사 (형사: §290~§313 / 민사: §288~§344)"""
+    court_record = list(state.get("court_record", []))
+
+    # 판사 발언: 증거조사 시작 안내
+    judge = _get_agent(state, "judge")
+    judge_response = await judge.generate(
+        "evidence", state.get("case_summary", ""), court_record
+    )
+    court_record = _record(court_record, "evidence", "judge", judge_response)
+
+    interrupt_value = interrupt({
+        "response": (
+            f"[재판장] {judge_response}\n\n"
+            "증거를 제출하세요. 판례/법령 검색 결과를 증거로 활용할 수 있습니다."
+        ),
+        "speaking_agent": "judge",
+        "stage": "evidence",
+        "actions": [
+            ChatAction(
+                type=ActionType.BUTTON,
+                label="증거 제출 완료",
+                action="submit_evidence",
+            ).model_dump(),
+        ],
+    })
+
+    user_input = str(interrupt_value) if interrupt_value else ""
+    if user_input and user_input != "submit_evidence":
+        court_record = _record(
+            court_record, "evidence", state.get("user_role", ""), user_input
+        )
+
+    next_node = (
+        "examination_node"
+        if state.get("case_type") == "criminal"
+        else "argument_node"
+    )
+
+    return Command(
+        update={
+            "stage": "evidence",
+            "court_record": court_record,
+            "agents": _update_agent_in_state(state.get("agents", {}), judge),
+            "response": judge_response,
+            "speaking_agent": "judge",
+            "agent_used": "mock_trial",
+        },
+        goto=next_node,
+    )
+
+
+async def verdict_node(state: MockTrialState) -> Command[str]:
+    """[공통] 판결선고"""
+    court_record = list(state.get("court_record", []))
+    judge = _get_agent(state, "judge")
+
+    verdict_context = (
+        f"{state.get('case_summary', '')}\n\n"
+        f"사건 유형: {state.get('case_type', '')}\n"
+        "위 법정 기록을 종합하여 판결문을 작성하세요."
+    )
+    judgment = await judge.generate("verdict", verdict_context, court_record)
+    court_record = _record(court_record, "verdict", "judge", judgment)
+    feedback = _generate_feedback(state)
+
+    return Command(
+        update={
+            "stage": "verdict",
+            "judgment": judgment,
+            "feedback": feedback,
+            "is_complete": True,
+            "court_record": court_record,
+            "agents": _update_agent_in_state(state.get("agents", {}), judge),
+            "response": f"[판결]\n{judgment}\n\n[피드백]\n{feedback}",
+            "speaking_agent": "judge",
+            "agent_used": "mock_trial",
+            "output_session_data": {"active_agent": "mock_trial"},
+        },
+        goto=END,
+    )
+
+
+# ── 형사 전용 노드 ──
+
+
+async def identity_node(state: MockTrialState) -> Command[str]:
+    """[형사] 인정신문 (형사소송법 §284)
+
+    재판장이 피고인 인적사항을 확인하고 진술거부권을 고지합니다.
+    """
+    court_record = list(state.get("court_record", []))
+    judge = _get_agent(state, "judge")
+
+    judge.update_strategy("피고인 인적사항 확인 및 진술거부권 고지")
+    response = await judge.generate(
+        "identity", state.get("case_summary", ""), court_record
+    )
+    court_record = _record(court_record, "identity", "judge", response)
+
+    # 자동 진행 (관전) - interrupt로 표시만 하고 다음 단계로
+    interrupt({
+        "response": f"[재판장] {response}",
+        "speaking_agent": "judge",
+        "stage": "identity",
+        "actions": [
+            ChatAction(
+                type=ActionType.BUTTON,
+                label="다음 단계로",
+                action="next_stage",
+            ).model_dump(),
+        ],
+    })
+
+    return Command(
+        update={
+            "stage": "identity",
+            "court_record": court_record,
+            "agents": _update_agent_in_state(state.get("agents", {}), judge),
+            "response": response,
+            "speaking_agent": "judge",
+            "agent_used": "mock_trial",
+        },
+        goto="opening_node",
+    )
+
+
+async def opening_node(state: MockTrialState) -> Command[str]:
+    """[형사] 모두진술 (형사소송법 §285~§286)
+
+    검사 공소사실 요지 진술 후, 피고인/변호인 측 의견을 요청합니다.
+    """
+    court_record = list(state.get("court_record", []))
+    user_role = state.get("user_role", "prosecutor")
+
+    # 검사 측 모두진술 (사용자가 검사면 입력 대기, 아니면 AI 생성)
+    if user_role == "prosecutor":
+        interrupt_value = interrupt({
+            "response": "검사 측 모두진술을 해주세요. 공소사실의 요지를 진술하세요.",
+            "speaking_agent": "judge",
+            "stage": "opening",
+            "actions": [],
+        })
+        pros_stmt = str(interrupt_value)
+        court_record = _record(court_record, "opening", "prosecutor", pros_stmt)
+
+        # AI 변호인 반응
+        attorney = _get_agent(state, "attorney")
+        attorney.update_strategy("검사 주장에 대한 반박 준비")
+        attorney_response = await attorney.generate(
+            "opening", state.get("case_summary", ""), court_record
+        )
+        court_record = _record(
+            court_record, "opening", "attorney", attorney_response
+        )
+        agents = _update_agent_in_state(state.get("agents", {}), attorney)
+        final_response = f"[변호인] {attorney_response}"
+    else:
+        # AI 검사 발언
+        prosecutor = _get_agent(state, "prosecutor")
+        prosecutor.update_strategy("공소사실 입증을 위한 모두진술")
+        pros_stmt = await prosecutor.generate(
+            "opening", state.get("case_summary", ""), court_record
+        )
+        court_record = _record(court_record, "opening", "prosecutor", pros_stmt)
+        agents = _update_agent_in_state(state.get("agents", {}), prosecutor)
+
+        # 사용자(변호인) 입력 대기
+        interrupt_value = interrupt({
+            "response": (
+                f"[검사] {pros_stmt}\n\n"
+                "변호인 측 의견을 진술해주세요."
+            ),
+            "speaking_agent": "prosecutor",
+            "stage": "opening",
+            "actions": [
+                ChatAction(
+                    type=ActionType.BUTTON,
+                    label="인정",
+                    action="admit",
+                ).model_dump(),
+                ChatAction(
+                    type=ActionType.BUTTON,
+                    label="부인",
+                    action="deny",
+                ).model_dump(),
+            ],
+        })
+        user_input = str(interrupt_value)
+        court_record = _record(court_record, "opening", "attorney", user_input)
+        final_response = f"[변호인] {user_input}"
+
+    return Command(
+        update={
+            "stage": "opening",
+            "court_record": court_record,
+            "agents": agents,
+            "response": final_response,
+            "speaking_agent": user_role,
+            "agent_used": "mock_trial",
+        },
+        goto="evidence_node",
+    )
+
+
+async def examination_node(state: MockTrialState) -> Command[str]:
+    """[형사] 피고인신문 (형사소송법 §296-2)
+
+    검사/변호인이 피고인에게 질문합니다.
+    """
+    court_record = list(state.get("court_record", []))
+    user_role = state.get("user_role", "prosecutor")
+
+    # 피고인 AI 발언
+    defendant = _get_agent(state, "defendant")
+    defendant.update_strategy("성실하게 답변, 유리한 사정 강조")
+    defendant_stmt = await defendant.generate(
+        "examination", state.get("case_summary", ""), court_record
+    )
+    court_record = _record(
+        court_record, "examination", "defendant", defendant_stmt
+    )
+
+    # 사용자 질문 입력
+    interrupt_value = interrupt({
+        "response": (
+            f"[피고인] {defendant_stmt}\n\n"
+            "피고인에게 질문을 하세요."
+        ),
+        "speaking_agent": "defendant",
+        "stage": "examination",
+        "actions": [
+            ChatAction(
+                type=ActionType.BUTTON,
+                label="질문 완료",
+                action="end_examination",
+            ).model_dump(),
+        ],
+    })
+    user_input = str(interrupt_value)
+
+    if user_input and user_input != "end_examination":
+        court_record = _record(
+            court_record, "examination", user_role, user_input
+        )
+        # 피고인 추가 답변
+        defendant_answer = await defendant.generate(
+            "examination", f"질문: {user_input}", court_record
+        )
+        court_record = _record(
+            court_record, "examination", "defendant", defendant_answer
+        )
+
+    agents = _update_agent_in_state(state.get("agents", {}), defendant)
+
+    return Command(
+        update={
+            "stage": "examination",
+            "court_record": court_record,
+            "agents": agents,
+            "response": defendant_stmt,
+            "speaking_agent": "defendant",
+            "agent_used": "mock_trial",
+        },
+        goto="criminal_closing_node",
+    )
+
+
+async def criminal_closing_node(state: MockTrialState) -> Command[str]:
+    """[형사] 최종변론 (형사소송법 §302~§303)
+
+    검사 구형, 변호인 최후변론, 피고인 최후진술
+    """
+    court_record = list(state.get("court_record", []))
+    user_role = state.get("user_role", "prosecutor")
+    agents_state = dict(state.get("agents", {}))
+
+    if user_role == "prosecutor":
+        # 사용자(검사) 구형
+        interrupt_value = interrupt({
+            "response": "최종변론을 해주세요. 구형을 포함하여 의견을 진술하세요.",
+            "speaking_agent": "judge",
+            "stage": "closing",
+            "actions": [],
+        })
+        user_stmt = str(interrupt_value)
+        court_record = _record(court_record, "closing", "prosecutor", user_stmt)
+
+        # AI 변호인 최후변론
+        attorney = _get_agent(state, "attorney")
+        attorney.update_strategy("피고인의 정상참작 사유 강조")
+        attorney_response = await attorney.generate(
+            "closing", state.get("case_summary", ""), court_record
+        )
+        court_record = _record(
+            court_record, "closing", "attorney", attorney_response
+        )
+        agents_state = _update_agent_in_state(agents_state, attorney)
+    else:
+        # AI 검사 구형
+        prosecutor = _get_agent(state, "prosecutor")
+        prosecutor.update_strategy("양형 기준에 따른 구형")
+        pros_closing = await prosecutor.generate(
+            "closing", state.get("case_summary", ""), court_record
+        )
+        court_record = _record(
+            court_record, "closing", "prosecutor", pros_closing
+        )
+        agents_state = _update_agent_in_state(agents_state, prosecutor)
+
+        # 사용자(변호인) 최후변론
+        interrupt_value = interrupt({
+            "response": (
+                f"[검사] {pros_closing}\n\n"
+                "변호인의 최후변론을 해주세요."
+            ),
+            "speaking_agent": "prosecutor",
+            "stage": "closing",
+            "actions": [],
+        })
+        user_stmt = str(interrupt_value)
+        court_record = _record(court_record, "closing", "attorney", user_stmt)
+
+    # 피고인 최후진술
+    defendant = _get_agent(state, "defendant")
+    defendant.update_strategy("진심 어린 최후진술")
+    defendant_stmt = await defendant.generate(
+        "closing", state.get("case_summary", ""), court_record
+    )
+    court_record = _record(
+        court_record, "closing", "defendant", defendant_stmt
+    )
+    agents_state = _update_agent_in_state(agents_state, defendant)
+
+    return Command(
+        update={
+            "stage": "closing",
+            "court_record": court_record,
+            "agents": agents_state,
+            "response": f"[피고인 최후진술] {defendant_stmt}",
+            "speaking_agent": "defendant",
+            "agent_used": "mock_trial",
+        },
+        goto="verdict_node",
+    )
+
+
+# ── 민사 전용 노드 ──
+
+
+async def pretrial_node(state: MockTrialState) -> Command[str]:
+    """[민사] 변론준비 (민사소송법 §258~§268)
+
+    재판장이 쟁점을 정리하고 증거 목록을 확인합니다.
+    """
+    court_record = list(state.get("court_record", []))
+    judge = _get_agent(state, "judge")
+
+    judge.update_strategy("쟁점 정리 및 증거 목록 확인")
+    response = await judge.generate(
+        "pretrial", state.get("case_summary", ""), court_record
+    )
+    court_record = _record(court_record, "pretrial", "judge", response)
+
+    # 자동 진행 (관전)
+    interrupt({
+        "response": f"[재판장] {response}",
+        "speaking_agent": "judge",
+        "stage": "pretrial",
+        "actions": [
+            ChatAction(
+                type=ActionType.BUTTON,
+                label="다음 단계로",
+                action="next_stage",
+            ).model_dump(),
+        ],
+    })
+
+    return Command(
+        update={
+            "stage": "pretrial",
+            "court_record": court_record,
+            "agents": _update_agent_in_state(state.get("agents", {}), judge),
+            "response": response,
+            "speaking_agent": "judge",
+            "agent_used": "mock_trial",
+        },
+        goto="claims_node",
+    )
+
+
+async def claims_node(state: MockTrialState) -> Command[str]:
+    """[민사] 주장/답변 (민사소송법 §256~§257)
+
+    사용자 역할에 따라 원고/피고 입력을 받고 상대측 AI가 답변합니다.
+    """
+    court_record = list(state.get("court_record", []))
+    user_role = state.get("user_role", "prosecutor")
+    agents_state = dict(state.get("agents", {}))
+
+    if user_role == "prosecutor":
+        # 사용자가 원고측 → 청구원인 입력
+        interrupt_value = interrupt({
+            "response": "원고 측 청구원인을 진술해주세요.",
+            "speaking_agent": "judge",
+            "stage": "claims",
+            "actions": [],
+        })
+        user_input = str(interrupt_value)
+        court_record = _record(court_record, "claims", "prosecutor", user_input)
+
+        # AI 피고측 답변
+        attorney = _get_agent(state, "attorney")
+        attorney.update_strategy("원고 청구에 대한 항변 제시")
+        opponent_response = await attorney.generate(
+            "claims", state.get("case_summary", ""), court_record
+        )
+        court_record = _record(
+            court_record, "claims", "attorney", opponent_response
+        )
+        agents_state = _update_agent_in_state(agents_state, attorney)
+        final_response = f"[피고측] {opponent_response}"
+    else:
+        # AI 원고측 발언
+        prosecutor = _get_agent(state, "prosecutor")
+        prosecutor.update_strategy("청구원인 구체적 입증")
+        pros_claim = await prosecutor.generate(
+            "claims", state.get("case_summary", ""), court_record
+        )
+        court_record = _record(
+            court_record, "claims", "prosecutor", pros_claim
+        )
+        agents_state = _update_agent_in_state(agents_state, prosecutor)
+
+        # 사용자(피고측) 답변
+        interrupt_value = interrupt({
+            "response": (
+                f"[원고측] {pros_claim}\n\n"
+                "피고 측 답변을 해주세요."
+            ),
+            "speaking_agent": "prosecutor",
+            "stage": "claims",
+            "actions": [],
+        })
+        user_input = str(interrupt_value)
+        court_record = _record(court_record, "claims", "attorney", user_input)
+        final_response = f"[피고측] {user_input}"
+
+    return Command(
+        update={
+            "stage": "claims",
+            "court_record": court_record,
+            "agents": agents_state,
+            "response": final_response,
+            "speaking_agent": _get_opponent_role(state),
+            "agent_used": "mock_trial",
+        },
+        goto="evidence_node",
+    )
+
+
+async def argument_node(state: MockTrialState) -> Command[str]:
+    """[민사] 변론 (민사소송법 §134~§148) — 2-3 라운드 루프"""
+    court_record = list(state.get("court_record", []))
+    current_round = state.get("current_round", 1)
+    max_rounds = state.get("max_rounds", 3)
+    agents_state = dict(state.get("agents", {}))
+
+    interrupt_value = interrupt({
+        "response": (
+            f"[변론 라운드 {current_round}/{max_rounds}] "
+            "주장을 입력하세요."
+        ),
+        "stage": "argument",
+        "actions": [
+            ChatAction(
+                type=ActionType.BUTTON,
+                label="변론 종결 요청",
+                action="end_argument",
+            ).model_dump(),
+        ],
+    })
+
+    user_input = str(interrupt_value) if interrupt_value else ""
+
+    if user_input == "end_argument" or current_round >= max_rounds:
+        return Command(
+            update={
+                "stage": "argument",
+                "current_round": current_round,
+                "court_record": court_record,
+                "response": "변론을 종결합니다.",
+                "speaking_agent": "judge",
+                "agent_used": "mock_trial",
+            },
+            goto="civil_closing_node",
+        )
+
+    # 사용자 발언 기록
+    user_role = state.get("user_role", "prosecutor")
+    court_record = _record(court_record, "argument", user_role, user_input)
+
+    # AI 반론 생성
+    opponent_role = _get_opponent_role(state)
+    opponent = _get_agent(state, opponent_role)
+    opponent.update_strategy(f"라운드 {current_round} 반론")
+    rebuttal = await opponent.generate(
+        "argument", state.get("case_summary", ""), court_record
+    )
+    court_record = _record(court_record, "argument", opponent_role, rebuttal)
+    agents_state = _update_agent_in_state(agents_state, opponent)
+
+    return Command(
+        update={
+            "stage": "argument",
+            "current_round": current_round + 1,
+            "court_record": court_record,
+            "agents": agents_state,
+            "response": f"[{AGENT_CONFIGS.get(opponent_role, {}).get('name', opponent_role)}] {rebuttal}",
+            "speaking_agent": opponent_role,
+            "agent_used": "mock_trial",
+        },
+        goto="argument_node",
+    )
+
+
+async def civil_closing_node(state: MockTrialState) -> Command[str]:
+    """[민사] 변론종결 (민사소송법 §200)
+
+    양측 최종 주장을 정리합니다.
+    """
+    court_record = list(state.get("court_record", []))
+    user_role = state.get("user_role", "prosecutor")
+    agents_state = dict(state.get("agents", {}))
+
+    # 사용자 최종 주장
+    interrupt_value = interrupt({
+        "response": "최종 주장을 정리하여 진술해주세요.",
+        "speaking_agent": "judge",
+        "stage": "closing",
+        "actions": [],
+    })
+    user_stmt = str(interrupt_value)
+    court_record = _record(court_record, "closing", user_role, user_stmt)
+
+    # AI 상대측 최종 주장
+    opponent_role = _get_opponent_role(state)
+    opponent = _get_agent(state, opponent_role)
+    opponent.update_strategy("최종 주장 정리")
+    opponent_closing = await opponent.generate(
+        "closing", state.get("case_summary", ""), court_record
+    )
+    court_record = _record(
+        court_record, "closing", opponent_role, opponent_closing
+    )
+    agents_state = _update_agent_in_state(agents_state, opponent)
+
+    return Command(
+        update={
+            "stage": "closing",
+            "court_record": court_record,
+            "agents": agents_state,
+            "response": f"[{AGENT_CONFIGS.get(opponent_role, {}).get('name', opponent_role)}] {opponent_closing}",
+            "speaking_agent": opponent_role,
+            "agent_used": "mock_trial",
+        },
+        goto="verdict_node",
+    )
+
+
+# ── 서브그래프 빌드 ──
+
+
+def build_mock_trial_subgraph() -> CompiledStateGraph:  # type: ignore[type-arg]
+    """모의재판 서브그래프 빌드
+
+    Returns:
+        컴파일된 모의재판 서브그래프
+    """
+    builder = StateGraph(MockTrialState)
+
+    # 공통 노드
+    builder.add_node("setup_node", setup_node)
+    builder.add_node("evidence_node", evidence_node)
+    builder.add_node("verdict_node", verdict_node)
+
+    # 형사 전용 노드
+    builder.add_node("identity_node", identity_node)
+    builder.add_node("opening_node", opening_node)
+    builder.add_node("examination_node", examination_node)
+    builder.add_node("criminal_closing_node", criminal_closing_node)
+
+    # 민사 전용 노드
+    builder.add_node("pretrial_node", pretrial_node)
+    builder.add_node("claims_node", claims_node)
+    builder.add_node("argument_node", argument_node)
+    builder.add_node("civil_closing_node", civil_closing_node)
+
+    # 엣지
+    builder.add_edge(START, "setup_node")
+    # setup_node → identity_node / pretrial_node (Command로 분기)
+    # 중간 노드들은 모두 Command(goto=...)로 라우팅
+    builder.add_edge("verdict_node", END)
+
+    return builder.compile()

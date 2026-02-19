@@ -40,6 +40,8 @@ AGENT_NODE_MAP: dict[str, str] = {
     # 변호사
     "lawyer_stats": "lawyer_stats_node",
     "law_study": "law_study_node",
+    # 공통 (체험형)
+    "mock_trial": "mock_trial_subgraph",
     # 폴백
     "general": "simple_chat_node",
     # 하위호환 (기존 agent_override 지원)
