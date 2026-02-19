@@ -1,8 +1,8 @@
 # Skills & Agents Catalog
 
-스킬 27개, 에이전트 5개, 규칙 6개의 분류 및 의존관계 인덱스.
+스킬 30개, 에이전트 5개, 규칙 6개의 분류 및 의존관계 인덱스.
 
-> 최종 업데이트: 2026-02-18
+> 최종 업데이트: 2026-02-19
 
 ---
 
@@ -12,7 +12,7 @@
 |---------|--------|-----------|------|
 | [워크플로우](#1-워크플로우) | 4 | - | 커밋, 리뷰, 문서 동기화, 플랜 검토 |
 | [코드 품질](#2-코드-품질) | 5 | 1 | 검증, 코딩 표준, TDD, 에러 처리 |
-| [프론트엔드](#3-프론트엔드) | 3 | - | React/Next.js, 성능, UI/UX |
+| [프론트엔드](#3-프론트엔드) | 6 | - | React/Next.js, 성능, UI/UX, 모의 법정 |
 | [RAG/검색](#4-rag검색) | 4 | 1 | RAG 패턴, 평가, 실험 추적, 인제스트 |
 | [데이터/DB](#5-데이터db) | 4 | - | PostgreSQL, Alembic, 위치검색, 요약감사 |
 | [도메인 지식](#6-도메인-지식) | 2 | - | 한국 법률, Neo4j 그래프 |
@@ -61,15 +61,20 @@
 
 ## 3. 프론트엔드
 
-React/Next.js 컴포넌트 개발 및 UI 디자인.
+React/Next.js 컴포넌트 개발, UI 디자인, 모의 법정 Phaser.js.
 
 | 스킬 | 줄 수 | 적용 시점 | 설명 |
 |------|------|----------|------|
 | `react-nextjs-frontend` | 180 | 컴포넌트 작성 시 | 접근성, Tailwind, FastAPI 연동 |
 | `vercel-react-best-practices` | 120 | 성능 최적화 시 | 45개 규칙, 8개 카테고리 |
 | `ui-ux-pro-max` | 377 | UI 디자인 시 | 67개 스타일, 96개 팔레트 |
+| `phaser-nextjs-integration` | 598 | Phaser 코드 수정 시 | Next.js + Phaser 통합 패턴 |
+| `court-eventbus-patterns` | 665 | EventBus 수정 시 | Phaser ↔ React 통신 + 에러 복구 |
+| `court-dialog-system` | 753 | 대화/캐릭터 수정 시 | 말풍선, 배심원, 단계 시스템 |
 
-**관계**: `react-nextjs-frontend` (기본) → `vercel-react-best-practices` (성능) → `ui-ux-pro-max` (디자인)
+**관계**:
+- `react-nextjs-frontend` (기본) → `vercel-react-best-practices` (성능) → `ui-ux-pro-max` (디자인)
+- `react-nextjs-frontend` (기본) → `phaser-nextjs-integration` (Phaser 확장) → `court-eventbus-patterns` (통신) → `court-dialog-system` (게임 로직)
 
 ---
 
@@ -180,8 +185,9 @@ LangGraph 기반 멀티 에이전트 시스템.
 ## 스킬 크기 분포
 
 ```
-800+ 줄 : multi-agent-patterns (797)
-600+ 줄 : error-handling-patterns (626), langchain-rag-patterns (601)
+700+ 줄 : multi-agent-patterns (797), court-dialog-system (753)
+600+ 줄 : court-eventbus-patterns (665), error-handling-patterns (626)
+           langchain-rag-patterns (601), phaser-nextjs-integration (598)
 400+ 줄 : multi-cli-integration (496), code-verification (463), korean-legal-domain (443)
 300+ 줄 : codex-cli-delegation (381), ui-ux-pro-max (377), neo4j-graph-construction (357)
 200+ 줄 : python-coding-standards (298), update-docs (292), gemini-cli-delegation (249)
@@ -193,4 +199,4 @@ LangGraph 기반 멀티 에이전트 시스템.
  ~64 줄 : project-review (64)
 ```
 
-**총 줄 수**: ~7,819줄 (평균 290줄/스킬)
+**총 줄 수**: ~9,835줄 (평균 328줄/스킬, 30개)
