@@ -364,15 +364,14 @@ if [[ "${SKIP_LANCEDB}" == "false" ]]; then
 
     LANCE_ARCHIVE="${BACKUP_DIR}/lancedb_data.tar.gz"
 
-    # data/ 폴더만 압축 (인덱스/_transactions/_versions 제외 → 용량 ~1.3GB)
-    # 인덱스는 복원 후 재생성
-    log_info "LanceDB data 디렉토리 압축 중 (data/ only)..."
+    # data + _versions 압축 (인덱스/_transactions 제외 → 복원 후 재생성)
+    # _versions: 테이블 매니페스트 메타데이터 (필수)
+    log_info "LanceDB data 디렉토리 압축 중 (data/ + _versions)..."
     tar czf "${LANCE_ARCHIVE}" \
         -C "${LANCEDB_DATA_DIR}" \
         --exclude='.DS_Store' \
         --exclude='_indices' \
         --exclude='_transactions' \
-        --exclude='_versions' \
         .
 
     LANCE_END=$(date +%s)
