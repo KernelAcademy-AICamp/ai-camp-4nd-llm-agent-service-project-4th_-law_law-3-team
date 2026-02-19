@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import re
 import sys
 from dataclasses import dataclass, field
@@ -41,6 +40,8 @@ if str(_BACKEND_ROOT) not in sys.path:
 
 # 인제스트 config 레지스트리 로드 (types/ 자동 등록 트리거)
 import scripts.ingest.types  # noqa: F401, E402
+from scripts.common.json_loader import resolve_source_path  # noqa: E402
+from scripts.common.logging_config import setup_logging  # noqa: E402
 from scripts.ingest.config import (  # noqa: E402
     DATA_DIR,
     IngestConfig,
@@ -51,12 +52,7 @@ from scripts.ingest.config import (  # noqa: E402
 # 인제스트 config의 기본 소스 베이스 디렉토리
 _DEFAULT_INGEST_SOURCE_DIR = DATA_DIR
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -441,35 +437,13 @@ def _get_items(data: Any, is_list: bool) -> list[dict[str, Any]]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 소스 경로 해석 (validate_summaries.py와 동일 로직)
+# 소스 경로 해석 (scripts.common.json_loader 위임)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def _resolve_source_path(cfg: IngestConfig, data_dir: Path | None) -> Path:
     """소스 경로 해석 (--data-dir 재매핑 지원)"""
-    if data_dir is None:
-        return cfg.source_path
-
-    try:
-        relative = cfg.source_path.relative_to(_DEFAULT_INGEST_SOURCE_DIR)
-    except ValueError:
-        return cfg.source_path
-
-    candidate = data_dir / relative
-    if candidate.exists():
-        return candidate
-
-    # 파일명 버전 차이 대응: law_v1.json → law_v2.json 등
-    if not candidate.is_dir():
-        stem = candidate.stem
-        parent = candidate.parent
-        if parent.exists():
-            base_stem = re.sub(r"_v\d+$", "", stem)
-            matches = sorted(parent.glob(f"{base_stem}_v*.json"))
-            if matches:
-                return matches[-1]
-
-    return candidate
+    return resolve_source_path(cfg.source_path, data_dir, _DEFAULT_INGEST_SOURCE_DIR)
 
 
 def _resolve_output_path(

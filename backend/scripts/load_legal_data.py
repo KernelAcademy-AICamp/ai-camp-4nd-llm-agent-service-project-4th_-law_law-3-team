@@ -260,6 +260,8 @@ async def load_documents_for_type(
                     stats["errors"] += 1
                     if stats["errors"] <= 5:
                         print(f"  [ERROR] Record error: {e}")
+                    elif stats["errors"] == 6:
+                        print("  [WARN] 추가 에러 로깅 생략 (최종 통계에서 총 에러 수 확인)")
 
             if batch:
                 session.add_all(batch)
@@ -352,6 +354,8 @@ async def load_committee_documents(
                     stats["errors"] += 1
                     if stats["errors"] <= 5:
                         print(f"  [ERROR] Record error: {e}")
+                    elif stats["errors"] == 6:
+                        print("  [WARN] 추가 에러 로깅 생략 (최종 통계에서 총 에러 수 확인)")
 
             if batch:
                 session.add_all(batch)
@@ -431,6 +435,8 @@ async def load_laws(
                 stats["errors"] += 1
                 if stats["errors"] <= 5:
                     print(f"  [ERROR] Record error: {e}")
+                elif stats["errors"] == 6:
+                    print("  [WARN] 추가 에러 로깅 생략 (최종 통계에서 총 에러 수 확인)")
 
         if batch:
             session.add_all(batch)
@@ -522,6 +528,8 @@ async def load_references_for_type(
                 stats["errors"] += 1
                 if stats["errors"] <= 5:
                     print(f"  [ERROR] Record error: {e}")
+                elif stats["errors"] == 6:
+                    print("  [WARN] 추가 에러 로깅 생략 (최종 통계에서 총 에러 수 확인)")
 
         if batch:
             session.add_all(batch)

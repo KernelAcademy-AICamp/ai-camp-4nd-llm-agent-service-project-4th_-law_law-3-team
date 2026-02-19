@@ -45,10 +45,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import func, select
 
-from app.core.database import async_session_factory
-from app.tools.vectorstore import VectorStore
 from app.core.config import settings
+from app.core.database import async_session_factory
 from app.models.legal_document import DocType, LegalDocument
+from app.tools.vectorstore import VectorStore
 
 # ============================================================================
 # 청킹 설정
@@ -445,6 +445,8 @@ async def create_embeddings_for_type(
                 stats["errors"] += 1
                 if stats["errors"] <= 5:
                     print(f"  [ERROR] Chunking error for doc {doc.id}: {e}")
+                elif stats["errors"] == 6:
+                    print("  [WARN] 추가 에러 로깅 생략 (최종 통계에서 총 에러 수 확인)")
                 continue
 
             # 배치 크기 도달 시 처리

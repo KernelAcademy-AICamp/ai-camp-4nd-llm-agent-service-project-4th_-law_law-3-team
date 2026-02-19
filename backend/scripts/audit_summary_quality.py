@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import re
 import sys
 from collections import Counter, defaultdict
@@ -50,6 +49,13 @@ if str(_BACKEND_ROOT) not in sys.path:
 
 # 인제스트 config 레지스트리 로드 (types/ 자동 등록 트리거)
 import scripts.ingest.types  # noqa: F401, E402
+from scripts.common.json_loader import (  # noqa: E402
+    load_items as _common_load_items,
+)
+from scripts.common.json_loader import (
+    resolve_source_path,
+)
+from scripts.common.logging_config import setup_logging  # noqa: E402
 from scripts.ingest.config import (  # noqa: E402
     DATA_DIR,
     IngestConfig,
@@ -59,12 +65,7 @@ from scripts.ingest.config import (  # noqa: E402
 
 _DEFAULT_INGEST_SOURCE_DIR = DATA_DIR
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -571,71 +572,13 @@ def compare_cross_fields(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# JSON 로딩
+# JSON 로딩 (scripts.common.json_loader 위임)
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def _load_items(source_path: Path) -> list[dict[str, Any]]:
-    """JSON 파일 또는 디렉토리 로드"""
-    if not source_path.exists():
-        raise FileNotFoundError(f"소스를 찾을 수 없습니다: {source_path}")
-
-    if source_path.is_dir():
-        return _load_directory(source_path)
-
-    with open(source_path, encoding="utf-8") as f:
-        data = json.load(f)
-    if isinstance(data, list):
-        result: list[dict[str, Any]] = data
-        return result
-    items: list[dict[str, Any]] = data.get("items", [])
-    return items
-
-
-def _load_directory(dir_path: Path) -> list[dict[str, Any]]:
-    """디렉토리 내 모든 .json 파일 합산"""
-    json_files = sorted(dir_path.glob("*.json"))
-    if not json_files:
-        raise FileNotFoundError(f"디렉토리에 .json 파일이 없습니다: {dir_path}")
-
-    all_items: list[dict[str, Any]] = []
-    for json_file in json_files:
-        try:
-            with open(json_file, encoding="utf-8") as f:
-                data = json.load(f)
-        except json.JSONDecodeError as e:
-            logger.warning("JSON 파싱 실패, 건너뜀: %s (%s)", json_file.name, e)
-            continue
-        items = data if isinstance(data, list) else data.get("items", [])
-        all_items.extend(items)
-    return all_items
 
 
 def _resolve_source_path(cfg: IngestConfig, data_dir: Path | None) -> Path:
     """소스 경로 해석 (--data-dir 재매핑 지원)"""
-    if data_dir is None:
-        return cfg.source_path
-
-    try:
-        relative = cfg.source_path.relative_to(_DEFAULT_INGEST_SOURCE_DIR)
-    except ValueError:
-        return cfg.source_path
-
-    candidate = data_dir / relative
-    if candidate.exists():
-        return candidate
-
-    # 파일명 버전 차이 대응: law_v1.json → law_v2.json 등
-    if not candidate.is_dir():
-        stem = candidate.stem
-        parent = candidate.parent
-        if parent.exists():
-            base_stem = re.sub(r"_v\d+$", "", stem)
-            matches = sorted(parent.glob(f"{base_stem}_v*.json"))
-            if matches:
-                return matches[-1]
-
-    return candidate
+    return resolve_source_path(cfg.source_path, data_dir, _DEFAULT_INGEST_SOURCE_DIR)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -744,7 +687,7 @@ def run_audit_for_type(
     source = _resolve_source_path(cfg, data_dir)
     logger.info("[%s] %s — 소스: %s", type_name, cfg.data_type_label, source)
 
-    items = _load_items(source)
+    items = _common_load_items(source)
     return run_audit(
         items=items,
         summary_field=cfg.summary_field,
@@ -1077,7 +1020,7 @@ def main() -> None:
             sys.exit(1)
 
         id_field = args.id_field or "_index"
-        items = _load_items(file_path)
+        items = _common_load_items(file_path)
 
         # ID 필드가 없으면 인덱스로 대체
         if id_field == "_index":

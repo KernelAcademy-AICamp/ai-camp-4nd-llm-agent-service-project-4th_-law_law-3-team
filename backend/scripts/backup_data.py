@@ -9,6 +9,7 @@ import asyncio
 import json
 import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -18,7 +19,7 @@ from sqlalchemy import select
 from app.core.database import async_session_factory
 from app.models.legal_document import LegalDocument
 
-BACKUP_DIR = Path(__file__).parent.parent.parent / "data" / "backup_20260120"
+BACKUP_DIR = Path(__file__).parent.parent.parent / "data" / f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
 
 async def backup_postgresql():

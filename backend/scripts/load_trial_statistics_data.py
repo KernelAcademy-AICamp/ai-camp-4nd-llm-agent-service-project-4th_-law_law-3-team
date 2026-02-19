@@ -11,7 +11,6 @@ Usage:
 
 import argparse
 import csv
-import logging
 import re
 import sys
 import time
@@ -21,18 +20,15 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlalchemy import create_engine, func, text
+from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import sessionmaker
 
-from app.core.config import settings
 from app.models.trial_statistics import TrialStatistics
+from scripts.common.db import create_sync_session_factory
+from scripts.common.logging_config import setup_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__)
 
 DATA_DIR = PROJECT_ROOT.parent / "data" / "case_intake_stats"
 
@@ -397,28 +393,22 @@ def main() -> None:
     args = parser.parse_args()
 
     # Sync engine 사용 (스크립트용)
-    engine = create_engine(
-        settings.DATABASE_URL,
-        echo=False,
-        pool_size=5,
-        pool_pre_ping=True,
-    )
-    Session = sessionmaker(engine)
+    session_factory = create_sync_session_factory()
 
     # CSV 데이터 파싱
     all_records = load_all_csv_files()
 
     if args.verify:
-        verify_data(Session, len(all_records))
+        verify_data(session_factory, len(all_records))
         return
 
     # DB 로드
     logger.info(f"재판 통계 데이터 로드 시작 (reset={args.reset})")
-    total_loaded = load_to_db(Session, all_records, reset=args.reset)
+    total_loaded = load_to_db(session_factory, all_records, reset=args.reset)
     logger.info(f"로드 완료: {total_loaded:,}건")
 
     # 검증
-    verify_data(Session, len(all_records))
+    verify_data(session_factory, len(all_records))
 
 
 if __name__ == "__main__":

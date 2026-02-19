@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import re
 import sys
 from dataclasses import dataclass, field
@@ -36,6 +35,17 @@ if str(_BACKEND_ROOT) not in sys.path:
 
 # 인제스트 config 레지스트리 로드 (types/ 자동 등록 트리거)
 import scripts.ingest.types  # noqa: F401, E402
+from scripts.common.json_loader import (  # noqa: E402
+    load_items as _common_load_items,
+)
+from scripts.common.json_loader import (
+    resolve_source_path,
+    should_stream,
+)
+from scripts.common.json_loader import (
+    stream_json as _common_stream_json,
+)
+from scripts.common.logging_config import setup_logging  # noqa: E402
 from scripts.ingest.config import (  # noqa: E402
     DATA_DIR,
     IngestConfig,
@@ -46,12 +56,7 @@ from scripts.ingest.config import (  # noqa: E402
 # 인제스트 config의 기본 소스 베이스 디렉토리
 _DEFAULT_INGEST_SOURCE_DIR = DATA_DIR
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -197,75 +202,18 @@ def _check_patterns(text: str) -> list[Issue]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# JSON 로딩
+# JSON 로딩 (scripts.common.json_loader 위임)
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def _load_json_all(source_path: Path) -> list[dict[str, Any]]:
-    """JSON 파일 또는 디렉토리 전체 로드"""
-    if not source_path.exists():
-        raise FileNotFoundError(f"소스를 찾을 수 없습니다: {source_path}")
-
-    if source_path.is_dir():
-        return _load_json_directory(source_path)
-
-    with open(source_path, encoding="utf-8") as f:
-        data = json.load(f)
-    if isinstance(data, list):
-        return data
-    return data.get("items", [])
-
-
-def _load_json_directory(dir_path: Path) -> list[dict[str, Any]]:
-    """디렉토리 내 모든 .json 파일 합산 로드"""
-    json_files = sorted(dir_path.glob("*.json"))
-    if not json_files:
-        raise FileNotFoundError(f"디렉토리에 .json 파일이 없습니다: {dir_path}")
-
-    all_items: list[dict[str, Any]] = []
-    for json_file in json_files:
-        try:
-            with open(json_file, encoding="utf-8") as f:
-                data = json.load(f)
-        except json.JSONDecodeError as e:
-            logger.warning("JSON 파싱 실패, 건너뜀: %s (%s)", json_file.name, e)
-            continue
-
-        items = data if isinstance(data, list) else data.get("items", [])
-        all_items.extend(items)
-    return all_items
-
-
-def _stream_json(source_path: Path) -> Any:
-    """ijson 스트리밍 (대용량 파일)"""
-    import ijson
-
-    with open(source_path, "rb") as f:
-        yield from ijson.items(f, "item")
 
 
 def _iter_items(source_path: Path, use_streaming: bool = False) -> Any:
     """소스 경로에서 아이템 순회 (파일/디렉토리/스트리밍)"""
     if source_path.is_dir():
-        yield from _load_json_all(source_path)
+        yield from _common_load_items(source_path)
     elif use_streaming:
-        yield from _stream_json(source_path)
+        yield from _common_stream_json(source_path)
     else:
-        yield from _load_json_all(source_path)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 스트리밍 크기 기준 (200MB 이상이면 스트리밍)
-# ─────────────────────────────────────────────────────────────────────────────
-
-_STREAMING_THRESHOLD = 200 * 1024 * 1024  # 200MB
-
-
-def _should_stream(source_path: Path) -> bool:
-    """파일 크기 기반 스트리밍 여부 결정"""
-    if source_path.is_dir():
-        return False  # 디렉토리는 개별 파일 로드
-    return source_path.stat().st_size > _STREAMING_THRESHOLD
+        yield from _common_load_items(source_path)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -274,41 +222,8 @@ def _should_stream(source_path: Path) -> bool:
 
 
 def _resolve_source_path(cfg: IngestConfig, data_dir: Path | None) -> Path:
-    """소스 경로 해석 (--data-dir 재매핑 지원)
-
-    인제스트 config의 source_path가 data/ 하위를 가리킵니다.
-    --data-dir로 다른 디렉토리를 지정하면 상대 경로를 재매핑합니다.
-
-    추가로 파일명이 _v1 → _v2 등으로 바뀐 경우도 glob으로 탐색합니다.
-    """
-    # data_dir 미지정이면 config 기본 경로 사용
-    if data_dir is None:
-        return cfg.source_path
-
-    # config 경로에서 DATA_DIR 이후 상대 경로 추출
-    try:
-        relative = cfg.source_path.relative_to(_DEFAULT_INGEST_SOURCE_DIR)
-    except ValueError:
-        # DATA_DIR 밖의 경로면 그대로 반환
-        return cfg.source_path
-
-    candidate = data_dir / relative
-    if candidate.exists():
-        return candidate
-
-    # 파일명 버전 차이 대응: law_v1.json → law_v2.json 등
-    if not candidate.is_dir():
-        stem = candidate.stem  # 예: "law_v1"
-        parent = candidate.parent
-        if parent.exists():
-            # _v숫자 패턴 제거 후 glob
-            base_stem = re.sub(r"_v\d+$", "", stem)  # "law"
-            matches = sorted(parent.glob(f"{base_stem}_v*.json"))
-            if matches:
-                # 가장 높은 버전 사용
-                return matches[-1]
-
-    return candidate
+    """소스 경로 해석 (--data-dir 재매핑 지원)"""
+    return resolve_source_path(cfg.source_path, data_dir, _DEFAULT_INGEST_SOURCE_DIR)
 
 
 class SummaryValidator:
@@ -340,7 +255,7 @@ class SummaryValidator:
         overall_field = FieldReport(field_name="법령 요약", max_length=600)
         article_field = FieldReport(field_name="조문요약", max_length=200)
 
-        use_stream = _should_stream(source)
+        use_stream = should_stream(source)
         count = 0
 
         for item in _iter_items(source, use_streaming=use_stream):
@@ -372,7 +287,7 @@ class SummaryValidator:
         """일반 타입: 요약 필드 ≤300자 검증"""
         fld = FieldReport(field_name=cfg.summary_field, max_length=300)
 
-        use_stream = _should_stream(source)
+        use_stream = should_stream(source)
         count = 0
 
         for item in _iter_items(source, use_streaming=use_stream):

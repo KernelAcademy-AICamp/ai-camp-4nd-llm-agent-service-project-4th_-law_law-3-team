@@ -27,7 +27,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 import time
 from pathlib import Path
@@ -39,16 +38,13 @@ if str(_backend_root) not in sys.path:
 
 # 타입 등록을 위해 types 패키지 import (자동 등록)
 import scripts.ingest.types  # noqa: F401
+from scripts.common.logging_config import setup_logging
 from scripts.ingest.config import IngestConfig, get_config, list_configs
 from scripts.ingest.db_writer import run_db_ingest, verify_db
 from scripts.ingest.fts_builder import run_fts_rebuild
 from scripts.ingest.vector_writer import build_ann_index, run_vector_ingest
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__)
 
 VALID_STEPS = ("all", "db", "vector", "fts", "index")
 BATCH_SIZE_DB = 1000

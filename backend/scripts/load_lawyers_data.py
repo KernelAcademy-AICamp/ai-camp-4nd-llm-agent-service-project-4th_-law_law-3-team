@@ -11,7 +11,6 @@ Usage:
 
 import argparse
 import json
-import logging
 import sys
 import time
 from pathlib import Path
@@ -20,24 +19,20 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlalchemy import create_engine, func, text
+from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import sessionmaker
 
-from app.core.config import settings
-from app.core.database import Base
 from app.models.lawyer import Lawyer
 from app.services.service_function.lawyer_stats_service import (
     DISTRICT_NORMALIZE_MAP,
     PROVINCE_NORMALIZE_MAP,
     REGION_PATTERN,
 )
+from scripts.common.db import create_sync_session_factory
+from scripts.common.logging_config import setup_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__)
 
 DATA_DIR = PROJECT_ROOT.parent / "data"
 LAWYERS_FILE = DATA_DIR / "lawyers.json"
@@ -220,29 +215,23 @@ def main() -> None:
     args = parser.parse_args()
 
     # Sync engine 사용 (스크립트용)
-    engine = create_engine(
-        settings.DATABASE_URL,
-        echo=False,
-        pool_size=5,
-        pool_pre_ping=True,
-    )
-    Session = sessionmaker(engine)
+    session_factory = create_sync_session_factory()
 
     # JSON 데이터 로드
     data = load_json_data()
     lawyers = data.get("lawyers", [])
 
     if args.verify:
-        verify_data(Session, len(lawyers))
+        verify_data(session_factory, len(lawyers))
         return
 
     # DB 로드
     logger.info(f"변호사 데이터 로드 시작 (reset={args.reset})")
-    total_loaded = load_to_db(Session, lawyers, reset=args.reset)
+    total_loaded = load_to_db(session_factory, lawyers, reset=args.reset)
     logger.info(f"로드 완료: {total_loaded:,}건")
 
     # 검증
-    verify_data(Session, len(lawyers))
+    verify_data(session_factory, len(lawyers))
 
 
 if __name__ == "__main__":

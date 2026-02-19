@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
 
@@ -14,17 +15,41 @@ from app.core.config import settings
 def import_legal_documents(json_path: str, batch_size: int = 1000, force: bool = False):
     """JSON 파일에서 legal_documents 테이블로 데이터 임포트"""
 
+    # 파일 존재 확인
+    source = Path(json_path)
+    if not source.exists():
+        print(f"[ERROR] JSON 파일을 찾을 수 없습니다: {json_path}")
+        sys.exit(1)
+
     # JSON 파일 로드
     print(f"Loading JSON file: {json_path}")
-    with open(json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] JSON 파싱 실패: {e}")
+        sys.exit(1)
+
+    if not isinstance(data, list):
+        print(f"[ERROR] JSON 최상위가 list가 아닙니다: {type(data).__name__}")
+        sys.exit(1)
 
     print(f"Total records to import: {len(data)}")
 
     # DB 연결
-    engine = create_engine(str(settings.DATABASE_URL))
+    try:
+        engine = create_engine(str(settings.DATABASE_URL))
+    except Exception as e:
+        print(f"[ERROR] DB 엔진 생성 실패: {e}")
+        sys.exit(1)
 
-    with engine.connect() as conn:
+    try:
+        conn = engine.connect()
+    except OperationalError as e:
+        print(f"[ERROR] DB 연결 실패: {e}")
+        sys.exit(1)
+
+    with conn:
         # 기존 데이터 확인
         result = conn.execute(text("SELECT COUNT(*) FROM legal_documents"))
         existing_count = result.scalar()

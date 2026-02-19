@@ -405,6 +405,10 @@ def compile_dic(csv_path: Path, dic_path: Path) -> bool:
         _restore_backup(dic_path, backup_path, had_existing)
         return False
 
+    # 성공 시에도 stderr 경고 출력 (경고 메시지가 있을 수 있음)
+    if result.stderr and result.stderr.strip():
+        print(f"  [WARN] mecab-dict-index stderr: {result.stderr.strip()}")
+
     # .dic 파일 무결성 검증
     if not dic_path.exists():
         print("[ERROR] 컴파일 완료했으나 .dic 파일이 생성되지 않음")

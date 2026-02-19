@@ -19,7 +19,6 @@ Usage:
 
 import argparse
 import json
-import logging
 import re
 import sys
 import time
@@ -30,18 +29,15 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlalchemy import create_engine, func, text  # noqa: E402
+from sqlalchemy import func, text  # noqa: E402
 from sqlalchemy.dialects.postgresql import insert  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
-from app.core.config import settings  # noqa: E402
 from app.models.legal_term import LegalTerm  # noqa: E402
+from scripts.common.db import create_sync_session_factory  # noqa: E402
+from scripts.common.logging_config import setup_logging  # noqa: E402
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__)
 
 DATA_DIR = PROJECT_ROOT.parent / "data"
 LAWTERMS_FILE = DATA_DIR / "lawterms_v1.json"
@@ -459,13 +455,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Sync engine 사용 (스크립트용)
-    engine = create_engine(
-        settings.DATABASE_URL,
-        echo=False,
-        pool_size=5,
-        pool_pre_ping=True,
-    )
-    session_factory = sessionmaker(engine)
+    session_factory = create_sync_session_factory()
 
     if args.stats:
         show_stats(session_factory)

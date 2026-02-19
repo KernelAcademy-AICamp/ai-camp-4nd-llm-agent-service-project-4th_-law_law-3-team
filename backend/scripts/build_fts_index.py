@@ -15,7 +15,6 @@ Usage:
 """
 
 import argparse
-import logging
 import sys
 import time
 from pathlib import Path
@@ -34,9 +33,9 @@ from app.models.fts_index import FtsIndex
 from app.models.law_document import LawDocument
 from app.models.precedent_document import PrecedentDocument
 from app.services.rag.tsvector_builder import build_tsvector_string
+from scripts.common.logging_config import setup_logging
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__)
 
 BATCH_SIZE = 1000
 
