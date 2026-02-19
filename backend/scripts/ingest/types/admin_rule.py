@@ -1,8 +1,8 @@
 """
 행정규칙 인제스트 설정
 
-data/admin_rule_v2.json (5,258건)을 대상으로:
-- 벡터 DB: 행정규칙요약 1문서=1벡터
+data/admin_rule_v3.json (17,332건)을 대상으로:
+- 벡터 DB: 전체요약 1문서=1벡터
 - PostgreSQL: 원문 전체 + FTS 인덱스
 """
 
@@ -50,7 +50,7 @@ def _orm_factory(item: dict[str, Any]) -> AdminRuleDocument:
         ministry=item.get("소관부처명"),
         content=content,
         supplementary=item.get("부칙내용"),
-        ai_summary=item.get("행정규칙요약"),
+        ai_summary=item.get("전체요약"),
     )
 
 
@@ -68,7 +68,7 @@ def _vector_metadata_fn(
         data_type="행정규칙",
         source_id=str(item.get("행정규칙ID", "")),
         title=item.get("행정규칙명", "") or "",
-        content=item.get("행정규칙요약", "") or "",
+        content=item.get("전체요약", "") or "",
         vector=vector,
         source_name=item.get("소관부처명", "") or "",
         chunk_index=0,
@@ -156,7 +156,7 @@ ADMIN_RULE_CONFIG = IngestConfig(
     data_type_label="행정규칙",
     source_path=_DEFAULT_SOURCE,
     id_field="행정규칙ID",
-    summary_field="행정규칙요약",
+    summary_field="전체요약",
     title_field="행정규칙명",
     orm_class=AdminRuleDocument,
     orm_id_attr="admin_rule_id",
