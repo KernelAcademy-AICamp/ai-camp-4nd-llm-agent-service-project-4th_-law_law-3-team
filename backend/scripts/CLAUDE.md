@@ -12,7 +12,25 @@
 | `test_precedent_embedding.py` | 임베딩 테스트 |
 | `check_environment.py` | 데이터 로드 전 환경 검증 (Python, MeCab, Docker, Alembic 등) |
 
-### 공통 모듈 (`embedding_common/`)
+### 범용 공통 모듈 (`common/`)
+
+스크립트 간 공유되는 JSON 로딩, DB 세션, 로깅, 배치 처리, 인용 추출 유틸리티입니다.
+
+| 모듈 | 설명 |
+|------|------|
+| `paths.py` | 경로 상수 (SCRIPTS_DIR, BACKEND_DIR, PROJECT_ROOT, DATA_DIR) + `setup_sys_path()` |
+| `logging_config.py` | `setup_logging(name, level, fmt, datefmt) -> Logger` |
+| `json_loader.py` | `load_json_file`, `load_json_directory`, `load_items`, `stream_json`, `smart_load`, `resolve_source_path` |
+| `db.py` | `create_sync_engine(echo)`, `create_sync_session_factory(echo)` |
+| `batch.py` | `batch_iterate(items, batch_size)`, `process_in_batches(items, fn, batch_size)` |
+| `citation.py` | `extract_citations`, `extract_law_names`, `extract_case_numbers`, `extract_statute_names_plain` |
+
+사용 예시:
+```python
+from scripts.common import load_items, setup_logging, create_sync_session_factory
+```
+
+### 임베딩 공통 모듈 (`embedding_common/`)
 
 | 모듈 | 설명 |
 |------|------|
@@ -743,8 +761,15 @@ scripts/ingest/
 
 ```
 backend/
+├── scripts/common/             # 범용 공통 모듈 (JSON, DB, 로깅, 배치, 인용)
+│   ├── json_loader.py
+│   ├── db.py
+│   ├── logging_config.py
+│   ├── batch.py
+│   ├── citation.py
+│   └── paths.py
 ├── scripts/eda/
-│   ├── common.py           # 공유 유틸리티 (21개 함수)
+│   ├── common.py           # EDA 전용 유틸 + common/ re-export (하위 호환)
 │   └── data_registry.py    # 데이터 카테고리 레지스트리 (11개)
 ├── notebooks/eda/
 │   ├── 01_inventory_schema.ipynb       # 데이터 인벤토리 + 스키마 분석
@@ -766,27 +791,29 @@ backend/
 
 ### 공유 모듈 (`eda/common.py`)
 
-| 카테고리 | 함수 | 설명 |
-|----------|------|------|
-| **I/O** | `smart_load(path)` | 파일 크기 기반 자동 로드 (200MB 기준) |
-| | `load_all(path)` | 전체 레코드 리스트 로드 |
-| | `stream_json(path)` | ijson 스트리밍 로드 |
-| | `load_json(path)` | 전체 JSON 로드 |
-| | `save_result(name, data)` | `eda_output/`에 JSON 저장 |
-| | `load_result(name)` | `eda_output/`에서 JSON 로드 |
-| **샘플링** | `get_sample(path, n, fast)` | 통합 샘플링 (fast=True: head, False: reservoir) |
-| | `head_sample(path, n)` | 처음 n개 추출 (빠름, 편향 가능) |
-| | `cached_sample(path, n, seed)` | 디스크 캐시 기반 reservoir sampling |
-| | `reservoir_sample(iterable, k, seed)` | 무작위 reservoir sampling |
-| **메타** | `count_records(path)` | 레코드 수 카운트 (스트리밍) |
-| | `count_records_fast(path)` | 레코드 수 추정 (정규식, 빠름) |
-| | `discover_done_files()` | `data/` 폴더 `[DONE]*.json` 파일 탐색 |
-| | `detect_root_type(path)` | JSON 루트 타입 감지 (array/object) |
-| **분석** | `infer_field_types(sample)` | 필드별 타입/분포 추론 |
-| **인용 추출** | `extract_citations(text)` | `「법령명」 제N조` 패턴 추출 |
-| | `extract_law_names(text)` | `「법령명」` 패턴 추출 |
-| | `extract_case_numbers(text)` | 사건번호 (`2022다12345`) 추출 |
-| | `extract_statute_names_plain(text)` | 꺾쇠 없는 법령명 추출 |
+I/O와 인용 추출 함수는 `scripts/common/`에서 re-export됩니다. EDA 전용 함수만 이 모듈에 직접 구현되어 있습니다.
+
+| 카테고리 | 함수 | 설명 | 출처 |
+|----------|------|------|------|
+| **I/O** | `smart_load(path)` | 파일 크기 기반 자동 로드 (200MB 기준) | `common/json_loader` re-export |
+| | `load_all(path)` | 전체 레코드 리스트 로드 | EDA 자체 |
+| | `stream_json(path)` | ijson 스트리밍 로드 | `common/json_loader` re-export |
+| | `load_json(path)` | 전체 JSON 로드 | `common/json_loader` re-export |
+| | `save_result(name, data)` | `eda_output/`에 JSON 저장 | EDA 자체 |
+| | `load_result(name)` | `eda_output/`에서 JSON 로드 | EDA 자체 |
+| **샘플링** | `get_sample(path, n, fast)` | 통합 샘플링 (fast=True: head, False: reservoir) | EDA 자체 |
+| | `head_sample(path, n)` | 처음 n개 추출 (빠름, 편향 가능) | EDA 자체 |
+| | `cached_sample(path, n, seed)` | 디스크 캐시 기반 reservoir sampling | EDA 자체 |
+| | `reservoir_sample(iterable, k, seed)` | 무작위 reservoir sampling | EDA 자체 |
+| **메타** | `count_records(path)` | 레코드 수 카운트 (스트리밍) | EDA 자체 |
+| | `count_records_fast(path)` | 레코드 수 추정 (정규식, 빠름) | EDA 자체 |
+| | `discover_done_files()` | `data/` 폴더 `[DONE]*.json` 파일 탐색 | EDA 자체 |
+| | `detect_root_type(path)` | JSON 루트 타입 감지 (array/object) | EDA 자체 |
+| **분석** | `infer_field_types(sample)` | 필드별 타입/분포 추론 | EDA 자체 |
+| **인용 추출** | `extract_citations(text)` | `「법령명」 제N조` 패턴 추출 | `common/citation` re-export |
+| | `extract_law_names(text)` | `「법령명」` 패턴 추출 | `common/citation` re-export |
+| | `extract_case_numbers(text)` | 사건번호 (`2022다12345`) 추출 | `common/citation` re-export |
+| | `extract_statute_names_plain(text)` | 꺾쇠 없는 법령명 추출 | `common/citation` re-export |
 
 ### 데이터 레지스트리 (`eda/data_registry.py`)
 

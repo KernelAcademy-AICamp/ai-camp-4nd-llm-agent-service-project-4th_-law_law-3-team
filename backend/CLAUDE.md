@@ -1037,8 +1037,9 @@ driver.close()
 법률 데이터 48개 JSON 파일(~4.9GB)의 품질, 구조, 관계를 분석하는 노트북 + 공유 모듈입니다.
 
 ```
+scripts/common/             # 범용 공통 모듈 (JSON, DB, 로깅, 배치, 인용)
 scripts/eda/
-├── common.py           # 공유 유틸리티 (21개 함수: I/O, 샘플링, 인용 추출)
+├── common.py           # EDA 전용 유틸 + common/ re-export (하위 호환)
 └── data_registry.py    # 11개 카테고리, 48개 파일 레지스트리
 
 notebooks/eda/
