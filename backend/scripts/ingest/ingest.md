@@ -60,9 +60,9 @@ source_id, data_type, title, date, source_name, case_number + content_tsvector
 | `ministry` | 소관부처명 | `국가유산청 한국전통문화대학교` |
 | `content` | 조문내용 | `「현장실습 운영지침」제정 2025. 5. 13. ...` (5,770자) |
 | `supplementary` | 부칙내용 | `부칙 <제39호, 2020. 11. 9.>...` |
-| `ai_summary` | 행정규칙요약 | `「한국전통문화대학교 현장실습 운영지침」은 학칙 제35조...` |
+| `ai_summary` | 전체요약 | `「한국전통문화대학교 현장실습 운영지침」은 학칙 제35조...` |
 
-- **Vector DB content** → `행정규칙요약` (ai_summary)
+- **Vector DB content** → `전체요약` (ai_summary)
 - **FTS fulltext** → `[제목] + 조문내용 전체`
 
 ---

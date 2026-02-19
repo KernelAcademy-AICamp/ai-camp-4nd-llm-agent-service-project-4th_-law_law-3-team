@@ -535,7 +535,7 @@ data/
 |-----------------|--------|------|----------|
 | `law` | 법령 | 5,548 | 단일 JSON |
 | `precedent` | 판례 | 92,055 | 단일 JSON |
-| `admin_rule` | 행정규칙 | 5,258 | 단일 JSON |
+| `admin_rule` | 행정규칙 | 17,332 | 단일 JSON |
 | `constitutional` | 헌재결정례 | 31,718 | 단일 JSON |
 | `administration` | 행정심판례 | 34,254 | 단일 JSON |
 | `legislation` | 법령해석례 | 8,597 | 단일 JSON |
