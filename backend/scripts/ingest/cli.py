@@ -77,12 +77,25 @@ def _print_stats(config_name: str) -> None:
     try:
         from scripts.embedding_common.store import EmbeddingStore
 
-        store = EmbeddingStore()
-        total = store.count()
-        by_type = store.count_by_type(config.data_type_label)
-        print("\n  [LanceDB]")
-        print(f"    전체 레코드: {total:,}건")
-        print(f"    {config.data_type_label}: {by_type:,}건")
+        if config.name == "local_ordinance":
+            from app.tools.vectorstore.local_ordinance_schema import (  # noqa: I001
+                LOCAL_ORDINANCE_SCHEMA,
+                TABLE_NAME as LO_TABLE,
+            )
+
+            lo_store = EmbeddingStore(
+                table_name=LO_TABLE, schema=LOCAL_ORDINANCE_SCHEMA
+            )
+            lo_total = lo_store.count()
+            print("\n  [LanceDB - local_ordinance_chunks]")
+            print(f"    전체 레코드: {lo_total:,}건")
+        else:
+            store = EmbeddingStore()
+            total = store.count()
+            by_type = store.count_by_type(config.data_type_label)
+            print("\n  [LanceDB]")
+            print(f"    전체 레코드: {total:,}건")
+            print(f"    {config.data_type_label}: {by_type:,}건")
     except Exception as e:
         print(f"\n  [LanceDB] 조회 실패: {e}")
 
@@ -118,15 +131,32 @@ def _run_single_type(
         logger.info("=== 벡터 임베딩 시작 ===")
         # 명시 시 64 상한 적용, 미지정 시 None(하드웨어 자동)
         vector_batch = min(batch_size, 64) if batch_size else None
-        results["vector"] = run_vector_ingest(
-            config=config,
-            source_path=source_path,
-            reset=reset,
-            batch_size=vector_batch,
-            device=device,
-            profile=profile,
-            use_cache=not no_cache,
-        )
+
+        if config.name == "local_ordinance":
+            # 자치법규: 전용 라이터 (1문서 → 다중 벡터)
+            from scripts.ingest.local_ordinance_vector_writer import (
+                run_local_ordinance_vector_ingest,
+            )
+
+            results["vector"] = run_local_ordinance_vector_ingest(
+                config=config,
+                source_path=source_path,
+                reset=reset,
+                batch_size=vector_batch,
+                device=device,
+                profile=profile,
+                use_cache=not no_cache,
+            )
+        else:
+            results["vector"] = run_vector_ingest(
+                config=config,
+                source_path=source_path,
+                reset=reset,
+                batch_size=vector_batch,
+                device=device,
+                profile=profile,
+                use_cache=not no_cache,
+            )
 
     # Step: FTS 재빌드
     if step == "fts":
@@ -304,6 +334,17 @@ def main() -> None:
             build_ann_index()
         except Exception as e:
             logger.error("ANN 인덱스 빌드 실패: %s", e)
+
+        # 자치법규 별도 테이블 ANN 인덱스
+        if "local_ordinance" in succeeded:
+            try:
+                from scripts.ingest.local_ordinance_vector_writer import (
+                    build_local_ordinance_ann_index,
+                )
+
+                build_local_ordinance_ann_index()
+            except Exception as e:
+                logger.error("자치법규 ANN 인덱스 빌드 실패: %s", e)
 
     # ===== 최종 요약 =====
     overall_elapsed = time.time() - overall_start

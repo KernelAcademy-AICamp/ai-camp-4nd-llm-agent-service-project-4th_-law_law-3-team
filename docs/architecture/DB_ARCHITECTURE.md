@@ -630,6 +630,7 @@ backend/
 | `treaty_documents` | 조약 |
 | `interpretation_ministry_documents` | 법제처 해석례 |
 | `special_admin_appeal_documents` | 특별행정심판 |
+| `local_ordinance_documents` | 자치법규 (160,276건) |
 
 ---
 
@@ -668,6 +669,7 @@ CREATE TABLE fts_index (
 | 012 | `alter_precedent_case_number_to_text` | 판례 사건번호 TEXT 변환 |
 | 013 | `fix_column_names_legislation_treaty` | 법령해석/조약 컬럼명 수정 |
 | 014 | `add_admin_rule_v3_columns` | 행정규칙 v3 스키마 컬럼 |
+| 015 | `add_local_ordinance_documents_table` | 자치법규 테이블 추가 |
 
 ---
 

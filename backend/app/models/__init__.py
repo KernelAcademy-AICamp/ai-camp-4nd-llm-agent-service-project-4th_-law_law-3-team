@@ -19,6 +19,7 @@ from app.models.ingest import (
     DecSecuritiesDocument,
     InterpretationMinistryDocument,
     LegislationDocument,
+    LocalOrdinanceDocument,
     SpecialAdminAppealDocument,
     TreatyDocument,
 )
@@ -61,5 +62,6 @@ __all__ = [
     "DecPrivacyDocument",
     "DecSecuritiesDocument",
     "InterpretationMinistryDocument",
+    "LocalOrdinanceDocument",
     "SpecialAdminAppealDocument",
 ]

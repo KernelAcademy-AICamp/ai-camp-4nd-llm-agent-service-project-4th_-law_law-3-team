@@ -22,6 +22,7 @@ from app.models.ingest.interpretation_ministry_document import (
     InterpretationMinistryDocument,
 )
 from app.models.ingest.legislation_document import LegislationDocument
+from app.models.ingest.local_ordinance_document import LocalOrdinanceDocument
 from app.models.ingest.special_admin_appeal_document import (
     SpecialAdminAppealDocument,
 )
@@ -43,6 +44,7 @@ __all__ = [
     "DecLaborDocument",
     "InterpretationMinistryDocument",
     "LegislationDocument",
+    "LocalOrdinanceDocument",
     "SpecialAdminAppealDocument",
     "TreatyDocument",
 ]
