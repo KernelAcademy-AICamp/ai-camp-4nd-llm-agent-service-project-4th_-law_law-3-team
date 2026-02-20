@@ -10,10 +10,11 @@ import secrets
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from langgraph.types import Command
 from sse_starlette.sse import EventSourceResponse
 
+from app.core.rate_limit import AI_RATE_LIMIT, limiter
 from app.multi_agent import (
     ChatRequest,
     ChatResponse,
@@ -105,7 +106,8 @@ async def _invoke_graph(
 
 
 @router.post("", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
     """
     채팅 메시지 처리
 
@@ -113,7 +115,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     적절한 에이전트 노드를 선택하여 응답을 생성합니다.
     """
     try:
-        result, thread_id, session_secret = await _invoke_graph(request)
+        result, thread_id, session_secret = await _invoke_graph(chat_request)
 
         # interrupt 발생 여부 확인
         graph = get_graph()
@@ -143,16 +145,17 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("채팅 처리 중 오류 발생")
         raise HTTPException(
             status_code=500,
-            detail=f"채팅 처리 중 오류가 발생했습니다: {str(e)}",
-        ) from e
+            detail="채팅 처리 중 오류가 발생했습니다.",
+        )
 
 
 @router.post("/stream")
-async def chat_stream(request: ChatRequest) -> EventSourceResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def chat_stream(request: Request, chat_request: ChatRequest) -> EventSourceResponse:
     """
     스트리밍 채팅 메시지 처리 (SSE)
 
@@ -169,25 +172,25 @@ async def chat_stream(request: ChatRequest) -> EventSourceResponse:
     async def event_generator():
         try:
             graph = get_graph()
-            thread_id = request.session_data.get("thread_id") or str(
+            thread_id = chat_request.session_data.get("thread_id") or str(
                 uuid.uuid4()
             )
             config = {"configurable": {"thread_id": thread_id}}
 
             # 세션 시크릿
             session_secret = (
-                request.session_data.get("session_secret")
+                chat_request.session_data.get("session_secret")
                 or secrets.token_hex(16)
             )
 
             # interrupt 재개 여부 판단
             input_value: dict[str, Any] | Command
-            if request.session_data.get("thread_id"):
+            if chat_request.session_data.get("thread_id"):
                 # 기존 스레드: session_secret 검증
                 await _validate_session_secret(
                     graph,
                     config,
-                    request.session_data.get("session_secret", ""),
+                    chat_request.session_data.get("session_secret", ""),
                 )
 
                 graph_state = await graph.aget_state(config)
@@ -196,14 +199,14 @@ async def chat_stream(request: ChatRequest) -> EventSourceResponse:
                 ):
                     # interrupt 재개 전 최신 세션 데이터(UI 상태 등)를 그래프 상태에 반영
                     await graph.aupdate_state(
-                        config, {"session_data": request.session_data}
+                        config, {"session_data": chat_request.session_data}
                     )
-                    input_value = Command(resume=request.message)
+                    input_value = Command(resume=chat_request.message)
                 else:
-                    input_value = request_to_state(request)
+                    input_value = request_to_state(chat_request)
                     input_value["session_secret"] = session_secret
             else:
-                input_value = request_to_state(request)
+                input_value = request_to_state(chat_request)
                 input_value["session_secret"] = session_secret
 
             # astream으로 custom 이벤트 수신
@@ -274,12 +277,13 @@ async def chat_stream(request: ChatRequest) -> EventSourceResponse:
                     {"message": e.detail}, ensure_ascii=False
                 ),
             }
-        except Exception as e:
+        except Exception:
             logger.exception("스트리밍 채팅 처리 중 오류 발생")
             yield {
                 "event": "error",
                 "data": json.dumps(
-                    {"message": str(e)}, ensure_ascii=False
+                    {"message": "채팅 처리 중 오류가 발생했습니다."},
+                    ensure_ascii=False,
                 ),
             }
 

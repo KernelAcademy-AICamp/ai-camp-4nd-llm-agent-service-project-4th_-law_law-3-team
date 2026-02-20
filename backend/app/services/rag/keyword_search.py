@@ -21,7 +21,7 @@ from typing import Any, Optional
 
 from sqlalchemy import func, select
 
-from app.core.database import async_session_factory
+from app.core.database import async_session_factory, sync_session_factory
 from app.models.fts_index import FtsIndex
 
 logger = logging.getLogger(__name__)
@@ -218,8 +218,21 @@ def search_by_keyword(
         return []
 
 
+def is_fts_available_sync() -> bool:
+    """fts_index 테이블에 데이터가 있는지 확인 (동기 버전)."""
+    try:
+        with sync_session_factory() as session:
+            result = session.execute(
+                select(func.count()).select_from(FtsIndex)
+            )
+            count = result.scalar_one()
+            return count > 0
+    except Exception:
+        return False
+
+
 async def is_fts_available() -> bool:
-    """fts_index 테이블에 데이터가 있는지 확인."""
+    """fts_index 테이블에 데이터가 있는지 확인 (비동기 버전)."""
     try:
         async with async_session_factory() as session:
             result = await session.execute(

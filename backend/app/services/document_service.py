@@ -1,13 +1,19 @@
+import logging
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentService:
     def __init__(self) -> None:
         # 템플릿 디렉토리 설정 (app/templates)
         template_dir = Path(__file__).resolve().parent.parent / "templates"
-        self.env = Environment(loader=FileSystemLoader(str(template_dir)))
+        self.env = Environment(
+            loader=FileSystemLoader(str(template_dir)),
+            autoescape=True,
+        )
 
     def generate_demand_letter(
         self,
@@ -87,7 +93,7 @@ class DocumentService:
                     font_name = "Malgun"
                     break
         except Exception as e:
-            print(f"폰트 로드 실패: {e}")
+            logger.warning("폰트 로드 실패: %s", e)
 
         c = canvas.Canvas(output_path, pagesize=A4)
         c.setFont(font_name, 11)

@@ -5,8 +5,24 @@ import dynamic from 'next/dynamic'
 import NextImage from 'next/image'
 import { casePrecedentService, type GraphNode, type GraphLink } from '../services'
 import { getLawTypeLogo, DEFAULT_GOV_LOGO } from '../utils/lawTypeLogo'
+import type { SimulationNodeDatum } from 'd3-force'
 import { forceCollide, forceManyBody, forceRadial } from 'd3-force'
-// import type { ForceGraphMethods } from 'react-force-graph-2d' // 타입 정의 문제 방지
+
+// d3 시뮬레이션 노드 (런타임에 d3가 x, y 등을 주입)
+type ForceNode = GraphNode & SimulationNodeDatum
+
+// d3 ForceLink 인스턴스의 distance/strength 체이닝 타입
+interface ForceLinkForce {
+  distance: (fn: (link: GraphLink) => number) => ForceLinkForce
+  strength: (fn: (link: GraphLink) => number) => ForceLinkForce
+}
+
+// react-force-graph-2d 인스턴스 타입 (패키지 타입 정의 불안정 대응)
+interface ForceGraphInstance {
+  d3Force(name: 'link'): ForceLinkForce | undefined
+  d3Force(name: string, force: unknown): void
+  d3ReheatSimulation: () => void
+}
 
 // SSR 비활성화로 ForceGraph 로드
 // SSR 비활성화로 ForceGraph 로드 (Wrapper 컴포넌트 사용)
@@ -114,7 +130,7 @@ function getLogoImage(type: string): HTMLImageElement | null {
 
 export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const fgRef = useRef<any>(null) // ForceGraphMethods 타입 제거
+  const fgRef = useRef<ForceGraphInstance | null>(null)
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; links: GraphLink[] }>({ nodes: [], links: [] })
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
   const [isLoading, setIsLoading] = useState(true)
@@ -287,28 +303,28 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
   }, [])
 
   // D3 Force 설정 적용 함수
-  const applyD3Forces = useCallback((fg: any) => {
+  const applyD3Forces = useCallback((fg: ForceGraphInstance) => {
     if (!fg) return
-    
+
     console.log('applyD3Forces executing...', { nodes: graphData.nodes.length })
 
     try {
       // 1. 방사형 배치 (황도 십이궁 스타일) - 헌법과 법률만 궤도 강제
       // 대통령령 등 하위 법령은 궤도에 구속되지 않고 부모(법률) 주변에 위성처럼 위치함
-      fg.d3Force('radial', forceRadial(
-        (node: any) => {
+      fg.d3Force('radial', forceRadial<ForceNode>(
+        (node) => {
           if (node.type === '헌법') return 0 // 태양
           if (node.type === '법률') return 300 // 법률 궤도
           return 300 // 위성 노드도 일단 300 반환
         },
         0, 0  // 중심점
-      ).strength((node: any) => {
+      ).strength((node) => {
          // 헌법/법률은 고정하되, 링크에 의해 약간 움직일 수 있도록 강도 조절
          return (node.type === '헌법' || node.type === '법률') ? 0.7 : 0
       }))
 
       // 2. 충돌 방지: 노드가 겹치지 않도록
-      fg.d3Force('collide', forceCollide((node: any) => {
+      fg.d3Force('collide', forceCollide<ForceNode>((node) => {
         const size = getHierarchySize(node.type)
         return size * 2 + 10 // 간격 조정
       }).strength(0.8).iterations(3))
@@ -322,13 +338,13 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
 
       // 4. 링크 힘 (위성 배치 & 관련 법령 응집)
       fg.d3Force('link')
-        ?.distance((link: any) => {
+        ?.distance((link) => {
           // 계급 관계(HIERARCHY_OF)는 짧게 -> 부모 옆에 착 붙게 (위성)
-          if (link.relation === 'HIERARCHY_OF') return 50 
+          if (link.relation === 'HIERARCHY_OF') return 50
           // 관련 법령은 적당히 가깝게 (너무 멀지 않게)
           return 100 // 150 -> 100
         })
-        ?.strength((link: any) => {
+        ?.strength((link) => {
            // 계급 관계는 강하게 당김
            if (link.relation === 'HIERARCHY_OF') return 1.0
            // 관련 법령도 서로 끌어당기도록 힘 강화
@@ -347,7 +363,7 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
   }, [graphData.nodes.length])
 
   // ref callback (fgRef 설정 및 force 초기화)
-  const handleGraphRef = useCallback((fg: any) => {
+  const handleGraphRef = useCallback((fg: ForceGraphInstance) => {
     fgRef.current = fg
     if (fg && graphData.nodes.length > 0) {
       // 약간의 지연 후 적용 (초기화 안정성)
@@ -357,8 +373,9 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
 
   // graphData가 변경될 때 force 설정 재적용
   useEffect(() => {
-    if (fgRef.current && graphData.nodes.length > 0) {
-      setTimeout(() => applyD3Forces(fgRef.current), 10)
+    const fg = fgRef.current
+    if (fg && graphData.nodes.length > 0) {
+      setTimeout(() => applyD3Forces(fg), 10)
     }
   }, [graphData, applyD3Forces])
 

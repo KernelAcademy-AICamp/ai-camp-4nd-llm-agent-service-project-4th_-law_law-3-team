@@ -6,21 +6,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 import type { ChatAction } from '@/components/ChatActions'
-
-interface ChatSource {
-  case_name?: string
-  case_number?: string
-  doc_type: string
-  similarity: number
-  summary?: string
-  content?: string
-  law_name?: string
-  law_type?: string
-  cited_statutes?: string[]
-  similar_cases?: string[]
-  court_name?: string
-  decision_date?: string
-}
+import type { ChatSource } from '@/features/case-precedent/types'
 
 interface ChatMetadata {
   agent_used: string

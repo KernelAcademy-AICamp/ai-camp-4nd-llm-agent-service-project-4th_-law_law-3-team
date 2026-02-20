@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
 
     # Database
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/lawdb"
+    DATABASE_URL: str = ""
 
     # Async Database URL (for SQLAlchemy async)
     @property
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     # Neo4j Graph DB 설정
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USER: str = "neo4j"
-    NEO4J_PASSWORD: str = "password"
+    NEO4J_PASSWORD: str = ""
 
     # 변호사 데이터 소스 (True: PostgreSQL, False: JSON 파일)
     USE_DB_LAWYERS: bool = False
@@ -103,6 +103,14 @@ class Settings(BaseSettings):
 
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []
+
+    # API 인증 (빈 문자열이면 인증 비활성화)
+    API_KEY: str = ""
+
+    # Rate Limiting (분당 요청 수)
+    RATE_LIMIT_PER_MINUTE: int = 30
+    RATE_LIMIT_AI_PER_MINUTE: int = 10
+    RATE_LIMIT_STORAGE_URI: str = "memory://"  # 프로덕션: "redis://localhost:6379"
 
     class Config:
         env_file = ".env"

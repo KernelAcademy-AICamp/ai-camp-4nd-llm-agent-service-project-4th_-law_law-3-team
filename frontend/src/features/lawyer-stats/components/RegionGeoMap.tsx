@@ -5,6 +5,17 @@ import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from "re
 import type { PredictionYear, ViewMode } from "@/app/lawyer-stats/page"
 import type { CourtDemandMarker, DemandStat, DensityStat, RegionStat } from "../types"
 
+// react-simple-maps 지리 객체 타입
+interface GeoProperties {
+  code: string
+  name: string
+}
+
+interface GeoFeature {
+  rsmKey: string
+  properties: GeoProperties
+}
+
 // GeoJSON path (Nationwide)
 const GEO_URL = "/data/korea_geo.json"
 
@@ -256,9 +267,9 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
   }
 
   // 3. Helper to resolve full name from GeoJSON properties
-  const getFullName = (geo: any) => {
-    const code = geo.properties.code as string // e.g. "11250"
-    const name = geo.properties.name as string // e.g. "강동구" or "수원시장안구"
+  const getFullName = (geo: GeoFeature) => {
+    const code = geo.properties.code // e.g. "11250"
+    const name = geo.properties.name // e.g. "강동구" or "수원시장안구"
 
     const prefix = code.substring(0, 2)
     const province = PROVINCE_PREFIX_MAP[prefix]
@@ -281,7 +292,7 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
     return `${province} ${district}`
   }
 
-  const handleMouseEnter = (geo: any, event: React.MouseEvent) => {
+  const handleMouseEnter = (geo: GeoFeature, event: React.MouseEvent) => {
     const fullName = getFullName(geo)
     const regionData = regionDataMap.get(fullName)
     setTooltipContent({
@@ -375,9 +386,9 @@ export function RegionGeoMap({ data, viewMode, predictionYear, selectedProvince,
           onMoveEnd={({ coordinates }) => setCenter(coordinates as [number, number])}
         >
           <Geographies geography={GEO_URL}>
-            {({ geographies }: { geographies: any[] }) =>
-              geographies.map((geo: any) => {
-                const code = geo.properties.code as string
+            {({ geographies }: { geographies: GeoFeature[] }) =>
+              geographies.map((geo: GeoFeature) => {
+                const code = geo.properties.code
                 const isSelected = !selectedCodePrefix || code.startsWith(selectedCodePrefix)
                 const fullName = getFullName(geo)
                 const isHighlighted = highlightedRegion === fullName

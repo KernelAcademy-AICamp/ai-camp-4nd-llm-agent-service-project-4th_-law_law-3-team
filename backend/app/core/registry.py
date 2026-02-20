@@ -1,10 +1,13 @@
 import importlib
+import logging
 from pathlib import Path
 from typing import List
 
 from fastapi import FastAPI
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class ModuleRegistry:
@@ -58,12 +61,12 @@ class ModuleRegistry:
                     tags=[module_name],
                 )
                 self._registered_modules.append(module_name)
-                print(f"[Registry] Module '{module_name}' registered successfully")
+                logger.info("Module '%s' registered successfully", module_name)
                 return True
         except ImportError as e:
-            print(f"[Registry] Failed to import module '{module_name}': {e}")
+            logger.error("Failed to import module '%s': %s", module_name, e)
         except Exception as e:
-            print(f"[Registry] Error registering module '{module_name}': {e}")
+            logger.error("Error registering module '%s': %s", module_name, e)
 
         return False
 

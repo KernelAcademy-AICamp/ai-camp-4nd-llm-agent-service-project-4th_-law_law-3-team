@@ -1,17 +1,18 @@
 """
 데이터베이스 설정 및 세션 관리
 
-SQLAlchemy 2.0 async 패턴 사용
+SQLAlchemy 2.0 async + sync 패턴 사용
 """
 
 from typing import AsyncGenerator
 
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from app.core.config import settings
 
@@ -24,10 +25,28 @@ engine = create_async_engine(
     pool_pre_ping=True,  # 연결 유효성 검사
 )
 
-# Session Factory
+# Async Session Factory
 async_session_factory = async_sessionmaker(
     engine,
     class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
+)
+
+# Sync Engine (RAG 서비스 등 동기 함수용)
+sync_engine = create_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    pool_size=5,
+    max_overflow=10,
+    pool_pre_ping=True,
+)
+
+# Sync Session Factory
+sync_session_factory = sessionmaker(
+    sync_engine,
+    class_=Session,
     expire_on_commit=False,
     autocommit=False,
     autoflush=False,

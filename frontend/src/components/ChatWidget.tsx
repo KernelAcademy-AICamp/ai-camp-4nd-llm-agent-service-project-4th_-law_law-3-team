@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
@@ -10,6 +10,7 @@ import { api } from '@/lib/api'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
 import ChatActions, { ChatAction } from './ChatActions'
+import type { ChatSource } from '@/features/case-precedent/types'
 
 // 판례번호 패턴: 2023다12345, 88도820, 99가합1234 등
 const CASE_NUMBER_PATTERN = /(\d{2,4}[가-힣]{1,3}\d{1,6})/g
@@ -127,31 +128,6 @@ interface Message {
   sources?: ChatSource[]  // 참조 자료 (카드 연결용)
 }
 
-interface ChatSource {
-  case_name?: string
-  case_number?: string
-  doc_type: string
-  similarity: number
-  summary?: string
-  content?: string
-  // 법령용 필드
-  law_name?: string
-  law_type?: string
-  // 판례 메타 정보
-  court_name?: string
-  decision_date?: string
-  reasoning?: string
-  ruling?: string
-  claim?: string
-  full_reason?: string
-  full_text?: string
-  reference_provisions?: string
-  reference_cases?: string
-  // 그래프 보강 정보
-  cited_statutes?: string[]
-  similar_cases?: string[]
-}
-
 interface MultiAgentChatResponse {
   response: string
   agent_used: string
@@ -216,6 +192,94 @@ const FLOATING_MODE_PATHS = new Set([
   '/statute-hierarchy',
 ])
 
+// --- Memoized MessageBubble ---
+
+type MarkdownComponentsType = ReturnType<typeof useMarkdownComponents>
+
+interface MessageBubbleProps {
+  msg: Message
+  isStreamingMessage: boolean
+  messageUserClass: string
+  messageBotClass: string
+  isLightTheme: boolean
+  markdownComponents: MarkdownComponentsType
+  loadingStatus: { title: string; detail: string }
+  onAction: (action: string) => void
+  onRequestLocation: () => void
+}
+
+const MessageBubble = memo(function MessageBubble({
+  msg,
+  isStreamingMessage,
+  messageUserClass,
+  messageBotClass,
+  isLightTheme,
+  markdownComponents,
+  loadingStatus,
+  onAction,
+  onRequestLocation,
+}: MessageBubbleProps) {
+  return (
+    <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className={`max-w-[85%] p-4 rounded-2xl text-base leading-relaxed ${
+          msg.role === 'user'
+            ? `${messageUserClass} rounded-tr-none`
+            : `${messageBotClass} rounded-tl-none`
+        }`}
+      >
+        {msg.role === 'assistant' ? (
+          isStreamingMessage && !msg.content.trim() ? (
+            <div className="space-y-3 min-w-[260px]">
+              <div className="flex items-start gap-3">
+                <div className="mt-1.5 flex h-3 w-3">
+                  <span className="relative inline-flex h-3 w-3">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-blue-500 opacity-75 animate-ping" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-blue-500" />
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{loadingStatus.title}</p>
+                  <p className="text-xs opacity-70 mt-1">{loadingStatus.detail}</p>
+                </div>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-blue-500/20 overflow-hidden">
+                <div className="h-full w-1/3 rounded-full bg-blue-500 animate-pulse" />
+              </div>
+            </div>
+          ) : (
+            <div className={`prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit ${!isLightTheme ? 'prose-invert' : ''}`}>
+              <ReactMarkdown components={markdownComponents}>
+                {msg.content}
+              </ReactMarkdown>
+              {isStreamingMessage && (
+                <span className="inline-block w-2 h-4 bg-current animate-pulse ml-0.5" />
+              )}
+              {msg.actions && msg.actions.length > 0 && (
+                <ChatActions
+                  actions={msg.actions}
+                  onAction={onAction}
+                  onRequestLocation={onRequestLocation}
+                  isLightTheme={isLightTheme}
+                />
+              )}
+            </div>
+          )
+        ) : (
+          <span className="whitespace-pre-wrap">{msg.content}</span>
+        )}
+      </div>
+    </div>
+  )
+}, (prevProps, nextProps) => {
+  // 완료된 메시지는 스트리밍 중 재렌더 방지 (ReactMarkdown 파싱 비용 절감)
+  if (prevProps.msg !== nextProps.msg) return false
+  if (prevProps.isStreamingMessage !== nextProps.isStreamingMessage) return false
+  if (prevProps.isLightTheme !== nextProps.isLightTheme) return false
+  if (prevProps.isStreamingMessage && prevProps.loadingStatus !== nextProps.loadingStatus) return false
+  return true
+})
+
 export default function ChatWidget() {
   const router = useRouter()
   const pathname = usePathname()
@@ -268,6 +332,18 @@ export default function ChatWidget() {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // 스트리밍 성능 최적화: rAF 기반 배치 업데이트
+  const rafIdRef = useRef<number | null>(null)
+
+  // 컴포넌트 언마운트 시 rAF 정리
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current)
+      }
+    }
+  }, [])
 
   // 페이지 변경 시 모드 설정
   const prevPathnameRef = useRef<string | null>(null)
@@ -353,6 +429,10 @@ export default function ChatWidget() {
 
   const handleResetChat = useCallback(() => {
     abortStream()
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current)
+      rafIdRef.current = null
+    }
     setIsLoading(false)
     setStreamingMessageId(null)
     setRequestStartedAt(null)
@@ -458,13 +538,19 @@ export default function ChatWidget() {
               setHasReceivedFirstToken(true)
             }
             accumulatedContent += content
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === streamingMsgId
-                  ? { ...msg, content: accumulatedContent }
-                  : msg
-              )
-            )
+            // rAF 기반 배치 업데이트: 토큰마다 setState 대신 프레임당 1회만
+            if (rafIdRef.current === null) {
+              rafIdRef.current = requestAnimationFrame(() => {
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === streamingMsgId
+                      ? { ...msg, content: accumulatedContent }
+                      : msg
+                  )
+                )
+                rafIdRef.current = null
+              })
+            }
           },
           onSources: (sources) => {
             receivedSources = sources
@@ -509,6 +595,21 @@ export default function ChatWidget() {
             )
           },
           onDone: (doneData) => {
+            // Flush pending rAF update
+            if (rafIdRef.current !== null) {
+              cancelAnimationFrame(rafIdRef.current)
+              rafIdRef.current = null
+            }
+            // 마지막 토큰까지 반영
+            if (accumulatedContent) {
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === streamingMsgId
+                    ? { ...msg, content: accumulatedContent }
+                    : msg
+                )
+              )
+            }
             // 스트리밍 완료
             setStreamingMessageId(null)
             setIsLoading(false)
@@ -602,6 +703,10 @@ export default function ChatWidget() {
           },
           onError: (errorMessage) => {
             console.error('Streaming error:', errorMessage)
+            if (rafIdRef.current !== null) {
+              cancelAnimationFrame(rafIdRef.current)
+              rafIdRef.current = null
+            }
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === streamingMsgId
@@ -620,6 +725,10 @@ export default function ChatWidget() {
       )
     } catch (error) {
       console.error('Chat API error:', error)
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current)
+        rafIdRef.current = null
+      }
 
       let errorContent: string
 
@@ -931,60 +1040,18 @@ export default function ChatWidget() {
         className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin scrollbar-thumb-gray-300/20 scrollbar-track-transparent"
       >
         {messages.map((msg) => (
-          <div
+          <MessageBubble
             key={msg.id}
-            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`max-w-[85%] p-4 rounded-2xl text-base leading-relaxed ${
-                msg.role === 'user'
-                  ? `${themeClasses.messageUser} rounded-tr-none`
-                  : `${themeClasses.messageBot} rounded-tl-none`
-              }`}
-            >
-              {msg.role === 'assistant' ? (
-                msg.id === streamingMessageId && !msg.content.trim() ? (
-                  <div className="space-y-3 min-w-[260px]">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-1.5 flex h-3 w-3">
-                        <span className="relative inline-flex h-3 w-3">
-                          <span className="absolute inline-flex h-full w-full rounded-full bg-blue-500 opacity-75 animate-ping" />
-                          <span className="relative inline-flex h-3 w-3 rounded-full bg-blue-500" />
-                        </span>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold">{loadingStatus.title}</p>
-                        <p className="text-xs opacity-70 mt-1">{loadingStatus.detail}</p>
-                      </div>
-                    </div>
-                    <div className="h-1.5 w-full rounded-full bg-blue-500/20 overflow-hidden">
-                      <div className="h-full w-1/3 rounded-full bg-blue-500 animate-pulse" />
-                    </div>
-                  </div>
-                ) : (
-                  <div className={`prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit ${!isLightTheme ? 'prose-invert' : ''}`}>
-                    <ReactMarkdown components={markdownComponents}>
-                      {msg.content}
-                    </ReactMarkdown>
-                    {/* 스트리밍 중일 때 깜빡이는 커서 표시 */}
-                    {msg.id === streamingMessageId && (
-                      <span className="inline-block w-2 h-4 bg-current animate-pulse ml-0.5" />
-                    )}
-                    {msg.actions && msg.actions.length > 0 && (
-                      <ChatActions
-                        actions={msg.actions}
-                        onAction={handleAction}
-                        onRequestLocation={handleRequestLocation}
-                        isLightTheme={isLightTheme}
-                      />
-                    )}
-                  </div>
-                )
-              ) : (
-                <span className="whitespace-pre-wrap">{msg.content}</span>
-              )}
-            </div>
-          </div>
+            msg={msg}
+            isStreamingMessage={msg.id === streamingMessageId}
+            messageUserClass={themeClasses.messageUser}
+            messageBotClass={themeClasses.messageBot}
+            isLightTheme={isLightTheme}
+            markdownComponents={markdownComponents}
+            loadingStatus={loadingStatus}
+            onAction={handleAction}
+            onRequestLocation={handleRequestLocation}
+          />
         ))}
         {/* Loading indicator (스트리밍 중이 아닐 때만 표시) */}
         {isLoading && !streamingMessageId && (

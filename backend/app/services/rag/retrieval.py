@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any, NamedTuple, Optional
 
 from sqlalchemy import select, text
@@ -25,6 +26,16 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # 테이블 레지스트리
 # ---------------------------------------------------------------------------
+
+
+_IDENTIFIER_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def _validate_identifier(name: str) -> str:
+    """SQL 식별자(테이블명/컬럼명)가 안전한 형식인지 검증."""
+    if not _IDENTIFIER_PATTERN.match(name):
+        raise ValueError(f"안전하지 않은 SQL 식별자: {name!r}")
+    return name
 
 
 class TableConfig(NamedTuple):
@@ -178,8 +189,7 @@ def _search_vector_ids(
     if doc_type:
         where = {"data_type": _resolve_data_type(doc_type)}
 
-    results = await asyncio.to_thread(
-        store.search,
+    results = store.search(
         query_embedding=query_embedding,
         n_results=n_results,
         where=where,
@@ -271,10 +281,17 @@ def fetch_document_contents(
                 if not remaining_ids:
                     break
 
-                cols = ", ".join([tc.id_column, *tc.content_columns])
+                # 화이트리스트 검증: 테이블명/컬럼명이 안전한 식별자인지 확인
+                safe_table = _validate_identifier(tc.table_name)
+                safe_id_col = _validate_identifier(tc.id_column)
+                safe_content_cols = [
+                    _validate_identifier(c) for c in tc.content_columns
+                ]
+
+                cols = ", ".join([safe_id_col, *safe_content_cols])
                 sql = text(
-                    f"SELECT {cols} FROM {tc.table_name} "  # noqa: S608
-                    f"WHERE {tc.id_column} = ANY(:ids)"
+                    f"SELECT {cols} FROM {safe_table} "
+                    f"WHERE {safe_id_col} = ANY(:ids)"
                 )
                 rows = session.execute(
                     sql, {"ids": list(remaining_ids)}
@@ -385,9 +402,12 @@ def search_without_content(
     if not settings.USE_HYBRID_SEARCH:
         return vector_results[:n_results]
 
-    from app.services.rag.keyword_search import is_fts_available, search_by_keyword
+    from app.services.rag.keyword_search import (
+        is_fts_available_sync,
+        search_by_keyword,
+    )
 
-    if not is_fts_available():
+    if not is_fts_available_sync():
         logger.info("fts_index 비어있음 → 벡터 검색만 사용")
         return vector_results[:n_results]
 
@@ -470,10 +490,18 @@ def fetch_lancedb_summaries(source_ids: list[str]) -> dict[str, str]:
         db = lancedb.connect(settings.LANCEDB_URI)
         table = db.open_table(settings.LANCEDB_TABLE_NAME)
 
-        ids_str = ", ".join(f"'{sid}'" for sid in source_ids)
+        # SQL injection 방어: source_id에서 영숫자+하이픈+언더스코어만 허용
+        safe_pattern = re.compile(r"^[\w\-]+$")
+        safe_ids = [sid for sid in source_ids if safe_pattern.match(sid)]
+        if not safe_ids:
+            return {}
+
+        ids_str = ", ".join(
+            "'{}'".format(sid.replace("'", "''")) for sid in safe_ids
+        )
         df = table.search().where(
             f"source_id IN ({ids_str})", prefilter=True
-        ).select(["source_id", "content"]).limit(len(source_ids) * 2).to_pandas()
+        ).select(["source_id", "content"]).limit(len(safe_ids) * 2).to_pandas()
 
         result: dict[str, str] = {}
         for _, row in df.iterrows():
