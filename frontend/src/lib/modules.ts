@@ -86,6 +86,15 @@ export const modules: Module[] = [
     enabled: true,
     roles: ['user'],
   },
+  {
+    id: 'mock-trial',
+    name: '모의 법정',
+    description: '픽셀아트 법정에서 AI 에이전트와 함께하는 모의재판 시뮬레이션',
+    href: '/mock-trial',
+    icon: '🏛️',
+    enabled: true,
+    roles: ['user', 'lawyer'],
+  },
 ]
 
 export const getEnabledModules = (role?: 'lawyer' | 'user') => 

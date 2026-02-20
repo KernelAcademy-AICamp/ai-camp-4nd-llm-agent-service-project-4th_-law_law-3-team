@@ -24,6 +24,8 @@ class AgentType(str, Enum):
     # 변호사 전용
     LAWYER_STATS = "lawyer_stats"
     LAW_STUDY = "law_study"
+    # 공통 (체험형)
+    MOCK_TRIAL = "mock_trial"
     # 폴백
     GENERAL = "general"
 
@@ -44,6 +46,7 @@ ROLE_AGENTS: dict[UserRole, list[AgentType]] = {
         AgentType.CASE_SEARCH,
         AgentType.LAW_SEARCH,
         AgentType.STORYBOARD,
+        AgentType.MOCK_TRIAL,
         AgentType.GENERAL,
     ],
     UserRole.LAWYER: [
@@ -53,6 +56,7 @@ ROLE_AGENTS: dict[UserRole, list[AgentType]] = {
         AgentType.CASE_SEARCH,
         AgentType.LAW_SEARCH,
         AgentType.STORYBOARD,
+        AgentType.MOCK_TRIAL,
         AgentType.GENERAL,
     ],
 }
@@ -121,6 +125,18 @@ INTENT_PATTERNS: dict[AgentType, list[tuple[str, float]]] = {
         ("법학", 0.8),
         ("시험 문제", 0.75),
         ("법학 문제", 0.75),
+    ],
+    AgentType.MOCK_TRIAL: [
+        ("모의재판", 0.95),
+        ("모의 재판", 0.95),
+        ("모의법정", 0.95),
+        ("모의 법정", 0.95),
+        ("재판 시뮬", 0.9),
+        ("법정 체험", 0.9),
+        ("법정 시뮬", 0.9),
+        ("재판 연습", 0.85),
+        ("재판 게임", 0.85),
+        ("법정 게임", 0.85),
     ],
     AgentType.GENERAL: [
         ("안녕", 0.85),
