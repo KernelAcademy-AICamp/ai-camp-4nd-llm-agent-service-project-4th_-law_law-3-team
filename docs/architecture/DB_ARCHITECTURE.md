@@ -600,4 +600,75 @@ backend/
 
 ---
 
-*최종 업데이트: 2026-01-20*
+## 12. 인제스트 테이블 (migration 010)
+
+인제스트 파이프라인에서 원본 데이터를 타입별로 독립 테이블에 저장합니다.
+
+### 12.1 위원회 결정례 (9개)
+
+| 테이블 | 설명 |
+|--------|------|
+| `dec_fair_trade_documents` | 공정거래위원회 결정례 |
+| `dec_human_rights_documents` | 국가인권위원회 결정례 |
+| `dec_privacy_documents` | 개인정보보호위원회 결정례 |
+| `dec_financial_documents` | 금융위원회 결정례 |
+| `dec_securities_documents` | 증권선물위원회 결정례 |
+| `dec_labor_documents` | 노동위원회 결정례 |
+| `dec_employment_documents` | 고용위원회 결정례 |
+| `dec_environment_documents` | 환경영향평가 결정례 |
+| `dec_civil_rights_documents` | 시민권 결정례 |
+| `dec_industrial_documents` | 산업위원회 결정례 |
+
+### 12.2 기타 인제스트 테이블 (8개)
+
+| 테이블 | 설명 |
+|--------|------|
+| `admin_rule_documents` | 행정규칙 |
+| `constitutional_documents` | 헌법재판소 결정례 |
+| `administration_documents` | 행정심판 재결례 |
+| `legislation_documents` | 법령해석례 |
+| `treaty_documents` | 조약 |
+| `interpretation_ministry_documents` | 법제처 해석례 |
+| `special_admin_appeal_documents` | 특별행정심판 |
+
+---
+
+## 13. FTS 전문 검색 인덱스 (migration 008)
+
+```sql
+CREATE TABLE fts_index (
+    id SERIAL PRIMARY KEY,
+    source_id VARCHAR(100) NOT NULL,   -- 원본 문서 ID
+    data_type VARCHAR(50) NOT NULL,    -- 데이터 타입 (law, precedent 등)
+    title TEXT,                        -- 제목
+    date DATE,                         -- 날짜
+    content_tsvector TSVECTOR,         -- 전문 검색 벡터
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+```
+
+---
+
+## 14. 마이그레이션 변경 로그
+
+| 번호 | 파일명 | 설명 |
+|------|--------|------|
+| 001 | `create_legal_documents_table` | legal_documents 테이블 생성 |
+| 002 | `add_laws_and_references_tables` | laws, legal_references 테이블 |
+| 003 | `add_lancedb_tables` | LanceDB 연동 테이블 |
+| 004 | `add_lawyers_table` | 변호사 테이블 |
+| 005 | `add_trial_statistics_table` | 재판 통계 테이블 |
+| 006 | `add_legal_terms_table` | 법률 용어 사전 |
+| 007 | `add_source_count_to_legal_terms` | 용어 출처 횟수 컬럼 |
+| 008 | `add_fts_index_table` | FTS 전문 검색 인덱스 |
+| 009 | `refactor_document_tables` | 문서 테이블 리팩토링 |
+| 010 | `add_ingest_tables` | 인제스트 17개 타입별 테이블 |
+| 011 | `fix_ingest_schema_mismatches` | 인제스트 스키마 불일치 수정 |
+| 012 | `alter_precedent_case_number_to_text` | 판례 사건번호 TEXT 변환 |
+| 013 | `fix_column_names_legislation_treaty` | 법령해석/조약 컬럼명 수정 |
+| 014 | `add_admin_rule_v3_columns` | 행정규칙 v3 스키마 컬럼 |
+
+---
+
+*최종 업데이트: 2026-02-20*

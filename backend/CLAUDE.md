@@ -157,9 +157,13 @@ app/
 │   │   ├── small_claims_agent.py     # 소액소송
 │   │   ├── storyboard_agent.py       # 사건 타임라인
 │   │   ├── lawyer_stats_agent.py     # 변호사 통계
-│   │   └── law_study_agent.py        # 로스쿨 학습
+│   │   ├── law_study_agent.py        # 로스쿨 학습
+│   │   └── mock_trial_agent.py       # 모의 법정
 │   ├── subgraphs/       # 서브그래프
-│   │   └── small_claims.py           # 소액소송 서브그래프
+│   │   ├── small_claims.py           # 소액소송 서브그래프
+│   │   ├── mock_trial.py             # 모의 법정 서브그래프
+│   │   ├── mock_trial_agents.py      # 모의 법정 에이전트 (검사/변호사/판사)
+│   │   └── mock_trial_prompts.py     # 모의 법정 프롬프트
 │   └── schemas/         # 스키마
 │       ├── plan.py      # AgentPlan, AgentResult
 │       └── messages.py  # 메시지 타입
@@ -175,7 +179,8 @@ app/
 │       ├── lawyer_stats_service.py # 변호사 통계
 │       ├── precedent_service.py    # 판례 조회
 │       ├── law_service.py          # 법령 조회
-│       └── small_claims_service.py # 소액소송 가이드
+│       ├── small_claims_service.py # 소액소송 가이드
+│       └── mock_trial_service.py  # 모의 법정 서비스
 ├── tools/               # 외부 도구 클라이언트
 │   ├── llm/             # LLM (Solar, OpenAI)
 │   ├── vectorstore/     # LanceDB, Chroma, Qdrant
@@ -183,12 +188,34 @@ app/
 │   └── geo/             # 거리 계산
 ├── modules/             # 독립 API 모듈 (자동 등록)
 │   ├── case_precedent/
+│   ├── law_study/
 │   ├── lawyer_finder/
 │   ├── lawyer_stats/
-│   └── small_claims/
+│   ├── mock_trial/
+│   ├── multi_agent/
+│   ├── review_price/
+│   ├── small_claims/
+│   └── storyboard/
 ├── models/              # SQLAlchemy ORM 모델
-│   ├── legal_term.py    # 법률 용어 사전
-│   └── ...
+│   ├── __init__.py
+│   ├── law_document.py
+│   ├── precedent_document.py
+│   ├── legal_document.py
+│   ├── legal_reference.py
+│   ├── lawyer.py
+│   ├── legal_term.py          # 법률 용어 사전
+│   ├── trial_statistics.py
+│   ├── fts_index.py           # FTS 전문 검색 인덱스
+│   ├── law.py
+│   └── ingest/                # 인제스트 원본 테이블 (17개)
+│       ├── admin_rule_document.py
+│       ├── constitutional_document.py
+│       ├── administration_document.py
+│       ├── legislation_document.py
+│       ├── treaty_document.py
+│       ├── interpretation_ministry_document.py
+│       ├── special_admin_appeal_document.py
+│       └── dec_*_document.py  # 위원회 결정례 (9개)
 └── common/              # (deprecated) 레거시 코드
     └── chat_service.py  # → services/rag/로 이전됨
 ```
@@ -232,6 +259,7 @@ START → router_node ──(Command)──→ legal_search_node ───→ EN
                       ├──────────→ storyboard_node ─────→ END
                       ├──────────→ lawyer_stats_node ───→ END
                       ├──────────→ law_study_node ──────→ END
+                      ├──────────→ mock_trial_subgraph ─→ END
                       └──────────→ simple_chat_node ────→ END
 ```
 
@@ -244,6 +272,7 @@ START → router_node ──(Command)──→ legal_search_node ───→ EN
 | `StoryboardAgent` | 사건 타임라인 생성 | `storyboard_node` | ❌ | ✅ |
 | `LawyerStatsAgent` | 변호사 통계 안내 | `lawyer_stats_node` | ❌ | ❌ |
 | `LawStudyAgent` | 로스쿨 학습 가이드 | `law_study_node` | ✅ | ✅ |
+| `MockTrialAgent` | 모의 법정 시뮬레이션 | `mock_trial_subgraph` | ❌ | ✅ |
 | `SimpleChatAgent` | 일반 LLM 채팅 (폴백) | `simple_chat_node` | ❌ | ✅ |
 
 ### 설정
@@ -526,6 +555,7 @@ app/models/
 | `lawyers` | 변호사 정보 (17,326건) | name, address, specialties(ARRAY), latitude, longitude, region |
 | `legal_terms` | 법률 용어 사전 (~72,700건) | term(UNIQUE), definition, source_code, source_count, term_length, is_korean_only |
 | `trial_statistics` | 재판 통계 | category, court_name, court_type, parent_court, year, case_count |
+| `fts_index` | FTS 전문 검색 인덱스 | source_id, data_type, title, date, tsvector |
 
 ### 변호사 데이터 (lawyers 테이블)
 

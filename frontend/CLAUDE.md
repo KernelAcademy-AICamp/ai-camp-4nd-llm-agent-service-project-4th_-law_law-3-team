@@ -24,10 +24,13 @@ npm run lint         # ESLint 실행
 
 **모듈 정의**: `src/lib/modules.ts`
 ```typescript
+// 현재 등록 모듈: lawyer-finder, lawyer-stats, case-precedent,
+// law-search, storyboard, law-study, statute-hierarchy,
+// small-claims, mock-trial
 export const modules: Module[] = [
   { id: 'lawyer-finder', name: '...', enabled: true, ... },
 ]
-export const getEnabledModules = () => modules.filter((m) => m.enabled)
+export const getEnabledModules = (role?) => modules.filter((m) => m.enabled && ...)
 ```
 
 **API endpoints**: `src/lib/api.ts`
@@ -78,6 +81,29 @@ src/features/<module-name>/
 
 **타입:**
 - `CourtDemandMarker` - 법원 단위 수요 데이터 (좌표, 사건 수, 변호사 수, 부담지수, 관할 지역)
+
+### mock-trial (모의 법정)
+
+**경로:** `src/features/mock-trial/`
+
+**컴포넌트:**
+- `MockTrialGame` - Phaser.js 기반 픽셀아트 법정 게임
+- `MockTrialSetup` - 사건 입력 및 게임 설정
+- `ChatPanel` - AI 에이전트 채팅 (검사/변호사/판사)
+- `ReferencePanel` - 법률 참조 패널
+- `EvidencePanel` - 증거 표시
+- `JudgmentDisplay` - 판결 결과
+- `StageProgress` - 재판 단계 진행 표시
+- `DisclaimerBanner` - 면책 안내
+
+**게임 구조:** `src/features/mock-trial/game/`
+- `CourtScene` - 법정 씬 (Phaser)
+- `LobbyScene` - 로비 씬 (대법원 배경)
+- `EventBus` - 이벤트 시스템
+- `sprites/` - 픽셀아트 캐릭터, 배심원 패널
+- `ui/` - 말풍선, 단계 표시
+
+**의존성:** `phaser` (package.json)
 
 ## Conventions
 

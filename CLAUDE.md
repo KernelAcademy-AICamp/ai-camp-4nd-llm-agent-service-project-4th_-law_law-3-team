@@ -94,17 +94,18 @@ Frontend: `modules.ts`에서 `enabled: false`
 | `small_claims` | `/api/small-claims` | `small-claims` | `smallClaims` |
 | `storyboard` | `/api/storyboard` | `storyboard` | `storyboard` |
 | `law_study` | `/api/law-study` | `law-study` | `lawStudy` |
+| `mock_trial` | `/api/mock-trial` | `mock-trial` | `mockTrial` |
 
 ## Backend Architecture
 
-통합 채팅 API (`POST /api/chat`)와 7개 에이전트 기반 멀티에이전트 시스템 (LangGraph).
+통합 채팅 API (`POST /api/chat`)와 8개 에이전트 기반 멀티에이전트 시스템 (LangGraph).
 → 상세: `backend/CLAUDE.md`
 
 ## DB / 인프라 요약
 
 | 인프라 | 용도 | Feature Flag | 상세 문서 |
 |--------|------|-------------|----------|
-| **PostgreSQL** | 변호사(17,326건), 법률용어(72,700건), 재판통계, 법령/판례 원본 | `USE_DB_LAWYERS`, `USE_LEGAL_TERM_DICT` | `backend/CLAUDE.md` |
+| **PostgreSQL** | 변호사(17,326건), 법률용어(72,700건), 재판통계, 법령/판례 원본, 인제스트 17개 타입 원본 | `USE_DB_LAWYERS`, `USE_LEGAL_TERM_DICT` | `backend/CLAUDE.md` |
 | **LanceDB** | 법령+판례 벡터 임베딩 (253,768 청크), FTS | `LANCEDB_MODE`, `LANCEDB_INDEX_TYPE` | `backend/CLAUDE.md` |
 | **Neo4j** | 법령 계급, 판례 인용 그래프 (5,572 법령 + 65,107 판례) | - | `backend/CLAUDE.md` |
 | **MeCab userdic** | 법률 복합명사 사전 (37,366 엔트리) | - | `backend/CLAUDE.md` |
