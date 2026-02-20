@@ -18,12 +18,14 @@ class EmbeddingStore:
         self,
         db_path: Optional[str] = None,
         table_name: Optional[str] = None,
+        schema: Any = None,
     ) -> None:
         import lancedb
 
         db_path = db_path or str(DEFAULT_CONFIG["LANCEDB_URI"])
         self.db_path = db_path
         self.table_name = table_name or str(DEFAULT_CONFIG["LANCEDB_TABLE_NAME"])
+        self._schema = schema or LEGAL_CHUNKS_SCHEMA
 
         Path(db_path).mkdir(parents=True, exist_ok=True)
         self.db = lancedb.connect(db_path)
@@ -49,7 +51,7 @@ class EmbeddingStore:
         if self._table is None:
             self._table = self.db.create_table(
                 self.table_name,
-                schema=LEGAL_CHUNKS_SCHEMA,
+                schema=self._schema,
             )
         return self._table
 
