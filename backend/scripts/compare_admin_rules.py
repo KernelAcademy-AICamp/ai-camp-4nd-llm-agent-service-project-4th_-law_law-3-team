@@ -30,7 +30,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import logging
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,12 +42,9 @@ _PROJECT_ROOT = _BACKEND_ROOT.parent
 _DEFAULT_ORIGINAL = _PROJECT_ROOT / "data" / "[DONE]administrative_rules-1.json"
 _DEFAULT_V3 = _PROJECT_ROOT / "data" / "admin_rule_v3.json"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+from scripts.common.logging_config import setup_logging
+
+logger = setup_logging(__name__)
 
 # ---------------------------------------------------------------------------
 # 비교용 데이터 구조

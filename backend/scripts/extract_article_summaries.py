@@ -14,17 +14,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import sys
 from pathlib import Path
 from typing import Any
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+from scripts.common.logging_config import setup_logging
+
+logger = setup_logging(__name__)
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _DEFAULT_INPUT = _PROJECT_ROOT / "data" / "admin_rule_v3.json"

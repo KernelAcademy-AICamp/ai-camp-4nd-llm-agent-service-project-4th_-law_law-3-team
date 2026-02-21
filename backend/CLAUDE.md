@@ -65,7 +65,7 @@ rclone copy --config rclone.conf gdrive:data/ data/ --progress
 # - data/law_v3.json
 # - data/precedents_v2.json
 
-uv run python scripts/load_lancedb_data.py --type all
+uv run python -m scripts.ingest.cli --type all --step db
 ```
 
 ### 7. LanceDB 데이터
@@ -521,16 +521,16 @@ uv run alembic downgrade -1
 
 ```bash
 # 법령 데이터 로드 (data/law_v3.json → PostgreSQL)
-uv run python scripts/load_lancedb_data.py --type law
+uv run python -m scripts.ingest.cli --type law --step db
 
 # 판례 데이터 로드 (data/precedents_v2.json → PostgreSQL)
-uv run python scripts/load_lancedb_data.py --type precedent
+uv run python -m scripts.ingest.cli --type precedent --step db
 
 # 전체 로드 (법령 + 판례)
-uv run python scripts/load_lancedb_data.py --type all
+uv run python -m scripts.ingest.cli --type all --step db
 
 # 기존 데이터 삭제 후 재로드
-uv run python scripts/load_lancedb_data.py --type all --reset
+uv run python -m scripts.ingest.cli --type all --step db --reset
 ```
 
 ### 모델 파일 위치
