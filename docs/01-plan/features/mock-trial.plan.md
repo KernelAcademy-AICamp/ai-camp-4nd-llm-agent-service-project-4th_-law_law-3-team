@@ -5,7 +5,7 @@
 > **Project**: law-3-team (법률 서비스 플랫폼)
 > **Author**: Claude
 > **Date**: 2026-02-12
-> **Status**: Draft (v0.5)
+> **Status**: Draft (v0.6)
 
 ---
 
@@ -170,7 +170,7 @@
 - 음성 입력/출력 (STT/TTS)
 - 사용자 간 대전 모드 (PvP)
 - 모의재판 결과 DB 저장/이력 관리 (향후 확장)
-- 배심원 제도 시뮬레이션
+- 배심원 제도 시뮬레이션 (※ JurorSprite.ts, JuryPanel.ts 등 장식적 UI 요소는 구현됨. 배심원 평의/평결 로직은 미구현)
 - 3D 법정 환경 (2D 픽셀아트만)
 - 모바일 최적화 (데스크톱 우선)
 
@@ -183,59 +183,59 @@
 | ID | Requirement | Priority | Status |
 |----|-------------|----------|--------|
 | **픽셀아트 법정 UI** | | | |
-| FR-01 | Phaser.js 2D 법정 씬 렌더링 (타일맵 + 스프라이트) | High | Pending |
-| FR-02 | 5종 캐릭터 스프라이트 (판사/검사/변호사/피고/서기) + 대기/발언 애니메이션 | High | Pending |
-| FR-03 | 캐릭터 말풍선 — LLM 스트리밍 텍스트를 타이핑 효과로 표시 | High | Pending |
-| FR-04 | 재판 단계별 씬 전환 효과 (페이드, 카메라 이동) | Medium | Pending |
-| FR-05 | 하단 React 오버레이 UI (대화 입력, 증거 패널, 단계 표시) | High | Pending |
+| FR-01 | Phaser.js 2D 법정 씬 렌더링 (타일맵 + 스프라이트) | High | Done |
+| FR-02 | 5종 캐릭터 스프라이트 (판사/검사/변호사/피고/서기) + 대기/발언 애니메이션 | High | Done |
+| FR-03 | 캐릭터 말풍선 — LLM 스트리밍 텍스트를 타이핑 효과로 표시 | High | Done |
+| FR-04 | 재판 단계별 씬 전환 효과 (페이드, 카메라 이동) | Medium | Done |
+| FR-05 | 하단 React 오버레이 UI (대화 입력, 증거 패널, 단계 표시) | High | Done |
 | **설정 단계** | | | |
-| FR-06 | 사건 유형 선택 (민사: 손해배상/계약, 형사: 폭행/사기/횡령 등) | High | Pending |
-| FR-07 | 역할 선택 — 형사: 검사 또는 변호사 / 민사: 원고측 또는 피고측 | High | Pending |
-| FR-08 | 사건 개요 자유 입력 (텍스트, 500자 이내) | High | Pending |
+| FR-06 | 사건 유형 선택 (민사: 손해배상/계약, 형사: 폭행/사기/횡령 등) | High | Done |
+| FR-07 | 역할 선택 — 형사: 검사 또는 변호사 / 민사: 원고측 또는 피고측 | High | Done |
+| FR-08 | 사건 개요 자유 입력 (텍스트, 500자 이내) | High | Done |
 | **형사 공판절차 (한국 형사소송법 기반 6단계)** | | | |
-| FR-09 | 1단계 인정신문: 재판장이 피고인 인적사항 확인 + 진술거부권 고지 | High | Pending |
-| FR-10 | 2단계 모두진술: 검사 공소사실 요지 진술 → 피고인/변호인 의견 진술 (인정/부인) | High | Pending |
-| FR-11 | 3단계 증거조사: RAG 검색 판례/법령 제시 + 서증 제출 + 증인신문 시뮬레이션 | High | Pending |
-| FR-12 | 4단계 피고인신문: 검사/변호인이 피고인에게 질문 (사용자 참여) | High | Pending |
-| FR-13 | 5단계 구형 및 최후진술: 검사 의견진술(구형, §302) → 변호인 변론 → 피고인 최후진술(§303) | High | Pending |
-| FR-13a | 6단계 판결선고: AI 판사 판결문 생성 (한국 판결문 형식: 주문→이유→판사명) + 피드백 | High | Pending |
+| FR-09 | 1단계 인정신문: 재판장이 피고인 인적사항 확인 + 진술거부권 고지 | High | Done |
+| FR-10 | 2단계 모두진술: 검사 공소사실 요지 진술 → 피고인/변호인 의견 진술 (인정/부인) | High | Done |
+| FR-11 | 3단계 증거조사: RAG 검색 판례/법령 제시 + 서증 제출 + 증인신문 시뮬레이션 | High | Done |
+| FR-12 | 4단계 피고인신문: 검사/변호인이 피고인에게 질문 (사용자 참여) | High | Done |
+| FR-13 | 5단계 구형 및 최후진술: 검사 의견진술(구형, §302) → 변호인 변론 → 피고인 최후진술(§303) | High | Done |
+| FR-13a | 6단계 판결선고: AI 판사 판결문 생성 (한국 판결문 형식: 주문→이유→판사명) + 피드백 | High | Done |
 | **민사 변론절차 (한국 민사소송법 기반 6단계)** | | | |
-| FR-14a | 1단계 변론준비: 쟁점 정리 + 증거 목록 확인 + 양측 입장 정리 | High | Pending |
-| FR-14b | 2단계 주장/답변: 원고 청구원인 진술 → 피고 답변/항변 | High | Pending |
-| FR-14c | 3단계 증거조사: RAG 검색 판례/법령 + 서증 제출 + 증인신문 | High | Pending |
-| FR-14d | 4단계 변론: 양측 주장/반박 교환 (2-3 라운드) | High | Pending |
-| FR-14e | 5단계 변론종결: 양측 최종 주장 정리 | High | Pending |
-| FR-14f | 6단계 판결선고: AI 판사 판결문 생성 + 피드백 | High | Pending |
+| FR-14a | 1단계 변론준비: 쟁점 정리 + 증거 목록 확인 + 양측 입장 정리 | High | Done |
+| FR-14b | 2단계 주장/답변: 원고 청구원인 진술 → 피고 답변/항변 | High | Done |
+| FR-14c | 3단계 증거조사: RAG 검색 판례/법령 + 서증 제출 + 증인신문 | High | Done |
+| FR-14d | 4단계 변론: 양측 주장/반박 교환 (2-3 라운드) | High | Done |
+| FR-14e | 5단계 변론종결: 양측 최종 주장 정리 | High | Done |
+| FR-14f | 6단계 판결선고: AI 판사 판결문 생성 + 피드백 | High | Done |
 | **에이전트 시스템** | | | |
-| FR-15 | 에이전트별 Profile 모듈 — 역할 정의, 성향, 전문 분야 | High | Pending |
-| FR-16 | 에이전트별 Memory 모듈 — 단기(현재 단계), 장기(이전 단계 요약) | Medium | Pending |
-| FR-17 | 에이전트별 Strategy 모듈 — 단계별 전략 동적 조정 | Medium | Pending |
-| FR-18 | AI 상대측 반론 자동 생성 (LLM 스트리밍) | High | Pending |
-| FR-19 | LLM 작성 지원 — "주장 보강" 버튼으로 법적 근거 추가 | Medium | Pending |
+| FR-15 | 에이전트별 Profile 모듈 — 역할 정의, 성향, 전문 분야 | High | Done |
+| FR-16 | 에이전트별 Memory 모듈 — 단기(현재 단계), 장기(이전 단계 요약) | Medium | Done |
+| FR-17 | 에이전트별 Strategy 모듈 — 단계별 전략 동적 조정 | Medium | Done |
+| FR-18 | AI 상대측 반론 자동 생성 (LLM 스트리밍) | High | Done |
+| FR-19 | LLM 작성 지원 — "주장 보강" 버튼으로 법적 근거 추가 | Medium | In Progress |
 | **법률 검색 도구** | | | |
-| FR-20 | Legal Article Retriever — 법령 검색 (기존 RAG 활용 또는 독립) | High | Pending |
-| FR-21 | Legal Case Retriever — 판례 검색 (기존 RAG 활용 또는 독립) | High | Pending |
-| FR-22 | 검색 결과를 증거 패널에 카드 형태로 표시 | Medium | Pending |
+| FR-20 | Legal Article Retriever — 법령 검색 (기존 RAG 활용 또는 독립) | High | Done |
+| FR-21 | Legal Case Retriever — 판례 검색 (기존 RAG 활용 또는 독립) | High | Done |
+| FR-22 | 검색 결과를 증거 패널에 카드 형태로 표시 | Medium | Done |
 | **판결 및 피드백** | | | |
-| FR-23 | AI 판사 판결문 생성 (양측 주장 + 증거 종합, 한국 판결문 형식) | High | Pending |
-| FR-24 | 판결 이유 설명 (인용 판례/법령 명시) | High | Pending |
-| FR-25 | 사용자 주장의 강점/약점 피드백 제공 | Medium | Pending |
+| FR-23 | AI 판사 판결문 생성 (양측 주장 + 증거 종합, 한국 판결문 형식) | High | Done |
+| FR-24 | 판결 이유 설명 (인용 판례/법령 명시) | High | Done |
+| FR-25 | 사용자 주장의 강점/약점 피드백 제공 | Medium | Done |
 | **통합 및 안전** | | | |
-| FR-26 | 채팅 위젯에서 "모의재판" 키워드로 진입 가능 | Medium | Pending |
-| FR-27 | 전용 페이지(`/mock-trial`)에서 직접 시작 | High | Pending |
-| FR-28 | 면책 고지 표시 ("실제 법률 자문이 아닙니다") + 명시적 동의 절차 | High | Pending |
+| FR-26 | 채팅 위젯에서 "모의재판" 키워드로 진입 가능 | Medium | Done |
+| FR-27 | 전용 페이지(`/mock-trial`)에서 직접 시작 | High | Done |
+| FR-28 | 면책 고지 표시 ("실제 법률 자문이 아닙니다") + 명시적 동의 절차 | High | Done |
 | **법률 정확성 (v0.5 추가)** | | | |
-| FR-29 | 형사 증거조사 시 증거동의/부동의 절차 구현 (형사소송법 §318) | High | Pending |
-| FR-30 | 전문법칙(§310-2) 반영: 증거능력 vs 증명력 구분, 증거능력 판단 | Medium | Pending |
-| FR-31 | 한국 판결문 정형 형식: 형사(주문→범죄사실→증거요지→법령적용→양형이유), 민사(주문→이유→결론) | High | Pending |
-| FR-32 | 양형위원회 양형기준 참조: 범죄군별 권고형 범위(감경/기본/가중), 양형인자 | Medium | Pending |
-| FR-33 | 입증책임 원칙: 형사(검찰 입증, 무죄추정), 민사(주장자 입증, 변론주의) | High | Pending |
-| FR-34 | 에이전트 법정 어투: 실제 한국 법정 관례 발화 패턴 (판사 인정신문, 진술거부권 고지, 검사 구형 등) | Medium | Pending |
+| FR-29 | 형사 증거조사 시 증거동의/부동의 절차 구현 (형사소송법 §318) | High | In Progress |
+| FR-30 | 전문법칙(§310-2) 반영: 증거능력 vs 증명력 구분, 증거능력 판단 | Medium | In Progress |
+| FR-31 | 한국 판결문 정형 형식: 형사(주문→범죄사실→증거요지→법령적용→양형이유), 민사(주문→이유→결론) | High | Done |
+| FR-32 | 양형위원회 양형기준 참조: 범죄군별 권고형 범위(감경/기본/가중), 양형인자 | Medium | In Progress |
+| FR-33 | 입증책임 원칙: 형사(검찰 입증, 무죄추정), 민사(주장자 입증, 변론주의) | High | Done |
+| FR-34 | 에이전트 법정 어투: 실제 한국 법정 관례 발화 패턴 (판사 인정신문, 진술거부권 고지, 검사 구형 등) | Medium | Done |
 | **보안 (v0.5 추가)** | | | |
-| FR-35 | 프롬프트 인젝션 방어: 시스템 프롬프트 역할 바운더리 + case_summary 필터링 | High | Pending |
-| FR-36 | LLM 출력 안전성: 편향/혐오 표현 필터링, 실존 인물 비방 방지 | High | Pending |
+| FR-35 | 프롬프트 인젝션 방어: 시스템 프롬프트 역할 바운더리 + case_summary 필터링 | High | In Progress |
+| FR-36 | LLM 출력 안전성: 편향/혐오 표현 필터링, 실존 인물 비방 방지 | High | In Progress |
 | FR-37 | 세션 Rate Limiting: 세션당 LLM 호출 최대 50회, max_rounds 서버 강제 | Medium | Pending |
-| FR-38 | 사용자 입력 검증 강화: case_type/user_role 화이트리스트, 단계별 입력 1000자 제한 | Medium | Pending |
+| FR-38 | 사용자 입력 검증 강화: case_type/user_role 화이트리스트, 단계별 입력 1000자 제한 | Medium | Done |
 
 ### 3.2 Non-Functional Requirements
 
@@ -286,8 +286,8 @@
 | LLM 환각 — 존재하지 않는 판례/법령 인용 | High | Medium | RAG 검색 결과만 인용하도록 프롬프트 제약 + 출처 검증 |
 | 실제 법률 자문으로 오해 | High | Medium | 면책 고지 강제 표시, 판결문에 "모의재판" 명시 |
 | 다중 에이전트 호출로 LLM 비용 증가 | Medium | High | 에이전트별 토큰 제한, 서기 에이전트는 요약만 |
-| 6단계 재판이 너무 길어 이탈 | Medium | Medium | 각 단계 시간/라운드 제한, "빠른 재판" 모드 옵션 |
-| Phaser.js 번들 크기 (500KB+) | Medium | Low | dynamic import로 lazy load, 법정 씬 진입 시만 로드 |
+| 6단계 재판이 너무 길어 이탈 | Medium | Medium | 각 단계 시간/라운드 제한. ※ "빠른 재판" 모드는 향후 확장으로 분류 (현재 FR에 미포함) |
+| Phaser.js 번들 크기 (500KB+) | Medium | Low | dynamic import로 lazy load 구현 완료. 법정 씬 진입 시만 로드 |
 | 프롬프트 인젝션 (case_summary 통한 5개 에이전트 동시 공격) | High | Medium | 시스템 프롬프트 역할 바운더리 + case_summary 정규식 필터링 (FR-35) |
 | LLM 편향/혐오 출력 (AI 판사 편향 판결, 혐오 표현) | High | Low | 출력 사후 필터링 + 시스템 프롬프트 안전 규칙 (FR-36) |
 | sessionStorage 5MB 초과 (court_record 무한 증가) | Medium | Medium | 설정 정보만 저장, court_record는 메모리 전용 + Backend 체크포인터 복원 |
@@ -383,7 +383,7 @@
 │    │   ─(interrupt)─► 검사/변호인이 피고인에게 질문        │
 │    │   피고인 AI: 답변 생성                               │
 │    ▼                                                      │
-│  closing_node ─► [구형 및 최후진술]                        │
+│  criminal_closing_node ─► [구형 및 최후진술]               │
 │    │   검사: 의견진술/구형 (LLM 생성)                     │
 │    │   ─(interrupt)─► 변호인: 변론                        │
 │    │   피고인: 최후진술 (§303)                             │
@@ -426,7 +426,7 @@
 │    │   AI 상대측: 반박 (LLM 스트리밍)                     │
 │    │   라운드 체크 → 계속 or 변론종결로                    │
 │    ▼                                                      │
-│  closing_node ─► [변론종결]                               │
+│  civil_closing_node ─► [변론종결]                          │
 │    │   ─(interrupt)─► 양측 최종 주장 정리                 │
 │    │   재판장: 변론 종결 선언                              │
 │    ▼                                                      │
@@ -592,25 +592,29 @@ Backend는 기존 의존성으로 구현 가능:
 |-------|------|------|----------|--------|------|
 | **A. 에셋** | 1 | 픽셀아트 법정 타일맵 제작 (Tiled) | `public/assets/mock-trial/tilemap/` | - | 미착수 |
 | | 2 | 캐릭터 스프라이트시트 제작/조달 | `public/assets/mock-trial/sprites/` | - | 미착수 |
-| **B. Backend 코어** | 3 | Pydantic 스키마 정의 | `modules/mock_trial/schema/` | - | 미착수 |
-| | 4 | CourtAgent 클래스 보강 (generate→get_chat_model) | `subgraphs/mock_trial_agents.py` | Step 3 | [보강] |
-| | 5 | 에이전트 프롬프트 보강 (한국법 상세화) | `subgraphs/mock_trial_prompts.py` | Step 4 | [보강] |
-| | 6 | 서브그래프 노드 함수 완성 (형사 6단계 + 민사 6단계) | `subgraphs/mock_trial.py` | Step 4-5 | [보강] |
-| | 7 | MockTrialAgent(BaseChatAgent) 구현 | `agents/mock_trial_agent.py` | Step 6 | 미착수 |
-| | 8 | RAG 검색 서비스 (EvidenceSearcher Protocol) | `services/mock_trial_service.py` | Step 6 | 미착수 |
-| | 9 | 모듈 라우터 (전용 엔드포인트) | `modules/mock_trial/router/__init__.py` | Step 3, 8 | 미착수 |
+| **B. Backend 코어** | 3 | Pydantic 스키마 정의 | `modules/mock_trial/schema/` | - | [완료] |
+| | 4 | CourtAgent 클래스 보강 (generate→get_chat_model) | `subgraphs/mock_trial_agents.py` | Step 3 | [완료] |
+| | 5 | 에이전트 프롬프트 보강 (한국법 상세화) | `subgraphs/mock_trial_prompts.py` | Step 4 | [완료] |
+| | 6 | 서브그래프 노드 함수 완성 (형사 6단계 + 민사 6단계) | `subgraphs/mock_trial.py` | Step 4-5 | [완료] |
+| | 7 | MockTrialAgent(BaseChatAgent) 구현 | `agents/mock_trial_agent.py` | Step 6 | [완료] |
+| | 8 | RAG 검색 서비스 (EvidenceSearcher Protocol) | `services/mock_trial_service.py` | Step 6 | [완료] |
+| | 9 | 모듈 라우터 (전용 엔드포인트) | `modules/mock_trial/router/__init__.py` | Step 3, 8 | [완료] |
 | | 10 | 기존 시스템 통합 점검 | `router.py`, `nodes.py`, `graph.py` | Step 6 | [완료] |
-| **C. Frontend 코어** | 11 | TypeScript 타입 + 상수 정의 | `features/mock-trial/types/index.ts` | - | 미착수 |
-| | 12 | Phaser.js 설치 + Next.js dynamic import | `package.json`, `MockTrialGame.tsx` | Step 1-2 | 미착수 |
-| | 13 | EventBus (Phaser ↔ React 통신) | `game/EventBus.ts` | Step 12 | 미착수 |
-| | 14 | useTrialState 훅 (sessionStorage 동기화) | `hooks/useTrialState.ts` | Step 11 | 미착수 |
-| | 15 | 법정 씬 구현 (타일맵 + 캐릭터 배치) | `game/CourtScene.ts` | Step 12 | 미착수 |
-| | 16 | 말풍선 + 캐릭터 애니메이션 | `game/ui/SpeechBubble.ts`, sprites | Step 15 | 미착수 |
-| | 17 | React 오버레이 UI (ChatPanel, EvidencePanel 등) | `components/` | Step 13-14 | 미착수 |
-| | 18 | API 서비스 함수 | `services/index.ts` | Step 11 | 미착수 |
-| **D. 통합** | 19 | next.config.js rewrites (API 프록시) | `next.config.js` | Step 9 | 미착수 |
-| | 20 | Frontend ↔ Backend SSE 연동 | 전체 | Step 17, 9 | 미착수 |
+| **C. Frontend 코어** | 11 | TypeScript 타입 + 상수 정의 | `features/mock-trial/types/index.ts` | - | [완료] |
+| | 12 | Phaser.js 설치 + Next.js dynamic import | `package.json`, `MockTrialGame.tsx` | Step 1-2 | [완료] |
+| | 13 | EventBus (Phaser ↔ React 통신) | `game/EventBus.ts` | Step 12 | [완료] |
+| | 14 | useTrialState 훅 (sessionStorage 동기화) | `hooks/useTrialState.ts` | Step 11 | 미구현 (컴포넌트 직접 관리) |
+| | 15 | 법정 씬 구현 (타일맵 + 캐릭터 배치) | `game/CourtScene.ts` | Step 12 | [완료] |
+| | 16 | 말풍선 + 캐릭터 애니메이션 | `game/ui/SpeechBubble.ts`, sprites | Step 15 | [완료] |
+| | 17 | React 오버레이 UI (ChatPanel, EvidencePanel 등) | `components/` | Step 13-14 | [완료] |
+| | 18 | API 서비스 함수 | `services/index.ts` | Step 11 | [완료] |
+| **D. 통합** | 19 | next.config.js rewrites (API 프록시) | `next.config.js` | Step 9 | [완료] |
+| | 20 | Frontend ↔ Backend SSE 연동 | 전체 | Step 17, 9 | [완료] |
 | | 21 | 모듈 등록 확인 + 정적 검증 | `modules.ts`, `api.ts`, 린트 | Step 20 | [완료] |
+| **E. 보안/품질 (v0.5 추가)** | 22 | 프롬프트 인젝션 방어 (역할 바운더리 + 필터링) | `subgraphs/mock_trial_prompts.py` | Step 5 | In Progress |
+| | 23 | LLM 출력 안전성 (편향/혐오 필터링) | `subgraphs/mock_trial.py` | Step 6 | In Progress |
+| | 24 | 세션 Rate Limiting (50회/세션) | `subgraphs/mock_trial.py` | Step 6 | 미착수 |
+| | 25 | 증거동의/부동의 절차 (§318) | `subgraphs/mock_trial.py` | Step 6 | In Progress |
 
 ### 8.2 서브그래프 상태 스키마
 
@@ -674,8 +678,8 @@ class MockTrialState(TypedDict, total=False):
 | 2. 모두진술 | `opening_node` | 형사소송법 §285~§286 | 검사: 공소사실 요지 / 피고인·변호인: 의견 (사용자 입력) |
 | 3. 증거조사 | `evidence_node` | 형사소송법 §290~§313, §318(증거동의) | RAG 검색 판례/법령 제시, **증거동의/부동의**, 서증 제출, 증인신문 |
 | 4. 피고인신문 | `examination_node` | 형사소송법 §296-2 | 검사/변호인이 피고인에게 질문 (사용자 참여) |
-| 5. 구형 및 최후진술 | `closing_node` | 형사소송법 §302(검사 의견진술), §303(최후진술) | 검사 구형 → 변호인 변론 → 피고인 최후진술 (사용자 입력) |
-| 6. 판결선고 | `verdict_node` | 형사소송법 §42~§43(판결선고), §318(유죄이유) | AI 판사 판결문 생성 (한국 판결문 형식: 주문→이유→양형) |
+| 5. 구형 및 최후진술 | `criminal_closing_node` | 형사소송법 §302(검사 의견진술), §303(최후진술) | 검사 구형 → 변호인 변론 → 피고인 최후진술 (사용자 입력) |
+| 6. 판결선고 | `verdict_node` | 형사소송법 §43(판결선고방식), §39(판결선고기일), §318(유죄이유) | AI 판사 판결문 생성 (한국 판결문 형식: 주문→이유→양형) |
 
 **민사 변론절차 (민사소송법 기반)**:
 
@@ -685,7 +689,7 @@ class MockTrialState(TypedDict, total=False):
 | 2. 주장/답변 | `claims_node` | 민사소송법 §256~§257 | 원고 청구원인 진술 → 피고 답변/항변 (사용자 입력) |
 | 3. 증거조사 | `evidence_node` | 민사소송법 §288~§344 | RAG 검색 판례/법령, 서증 제출, 증인신문 시뮬레이션 |
 | 4. 변론 | `argument_node` | 민사소송법 §134~§148 | 양측 주장/반박 교환 2-3 라운드 (사용자 입력) |
-| 5. 변론종결 | `closing_node` | 민사소송법 §200 | 양측 최종 주장 정리, 재판장 변론종결 선언 (사용자 입력) |
+| 5. 변론종결 | `civil_closing_node` | 민사소송법 §200 | 양측 최종 주장 정리, 재판장 변론종결 선언 (사용자 입력) |
 | 6. 판결선고 | `verdict_node` | 민사소송법 §206~§208 | AI 판사 판결문 (청구 인용/기각 + 이유) |
 
 ### 8.4 Phaser.js ↔ React 통신 프로토콜
@@ -712,11 +716,12 @@ interface CourtEvents {
 
 1. [x] Plan 리뷰 및 승인
 2. [x] Design 문서 작성 (`/pdca design mock-trial`)
-3. [ ] Plan/Design 보강 (v0.4) — 기존 코드 현황 반영 + 실제 패턴 정합성
-4. [ ] 픽셀아트 에셋 확보 전략 결정 (무료 에셋 / AI 생성 / 직접 제작)
-5. [ ] Phaser.js + Next.js PoC (프로토타입)
-6. [ ] Backend 초안 코드 리팩토링 (Design 문서 기준)
-7. [ ] Frontend 구현 시작 (타입 → 훅 → 컴포넌트 → 게임 씬)
+3. [x] Plan/Design 보강 (v0.4~v0.6) — 기존 코드 현황 반영, 실제 패턴 정합성, 문서 동기화
+4. [x] Analysis 작성 및 보강 (v0.2) — Match Rate 산출 근거, 개선 로드맵 추가
+5. [ ] Error Handling 보강 — LLM 타임아웃, Canvas 폴백, EventBus 큐 (Analysis 70% → 90%)
+6. [ ] Security 보강 — Rate Limiting, 프롬프트 인젝션 방어 구현 (Analysis 80% → 95%)
+7. [ ] Frontend 미구현 항목 구현 — useTrialState 훅 분리, 증거 패널 고도화
+8. [ ] 통합 테스트 및 Gap Re-analysis (`/pdca analyze mock-trial`)
 
 ---
 
@@ -728,4 +733,5 @@ interface CourtEvents {
 | 0.2 | 2026-02-12 | 참고자료 반영 대폭 개편: Phaser.js 픽셀아트 UI, 5개 에이전트 역할, 5단계 재판 절차, Profile/Memory/Strategy 모듈, RAG 독립 인터페이스 | Claude |
 | 0.3 | 2026-02-12 | 한국 법정 절차 적용: 형사 공판절차 6단계(인정신문→판결선고) + 민사 변론절차 6단계(변론준비→판결선고), 형사/민사 분기 서브그래프, 법적 근거(형사소송법/민사소송법) 명시, FR 재구성(FR-28개) | Claude |
 | 0.4 | 2026-02-21 | 기존 구현 현황 반영 (초안 코드 8개 파일 + 미구현 12개 항목), LLM 클라이언트 정정 (get_solar_response_stream→get_chat_model), Implementation Plan 상태 표시 추가, Dependencies 정확도 개선 | Claude |
+| 0.6 | 2026-02-21 | 문서 동기화 보강: (1) FR 상태 38건 Pending→Done/In Progress 업데이트, (2) Implementation Step 상태 반영 + Phase E 추가, (3) §42→§43+§39 조문 정정, (4) closing_node→criminal/civil 분리 반영, (5) Next Steps 현행화, (6) 배심원 Out of Scope 명확화, (7) 리스크 완화 전략 현행화 | Claude |
 | 0.5 | 2026-02-21 | 5개 관점 에이전트 팀 리뷰 반영: (1) 법률 용어 정정 — "최종변론"→"구형 및 최후진술", 형사소송법 조문 번호 정정(§318-4→§42~43), 인정신문에 §283-2 추가, (2) FR 10개 추가 — 증거동의/부동의(FR-29), 전문법칙(FR-30), 판결문 형식(FR-31), 양형기준(FR-32), 입증책임(FR-33), 법정어투(FR-34), 프롬프트인젝션방어(FR-35), LLM출력필터링(FR-36), Rate Limiting(FR-37), 입력검증(FR-38), (3) NFR 6개 추가 — 접근성, 보안(2), 데이터보존, 최소해상도, (4) Risks 7개 추가 — 프롬프트인젝션, LLM편향, sessionStorage, EventBus유실, 법률정확성, 접근성 | Claude |
