@@ -9,7 +9,9 @@
 - Phase 2: 임베딩 품질 (Pairwise Cosine, Sim Matrix 상관, Separation)
 - Phase 3: LanceDB 검색 품질 (Top-K ID 일치, 순위 상관)
 - Phase 4: 모델 크기
-- Phase 5: 최종 리포트
+- Phase 5: 데이터 인제스트 속도
+- Phase 6: E2E 쿼리 지연시간
+- Phase 7: 최종 리포트 + MD 보고서
 
 사용법:
   cd backend && uv run python scripts/benchmark_embedding_quantize.py
@@ -17,6 +19,9 @@
   cd backend && uv run python scripts/benchmark_embedding_quantize.py --skip-quality
   cd backend && uv run python scripts/benchmark_embedding_quantize.py --skip-export
   cd backend && uv run python scripts/benchmark_embedding_quantize.py --skip-graph-opt
+  cd backend && uv run python scripts/benchmark_embedding_quantize.py --skip-ingest --skip-e2e
+  cd backend && uv run python scripts/benchmark_embedding_quantize.py --ingest-docs 200
+  cd backend && uv run python scripts/benchmark_embedding_quantize.py --no-report
 """
 
 import argparse
@@ -44,6 +49,10 @@ ONNX_O3_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-onnx-o3"
 ONNX_O3_INT8_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-onnx-o3-int8"
 LANCEDB_DIR = PROJECT_ROOT / "lancedb_data"
 LANCEDB_TABLE = "legal_chunks"
+DEFAULT_REPORT_PATH = (
+    PROJECT_ROOT.parent / "docs" / "04-report" / "features"
+    / "onnx-graph-optimization-benchmark.md"
+)
 
 SEPARATOR = "=" * 60
 WARMUP_RUNS = 2
@@ -204,17 +213,27 @@ def _copy_sentence_transformers_config(target_dir: Path) -> None:
 
 
 def _copy_tokenizer_and_st_config(src_dir: Path, dst_dir: Path) -> None:
-    """토크나이저 + sentence-transformers config 파일을 src_dir에서 dst_dir로 복사."""
+    """토크나이저 + config.json + sentence-transformers config 파일을 복사."""
+    import shutil
+
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(str(src_dir), trust_remote_code=True)
     tokenizer.save_pretrained(str(dst_dir))
+
+    # config.json 복사 (model_type 등 필수 정보 포함)
+    config_src = src_dir / "config.json"
+    if config_src.exists():
+        shutil.copy2(str(config_src), str(dst_dir / "config.json"))
+
     _copy_sentence_transformers_config(dst_dir)
 
 
 def export_onnx() -> bool:
-    """ONNX 모델 변환."""
-    if ONNX_DIR.exists() and (ONNX_DIR / "model.onnx").exists():
+    """ONNX 모델 변환 (optimum + 외부 데이터 파일 유지)."""
+    onnx_file = ONNX_DIR / "model.onnx"
+    onnx_data = ONNX_DIR / "model.onnx_data"
+    if onnx_file.exists() and (onnx_file.stat().st_size > 100_000_000 or onnx_data.exists()):
         print(f"  ONNX 모델 이미 존재: {ONNX_DIR}")
         return True
 
@@ -276,7 +295,13 @@ def quantize_int8() -> bool:
 
 
 def optimize_graph(level: str = "O3") -> bool:
-    """ONNX 그래프 최적화 (O2 또는 O3)."""
+    """ONNX 그래프 최적화 (O2 또는 O3).
+
+    Note: ORTOptimizer가 원본 외부 데이터 파일(model.onnx_data)을
+    삭제하는 문제가 있어 임시 복사본으로 최적화 후 원본을 복원한다.
+    """
+    import shutil
+
     from optimum.onnxruntime import ORTOptimizer
     from optimum.onnxruntime.configuration import AutoOptimizationConfig
 
@@ -288,6 +313,13 @@ def optimize_graph(level: str = "O3") -> bool:
 
     print(f"  {level} 그래프 최적화 중...")
     try:
+        # 원본 외부 데이터 파일을 보호하기 위해 임시 복사본 생성
+        onnx_data = ONNX_DIR / "model.onnx_data"
+        tmp_copy = ONNX_DIR / "model.onnx_data.backup"
+        has_external = onnx_data.exists()
+        if has_external:
+            shutil.copy2(str(onnx_data), str(tmp_copy))
+
         optimizer = ORTOptimizer.from_pretrained(str(ONNX_DIR))
         config = (
             AutoOptimizationConfig.O2()
@@ -300,11 +332,21 @@ def optimize_graph(level: str = "O3") -> bool:
             save_dir=str(target_dir), optimization_config=config
         )
 
+        # 최적화 후 원본 외부 데이터 복원
+        if has_external and not onnx_data.exists():
+            shutil.move(str(tmp_copy), str(onnx_data))
+            print("  원본 model.onnx_data 복원 완료")
+        elif tmp_copy.exists():
+            tmp_copy.unlink()
+
         _copy_tokenizer_and_st_config(ONNX_DIR, target_dir)
 
         print(f"  {level} 그래프 최적화 완료: {target_dir}")
         return True
     except Exception as e:
+        # 실패 시에도 백업 복원
+        if has_external and tmp_copy.exists() and not onnx_data.exists():
+            shutil.move(str(tmp_copy), str(onnx_data))
         print(f"  {level} 그래프 최적화 실패: {e}")
         return False
 
@@ -323,18 +365,19 @@ def quantize_optimized_int8() -> bool:
 
     print("  O3+INT8 양자화 중...")
     try:
-        from optimum.onnxruntime import ORTQuantizer
-        from optimum.onnxruntime.configuration import AutoQuantizationConfig
+        import onnx
+        from onnxruntime.quantization import QuantType, quantize_dynamic
 
-        quantizer = ORTQuantizer.from_pretrained(
-            str(ONNX_O3_DIR), file_name="model_optimized.onnx"
-        )
-        qconfig = AutoQuantizationConfig.avx2(is_static=False, per_channel=True)
-
+        src_model = str(ONNX_O3_DIR / "model_optimized.onnx")
         ONNX_O3_INT8_DIR.mkdir(parents=True, exist_ok=True)
-        quantizer.quantize(
-            save_dir=str(ONNX_O3_INT8_DIR),
-            quantization_config=qconfig,
+        dst_model = str(ONNX_O3_INT8_DIR / "model_quantized.onnx")
+
+        quantize_dynamic(
+            model_input=src_model,
+            model_output=dst_model,
+            per_channel=True,
+            weight_type=QuantType.QInt8,
+            extra_options={"DefaultTensorType": onnx.TensorProto.FLOAT},
         )
 
         _copy_tokenizer_and_st_config(ONNX_O3_DIR, ONNX_O3_INT8_DIR)
@@ -400,29 +443,31 @@ def _encode_onnx(
     batch_size: int = 32,
 ) -> np.ndarray:
     """ONNX 임베딩 (optimum + mean pooling + L2 norm)."""
-    # sentence-transformers backend="onnx" 시도
-    try:
-        from sentence_transformers import SentenceTransformer
+    # 외부 데이터 파일이 없는 모델만 sentence-transformers 백엔드 시도
+    has_external_data = (model_dir / f"{file_name}_data").exists()
+    if not has_external_data:
+        try:
+            from sentence_transformers import SentenceTransformer
 
-        model = SentenceTransformer(
-            str(model_dir),
-            backend="onnx",
-            trust_remote_code=True,
-            local_files_only=True,
-            model_kwargs={"file_name": file_name},
-        )
-        embeddings = model.encode(
-            texts,
-            batch_size=batch_size,
-            show_progress_bar=False,
-            normalize_embeddings=True,
-        )
-        result = np.array(embeddings)
-        del model
-        gc.collect()
-        return result
-    except Exception as e:
-        print(f"    [참고] sentence-transformers ONNX 백엔드 실패 → optimum fallback ({e})")
+            model = SentenceTransformer(
+                str(model_dir),
+                backend="onnx",
+                trust_remote_code=True,
+                local_files_only=True,
+                model_kwargs={"file_name": file_name},
+            )
+            embeddings = model.encode(
+                texts,
+                batch_size=batch_size,
+                show_progress_bar=False,
+                normalize_embeddings=True,
+            )
+            result = np.array(embeddings)
+            del model
+            gc.collect()
+            return result
+        except Exception as e:
+            print(f"    [참고] sentence-transformers ONNX 백엔드 실패 → optimum fallback ({e})")
 
     # fallback: optimum 직접 사용
     tokenizer, ort_model = _load_onnx_model(model_dir, file_name)
@@ -856,7 +901,203 @@ def run_size_benchmark() -> dict[str, float]:
 
 
 # ============================================================
-# Phase 5: 최종 리포트
+# Phase 5: 데이터 인제스트 속도
+# ============================================================
+
+
+def _load_ingest_texts(n: int) -> list[str]:
+    """인제스트 테스트용 텍스트 로드 (precedents_v2.json → 폴백: BENCHMARK_DOCUMENTS)."""
+    import json as json_mod
+
+    precedent_file = PROJECT_ROOT / "data" / "precedents_v2.json"
+    texts: list[str] = []
+
+    if precedent_file.exists():
+        print(f"  문서 로드: {precedent_file.name}")
+        try:
+            import ijson
+
+            with open(precedent_file, "rb") as f:
+                for item in ijson.items(f, "item"):
+                    summary = item.get("판례요약", "")
+                    if summary and len(summary) > 50:
+                        texts.append(summary)
+                        if len(texts) >= n:
+                            break
+        except ImportError:
+            with open(precedent_file, encoding="utf-8") as f:
+                data = json_mod.load(f)
+            for item in data[: n * 2]:
+                summary = item.get("판례요약", "")
+                if summary and len(summary) > 50:
+                    texts.append(summary)
+                    if len(texts) >= n:
+                        break
+
+    if len(texts) < n:
+        print(f"  [폴백] BENCHMARK_DOCUMENTS ({len(BENCHMARK_DOCUMENTS)}건)")
+        texts = list(BENCHMARK_DOCUMENTS[:n])
+
+    return texts
+
+
+def run_ingest_benchmark(ingest_docs: int = 200) -> dict[str, dict[str, float]]:
+    """Phase 5: 데이터 인제스트 속도 벤치마크."""
+    import lancedb
+
+    print(f"\n{SEPARATOR}")
+    print(f"  Phase 5: 데이터 인제스트 속도 ({ingest_docs}문서)")
+    print(SEPARATOR)
+
+    texts = _load_ingest_texts(ingest_docs)
+    print(f"  테스트 문서: {len(texts)}건")
+
+    results: dict[str, dict[str, float]] = {}
+    db = lancedb.connect(str(LANCEDB_DIR))
+    temp_table = "_benchmark_temp"
+
+    def _ingest_one(
+        encode_fn: Callable[..., np.ndarray],
+        key: str,
+        label: str,
+        **kwargs: Any,
+    ) -> None:
+        t0 = time.monotonic()
+        embeddings = encode_fn(texts, **kwargs)
+        embed_ms = (time.monotonic() - t0) * 1000
+
+        records = [
+            {"id": i, "text": t, "vector": e.tolist()}
+            for i, (t, e) in enumerate(zip(texts, embeddings))
+        ]
+        t0 = time.monotonic()
+        db.create_table(temp_table, records, mode="overwrite")
+        write_ms = (time.monotonic() - t0) * 1000
+
+        total_ms = embed_ms + write_ms
+        dps = len(texts) / (total_ms / 1000) if total_ms > 0 else 0
+        results[key] = {
+            "embedding_time_ms": embed_ms,
+            "write_time_ms": write_ms,
+            "total_ms": total_ms,
+            "docs_per_second": dps,
+        }
+        print(
+            f"    임베딩: {embed_ms:.0f}ms  쓰기: {write_ms:.0f}ms"
+            f"  총: {total_ms:.0f}ms  ({dps:.1f} docs/s)"
+        )
+        del embeddings
+        gc.collect()
+
+    try:
+        print("\n  [PyTorch FP32]")
+        _ingest_one(_encode_pytorch, "pytorch_fp32", "PyTorch FP32")
+
+        for model_key, model_dir, file_name in _get_model_configs():
+            label = MODEL_LABELS.get(model_key, model_key.upper())
+            print(f"\n  [{label}]")
+            _ingest_one(
+                _encode_onnx, model_key, label,
+                model_dir=model_dir, file_name=file_name,
+            )
+    finally:
+        try:
+            db.drop_table(temp_table)
+            print(f"\n  임시 테이블 '{temp_table}' 삭제 완료")
+        except Exception:
+            pass
+
+    return results
+
+
+# ============================================================
+# Phase 6: E2E 쿼리 지연시간
+# ============================================================
+
+
+def run_e2e_query_benchmark() -> dict[str, dict[str, float]]:
+    """Phase 6: E2E 쿼리 지연시간 벤치마크."""
+    import lancedb
+
+    print(f"\n{SEPARATOR}")
+    print("  Phase 6: E2E 쿼리 지연시간")
+    print(SEPARATOR)
+
+    lance_path = LANCEDB_DIR / f"{LANCEDB_TABLE}.lance"
+    if not lance_path.exists():
+        print(f"  LanceDB 데이터 없음: {lance_path}")
+        return {}
+
+    db = lancedb.connect(str(LANCEDB_DIR))
+    try:
+        table = db.open_table(LANCEDB_TABLE)
+    except Exception as e:
+        print(f"  LanceDB 테이블 열기 실패: {e}")
+        return {}
+
+    queries = BENCHMARK_QUERIES
+    results: dict[str, dict[str, float]] = {}
+
+    def _measure_e2e(
+        encode_fn: Callable[..., np.ndarray],
+        label: str,
+        **kwargs: Any,
+    ) -> dict[str, float]:
+        # warm-up
+        for _ in range(WARMUP_RUNS):
+            emb = encode_fn(queries[:1], **kwargs)
+            table.search(emb[0].tolist()).metric("cosine").limit(10).to_pandas()
+
+        embed_times: list[float] = []
+        search_times: list[float] = []
+        e2e_times: list[float] = []
+
+        for q in queries:
+            for _ in range(REPEAT_RUNS):
+                t0 = time.monotonic()
+                emb = encode_fn([q], **kwargs)
+                t_embed = time.monotonic() - t0
+
+                t0 = time.monotonic()
+                table.search(emb[0].tolist()).metric("cosine").limit(10).to_pandas()
+                t_search = time.monotonic() - t0
+
+                embed_times.append(t_embed * 1000)
+                search_times.append(t_search * 1000)
+                e2e_times.append((t_embed + t_search) * 1000)
+
+        embed_median = float(np.median(embed_times))
+        search_median = float(np.median(search_times))
+        e2e_median = float(np.median(e2e_times))
+        p95 = float(np.percentile(e2e_times, 95))
+
+        print(
+            f"    {label:<30s} embed={embed_median:.1f}ms"
+            f"  search={search_median:.1f}ms  e2e={e2e_median:.1f}ms  p95={p95:.1f}ms"
+        )
+        return {
+            "embed_ms": embed_median,
+            "search_ms": search_median,
+            "e2e_ms": e2e_median,
+            "p95_e2e_ms": p95,
+        }
+
+    print("\n  [PyTorch FP32]")
+    results["pytorch_fp32"] = _measure_e2e(_encode_pytorch, "E2E")
+
+    for model_key, model_dir, file_name in _get_model_configs():
+        label_text = MODEL_LABELS.get(model_key, model_key.upper())
+        print(f"\n  [{label_text}]")
+        results[model_key] = _measure_e2e(
+            _encode_onnx, "E2E",
+            model_dir=model_dir, file_name=file_name,
+        )
+
+    return results
+
+
+# ============================================================
+# Phase 7: 최종 리포트 + MD 보고서
 # ============================================================
 
 
@@ -872,8 +1113,10 @@ def print_final_report(
     quality_results: dict[str, dict[str, float]],
     search_results: dict[str, dict[str, float]],
     size_results: dict[str, float],
+    ingest_results: dict[str, dict[str, float]],
+    e2e_results: dict[str, dict[str, float]],
 ) -> None:
-    """Phase 5: 최종 리포트 출력."""
+    """Phase 7: 최종 리포트 출력."""
     print(f"\n{SEPARATOR}")
     print("  임베딩 모델 양자화 종합 벤치마크 결과")
     print(f"  모델: {MODEL_NAME} (1024차원)")
@@ -914,10 +1157,48 @@ def print_final_report(
                 cols += f" {float(ms):>10.0f}ms"
             print(f"  {label:<30s}{cols}")
 
-    # --- 3. 임베딩 품질 ---
+    # --- 3. 인제스트 속도 ---
+    if ingest_results:
+        print("\n  [3. 인제스트 속도]")
+        print(f"  {'방식':<30s} {'임베딩':>10s} {'쓰기':>10s} {'총':>10s} {'문서/초':>10s}")
+        print(f"  {'-' * 30} {'-' * 10} {'-' * 10} {'-' * 10} {'-' * 10}")
+
+        all_ingest_keys = ["pytorch_fp32", *model_keys]
+        for key in all_ingest_keys:
+            if key in ingest_results:
+                label = MODEL_LABELS.get(key, key.upper())
+                r = ingest_results[key]
+                print(
+                    f"  {label:<30s}"
+                    f" {r.get('embedding_time_ms', 0):>8.0f}ms"
+                    f" {r.get('write_time_ms', 0):>8.0f}ms"
+                    f" {r.get('total_ms', 0):>8.0f}ms"
+                    f" {r.get('docs_per_second', 0):>9.1f}"
+                )
+
+    # --- 4. E2E 쿼리 지연시간 ---
+    if e2e_results:
+        print("\n  [4. E2E 쿼리 지연시간]")
+        print(f"  {'방식':<30s} {'임베딩':>10s} {'검색':>10s} {'E2E':>10s} {'P95':>10s}")
+        print(f"  {'-' * 30} {'-' * 10} {'-' * 10} {'-' * 10} {'-' * 10}")
+
+        all_e2e_keys = ["pytorch_fp32", *model_keys]
+        for key in all_e2e_keys:
+            if key in e2e_results:
+                label = MODEL_LABELS.get(key, key.upper())
+                r = e2e_results[key]
+                print(
+                    f"  {label:<30s}"
+                    f" {r.get('embed_ms', 0):>8.1f}ms"
+                    f" {r.get('search_ms', 0):>8.1f}ms"
+                    f" {r.get('e2e_ms', 0):>8.1f}ms"
+                    f" {r.get('p95_e2e_ms', 0):>8.1f}ms"
+                )
+
+    # --- 5. 임베딩 품질 ---
     if quality_results:
         present_quality_keys = [k for k in model_keys if k in quality_results]
-        print("\n  [3. 임베딩 품질]")
+        print("\n  [5. 임베딩 품질]")
         print(f"  {'메트릭':<25s}", end="")
         for key in present_quality_keys:
             label = MODEL_LABELS.get(key, key.upper())
@@ -946,10 +1227,10 @@ def print_final_report(
             threshold_str = f">={threshold}" if higher_is_better else f"<{threshold}"
             print(f" {threshold_str:>10s} {worst_verdict:>6s}")
 
-    # --- 4. LanceDB 검색 품질 ---
+    # --- 6. LanceDB 검색 품질 ---
     if search_results:
         present_search_keys = [k for k in model_keys if k in search_results]
-        print("\n  [4. LanceDB 검색 품질]")
+        print("\n  [6. LanceDB 검색 품질]")
         print(f"  {'메트릭':<25s}", end="")
         for key in present_search_keys:
             label = MODEL_LABELS.get(key, key.upper())
@@ -982,9 +1263,9 @@ def print_final_report(
             threshold_str = f">={threshold:.0%}" if "일치율" in metric_label else f">={threshold}"
             print(f" {threshold_str:>10s} {worst_verdict:>6s}")
 
-    # --- 5. 모델 크기 ---
+    # --- 7. 모델 크기 ---
     if size_results:
-        print("\n  [5. 모델 크기]")
+        print("\n  [7. 모델 크기]")
         print(f"  {'방식':<30s} {'크기':>10s} {'절약':>8s}")
         print(f"  {'-' * 30} {'-' * 10} {'-' * 8}")
 
@@ -1067,6 +1348,33 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="그래프 최적화 (O2/O3) 모델 스킵",
     )
+    parser.add_argument(
+        "--skip-ingest",
+        action="store_true",
+        help="데이터 인제스트 벤치마크 스킵",
+    )
+    parser.add_argument(
+        "--skip-e2e",
+        action="store_true",
+        help="E2E 쿼리 벤치마크 스킵",
+    )
+    parser.add_argument(
+        "--ingest-docs",
+        type=int,
+        default=200,
+        help="인제스트 테스트 문서 수 (기본: 200)",
+    )
+    parser.add_argument(
+        "--report",
+        type=str,
+        default=None,
+        help="MD 보고서 저장 경로",
+    )
+    parser.add_argument(
+        "--no-report",
+        action="store_true",
+        help="MD 보고서 생성 스킵",
+    )
     return parser.parse_args()
 
 
@@ -1119,8 +1427,44 @@ def main() -> None:
     # --- Phase 4: 모델 크기 비교 ---
     size_results = run_size_benchmark()
 
-    # --- Phase 5: 최종 리포트 ---
-    print_final_report(speed_results, quality_results, search_results, size_results)
+    # --- Phase 5: 데이터 인제스트 속도 ---
+    ingest_results: dict[str, dict[str, float]] = {}
+    if not args.skip_ingest:
+        ingest_results = run_ingest_benchmark(args.ingest_docs)
+    else:
+        print("\n  Phase 5: 스킵 (--skip-ingest)")
+
+    # --- Phase 6: E2E 쿼리 지연시간 ---
+    e2e_results: dict[str, dict[str, float]] = {}
+    if not args.skip_e2e:
+        e2e_results = run_e2e_query_benchmark()
+    else:
+        print("\n  Phase 6: 스킵 (--skip-e2e)")
+
+    # --- Phase 7: 최종 리포트 + MD 보고서 ---
+    print_final_report(
+        speed_results, quality_results, search_results,
+        size_results, ingest_results, e2e_results,
+    )
+
+    if not args.no_report:
+        from scripts.benchmark_embedding_report import generate_report
+
+        report_path = Path(args.report) if args.report else DEFAULT_REPORT_PATH
+        generate_report(
+            speed_results=speed_results,
+            quality_results=quality_results,
+            search_results=search_results,
+            size_results=size_results,
+            ingest_results=ingest_results,
+            e2e_results=e2e_results,
+            output_path=report_path,
+            model_name=MODEL_NAME,
+            ingest_docs=args.ingest_docs,
+        )
+        print(f"\n  MD 보고서 생성: {report_path}")
+    else:
+        print("\n  MD 보고서: 스킵 (--no-report)")
 
 
 if __name__ == "__main__":
