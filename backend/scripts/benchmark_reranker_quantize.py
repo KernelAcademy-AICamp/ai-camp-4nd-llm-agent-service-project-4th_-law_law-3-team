@@ -46,6 +46,12 @@ DOCUMENTS = [
 ]
 
 SEPARATOR = "=" * 60
+PIPELINE_TOTAL_MS = 24400  # 현재 전체 파이프라인 시간 (ms)
+
+
+def _sigmoid(x: float | np.ndarray) -> float | np.ndarray:
+    """Sigmoid 활성화 함수."""
+    return 1 / (1 + np.exp(-x))
 
 
 def benchmark_pytorch_fp32() -> tuple[list[float], float]:
@@ -84,7 +90,7 @@ def benchmark_pytorch_fp32() -> tuple[list[float], float]:
 
     # 상위 5개 결과
     ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
-    print(f"\n  Top-5 (score):")
+    print("\n  Top-5 (score):")
     for rank, (idx, score) in enumerate(ranked[:5]):
         doc_preview = DOCUMENTS[idx][:50]
         print(f"    {rank + 1}. [{idx:>2d}] {score:.4f}  {doc_preview}...")
@@ -175,10 +181,6 @@ def benchmark_onnx(
     )
     _ = ort_model(**inputs)
 
-    # sigmoid 함수
-    def sigmoid(x: float) -> float:
-        return 1 / (1 + np.exp(-x))
-
     # 5회 반복 측정
     all_times: list[float] = []
     scores: list[float] = []
@@ -193,7 +195,7 @@ def benchmark_onnx(
             )
             outputs = ort_model(**inputs)
             logit = outputs.logits[0][0].item()
-            trial_scores.append(sigmoid(logit))
+            trial_scores.append(float(_sigmoid(logit)))
         elapsed = time.monotonic() - t0
         all_times.append(elapsed)
         if trial == 0:
@@ -204,7 +206,7 @@ def benchmark_onnx(
     print(f"  건당 평균: {avg_time / len(DOCUMENTS) * 1000:.1f}ms")
 
     ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
-    print(f"\n  Top-5 (score):")
+    print("\n  Top-5 (score):")
     for rank, (idx, score) in enumerate(ranked[:5]):
         doc_preview = DOCUMENTS[idx][:50]
         print(f"    {rank + 1}. [{idx:>2d}] {score:.4f}  {doc_preview}...")
@@ -233,9 +235,6 @@ def benchmark_onnx_batched(
     load_time = time.monotonic() - t0
     print(f"  모델 로드: {load_time * 1000:.0f}ms")
 
-    def sigmoid(x: np.ndarray) -> np.ndarray:
-        return 1 / (1 + np.exp(-x))
-
     # warm-up
     inputs = tokenizer(
         ["테스트"] * 2, ["문서1", "문서2"],
@@ -256,7 +255,7 @@ def benchmark_onnx_batched(
         )
         outputs = ort_model(**inputs)
         logits = outputs.logits[:, 0].detach().numpy()
-        trial_scores = sigmoid(logits).tolist()
+        trial_scores = _sigmoid(logits).tolist()  # type: ignore[union-attr]
         elapsed = time.monotonic() - t0
         all_times.append(elapsed)
         if trial == 0:
@@ -267,7 +266,7 @@ def benchmark_onnx_batched(
     print(f"  건당 평균: {avg_time / len(DOCUMENTS) * 1000:.1f}ms")
 
     ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
-    print(f"\n  Top-5 (score):")
+    print("\n  Top-5 (score):")
     for rank, (idx, score) in enumerate(ranked[:5]):
         doc_preview = DOCUMENTS[idx][:50]
         print(f"    {rank + 1}. [{idx:>2d}] {score:.4f}  {doc_preview}...")
@@ -402,12 +401,12 @@ def main() -> None:
 
     # 파이프라인 영향
     if int8_batch_time > 0:
-        pipeline_total = 24400  # ms
+        pipeline_total = PIPELINE_TOTAL_MS
         rerank_baseline = fp32_time * 1000
         rerank_int8 = int8_batch_time * 1000
         new_total = pipeline_total - rerank_baseline + rerank_int8
         saved = pipeline_total - new_total
-        print(f"\n  파이프라인 전체 영향:")
+        print("\n  파이프라인 전체 영향:")
         print(f"    현재:  {pipeline_total:.0f}ms (리랭킹 {rerank_baseline:.0f}ms)")
         print(f"    INT8:  {new_total:.0f}ms (리랭킹 {rerank_int8:.0f}ms)")
         print(f"    절약:  {saved:.0f}ms ({saved / pipeline_total * 100:.1f}%)")

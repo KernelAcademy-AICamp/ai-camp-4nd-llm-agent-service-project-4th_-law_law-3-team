@@ -24,8 +24,9 @@ import gc
 import os
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -378,7 +379,7 @@ def _encode_pytorch(
 def _load_onnx_model(
     model_dir: Path,
     file_name: str = "model.onnx",
-) -> tuple[object, object]:
+) -> tuple[Any, Any]:
     """ONNX 모델 + 토크나이저 로드. (optimum 사용)"""
     from optimum.onnxruntime import ORTModelForFeatureExtraction
     from transformers import AutoTokenizer
@@ -420,8 +421,8 @@ def _encode_onnx(
         del model
         gc.collect()
         return result
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"    [참고] sentence-transformers ONNX 백엔드 실패 → optimum fallback ({e})")
 
     # fallback: optimum 직접 사용
     tokenizer, ort_model = _load_onnx_model(model_dir, file_name)
@@ -463,25 +464,22 @@ def _encode_onnx(
 
 
 def _measure_single_query_speed(
-    encode_fn: object,
+    encode_fn: Callable[..., np.ndarray],
     queries: list[str],
     label: str,
-    **kwargs: object,
+    **kwargs: Any,
 ) -> float:
     """단일 쿼리 속도 측정 (warm-up + 반복)."""
-    fn = encode_fn  # type: ignore[assignment]
-    assert callable(fn)
-
     # warm-up
     for _ in range(WARMUP_RUNS):
-        fn(queries[:1], **kwargs)  # type: ignore[operator]
+        encode_fn(queries[:1], **kwargs)
 
     times: list[float] = []
     for q in queries:
         query_times: list[float] = []
         for _ in range(REPEAT_RUNS):
             t0 = time.monotonic()
-            fn([q], **kwargs)  # type: ignore[operator]
+            encode_fn([q], **kwargs)
             query_times.append(time.monotonic() - t0)
         avg = float(np.median(query_times))
         times.append(avg)
@@ -492,28 +490,25 @@ def _measure_single_query_speed(
 
 
 def _measure_batch_speed(
-    encode_fn: object,
+    encode_fn: Callable[..., np.ndarray],
     documents: list[str],
     label: str,
     batch_sizes: Optional[list[int]] = None,
-    **kwargs: object,
+    **kwargs: Any,
 ) -> dict[int, float]:
     """배치 속도 측정."""
     if batch_sizes is None:
         batch_sizes = [32, 64, 128]
 
-    fn = encode_fn  # type: ignore[assignment]
-    assert callable(fn)
-
     results: dict[int, float] = {}
     for bs in batch_sizes:
         # warm-up
-        fn(documents[:2], batch_size=bs, **kwargs)  # type: ignore[operator]
+        encode_fn(documents[:2], batch_size=bs, **kwargs)
 
         times: list[float] = []
         for _ in range(REPEAT_RUNS):
             t0 = time.monotonic()
-            fn(documents, batch_size=bs, **kwargs)  # type: ignore[operator]
+            encode_fn(documents, batch_size=bs, **kwargs)
             times.append(time.monotonic() - t0)
 
         avg_ms = float(np.median(times)) * 1000
@@ -891,13 +886,13 @@ def print_final_report(
     print(f"  {'방식':<30s} {'평균':>10s} {'상대 속도':>12s}")
     print(f"  {'-' * 30} {'-' * 10} {'-' * 12}")
 
-    pt_single = float(speed_results.get("pytorch_fp32", {}).get("single_ms", 0))  # type: ignore[union-attr]
+    pt_single = float(speed_results.get("pytorch_fp32", {}).get("single_ms", 0))  # type: ignore[arg-type]
     print(f"  {'PyTorch FP32 (baseline)':<30s} {pt_single:>8.1f}ms {'1.0x':>12s}")
 
     for key in model_keys:
         if key in speed_results:
             label = MODEL_LABELS.get(key, key.upper())
-            ms = float(speed_results[key].get("single_ms", 0))  # type: ignore[union-attr]
+            ms = float(speed_results[key].get("single_ms", 0))  # type: ignore[arg-type]
             speedup = pt_single / ms if ms > 0 else 0
             print(f"  {label:<30s} {ms:>8.1f}ms {speedup:>10.1f}x")
 
@@ -915,7 +910,7 @@ def print_final_report(
             batch_data = speed_results[key].get("batch", {})
             cols = ""
             for b in batch_sizes:
-                ms = batch_data.get(b, 0)  # type: ignore[union-attr]
+                ms = batch_data.get(b, 0)  # type: ignore[attr-defined]
                 cols += f" {float(ms):>10.0f}ms"
             print(f"  {label:<30s}{cols}")
 
@@ -941,14 +936,15 @@ def print_final_report(
 
         for metric_label, metric_key, threshold, higher_is_better in quality_metrics:
             print(f"  {metric_label:<25s}", end="")
-            last_verdict = ""
+            worst_verdict = "PASS"
             for mk in present_quality_keys:
                 val = quality_results[mk].get(metric_key, 0)
                 print(f" {val:>14.4f}", end="")
-                last_verdict = _pass_fail(val, threshold, higher_is_better)
+                if _pass_fail(val, threshold, higher_is_better) == "FAIL":
+                    worst_verdict = "FAIL"
 
             threshold_str = f">={threshold}" if higher_is_better else f"<{threshold}"
-            print(f" {threshold_str:>10s} {last_verdict:>6s}")
+            print(f" {threshold_str:>10s} {worst_verdict:>6s}")
 
     # --- 4. LanceDB 검색 품질 ---
     if search_results:
@@ -973,17 +969,18 @@ def print_final_report(
 
         for metric_label, metric_key, threshold, higher_is_better in search_metrics:
             print(f"  {metric_label:<25s}", end="")
-            last_verdict = ""
+            worst_verdict = "PASS"
             for mk in present_search_keys:
                 val = search_results[mk].get(metric_key, 0)
                 if "일치율" in metric_label:
                     print(f" {val:>13.0%}", end="")
                 else:
                     print(f" {val:>14.4f}", end="")
-                last_verdict = _pass_fail(val, threshold, higher_is_better)
+                if _pass_fail(val, threshold, higher_is_better) == "FAIL":
+                    worst_verdict = "FAIL"
 
             threshold_str = f">={threshold:.0%}" if "일치율" in metric_label else f">={threshold}"
-            print(f" {threshold_str:>10s} {last_verdict:>6s}")
+            print(f" {threshold_str:>10s} {worst_verdict:>6s}")
 
     # --- 5. 모델 크기 ---
     if size_results:
@@ -1009,7 +1006,7 @@ def print_final_report(
         speed_str = ""
 
         if key in speed_results:
-            ms = float(speed_results[key].get("single_ms", 0))  # type: ignore[union-attr]
+            ms = float(speed_results[key].get("single_ms", 0))  # type: ignore[arg-type]
             speedup = pt_single / ms if ms > 0 else 0
             speed_str = f"속도 {speedup:.1f}x"
 
