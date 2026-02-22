@@ -1,12 +1,12 @@
 # ONNX 그래프 최적화 벤치마크 보고서
 
-> 생성일: 2026-02-21 18:31 UTC  
-> 모델: nlpai-lab/KURE-v1 (1024차원)  
+> 생성일: 2026-02-21 18:31 UTC (torch.compile 분석 추가: 2026-02-23)
+> 모델: nlpai-lab/KURE-v1 (1024차원)
 > 벤치마크 쿼리: 10개, 문서: 20개, 인제스트 테스트: 200건
 
 ## 요약
 
-**추천 variant**: `PyTorch FP32` — PyTorch 대비 **1.0x** 속도 향상 (CPU), 품질 기준 충족
+**추천 variant**: `PyTorch FP32` — 모든 최적화 경로(ONNX 그래프 최적화, INT8 양자화, torch.compile)를 실험한 결과, PyTorch FP32가 **속도·품질·운영 복잡도** 종합 최적. torch.compile은 WSL2+GPU 환경에서 실측하였으나 실질적 개선 없음 (1.01-1.02x).
 
 ## 1. 속도 비교
 
@@ -217,6 +217,99 @@ O3+INT8에서 1.3x 속도 개선이 발생한 핵심 원인은 **INT8 양자화*
 
 > 이전 벤치마크에서 O2/O3가 cosine 1.0을 보인 것은 `sentence-transformers` ONNX 백엔드가 원본 PyTorch 가중치로 fallback한 결과로 추정됨 (6.1절 참조)
 
+### 6.5 torch.compile 미개선 원인 — 실험적 검증
+
+> 환경: WSL2 Linux (6.6.87.2-microsoft-standard-WSL2), RTX 5060 Ti, PyTorch 2.10.0+cu128
+> 진단 스크립트: `benchmark_compile_diagnosis.py`
+
+Windows에서 Triton 미지원으로 스킵되었던 `torch.compile` 벤치마크를 WSL2 Linux 환경에서 실행.
+초기 측정에서 임베딩 0.85x, 리랭커 0.95x로 **오히려 느리게** 나타나 5단계 진단을 수행했다.
+
+#### 6.5.1 초기 벤치마크 결과 (모델 재생성 방식)
+
+`benchmark_advanced_optimization.py`의 기존 측정 방식 결과:
+
+| 모델 | 방법 | 시간 (ms) | 상대 속도 | 품질 |
+|------|------|----------:|----------:|-----:|
+| 임베딩 | PyTorch FP32 (baseline) | 1,445 | 1.0x | 1.000 |
+| 임베딩 | torch.compile (max-autotune) | 1,702 | 0.85x | 1.000 |
+| 리랭커 | PyTorch FP32 (baseline) | 2,826 | 1.0x | 1.000 |
+| 리랭커 | torch.compile (default) | 2,980 | 0.95x | 1.000 |
+
+#### 6.5.2 근본 원인 1: 벤치마크 측정 설계 결함
+
+진단 실험으로 시간 구성을 분리 측정한 결과, 기존 벤치마크의 **"모델 매번 재생성"** 방식이 결과를 왜곡하고 있었다.
+
+| 단계 | 시간 (ms) | 비중 |
+|------|----------:|-----:|
+| 모델 로드 | 1,101 | 59.4% |
+| 추론 (30건, GPU) | 64 | 3.4% |
+| 모델 GC + 정리 | ~690 | 37.2% |
+| **합계 (매 호출)** | **~1,855** | 100% |
+
+기존 벤치마크(`_encode_compiled`)는 매 호출마다 `SentenceTransformer` 생성 → `torch.compile` 래핑 → 추론 → 삭제를 반복. warmup 3회 + repeat 5회 = **8회 모두** 모델 로드 + 컴파일이 포함됨.
+
+| 측정 방식 | PyTorch (ms) | torch.compile (ms) | 상대 속도 |
+|-----------|------------:|-------------------:|----------:|
+| 매번 재생성 (기존) | 1,855 | 1,973 | 0.94x |
+| **영속 모델 추론 (정정)** | **63.7** | **62.6** | **1.02x** |
+
+→ 기존 벤치마크는 **"모델 로드 속도"**를 측정한 것이지 **"추론 속도"**를 측정한 것이 아니었다.
+
+#### 6.5.3 근본 원인 2: cuBLAS GEMM이 이미 최적
+
+CUDA 이벤트 프로파일링으로 GPU 커널 시간을 분리 측정:
+
+| 항목 | PyTorch | torch.compile | 차이 |
+|------|--------:|--------------:|-----:|
+| GPU 커널 시간 | 65.9ms | 64.3ms | **1.03x** |
+| Python/CPU 오버헤드 | -0.1ms | -0.1ms | 동일 |
+
+torch.compile의 커널 융합(kernel fusion)은 element-wise 연산(LayerNorm, GELU 등)을 병합하여 메모리 대역폭을 절약한다.
+그러나 XLM-RoBERTa Large(1024차원, 16헤드)의 추론은 **MatMul(cuBLAS GEMM)이 60-70% 지배**하며,
+cuBLAS는 NVIDIA가 극한까지 최적화한 커널이므로 torch.compile이 추가로 개선할 여지가 없다.
+
+이는 6.2절(BERT 구조적 한계)에서 ONNX 그래프 최적화가 효과 없던 이유와 동일한 근본 원인이다.
+
+#### 6.5.4 입력 크기별 스케일링
+
+모델을 영속시키고 입력 크기를 변화시켜 torch.compile 효과 임계점을 탐색:
+
+| N (텍스트 수) | PyTorch (ms) | Compiled (ms) | 상대 속도 |
+|-------------:|-----------:|--------------:|----------:|
+| 10 | 21.4 | 25.9 | 0.83x |
+| 30 | 64.9 | 64.2 | 1.01x |
+| 60 | 117.5 | 112.1 | 1.05x |
+| 120 | 216.9 | 210.2 | 1.03x |
+| 240 | 405.5 | 374.3 | **1.08x** |
+
+- N≤10: dynamo 가드 체크 오버헤드 > 커널 융합 이득
+- N≥60: 미미한 개선 (3-8%)
+- N=240에서도 최대 **1.08x** — 유의미한 개선이라 보기 어려움
+
+#### 6.5.5 JIT 컴파일 비용 + 재컴파일 위험
+
+| 이벤트 | 시간 |
+|--------|-----:|
+| torch.compile 래핑 | 2~403ms |
+| 첫 forward (JIT 컴파일) | **12,422 ~ 26,362ms** |
+| 입력 shape 변경 시 재컴파일 | **3,764 ~ 21,398ms** |
+| 안정 상태 추론 | 62~64ms |
+
+서비스 환경에서 다양한 쿼리 길이가 유입되면 shape 변경으로 수시로 재컴파일이 발생하며, 콜드스타트 지연이 12-26초에 달한다. 또한 RTX 5060 Ti에서 `Not enough SMs to use max_autotune_gemm mode` 경고가 발생하여 max-autotune 모드의 GEMM 튜닝이 제한된다.
+
+#### 6.5.6 torch.compile 종합 판정
+
+| 요인 | 영향도 | 설명 |
+|------|:------:|------|
+| cuBLAS 이미 최적 | ★★★★★ | MatMul 지배 구조에서 커널 융합 여지 없음 |
+| 기존 벤치마크 설계 | ★★★★☆ | 모델 재생성이 96.6%를 차지, 추론 차이 관측 불가 |
+| 소규모 입력 | ★★★☆☆ | N=30에서 dynamo 오버헤드가 이득과 상쇄 |
+| JIT 컴파일 비용 | ★★☆☆☆ | 콜드스타트 12-26초, shape 변경 시 재컴파일 |
+| GPU SM 제한 | ★☆☆☆☆ | max-autotune 제한 (근본 원인은 아님) |
+
+**결론**: torch.compile은 KURE-v1 / bge-reranker 모델에서 실질적 개선 없음. 영속 모델 + 안정 상태에서도 최대 1.02x (N=30), 대규모 배치에서도 1.08x (N=240)에 불과하며, JIT 컴파일 비용과 재컴파일 위험을 고려하면 **운영 환경 도입 불적합**.
+
 ## 7. ARM 플랫폼 성능 전망
 
 ### 7.1 M-series Mac (Apple Silicon)
@@ -260,7 +353,7 @@ O3+INT8에서 1.3x 속도 개선이 발생한 핵심 원인은 **INT8 양자화*
 |------|----------|------|------|
 | ONNX FP32 + BF16 자동가속 | 1.5-1.8x | ~0.999 PASS | ONNX Runtime v1.17+ 자동 적용 |
 | ONNX INT8 (arm64 양자화) | 1.8-2.5x | ~0.985 FAIL | MMLA 커널 활용, 품질 검증 필요 |
-| PyTorch + torch.compile | 1.3-1.5x | 완벽 | AWS 공식 가이드 지원 |
+| PyTorch + torch.compile | **~1.0x** | 완벽 | WSL2+GPU 실측 1.02x (6.5절 참조), MatMul 지배 구조에서 효과 미미 |
 
 **주의사항:**
 
@@ -276,6 +369,8 @@ O3+INT8에서 1.3x 속도 개선이 발생한 핵심 원인은 **INT8 양자화*
 |--------|----------|----------|----------|--------------|
 | **Windows x86 (현재)** | PyTorch FP32 | 1.0x (baseline) | PASS | 없음 |
 | **Windows x86** | ONNX O3+INT8 | 1.3x | FAIL (cosine 0.985) | 없음 |
+| **WSL2 + GPU** | PyTorch FP32 | 1.0x (baseline) | PASS | 없음 |
+| **WSL2 + GPU** | torch.compile | **~1.0x** (실측 1.02x) | PASS | 콜드스타트 12-26초, 도입 불적합 |
 | **M-series Mac** | PyTorch MPS | 2-3x | PASS | `device="mps"` 전환 |
 | **M-series Mac** | ONNX FP16 + CoreML EP | 2-3x | PASS (~0.999) | CoreML EP 설치 + FP16 변환 |
 | **AWS Graviton3** | ONNX FP32 + BF16 자동가속 | 1.5-1.8x | PASS (~0.999) | ORT v1.17+ 확인 |
@@ -310,6 +405,20 @@ O3+INT8에서 1.3x 속도 개선이 발생한 핵심 원인은 **INT8 양자화*
 | 반복 | 5회 (median) |
 | 인제스트 테스트 문서 | 200건 |
 | LanceDB 테이블 | legal_chunks |
+
+### torch.compile 진단 설정값 (6.5절)
+
+| 항목 | 값 |
+|------|-----|
+| 환경 | WSL2 Linux 6.6.87.2-microsoft-standard-WSL2 |
+| GPU | NVIDIA GeForce RTX 5060 Ti |
+| PyTorch | 2.10.0+cu128 |
+| CUDA | cuBLAS (자동 선택) |
+| 모델 | nlpai-lab/KURE-v1 (임베딩), dragonkue/bge-reranker-v2-m3-ko (리랭커) |
+| 물리 코어 | 6, 논리 코어 12 |
+| 테스트 텍스트 | 쿼리 10개 + 문서 20개 = 30건 |
+| 측정 | 7회 반복, median |
+| 진단 스크립트 | `backend/scripts/benchmark_compile_diagnosis.py` |
 
 ### 품질 기준
 

@@ -1,82 +1,69 @@
-# ONNX 고급 최적화 벤치마크 보고서
+# ONNX 고급 최적화 벤치마크 (Phase 2-4)
 
-생성일: 2026-02-23 03:50
+> 생성일: 2026-02-23
+> 이 문서는 `onnx-graph-optimization-benchmark.md`의 **보조 문서**입니다.
+> 종합 분석은 메인 보고서의 6.5절을 참조하세요.
 
-## 배경
+## 개요
 
-이전 벤치마크에서 ONNX 그래프 최적화(O2/O3) 단독으로는 효과가 없었고,
-O3+INT8만 1.3x 개선이 확인됨. 본 벤치마크는 4가지 추가 최적화를 실험.
+이전 벤치마크(Phase 1: ONNX 그래프 최적화)에서 확인된 한계를 넘기 위해 4가지 추가 최적화를 실험:
+
+1. **ONNX O3+INT8 baseline 재확인** — Windows(CPU) → WSL2(GPU) 환경 변경
+2. **intra_op_num_threads 튜닝** — ONNX 세션 스레드 최적화
+3. **torch.compile** — PyTorch 2.x 네이티브 JIT 컴파일
+4. **onnxruntime.transformers.optimizer** — optimum 버그 우회 직접 최적화
 
 ## 환경
 
-- OS: Windows 10
-- 물리 코어: 6, 논리 코어: 12
-- 임베딩 모델: nlpai-lab/KURE-v1
-- 리랭커 모델: dragonkue/bge-reranker-v2-m3-ko
+- OS: WSL2 Linux 6.6.87.2-microsoft-standard-WSL2
+- GPU: NVIDIA GeForce RTX 5060 Ti
+- CPU: 6 물리 코어, 12 논리 코어
+- PyTorch: 2.10.0+cu128
+- ONNX Runtime: 1.23.2
 
-## 실험 결과
+## 실험 결과 요약
 
-### Phase 1: Baseline (PyTorch FP32 vs ONNX O3+INT8)
+### torch.compile (Phase 3)
 
-- 임베딩 PyTorch: 2460.1ms
-- 임베딩 O3+INT8: 1871.7ms
-- 리랭커 PyTorch: 3575.2ms
-- 리랭커 O3+INT8: 1877.5ms
+Windows에서 Triton 미지원으로 스킵되었던 torch.compile을 WSL2 Linux에서 실행.
 
-### Phase 2: intra_op_num_threads 튜닝
+**초기 측정 (모델 재생성 방식):**
 
-- 임베딩 최적: threads=6 (1682.8ms)
-- 리랭커 최적: threads=6 (1811.8ms)
+| 모델 | 방법 | 시간 (ms) | 상대 속도 |
+|------|------|----------:|----------:|
+| 임베딩 | PyTorch FP32 | 1,445 | 1.0x |
+| 임베딩 | torch.compile (max-autotune) | 1,702 | 0.85x |
+| 리랭커 | PyTorch FP32 | 2,826 | 1.0x |
+| 리랭커 | torch.compile (default) | 2,980 | 0.95x |
 
-### Phase 3: torch.compile
+**정정된 측정 (영속 모델, 진단 스크립트):**
 
+| 방법 | 추론 시간 (ms) | 상대 속도 |
+|------|-------------:|----------:|
+| PyTorch FP32 | 63.7 | 1.0x |
+| torch.compile (default) | 62.9 | 1.01x |
+| torch.compile (reduce-overhead) | 62.6 | 1.02x |
+| torch.compile (max-autotune) | 63.4 | 1.01x |
 
-### Phase 4: ORT transformer optimizer
+초기 측정의 0.85x는 벤치마크 설계 결함(모델 재생성 포함)에 의한 왜곡.
+정정 측정에서 torch.compile은 실질적 개선 없음 (1.01-1.02x).
 
-- 임베딩 ORT opt: 3433.5ms
-- 임베딩 ORT opt+INT8: 1772.8ms
-- 리랭커 ORT opt: 3817.9ms
-- 리랭커 ORT opt+INT8: 1894.0ms
+**상세 원인 분석**: 메인 보고서 6.5절 참조.
 
-### 품질 검증
+### Phase 2, 4 (스레드 튜닝, ORT optimizer)
 
-- emb_ONNX O3+INT8: cosine=0.985664 [PASS]
-- emb_O3+INT8 threads=6: cosine=0.985664 [PASS]
-- emb_ORT optimizer: cosine=1.000000 [PASS]
-- emb_ORT opt+INT8: cosine=0.985669 [PASS]
-- rr_ONNX O3+INT8: pearson=0.999872 [PASS]
-- rr_O3+INT8 threads=6: pearson=0.999872 [PASS]
-- rr_ORT optimizer: pearson=1.000000 [PASS]
-- rr_ORT opt+INT8: pearson=0.999918 [PASS]
+WSL2 환경에서 ONNX 모델 디렉토리 미존재로 스킵됨.
+Windows 환경의 기존 결과는 메인 보고서 1-5절에 포함.
 
-## 종합 비교
+## 결론
 
-```
+torch.compile은 KURE-v1 / bge-reranker 모델의 Transformer MatMul(cuBLAS GEMM) 지배 구조에서
+실질적 개선 불가. **PyTorch FP32 유지**가 종합 최적.
 
-============================================================
-  종합 비교 결과
-============================================================
+## 관련 파일
 
-  === 임베딩 비교 테이블 ===
-  방법                                  |    시간 (ms) |      상대 속도 |         품질
-  ----------------------------------- | ---------- | ---------- | ----------
-  PyTorch FP32 (baseline)             |   2460.1ms |       1.0x |   1.000000
-  ONNX O3+INT8 (기존 optimum)           |   1871.7ms |     1.31x |   0.985664
-  O3+INT8 + threads=6                 |   1682.8ms |     1.46x |   0.985664
-  ORT optimizer (직접)                  |   3433.5ms |     0.72x |   1.000000
-  ORT optimizer + INT8                |   1772.8ms |     1.39x |   0.985669
-
-  === 리랭커 비교 테이블 ===
-  방법                                  |    시간 (ms) |      상대 속도 |         품질
-  ----------------------------------- | ---------- | ---------- | ----------
-  PyTorch FP32 (baseline)             |   3575.2ms |       1.0x |   1.000000
-  ONNX O3+INT8 (기존)                   |   1877.5ms |     1.90x |   0.999872
-  O3+INT8 + threads=6                 |   1811.8ms |     1.97x |   0.999872
-  ORT optimizer (직접)                  |   3817.9ms |     0.94x |   1.000000
-  ORT optimizer + INT8                |   1894.0ms |     1.89x |   0.999918
-```
-
-## 권장사항
-
-- **임베딩**: O3+INT8 threads=6 (1.46x, 1682.8ms)
-- **리랭커**: O3+INT8 threads=6 (1.97x, 1811.8ms)
+| 파일 | 설명 |
+|------|------|
+| `backend/scripts/benchmark_advanced_optimization.py` | 고급 최적화 벤치마크 (Phase 1-4) |
+| `backend/scripts/benchmark_compile_diagnosis.py` | torch.compile 원인 진단 (5단계) |
+| `docs/04-report/features/onnx-graph-optimization-benchmark.md` | **메인 보고서** |
