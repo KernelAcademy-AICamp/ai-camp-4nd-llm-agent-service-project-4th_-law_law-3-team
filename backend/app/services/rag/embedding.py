@@ -38,6 +38,16 @@ _query_cache_hits = 0
 _query_cache_misses = 0
 
 
+def _is_onnx_embedding_available() -> bool:
+    """ONNX 임베딩 세션이 로드되었는지 확인."""
+    try:
+        from app.services.rag.onnx_session import is_embedding_onnx_loaded
+
+        return is_embedding_onnx_loaded()
+    except ImportError:
+        return False
+
+
 def _get_model_cache_path(model_name: str) -> Path:
     """모델 캐시 경로 반환 (HuggingFace 캐시 구조)"""
     sanitized = model_name.replace("/", "--")
@@ -174,7 +184,11 @@ def create_query_embedding(query: str) -> List[float]:
             return list(_query_cache[query])
 
     # 캐시 미스 — 임베딩 계산
-    if settings.USE_LOCAL_EMBEDDING:
+    if settings.USE_ONNX_EMBEDDING and _is_onnx_embedding_available():
+        from app.services.rag.onnx_session import encode_embedding_onnx
+
+        result = encode_embedding_onnx(query)
+    elif settings.USE_LOCAL_EMBEDDING:
         model = get_local_model()
         embedding = model.encode(
             query,

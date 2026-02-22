@@ -101,6 +101,15 @@ class Settings(BaseSettings):
     # MeCab 사용자 사전 경로 (법률 복합명사 인식)
     MECAB_USERDIC_PATH: str = "data/mecab_userdic/legal_terms.dic"
 
+    # ONNX 임베딩 최적화
+    USE_ONNX_EMBEDDING: bool = False
+    ONNX_EMBEDDING_VARIANT: str = "ort-opt-fp16"  # ort-opt | ort-opt-fp16
+    USE_ONNX_RERANKER: bool = False
+    ONNX_RERANKER_VARIANT: str = "ort-opt-fp16"  # ort-opt | ort-opt-fp16
+    ONNX_QUALITY_GATE_ENABLED: bool = True
+    ONNX_QUALITY_GATE_FALLBACK: bool = True
+    ONNX_INTRA_OP_THREADS: int = 0  # 0 = 자동 (P코어 감지)
+
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []
 
