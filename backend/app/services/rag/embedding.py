@@ -6,6 +6,8 @@
 
 import asyncio
 import logging
+import threading
+from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
@@ -26,6 +28,14 @@ MODEL_CACHE_DIR = Path(__file__).parent.parent.parent.parent / "data" / "models"
 # 모델 가용성 상태 (모듈 레벨 캐싱)
 _embedding_model_available: Optional[bool] = None
 _embedding_model_warning_shown = False
+
+# 쿼리 임베딩 LRU 캐시 (thread-safe)
+# 1024차원 float * 1024개 ≈ 4MB (무시할 수 있는 수준)
+QUERY_CACHE_MAX_SIZE = 1024
+_query_cache: OrderedDict[str, List[float]] = OrderedDict()
+_query_cache_lock = threading.Lock()
+_query_cache_hits = 0
+_query_cache_misses = 0
 
 
 def _get_model_cache_path(model_name: str) -> Path:
@@ -133,7 +143,10 @@ def get_local_model() -> "SentenceTransformer":
 
 def create_query_embedding(query: str) -> List[float]:
     """
-    쿼리 텍스트를 임베딩 벡터로 변환
+    쿼리 텍스트를 임베딩 벡터로 변환 (LRU 캐시 적용)
+
+    동일 쿼리의 반복 호출 시 캐시된 결과를 즉시 반환한다.
+    임베딩 모델이 변경되지 않는 한 동일 쿼리의 결과는 불변이므로 TTL 없음.
 
     Args:
         query: 검색 쿼리 텍스트
@@ -144,6 +157,23 @@ def create_query_embedding(query: str) -> List[float]:
     Raises:
         EmbeddingModelNotFoundError: 로컬 모델 미캐시 시
     """
+    global _query_cache_hits, _query_cache_misses
+
+    # 캐시 히트 확인
+    with _query_cache_lock:
+        if query in _query_cache:
+            _query_cache_hits += 1
+            _query_cache.move_to_end(query)
+            total = _query_cache_hits + _query_cache_misses
+            if total % 100 == 0:
+                hit_rate = _query_cache_hits / total * 100
+                logger.info(
+                    "쿼리 캐시 히트율: %.1f%% (%d/%d)",
+                    hit_rate, _query_cache_hits, total,
+                )
+            return list(_query_cache[query])
+
+    # 캐시 미스 — 임베딩 계산
     if settings.USE_LOCAL_EMBEDDING:
         model = get_local_model()
         embedding = model.encode(
@@ -151,14 +181,23 @@ def create_query_embedding(query: str) -> List[float]:
             show_progress_bar=False,
             normalize_embeddings=True,
         )
-        return embedding.tolist()
+        result = embedding.tolist()
     else:
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
         response = client.embeddings.create(
             model=settings.EMBEDDING_MODEL,
             input=query,
         )
-        return response.data[0].embedding
+        result = response.data[0].embedding
+
+    # 캐시에 저장
+    with _query_cache_lock:
+        _query_cache_misses += 1
+        _query_cache[query] = list(result)
+        if len(_query_cache) > QUERY_CACHE_MAX_SIZE:
+            _query_cache.popitem(last=False)
+
+    return result
 
 
 async def create_query_embedding_async(query: str) -> List[float]:

@@ -16,8 +16,10 @@ TOTAL_LEGAL_CHUNKS = 253_768
 
 MODEL_LABELS: dict[str, str] = {
     "pytorch_fp32": "PyTorch FP32",
+    "pytorch_compiled": "PyTorch Compiled",
     "onnx_fp32": "ONNX FP32",
     "onnx_int8": "ONNX INT8",
+    "onnx_fp16": "ONNX FP16",
     "onnx_o2": "ONNX O2",
     "onnx_o3": "ONNX O3",
     "onnx_o3_int8": "ONNX O3+INT8",
@@ -25,8 +27,10 @@ MODEL_LABELS: dict[str, str] = {
 
 VARIANT_ORDER: list[str] = [
     "pytorch_fp32",
+    "pytorch_compiled",
     "onnx_fp32",
     "onnx_int8",
+    "onnx_fp16",
     "onnx_o2",
     "onnx_o3",
     "onnx_o3_int8",
@@ -130,29 +134,24 @@ def _format_time_estimate(total_seconds: float) -> str:
     return f"{total_seconds:.0f}초"
 
 
-def _build_speed_section(
+def _build_speed_section_for_device(
     lines: list[str],
     variants: list[str],
-    speed_results: dict[str, dict[str, Any]],
-    ingest_results: dict[str, dict[str, float]],
-    e2e_results: dict[str, dict[str, float]],
-    ingest_docs: int,
+    device_speed: dict[str, dict[str, Any]],
+    device_label: str,
+    section_prefix: str,
 ) -> None:
-    """섹션 1: 속도 비교."""
-    lines.append("## 1. 속도 비교")
-    lines.append("")
+    """단일 디바이스의 속도 비교 (단일 쿼리 + 배치)."""
+    pt_single = float(device_speed.get("pytorch_fp32", {}).get("single_ms", 0))
 
-    pt_single = float(speed_results.get("pytorch_fp32", {}).get("single_ms", 0))
-
-    # 1.1 단일 쿼리
-    lines.append("### 1.1 단일 쿼리 지연시간")
+    lines.append(f"### {section_prefix}.1 단일 쿼리 지연시간 ({device_label})")
     lines.append("")
     lines.append("| Variant | 평균 (ms) | 상대 속도 |")
     lines.append("|---------|----------:|----------:|")
     for v in variants:
-        if v in speed_results:
+        if v in device_speed:
             label = MODEL_LABELS.get(v, v)
-            ms = float(speed_results[v].get("single_ms", 0))
+            ms = float(device_speed[v].get("single_ms", 0))
             if v == "pytorch_fp32":
                 lines.append(f"| {label} | {ms:.1f} | 1.0x (baseline) |")
             else:
@@ -160,8 +159,7 @@ def _build_speed_section(
                 lines.append(f"| {label} | {ms:.1f} | {speedup:.1f}x |")
     lines.append("")
 
-    # 1.2 배치
-    lines.append("### 1.2 배치 처리 (20문서)")
+    lines.append(f"### {section_prefix}.2 배치 처리 (20문서, {device_label})")
     lines.append("")
     batch_sizes = [32, 64, 128]
     header = "| Variant |" + " | ".join(f"batch={b} (ms)" for b in batch_sizes) + " |"
@@ -169,35 +167,77 @@ def _build_speed_section(
     lines.append(header)
     lines.append(sep)
     for v in variants:
-        if v in speed_results:
+        if v in device_speed:
             label = MODEL_LABELS.get(v, v)
-            batch_data = speed_results[v].get("batch", {})
+            batch_data = device_speed[v].get("batch", {})
             cols = " | ".join(f"{float(batch_data.get(b, 0)):.0f}" for b in batch_sizes)
             lines.append(f"| {label} | {cols} |")
     lines.append("")
 
-    # 1.3 인제스트
-    if ingest_results:
-        lines.append(f"### 1.3 데이터 인제스트 ({ingest_docs}문서)")
-        lines.append("")
-        lines.append("| Variant | 임베딩 (ms) | 쓰기 (ms) | 총 (ms) | 문서/초 |")
-        lines.append("|---------|----------:|--------:|-------:|-------:|")
-        for v in variants:
-            if v in ingest_results:
-                label = MODEL_LABELS.get(v, v)
-                r = ingest_results[v]
-                lines.append(
-                    f"| {label}"
-                    f" | {r.get('embedding_time_ms', 0):.0f}"
-                    f" | {r.get('write_time_ms', 0):.0f}"
-                    f" | {r.get('total_ms', 0):.0f}"
-                    f" | {r.get('docs_per_second', 0):.1f} |"
-                )
-        lines.append("")
 
-    # 1.4 E2E
+def _build_ingest_section_for_device(
+    lines: list[str],
+    variants: list[str],
+    device_ingest: dict[str, dict[str, float]],
+    device_label: str,
+    ingest_docs: int,
+    section_prefix: str,
+) -> None:
+    """단일 디바이스의 인제스트 속도 섹션."""
+    lines.append(f"### {section_prefix} 데이터 인제스트 ({ingest_docs}문서, {device_label})")
+    lines.append("")
+    lines.append("| Variant | 임베딩 (ms) | 쓰기 (ms) | 총 (ms) | 문서/초 |")
+    lines.append("|---------|----------:|--------:|-------:|-------:|")
+    for v in variants:
+        if v in device_ingest:
+            label = MODEL_LABELS.get(v, v)
+            r = device_ingest[v]
+            lines.append(
+                f"| {label}"
+                f" | {r.get('embedding_time_ms', 0):.0f}"
+                f" | {r.get('write_time_ms', 0):.0f}"
+                f" | {r.get('total_ms', 0):.0f}"
+                f" | {r.get('docs_per_second', 0):.1f} |"
+            )
+    lines.append("")
+
+
+def _build_speed_section(
+    lines: list[str],
+    variants: list[str],
+    speed_results: dict[str, dict[str, dict[str, Any]]],
+    ingest_results: dict[str, dict[str, dict[str, float]]],
+    e2e_results: dict[str, dict[str, float]],
+    ingest_docs: int,
+) -> None:
+    """섹션 1: 속도 비교 (CPU/GPU 분리)."""
+    lines.append("## 1. 속도 비교")
+    lines.append("")
+
+    subsection = 1
+    for device_key, device_label in [("cpu", "CPU"), ("gpu", "GPU")]:
+        device_speed = speed_results.get(device_key, {})
+        if not device_speed:
+            continue
+        _build_speed_section_for_device(
+            lines, variants, device_speed, device_label, f"1.{subsection}",
+        )
+        subsection += 1
+
+    # 인제스트 (디바이스별)
+    for device_key, device_label in [("cpu", "CPU"), ("gpu", "GPU")]:
+        device_ingest = ingest_results.get(device_key, {})
+        if not device_ingest:
+            continue
+        _build_ingest_section_for_device(
+            lines, variants, device_ingest, device_label, ingest_docs,
+            f"1.{subsection}",
+        )
+        subsection += 1
+
+    # E2E (디바이스 무관)
     if e2e_results:
-        lines.append("### 1.4 E2E 쿼리 지연시간")
+        lines.append(f"### 1.{subsection} E2E 쿼리 지연시간")
         lines.append("")
         lines.append("| Variant | 임베딩 (ms) | 검색 (ms) | E2E (ms) | P95 (ms) |")
         lines.append("|---------|----------:|--------:|--------:|--------:|")
@@ -366,69 +406,85 @@ def _size_rating(variant: str, size_results: dict[str, float]) -> str:
 def _build_recommendation_section(
     lines: list[str],
     variants: list[str],
-    speed_results: dict[str, dict[str, Any]],
+    speed_results: dict[str, dict[str, dict[str, Any]]],
     quality_results: dict[str, dict[str, float]],
     search_results: dict[str, dict[str, float]],
     size_results: dict[str, float],
-    ingest_results: dict[str, dict[str, float]],
+    ingest_results: dict[str, dict[str, dict[str, float]]],
 ) -> None:
-    """섹션 5: 종합 비교 및 추천."""
+    """섹션 5: 종합 비교 및 추천 (CPU/GPU 분리)."""
     lines.append("## 5. 종합 비교 및 추천")
     lines.append("")
 
-    pt_single = float(speed_results.get("pytorch_fp32", {}).get("single_ms", 0))
     onnx_variants = [v for v in variants if v != "pytorch_fp32"]
 
-    # Trade-off 분석표
-    lines.append("### Trade-off 분석")
-    lines.append("")
-    lines.append("| Variant | 속도 | 품질 | 검색 | 크기 | 종합 |")
-    lines.append("|---------|:----:|:----:|:----:|:----:|:----:|")
+    subsection = 1
+    for device_key, device_label in [("cpu", "CPU"), ("gpu", "GPU")]:
+        device_speed = speed_results.get(device_key, {})
+        if not device_speed:
+            continue
 
-    for v in onnx_variants:
-        label = MODEL_LABELS.get(v, v)
-        ms = float(speed_results.get(v, {}).get("single_ms", 0))
-        speedup = pt_single / ms if ms > 0 else 0
-        spd = _speed_rating(speedup)
-        qual = _quality_rating(v, quality_results)
-        srch = _search_rating(v, search_results)
-        sz = _size_rating(v, size_results)
-        overall = "PASS" if _is_quality_pass(v, quality_results) else "FAIL"
-        lines.append(f"| {label} | {spd} | {qual} | {srch} | {sz} | {overall} |")
-    lines.append("")
+        pt_single = float(device_speed.get("pytorch_fp32", {}).get("single_ms", 0))
 
-    # 운영 환경별 추천
-    recommendation = _determine_recommendation(variants, speed_results, quality_results)
-    lines.append("### 운영 환경별 추천")
-    lines.append("")
-    env_desc = [
-        ("속도 우선", "speed", "응답 지연시간이 최우선인 환경 (실시간 검색)"),
-        ("품질 우선", "quality", "임베딩 품질이 최우선인 환경 (정밀 검색)"),
-        ("균형", "balanced", "속도와 품질의 균형 (일반 운영)"),
-    ]
-    for env, key, desc in env_desc:
-        rec_v = recommendation.get(key, "")
-        rec_l = MODEL_LABELS.get(rec_v, rec_v)
-        lines.append(f"- **{env}**: `{rec_l}` — {desc}")
-    lines.append("")
+        # Trade-off 분석표
+        lines.append(f"### 5.{subsection} Trade-off 분석 ({device_label})")
+        lines.append("")
+        lines.append("| Variant | 속도 | 품질 | 검색 | 크기 | 종합 |")
+        lines.append("|---------|:----:|:----:|:----:|:----:|:----:|")
 
-    # 전체 데이터 재임베딩 예상 시간
-    if ingest_results:
-        lines.append("### 전체 데이터 재임베딩 예상 시간")
+        for v in onnx_variants:
+            if v not in device_speed:
+                continue
+            label = MODEL_LABELS.get(v, v)
+            ms = float(device_speed[v].get("single_ms", 0))
+            speedup = pt_single / ms if ms > 0 else 0
+            spd = _speed_rating(speedup)
+            qual = _quality_rating(v, quality_results)
+            srch = _search_rating(v, search_results)
+            sz = _size_rating(v, size_results)
+            overall = "PASS" if _is_quality_pass(v, quality_results) else "FAIL"
+            lines.append(f"| {label} | {spd} | {qual} | {srch} | {sz} | {overall} |")
+        lines.append("")
+
+        # 운영 환경별 추천
+        recommendation = _determine_recommendation(
+            variants, device_speed, quality_results,
+        )
+        lines.append(f"### 5.{subsection + 1} 운영 환경별 추천 ({device_label})")
+        lines.append("")
+        env_desc = [
+            ("속도 우선", "speed", "응답 지연시간이 최우선인 환경 (실시간 검색)"),
+            ("품질 우선", "quality", "임베딩 품질이 최우선인 환경 (정밀 검색)"),
+            ("균형", "balanced", "속도와 품질의 균형 (일반 운영)"),
+        ]
+        for env, key, desc in env_desc:
+            rec_v = recommendation.get(key, "")
+            rec_l = MODEL_LABELS.get(rec_v, rec_v)
+            lines.append(f"- **{env}**: `{rec_l}` — {desc}")
+        lines.append("")
+        subsection += 2
+
+    # 전체 데이터 재임베딩 예상 시간 (디바이스별)
+    for device_key, device_label in [("cpu", "CPU"), ("gpu", "GPU")]:
+        device_ingest = ingest_results.get(device_key, {})
+        if not device_ingest:
+            continue
+        lines.append(f"### 5.{subsection} 전체 데이터 재임베딩 예상 시간 ({device_label})")
         lines.append("")
         lines.append(f"대상: `legal_chunks` 테이블 ({TOTAL_LEGAL_CHUNKS:,}건)")
         lines.append("")
         lines.append("| Variant | 인제스트 속도 (문서/초) | 예상 시간 |")
         lines.append("|---------|--------------------:|--------:|")
         for v in variants:
-            if v in ingest_results:
+            if v in device_ingest:
                 label = MODEL_LABELS.get(v, v)
-                dps = ingest_results[v].get("docs_per_second", 0.0)
+                dps = device_ingest[v].get("docs_per_second", 0.0)
                 if dps > 0:
                     total_sec = TOTAL_LEGAL_CHUNKS / dps
                     time_str = _format_time_estimate(total_sec)
                     lines.append(f"| {label} | {dps:.1f} | ~{time_str} |")
         lines.append("")
+        subsection += 1
 
 
 def _build_appendix(
@@ -467,11 +523,11 @@ def _build_appendix(
 
 
 def generate_report(
-    speed_results: dict[str, dict[str, Any]],
+    speed_results: dict[str, dict[str, dict[str, Any]]],
     quality_results: dict[str, dict[str, float]],
     search_results: dict[str, dict[str, float]],
     size_results: dict[str, float],
-    ingest_results: dict[str, dict[str, float]],
+    ingest_results: dict[str, dict[str, dict[str, float]]],
     e2e_results: dict[str, dict[str, float]],
     output_path: Path,
     model_name: str = "nlpai-lab/KURE-v1",
@@ -479,15 +535,30 @@ def generate_report(
 ) -> Path:
     """모든 Phase 결과를 받아 MD 보고서를 생성한다.
 
+    Args:
+        speed_results: ``{"cpu": {"pytorch_fp32": {...}, ...}, "gpu": {...}}``
+        ingest_results: ``{"cpu": {"pytorch_fp32": {...}, ...}, "gpu": {...}}``
+        quality_results, search_results, size_results, e2e_results: 디바이스 무관 (flat).
+
     Returns:
         생성된 보고서 파일 경로.
     """
+    # variant 수집: nested speed/ingest에서 flatten
+    flat_dicts: list[dict[str, Any]] = []
+    for device_data in speed_results.values():
+        if device_data:
+            flat_dicts.append(device_data)
+    for device_data in ingest_results.values():
+        if device_data:
+            flat_dicts.append(device_data)
     variants = _available_variants(
-        speed_results, quality_results, search_results,
-        ingest_results, e2e_results,
+        *flat_dicts, quality_results, search_results, e2e_results,
     )
+
+    # 추천: CPU 우선, 없으면 GPU
+    primary_speed = speed_results.get("cpu") or speed_results.get("gpu") or {}
     recommendation = _determine_recommendation(
-        variants, speed_results, quality_results,
+        variants, primary_speed, quality_results,
     )
 
     lines: list[str] = []
@@ -506,13 +577,14 @@ def generate_report(
     lines.append("")
     rec = recommendation.get("balanced", "")
     rec_label = MODEL_LABELS.get(rec, rec)
-    if rec and rec in speed_results:
-        pt_ms = float(speed_results.get("pytorch_fp32", {}).get("single_ms", 0))
-        rec_ms = float(speed_results[rec].get("single_ms", 0))
+    if rec and rec in primary_speed:
+        pt_ms = float(primary_speed.get("pytorch_fp32", {}).get("single_ms", 0))
+        rec_ms = float(primary_speed[rec].get("single_ms", 0))
         speedup = pt_ms / rec_ms if rec_ms > 0 else 0
+        device_label = "CPU" if speed_results.get("cpu") else "GPU"
         lines.append(
             f"**추천 variant**: `{rec_label}` — PyTorch 대비"
-            f" **{speedup:.1f}x** 속도 향상, 품질 기준 충족"
+            f" **{speedup:.1f}x** 속도 향상 ({device_label}), 품질 기준 충족"
         )
     else:
         lines.append(f"**추천 variant**: `{rec_label}`")

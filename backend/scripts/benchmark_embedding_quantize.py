@@ -2,9 +2,10 @@
 임베딩 모델 양자화 + 그래프 최적화 종합 벤치마크
 
 비교 대상:
-  PyTorch FP32 vs ONNX FP32 vs ONNX INT8 vs ONNX O2 vs ONNX O3 vs ONNX O3+INT8
+  PyTorch FP32 vs PyTorch Compiled vs ONNX FP32 vs ONNX INT8
+  vs ONNX FP16 vs ONNX O2 vs ONNX O3 vs ONNX O3+INT8
 
-- Phase 0: 환경 준비 (ONNX 변환, INT8 양자화, O2/O3 그래프 최적화)
+- Phase 0: 환경 준비 (ONNX 변환, INT8 양자화, FP16 변환, O2/O3 그래프 최적화)
 - Phase 1: 속도 (단일 쿼리 + 배치)
 - Phase 2: 임베딩 품질 (Pairwise Cosine, Sim Matrix 상관, Separation)
 - Phase 3: LanceDB 검색 품질 (Top-K ID 일치, 순위 상관)
@@ -19,6 +20,8 @@
   cd backend && uv run python scripts/benchmark_embedding_quantize.py --skip-quality
   cd backend && uv run python scripts/benchmark_embedding_quantize.py --skip-export
   cd backend && uv run python scripts/benchmark_embedding_quantize.py --skip-graph-opt
+  cd backend && uv run python scripts/benchmark_embedding_quantize.py --skip-fp16
+  cd backend && uv run python scripts/benchmark_embedding_quantize.py --skip-compile
   cd backend && uv run python scripts/benchmark_embedding_quantize.py --skip-ingest --skip-e2e
   cd backend && uv run python scripts/benchmark_embedding_quantize.py --ingest-docs 200
   cd backend && uv run python scripts/benchmark_embedding_quantize.py --no-report
@@ -35,6 +38,14 @@ from typing import Any, Optional
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=".*incorrect regex pattern.*",
+    category=UserWarning,
+)
+
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -47,6 +58,7 @@ ONNX_INT8_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-onnx-int8"
 ONNX_O2_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-onnx-o2"
 ONNX_O3_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-onnx-o3"
 ONNX_O3_INT8_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-onnx-o3-int8"
+ONNX_FP16_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-onnx-fp16"
 LANCEDB_DIR = PROJECT_ROOT / "lancedb_data"
 LANCEDB_TABLE = "legal_chunks"
 DEFAULT_REPORT_PATH = (
@@ -57,6 +69,27 @@ DEFAULT_REPORT_PATH = (
 SEPARATOR = "=" * 60
 WARMUP_RUNS = 2
 REPEAT_RUNS = 5
+
+
+def _is_cuda_available() -> bool:
+    """PyTorch CUDA 사용 가능 여부 확인."""
+    try:
+        import torch
+
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
+
+
+def _is_cuda_ep_available() -> bool:
+    """ONNX Runtime CUDAExecutionProvider 사용 가능 여부 확인."""
+    try:
+        import onnxruntime
+
+        return "CUDAExecutionProvider" in onnxruntime.get_available_providers()
+    except ImportError:
+        return False
+
 
 # --- 테스트 데이터 ---
 
@@ -119,8 +152,10 @@ DISSIMILAR_PAIRS = [
 
 MODEL_LABELS = {
     "pytorch_fp32": "PyTorch FP32",
+    "pytorch_compiled": "PyTorch Compiled",
     "onnx_fp32": "ONNX FP32",
     "onnx_int8": "ONNX INT8",
+    "onnx_fp16": "ONNX FP16",
     "onnx_o2": "ONNX O2",
     "onnx_o3": "ONNX O3",
     "onnx_o3_int8": "ONNX O3+INT8",
@@ -150,11 +185,13 @@ def _get_model_configs() -> list[tuple[str, Path, str]]:
         configs.append(("onnx_o3", ONNX_O3_DIR, "model_optimized.onnx"))
     if ONNX_O3_INT8_DIR.exists():
         configs.append(("onnx_o3_int8", ONNX_O3_INT8_DIR, "model_quantized.onnx"))
+    if ONNX_FP16_DIR.exists():
+        configs.append(("onnx_fp16", ONNX_FP16_DIR, "model.onnx"))
     return configs
 
 
 # ============================================================
-# Phase 0: 환경 준비 (ONNX 변환 + INT8 양자화 + 그래프 최적화)
+# Phase 0: 환경 준비 (ONNX 변환 + INT8 양자화 + FP16 변환 + 그래프 최적화)
 # ============================================================
 
 
@@ -389,6 +426,40 @@ def quantize_optimized_int8() -> bool:
         return False
 
 
+def convert_fp16() -> bool:
+    """ONNX FP32 → FP16 변환."""
+    fp16_model_file = ONNX_FP16_DIR / "model.onnx"
+    if fp16_model_file.exists():
+        print(f"  FP16 모델 이미 존재: {ONNX_FP16_DIR}")
+        return True
+
+    if not (ONNX_DIR / "model.onnx").exists():
+        print("  ONNX FP32 모델이 없습니다. export_onnx()를 먼저 실행하세요.")
+        return False
+
+    print("  FP16 변환 중...")
+    try:
+        import onnx
+        from onnxconverter_common import float16
+
+        src_path = str(ONNX_DIR / "model.onnx")
+        model = onnx.load(src_path)
+        model_fp16 = float16.convert_float_to_float16(
+            model, keep_io_types=True,
+        )
+
+        ONNX_FP16_DIR.mkdir(parents=True, exist_ok=True)
+        onnx.save(model_fp16, str(fp16_model_file))
+
+        _copy_tokenizer_and_st_config(ONNX_DIR, ONNX_FP16_DIR)
+
+        print(f"  FP16 변환 완료: {ONNX_FP16_DIR}")
+        return True
+    except Exception as e:
+        print(f"  FP16 변환 실패: {e}")
+        return False
+
+
 # ============================================================
 # 임베딩 함수 (모델별)
 # ============================================================
@@ -397,6 +468,7 @@ def quantize_optimized_int8() -> bool:
 def _encode_pytorch(
     texts: list[str],
     batch_size: int = 32,
+    device: str = "cpu",
 ) -> np.ndarray:
     """PyTorch FP32 임베딩."""
     from sentence_transformers import SentenceTransformer
@@ -406,6 +478,7 @@ def _encode_pytorch(
         cache_folder=CACHE_DIR,
         trust_remote_code=True,
         local_files_only=True,
+        device=device,
     )
     embeddings = model.encode(
         texts,
@@ -419,9 +492,56 @@ def _encode_pytorch(
     return result
 
 
+_compiled_model_cache: dict[str, Any] = {}
+
+
+def _encode_pytorch_compiled(
+    texts: list[str],
+    batch_size: int = 32,
+    device: str = "cpu",
+) -> np.ndarray:
+    """PyTorch + torch.compile 임베딩 (모델 캐싱으로 컴파일 오버헤드 1회만)."""
+    import torch
+    from sentence_transformers import SentenceTransformer
+
+    if not hasattr(torch, "compile"):
+        raise RuntimeError("torch.compile requires PyTorch 2.0+")
+
+    cache_key = device
+    if cache_key not in _compiled_model_cache:
+        model = SentenceTransformer(
+            MODEL_NAME,
+            cache_folder=CACHE_DIR,
+            trust_remote_code=True,
+            local_files_only=True,
+            device=device,
+        )
+        compile_mode = "reduce-overhead" if device == "cuda" else "default"
+        model[0].auto_model = torch.compile(  # type: ignore[assignment]
+            model[0].auto_model, mode=compile_mode,  # type: ignore[arg-type]
+        )
+        _compiled_model_cache[cache_key] = model
+
+    model = _compiled_model_cache[cache_key]
+    embeddings = model.encode(
+        texts,
+        batch_size=batch_size,
+        show_progress_bar=False,
+        normalize_embeddings=True,
+    )
+    return np.array(embeddings)
+
+
+def _clear_compiled_model_cache() -> None:
+    """컴파일된 모델 캐시 정리."""
+    _compiled_model_cache.clear()
+    gc.collect()
+
+
 def _load_onnx_model(
     model_dir: Path,
     file_name: str = "model.onnx",
+    provider: str = "CPUExecutionProvider",
 ) -> tuple[Any, Any]:
     """ONNX 모델 + 토크나이저 로드. (optimum 사용)"""
     from optimum.onnxruntime import ORTModelForFeatureExtraction
@@ -431,7 +551,10 @@ def _load_onnx_model(
         str(model_dir), trust_remote_code=True
     )
     ort_model = ORTModelForFeatureExtraction.from_pretrained(
-        str(model_dir), file_name=file_name, trust_remote_code=True
+        str(model_dir),
+        file_name=file_name,
+        trust_remote_code=True,
+        provider=provider,
     )
     return tokenizer, ort_model
 
@@ -441,8 +564,10 @@ def _encode_onnx(
     model_dir: Path,
     file_name: str = "model.onnx",
     batch_size: int = 32,
+    device: str = "cpu",
 ) -> np.ndarray:
     """ONNX 임베딩 (optimum + mean pooling + L2 norm)."""
+    provider = "CUDAExecutionProvider" if device == "cuda" else "CPUExecutionProvider"
     # 외부 데이터 파일이 없는 모델만 sentence-transformers 백엔드 시도
     has_external_data = (model_dir / f"{file_name}_data").exists()
     if not has_external_data:
@@ -454,7 +579,7 @@ def _encode_onnx(
                 backend="onnx",
                 trust_remote_code=True,
                 local_files_only=True,
-                model_kwargs={"file_name": file_name},
+                model_kwargs={"file_name": file_name, "provider": provider},
             )
             embeddings = model.encode(
                 texts,
@@ -470,7 +595,7 @@ def _encode_onnx(
             print(f"    [참고] sentence-transformers ONNX 백엔드 실패 → optimum fallback ({e})")
 
     # fallback: optimum 직접 사용
-    tokenizer, ort_model = _load_onnx_model(model_dir, file_name)
+    tokenizer, ort_model = _load_onnx_model(model_dir, file_name, provider=provider)
 
     all_embeddings: list[np.ndarray] = []
     for i in range(0, len(texts), batch_size):
@@ -564,43 +689,76 @@ def _measure_batch_speed(
     return results
 
 
-def run_speed_benchmark() -> dict[str, dict[str, object]]:
+def run_speed_benchmark(
+    device: str = "cpu", *, skip_compile: bool = False,
+) -> dict[str, dict[str, object]]:
     """Phase 1: 속도 벤치마크."""
+    device_label = "CPU" if device == "cpu" else "GPU"
     print(f"\n{SEPARATOR}")
-    print("  Phase 1: 속도 벤치마크")
+    print(f"  Phase 1: 속도 벤치마크 ({device_label})")
     print(SEPARATOR)
 
     results: dict[str, dict[str, object]] = {}
 
     # --- PyTorch FP32 ---
     print("\n  [PyTorch FP32]")
-    pt_single = _measure_single_query_speed(
-        _encode_pytorch, BENCHMARK_QUERIES, "단일 쿼리"
-    )
-    pt_batch = _measure_batch_speed(
-        _encode_pytorch, BENCHMARK_DOCUMENTS, "배치 (20문서)"
-    )
-    results["pytorch_fp32"] = {"single_ms": pt_single, "batch": pt_batch}
+    try:
+        pt_single = _measure_single_query_speed(
+            _encode_pytorch, BENCHMARK_QUERIES, "단일 쿼리",
+            device=device,
+        )
+        pt_batch = _measure_batch_speed(
+            _encode_pytorch, BENCHMARK_DOCUMENTS, "배치 (20문서)",
+            device=device,
+        )
+        results["pytorch_fp32"] = {"single_ms": pt_single, "batch": pt_batch}
+    except Exception as exc:
+        print(f"    ⚠ {device_label} 실행 실패, 건너뜀: {exc!s:.80s}")
+
+    # --- PyTorch Compiled ---
+    if not skip_compile:
+        print("\n  [PyTorch Compiled]")
+        try:
+            pc_single = _measure_single_query_speed(
+                _encode_pytorch_compiled, BENCHMARK_QUERIES, "단일 쿼리",
+                device=device,
+            )
+            pc_batch = _measure_batch_speed(
+                _encode_pytorch_compiled, BENCHMARK_DOCUMENTS, "배치 (20문서)",
+                device=device,
+            )
+            results["pytorch_compiled"] = {"single_ms": pc_single, "batch": pc_batch}
+        except Exception as exc:
+            print(f"    ⚠ {device_label} 실행 실패, 건너뜀: {exc!s:.80s}")
+        finally:
+            _clear_compiled_model_cache()
+    else:
+        print("\n  [PyTorch Compiled] 스킵 (--skip-compile)")
 
     # --- ONNX 모델 (동적 목록) ---
     for model_key, model_dir, file_name in _get_model_configs():
         label = MODEL_LABELS.get(model_key, model_key.upper())
         print(f"\n  [{label}]")
-        single = _measure_single_query_speed(
-            _encode_onnx,
-            BENCHMARK_QUERIES,
-            "단일 쿼리",
-            model_dir=model_dir,
-            file_name=file_name,
-        )
-        batch = _measure_batch_speed(
-            _encode_onnx,
-            BENCHMARK_DOCUMENTS,
-            "배치 (20문서)",
-            model_dir=model_dir,
-            file_name=file_name,
-        )
-        results[model_key] = {"single_ms": single, "batch": batch}
+        try:
+            single = _measure_single_query_speed(
+                _encode_onnx,
+                BENCHMARK_QUERIES,
+                "단일 쿼리",
+                model_dir=model_dir,
+                file_name=file_name,
+                device=device,
+            )
+            batch = _measure_batch_speed(
+                _encode_onnx,
+                BENCHMARK_DOCUMENTS,
+                "배치 (20문서)",
+                model_dir=model_dir,
+                file_name=file_name,
+                device=device,
+            )
+            results[model_key] = {"single_ms": single, "batch": batch}
+        except Exception as exc:
+            print(f"    ⚠ {device_label} 실행 실패, 건너뜀: {exc!s:.80s}")
 
     return results
 
@@ -622,7 +780,9 @@ def _sim_matrix(emb: np.ndarray) -> np.ndarray:
     return emb @ emb.T
 
 
-def run_quality_benchmark() -> dict[str, dict[str, float]]:
+def run_quality_benchmark(
+    *, skip_compile: bool = False,
+) -> dict[str, dict[str, float]]:
     """Phase 2: 임베딩 품질 비교."""
     from scipy.stats import pearsonr, spearmanr
 
@@ -643,6 +803,26 @@ def run_quality_benchmark() -> dict[str, dict[str, float]]:
     emb_fp32 = _encode_pytorch(all_texts)
 
     results: dict[str, dict[str, float]] = {}
+
+    # --- PyTorch Compiled (동일 가중치 검증) ---
+    if not skip_compile:
+        print("\n  [PyTorch Compiled] 임베딩 생성 중 (동일 가중치 검증)...")
+        try:
+            emb_compiled = _encode_pytorch_compiled(all_texts)
+            pairwise = _pairwise_cosine(emb_fp32, emb_compiled)
+            pairwise_mean = float(np.mean(pairwise))
+            pairwise_min = float(np.min(pairwise))
+            print(f"    Pairwise Cosine Mean: {pairwise_mean:.6f} (min: {pairwise_min:.6f})")
+            results["pytorch_compiled"] = {
+                "pairwise_cosine_mean": pairwise_mean,
+                "pairwise_cosine_min": pairwise_min,
+            }
+            del emb_compiled
+            gc.collect()
+        except Exception as exc:
+            print(f"    ⚠ 실행 실패, 건너뜀: {exc!s:.80s}")
+        finally:
+            _clear_compiled_model_cache()
 
     for model_key, model_dir, file_name in _get_model_configs():
         label = MODEL_LABELS.get(model_key, model_key.upper())
@@ -885,6 +1065,7 @@ def run_size_benchmark() -> dict[str, float]:
     model_dir_map: dict[str, Path] = {
         "onnx_fp32": ONNX_DIR,
         "onnx_int8": ONNX_INT8_DIR,
+        "onnx_fp16": ONNX_FP16_DIR,
         "onnx_o2": ONNX_O2_DIR,
         "onnx_o3": ONNX_O3_DIR,
         "onnx_o3_int8": ONNX_O3_INT8_DIR,
@@ -941,12 +1122,15 @@ def _load_ingest_texts(n: int) -> list[str]:
     return texts
 
 
-def run_ingest_benchmark(ingest_docs: int = 200) -> dict[str, dict[str, float]]:
+def run_ingest_benchmark(
+    ingest_docs: int = 200, device: str = "cpu",
+) -> dict[str, dict[str, float]]:
     """Phase 5: 데이터 인제스트 속도 벤치마크."""
     import lancedb
 
+    device_label = "CPU" if device == "cpu" else "GPU"
     print(f"\n{SEPARATOR}")
-    print(f"  Phase 5: 데이터 인제스트 속도 ({ingest_docs}문서)")
+    print(f"  Phase 5: 데이터 인제스트 속도 ({ingest_docs}문서, {device_label})")
     print(SEPARATOR)
 
     texts = _load_ingest_texts(ingest_docs)
@@ -991,15 +1175,21 @@ def run_ingest_benchmark(ingest_docs: int = 200) -> dict[str, dict[str, float]]:
 
     try:
         print("\n  [PyTorch FP32]")
-        _ingest_one(_encode_pytorch, "pytorch_fp32", "PyTorch FP32")
+        try:
+            _ingest_one(_encode_pytorch, "pytorch_fp32", "PyTorch FP32", device=device)
+        except Exception as exc:
+            print(f"    ⚠ {device_label} 실행 실패, 건너뜀: {exc!s:.80s}")
 
         for model_key, model_dir, file_name in _get_model_configs():
             label = MODEL_LABELS.get(model_key, model_key.upper())
             print(f"\n  [{label}]")
-            _ingest_one(
-                _encode_onnx, model_key, label,
-                model_dir=model_dir, file_name=file_name,
-            )
+            try:
+                _ingest_one(
+                    _encode_onnx, model_key, label,
+                    model_dir=model_dir, file_name=file_name, device=device,
+                )
+            except Exception as exc:
+                print(f"    ⚠ {device_label} 실행 실패, 건너뜀: {exc!s:.80s}")
     finally:
         try:
             db.drop_table(temp_table)
@@ -1109,11 +1299,11 @@ def _pass_fail(value: float, threshold: float, higher_is_better: bool = True) ->
 
 
 def print_final_report(
-    speed_results: dict[str, dict[str, object]],
+    speed_results: dict[str, dict[str, dict[str, object]]],
     quality_results: dict[str, dict[str, float]],
     search_results: dict[str, dict[str, float]],
     size_results: dict[str, float],
-    ingest_results: dict[str, dict[str, float]],
+    ingest_results: dict[str, dict[str, dict[str, float]]],
     e2e_results: dict[str, dict[str, float]],
 ) -> None:
     """Phase 7: 최종 리포트 출력."""
@@ -1123,51 +1313,69 @@ def print_final_report(
     print(SEPARATOR)
 
     model_keys = [k for k, _, _ in _get_model_configs()]
+    # pytorch_compiled가 결과에 있으면 ONNX 모델 앞에 추가
+    for device_data in speed_results.values():
+        if isinstance(device_data, dict) and "pytorch_compiled" in device_data:
+            model_keys.insert(0, "pytorch_compiled")
+            break
+    section_num = 1
 
-    # --- 1. 속도 - 단일 쿼리 ---
-    print("\n  [1. 속도 - 단일 쿼리]")
-    print(f"  {'방식':<30s} {'평균':>10s} {'상대 속도':>12s}")
-    print(f"  {'-' * 30} {'-' * 10} {'-' * 12}")
+    # --- 속도 - 단일 쿼리 + 배치 (디바이스별) ---
+    for device_key, device_label in [("cpu", "CPU"), ("gpu", "GPU")]:
+        device_speed = speed_results.get(device_key, {})
+        if not device_speed:
+            continue
 
-    pt_single = float(speed_results.get("pytorch_fp32", {}).get("single_ms", 0))  # type: ignore[arg-type]
-    print(f"  {'PyTorch FP32 (baseline)':<30s} {pt_single:>8.1f}ms {'1.0x':>12s}")
+        pt_single = float(device_speed.get("pytorch_fp32", {}).get("single_ms", 0))  # type: ignore[arg-type]
 
-    for key in model_keys:
-        if key in speed_results:
-            label = MODEL_LABELS.get(key, key.upper())
-            ms = float(speed_results[key].get("single_ms", 0))  # type: ignore[arg-type]
-            speedup = pt_single / ms if ms > 0 else 0
-            print(f"  {label:<30s} {ms:>8.1f}ms {speedup:>10.1f}x")
+        print(f"\n  [{section_num}. 속도 - 단일 쿼리 ({device_label})]")
+        print(f"  {'방식':<30s} {'평균':>10s} {'상대 속도':>12s}")
+        print(f"  {'-' * 30} {'-' * 10} {'-' * 12}")
+        print(f"  {'PyTorch FP32 (baseline)':<30s} {pt_single:>8.1f}ms {'1.0x':>12s}")
 
-    # --- 2. 속도 - 배치 ---
-    print("\n  [2. 속도 - 배치 (20문서)]")
-    batch_sizes = [32, 64, 128]
-    header = f"  {'방식':<30s}" + "".join(f" {'batch=' + str(b):>12s}" for b in batch_sizes)
-    print(header)
-    print(f"  {'-' * 30}" + " ".join(f"{'-' * 12}" for _ in batch_sizes))
+        for key in model_keys:
+            if key in device_speed:
+                label = MODEL_LABELS.get(key, key.upper())
+                ms = float(device_speed[key].get("single_ms", 0))  # type: ignore[arg-type]
+                speedup = pt_single / ms if ms > 0 else 0
+                print(f"  {label:<30s} {ms:>8.1f}ms {speedup:>10.1f}x")
 
-    all_speed_keys = ["pytorch_fp32", *model_keys]
-    for key in all_speed_keys:
-        if key in speed_results:
-            label = MODEL_LABELS.get(key, key.upper())
-            batch_data = speed_results[key].get("batch", {})
-            cols = ""
-            for b in batch_sizes:
-                ms = batch_data.get(b, 0)  # type: ignore[attr-defined]
-                cols += f" {float(ms):>10.0f}ms"
-            print(f"  {label:<30s}{cols}")
+        section_num += 1
 
-    # --- 3. 인제스트 속도 ---
-    if ingest_results:
-        print("\n  [3. 인제스트 속도]")
+        print(f"\n  [{section_num}. 속도 - 배치 (20문서, {device_label})]")
+        batch_sizes = [32, 64, 128]
+        header = f"  {'방식':<30s}" + "".join(f" {'batch=' + str(b):>12s}" for b in batch_sizes)
+        print(header)
+        print(f"  {'-' * 30}" + " ".join(f"{'-' * 12}" for _ in batch_sizes))
+
+        all_speed_keys = ["pytorch_fp32", *model_keys]
+        for key in all_speed_keys:
+            if key in device_speed:
+                label = MODEL_LABELS.get(key, key.upper())
+                batch_data = device_speed[key].get("batch", {})
+                cols = ""
+                for b in batch_sizes:
+                    ms = batch_data.get(b, 0)  # type: ignore[attr-defined]
+                    cols += f" {float(ms):>10.0f}ms"
+                print(f"  {label:<30s}{cols}")
+
+        section_num += 1
+
+    # --- 인제스트 속도 (디바이스별) ---
+    for device_key, device_label in [("cpu", "CPU"), ("gpu", "GPU")]:
+        device_ingest = ingest_results.get(device_key, {})
+        if not device_ingest:
+            continue
+
+        print(f"\n  [{section_num}. 인제스트 속도 ({device_label})]")
         print(f"  {'방식':<30s} {'임베딩':>10s} {'쓰기':>10s} {'총':>10s} {'문서/초':>10s}")
         print(f"  {'-' * 30} {'-' * 10} {'-' * 10} {'-' * 10} {'-' * 10}")
 
         all_ingest_keys = ["pytorch_fp32", *model_keys]
         for key in all_ingest_keys:
-            if key in ingest_results:
+            if key in device_ingest:
                 label = MODEL_LABELS.get(key, key.upper())
-                r = ingest_results[key]
+                r = device_ingest[key]
                 print(
                     f"  {label:<30s}"
                     f" {r.get('embedding_time_ms', 0):>8.0f}ms"
@@ -1176,9 +1384,11 @@ def print_final_report(
                     f" {r.get('docs_per_second', 0):>9.1f}"
                 )
 
-    # --- 4. E2E 쿼리 지연시간 ---
+        section_num += 1
+
+    # --- E2E 쿼리 지연시간 ---
     if e2e_results:
-        print("\n  [4. E2E 쿼리 지연시간]")
+        print(f"\n  [{section_num}. E2E 쿼리 지연시간]")
         print(f"  {'방식':<30s} {'임베딩':>10s} {'검색':>10s} {'E2E':>10s} {'P95':>10s}")
         print(f"  {'-' * 30} {'-' * 10} {'-' * 10} {'-' * 10} {'-' * 10}")
 
@@ -1195,10 +1405,12 @@ def print_final_report(
                     f" {r.get('p95_e2e_ms', 0):>8.1f}ms"
                 )
 
-    # --- 5. 임베딩 품질 ---
+        section_num += 1
+
+    # --- 임베딩 품질 ---
     if quality_results:
         present_quality_keys = [k for k in model_keys if k in quality_results]
-        print("\n  [5. 임베딩 품질]")
+        print(f"\n  [{section_num}. 임베딩 품질]")
         print(f"  {'메트릭':<25s}", end="")
         for key in present_quality_keys:
             label = MODEL_LABELS.get(key, key.upper())
@@ -1227,10 +1439,12 @@ def print_final_report(
             threshold_str = f">={threshold}" if higher_is_better else f"<{threshold}"
             print(f" {threshold_str:>10s} {worst_verdict:>6s}")
 
-    # --- 6. LanceDB 검색 품질 ---
+        section_num += 1
+
+    # --- LanceDB 검색 품질 ---
     if search_results:
         present_search_keys = [k for k in model_keys if k in search_results]
-        print("\n  [6. LanceDB 검색 품질]")
+        print(f"\n  [{section_num}. LanceDB 검색 품질]")
         print(f"  {'메트릭':<25s}", end="")
         for key in present_search_keys:
             label = MODEL_LABELS.get(key, key.upper())
@@ -1263,9 +1477,11 @@ def print_final_report(
             threshold_str = f">={threshold:.0%}" if "일치율" in metric_label else f">={threshold}"
             print(f" {threshold_str:>10s} {worst_verdict:>6s}")
 
-    # --- 7. 모델 크기 ---
+        section_num += 1
+
+    # --- 모델 크기 ---
     if size_results:
-        print("\n  [7. 모델 크기]")
+        print(f"\n  [{section_num}. 모델 크기]")
         print(f"  {'방식':<30s} {'크기':>10s} {'절약':>8s}")
         print(f"  {'-' * 30} {'-' * 10} {'-' * 8}")
 
@@ -1279,41 +1495,51 @@ def print_final_report(
                 saving = (1 - mb / pt_mb) * 100 if pt_mb > 0 else 0
                 print(f"  {label:<30s} {mb:>8.0f}MB {saving:>+7.0f}%")
 
-    # --- 종합 판정 ---
-    print("\n  [종합 판정]")
-    for key in model_keys:
-        label = MODEL_LABELS.get(key, key.upper())
-        all_pass = True
-        speed_str = ""
+        section_num += 1
 
-        if key in speed_results:
-            ms = float(speed_results[key].get("single_ms", 0))  # type: ignore[arg-type]
-            speedup = pt_single / ms if ms > 0 else 0
-            speed_str = f"속도 {speedup:.1f}x"
+    # --- 종합 판정 (디바이스별) ---
+    print(f"\n  [{section_num}. 종합 판정]")
+    for device_key, device_label in [("cpu", "CPU"), ("gpu", "GPU")]:
+        device_speed = speed_results.get(device_key, {})
+        if not device_speed:
+            continue
 
-        if key in quality_results:
-            q = quality_results[key]
-            if q.get("pairwise_cosine_mean", 0) < QUALITY_THRESHOLDS["pairwise_cosine_mean"]:
-                all_pass = False
-            if q.get("sim_matrix_pearson", 0) < QUALITY_THRESHOLDS["sim_matrix_pearson"]:
-                all_pass = False
-            if q.get("separation_diff", 1) > QUALITY_THRESHOLDS["separation_diff"]:
-                all_pass = False
-            quality_str = "품질 동일" if key == "onnx_fp32" else "품질 허용 범위"
-        else:
-            quality_str = "품질 미측정"
+        print(f"\n  ({device_label})")
+        pt_single_d = float(device_speed.get("pytorch_fp32", {}).get("single_ms", 0))  # type: ignore[arg-type]
 
-        if key in search_results:
-            s = search_results[key]
-            if s.get("top3_match_rate", 0) < QUALITY_THRESHOLDS["top3_match_rate"]:
-                all_pass = False
-            if s.get("search_spearman", 0) < QUALITY_THRESHOLDS["search_spearman"]:
-                all_pass = False
+        for key in model_keys:
+            label = MODEL_LABELS.get(key, key.upper())
+            all_pass = True
+            speed_str = ""
 
-        verdict = "PASS" if all_pass else "FAIL"
-        parts = [p for p in [speed_str, quality_str] if p]
-        detail = ", ".join(parts)
-        print(f"  {label}: {verdict} ({detail})")
+            if key in device_speed:
+                ms = float(device_speed[key].get("single_ms", 0))  # type: ignore[arg-type]
+                speedup = pt_single_d / ms if ms > 0 else 0
+                speed_str = f"속도 {speedup:.1f}x"
+
+            if key in quality_results:
+                q = quality_results[key]
+                if q.get("pairwise_cosine_mean", 0) < QUALITY_THRESHOLDS["pairwise_cosine_mean"]:
+                    all_pass = False
+                if q.get("sim_matrix_pearson", 0) < QUALITY_THRESHOLDS["sim_matrix_pearson"]:
+                    all_pass = False
+                if q.get("separation_diff", 1) > QUALITY_THRESHOLDS["separation_diff"]:
+                    all_pass = False
+                quality_str = "품질 동일" if key == "onnx_fp32" else "품질 허용 범위"
+            else:
+                quality_str = "품질 미측정"
+
+            if key in search_results:
+                s = search_results[key]
+                if s.get("top3_match_rate", 0) < QUALITY_THRESHOLDS["top3_match_rate"]:
+                    all_pass = False
+                if s.get("search_spearman", 0) < QUALITY_THRESHOLDS["search_spearman"]:
+                    all_pass = False
+
+            verdict = "PASS" if all_pass else "FAIL"
+            parts = [p for p in [speed_str, quality_str] if p]
+            detail = ", ".join(parts)
+            print(f"  {label}: {verdict} ({detail})")
 
     print(SEPARATOR)
 
@@ -1349,6 +1575,16 @@ def parse_args() -> argparse.Namespace:
         help="그래프 최적화 (O2/O3) 모델 스킵",
     )
     parser.add_argument(
+        "--skip-fp16",
+        action="store_true",
+        help="FP16 변환 스킵",
+    )
+    parser.add_argument(
+        "--skip-compile",
+        action="store_true",
+        help="torch.compile 벤치마크 스킵",
+    )
+    parser.add_argument(
         "--skip-ingest",
         action="store_true",
         help="데이터 인제스트 벤치마크 스킵",
@@ -1375,6 +1611,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="MD 보고서 생성 스킵",
     )
+    parser.add_argument(
+        "--cpu-only",
+        action="store_true",
+        help="CPU 벤치마크만 실행 (GPU 스킵)",
+    )
+    parser.add_argument(
+        "--gpu-only",
+        action="store_true",
+        help="GPU 벤치마크만 실행 (CPU 스킵)",
+    )
     return parser.parse_args()
 
 
@@ -1382,21 +1628,40 @@ def main() -> None:
     """벤치마크 메인."""
     args = parse_args()
 
+    # --- 디바이스 감지 ---
+    has_cuda = _is_cuda_available()
+    has_cuda_ep = _is_cuda_ep_available()
+    devices_to_run: list[str] = []
+
+    if not args.gpu_only:
+        devices_to_run.append("cpu")
+    if not args.cpu_only and has_cuda and has_cuda_ep:
+        devices_to_run.append("cuda")
+    elif args.gpu_only and (not has_cuda or not has_cuda_ep):
+        print("  CUDA 또는 CUDAExecutionProvider 사용 불가 → GPU 벤치마크 불가")
+        return
+
     print(f"\n{SEPARATOR}")
     print("  임베딩 모델 양자화 종합 벤치마크")
     print(f"  모델: {MODEL_NAME} (1024차원)")
     print(f"  쿼리: {len(BENCHMARK_QUERIES)}개, 문서: {len(BENCHMARK_DOCUMENTS)}개")
+    device_names = ", ".join("CPU" if d == "cpu" else "GPU" for d in devices_to_run)
+    print(f"  디바이스: {device_names}")
     print(SEPARATOR)
 
     # --- Phase 0: 환경 준비 ---
     if not args.skip_export:
         print(f"\n{SEPARATOR}")
-        print("  Phase 0: 환경 준비 (ONNX 변환 + INT8 양자화 + 그래프 최적화)")
+        print("  Phase 0: 환경 준비 (ONNX 변환 + INT8 양자화 + FP16 변환 + 그래프 최적화)")
         print(SEPARATOR)
 
         onnx_ok = export_onnx()
         if onnx_ok:
             quantize_int8()
+            if not args.skip_fp16:
+                convert_fp16()
+            else:
+                print("  FP16 변환: 스킵 (--skip-fp16)")
             if not args.skip_graph_opt:
                 optimize_graph("O2")
                 o3_ok = optimize_graph("O3")
@@ -1407,30 +1672,42 @@ def main() -> None:
     else:
         print("\n  Phase 0: 스킵 (--skip-export)")
 
-    # --- Phase 1: 속도 벤치마크 ---
-    speed_results = run_speed_benchmark()
+    # --- Phase 1: 속도 벤치마크 (디바이스별 2-pass) ---
+    speed_results: dict[str, dict[str, dict[str, object]]] = {}
+    for device in devices_to_run:
+        key = "cpu" if device == "cpu" else "gpu"
+        speed_results[key] = run_speed_benchmark(
+            device=device, skip_compile=args.skip_compile,
+        )
 
-    # --- Phase 2: 임베딩 품질 비교 ---
+    # --- Phase 2: 임베딩 품질 비교 (디바이스 무관) ---
     quality_results: dict[str, dict[str, float]] = {}
     if not args.skip_quality:
-        quality_results = run_quality_benchmark()
+        quality_results = run_quality_benchmark(
+            skip_compile=args.skip_compile,
+        )
     else:
         print("\n  Phase 2: 스킵 (--skip-quality)")
 
-    # --- Phase 3: LanceDB 검색 품질 비교 ---
+    # --- Phase 3: LanceDB 검색 품질 비교 (디바이스 무관) ---
     search_results: dict[str, dict[str, float]] = {}
     if not args.skip_search:
         search_results = run_search_benchmark()
     else:
         print("\n  Phase 3: 스킵 (--skip-search)")
 
-    # --- Phase 4: 모델 크기 비교 ---
+    # --- Phase 4: 모델 크기 비교 (디바이스 무관) ---
     size_results = run_size_benchmark()
 
-    # --- Phase 5: 데이터 인제스트 속도 ---
-    ingest_results: dict[str, dict[str, float]] = {}
+    # --- Phase 5: 데이터 인제스트 속도 (디바이스별 2-pass) ---
+    ingest_results: dict[str, dict[str, dict[str, float]]] = {}
     if not args.skip_ingest:
-        ingest_results = run_ingest_benchmark(args.ingest_docs)
+        for device in devices_to_run:
+            key = "cpu" if device == "cpu" else "gpu"
+            try:
+                ingest_results[key] = run_ingest_benchmark(args.ingest_docs, device=device)
+            except Exception as exc:
+                print(f"\n  ⚠ Phase 5 ({key}) 전체 실패, 건너뜀: {exc!s:.120s}")
     else:
         print("\n  Phase 5: 스킵 (--skip-ingest)")
 
