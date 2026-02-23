@@ -305,6 +305,14 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `UPSTAGE_MODEL` | Solar 모델명 | `solar-pro3-260126` |
 | `USE_DB_LAWYERS` | 변호사 데이터 소스 (true: PostgreSQL, false: JSON) | `false` |
 | `USE_LEGAL_TERM_DICT` | 법률 용어 사전 사용 (true: MeCab 토큰 보강) | `false` |
+| `USE_ONNX_EMBEDDING` | ONNX 임베딩 사용 (false: PyTorch 사용) | `false` |
+| `ONNX_EMBEDDING_VARIANT` | ONNX 임베딩 variant | `ort-opt` |
+| `USE_ONNX_RERANKER` | ONNX 리랭커 사용 | `false` |
+| `ONNX_RERANKER_VARIANT` | ONNX 리랭커 variant | `ort-opt` |
+| `ONNX_INTRA_OP_THREADS` | ORT 스레드 수 (0=자동, 4=Mac ARM P코어) | `0` |
+
+> **ONNX Variant**: `ort-opt` (FP32 무손실, cosine 1.0) 또는 `ort-opt-qdq` (INT8, cosine 0.999, 23% 빠름).
+> ONNX 모델 빌드 및 RAG 비교 테스트 가이드: `scripts/CLAUDE.md`의 "ONNX 최적화 모델 빌드 + RAG 테스트 환경 구축" 참조.
 
 자세한 설정은 `.env.example` 참조.
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import re
 import subprocess
 import threading
 from dataclasses import dataclass, field
@@ -28,18 +29,29 @@ _MODELS_DIR = Path(__file__).parent.parent.parent.parent / "data" / "models"
 # Variant → 디렉토리 이름 매핑
 _EMB_VARIANT_MAP: dict[str, str] = {
     "ort-opt": "kure-v1-ort-opt",
-    "ort-opt-fp16": "kure-v1-ort-opt-fp16",
-    "ort-opt-static128": "kure-v1-ort-opt-static128",
     "ort-opt-qdq": "kure-v1-ort-opt-qdq",
 }
 _RR_VARIANT_MAP: dict[str, str] = {
     "ort-opt": "reranker-ort-opt",
-    "ort-opt-fp16": "reranker-ort-opt-fp16",
     "ort-opt-qdq": "reranker-ort-opt-qdq",
 }
 
 # ONNX 모델 파일명 후보 (우선순위순)
 _MODEL_FILE_CANDIDATES = ["model_optimized.onnx", "model.onnx"]
+
+# Static shape variant 접미사에서 max_length 추출 정규식
+_STATIC_LENGTH_PATTERN = re.compile(r"static(\d+)")
+
+
+def _parse_static_length(variant: str) -> int | None:
+    """variant 문자열에서 static shape의 max_length를 추출한다.
+
+    예: "ort-opt-static128" → 128, "ort-opt-static64-qdq" → 64, "ort-opt" → None
+    """
+    match = _STATIC_LENGTH_PATTERN.search(variant)
+    if match:
+        return int(match.group(1))
+    return None
 
 
 @dataclass
@@ -62,6 +74,8 @@ class OnnxSessionHolder:
     model_dir: Optional[Path] = None
     variant: str = ""
     input_names: list[str] = field(default_factory=list)
+    output_names: list[str] = field(default_factory=list)
+    use_io_binding: bool = False
     is_loaded: bool = False
 
 
@@ -244,12 +258,15 @@ def load_embedding_session() -> bool:
             _embedding_holder.model_dir = model_dir
             _embedding_holder.variant = settings.ONNX_EMBEDDING_VARIANT
             _embedding_holder.input_names = [inp.name for inp in session.get_inputs()]
+            _embedding_holder.output_names = [out.name for out in session.get_outputs()]
+            _embedding_holder.use_io_binding = settings.ONNX_ENABLE_IO_BINDING
             _embedding_holder.is_loaded = True
 
             logger.info(
-                "ONNX 임베딩 세션 로드 완료: variant=%s, dir=%s",
+                "ONNX 임베딩 세션 로드 완료: variant=%s, dir=%s, io_binding=%s",
                 settings.ONNX_EMBEDDING_VARIANT,
                 model_dir,
+                _embedding_holder.use_io_binding,
             )
             return True
         except Exception:
@@ -282,12 +299,15 @@ def load_reranker_session() -> bool:
             _reranker_holder.model_dir = model_dir
             _reranker_holder.variant = settings.ONNX_RERANKER_VARIANT
             _reranker_holder.input_names = [inp.name for inp in session.get_inputs()]
+            _reranker_holder.output_names = [out.name for out in session.get_outputs()]
+            _reranker_holder.use_io_binding = settings.ONNX_ENABLE_IO_BINDING
             _reranker_holder.is_loaded = True
 
             logger.info(
-                "ONNX 리랭커 세션 로드 완료: variant=%s, dir=%s",
+                "ONNX 리랭커 세션 로드 완료: variant=%s, dir=%s, io_binding=%s",
                 settings.ONNX_RERANKER_VARIANT,
                 model_dir,
+                _reranker_holder.use_io_binding,
             )
             return True
         except Exception:
@@ -345,14 +365,14 @@ def encode_embedding_onnx(query: str) -> list[float]:
     if not holder.is_loaded:
         raise RuntimeError("ONNX 임베딩 세션이 로드되지 않았습니다")
 
-    # Static shape variant: 고정 길이 패딩 (batch=1, seq=128)
-    is_static = holder.variant.endswith("-static128")
+    # Static shape variant: 고정 길이 패딩 (예: static64 → 64, static128 → 128)
+    static_length = _parse_static_length(holder.variant)
     inputs = holder.tokenizer(
         query,
         return_tensors="np",
-        padding="max_length" if is_static else True,
+        padding="max_length" if static_length else True,
         truncation=True,
-        max_length=128 if is_static else 512,
+        max_length=static_length if static_length else 512,
     )
 
     feed: dict[str, Any] = {
@@ -365,10 +385,20 @@ def encode_embedding_onnx(query: str) -> list[float]:
             np.zeros_like(inputs["input_ids"]),
         )
 
-    outputs = holder.session.run(None, feed)
+    # IO Binding: numpy→ORT 데이터 복사 오버헤드 제거
+    if holder.use_io_binding:
+        binding = holder.session.io_binding()
+        for name, arr in feed.items():
+            binding.bind_cpu_input(name, arr)
+        for out_name in holder.output_names:
+            binding.bind_output(out_name, "cpu")
+        holder.session.run_with_iobinding(binding)
+        raw_outputs = binding.copy_outputs_to_cpu()
+    else:
+        raw_outputs = holder.session.run(None, feed)
 
     # CLS pooling (index 0) + L2 정규화
-    emb = outputs[0][:, 0, :]
+    emb = raw_outputs[0][:, 0, :]
     norm = np.linalg.norm(emb, axis=1, keepdims=True)
     emb = emb / np.clip(norm, a_min=1e-9, a_max=None)
 
@@ -413,8 +443,18 @@ def predict_reranker_onnx(query: str, documents: list[str]) -> list[float]:
             np.zeros_like(inputs["input_ids"]),
         )
 
-    outputs = holder.session.run(None, feed)
-    logits = outputs[0]
+    # IO Binding: numpy→ORT 데이터 복사 오버헤드 제거
+    if holder.use_io_binding:
+        binding = holder.session.io_binding()
+        for name, arr in feed.items():
+            binding.bind_cpu_input(name, arr)
+        for out_name in holder.output_names:
+            binding.bind_output(out_name, "cpu")
+        holder.session.run_with_iobinding(binding)
+        raw_outputs = binding.copy_outputs_to_cpu()
+    else:
+        raw_outputs = holder.session.run(None, feed)
+    logits = raw_outputs[0]
 
     # Sigmoid 적용
     if logits.ndim == 2:

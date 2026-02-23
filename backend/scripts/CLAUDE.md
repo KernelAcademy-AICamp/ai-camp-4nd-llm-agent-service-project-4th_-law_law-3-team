@@ -327,6 +327,171 @@ for _, row in results.iterrows():
 
 ---
 
+## ONNX 최적화 모델 빌드 + RAG 테스트 환경 구축
+
+다른 컴퓨터에서 ONNX 최적화 모델을 빌드하고, 두 variant로 임베딩하여 RAG 검색 품질을 비교하는 가이드입니다.
+
+### 비교 대상 모델
+
+| Variant | 설명 | Latency | Cosine | 비고 |
+|---------|------|---------|--------|------|
+| `ort-opt` | ORT 그래프 최적화 FP32 | 218ms | 1.0000 | 무손실 |
+| `ort-opt-qdq` | QDQ INT8 (16 FP32 레이어) | 167ms | 0.9990 | 품질 우선 권장 |
+
+### Step 1: 환경 설정
+
+```bash
+# 1-1. 저장소 클론 + 브랜치 전환
+git clone <repo-url>
+cd law-3-team/backend
+git checkout feature/onnx-graph-optimization-benchmark
+
+# 1-2. Python 의존성 설치
+uv sync --dev
+
+# 1-3. PyTorch 설치 (환경에 맞게 선택)
+# CUDA (RunPod/서버)
+uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+# CPU/MPS (Mac)
+# uv pip install --reinstall torch torchvision torchaudio
+
+# 1-4. 추가 의존성 (ONNX 빌드용)
+uv pip install optimum onnxruntime onnx
+```
+
+### Step 2: ONNX 모델 빌드
+
+`build_optimized_onnx.py`가 HuggingFace에서 원본 모델을 다운로드하고, ONNX 변환 → 그래프 최적화 → 양자화를 순서대로 수행합니다.
+
+```bash
+cd backend
+
+# 2-1. 임베딩 모델 (KURE-v1) + 리랭커 모두 빌드 (모든 variant)
+uv run --no-sync python scripts/build_optimized_onnx.py
+
+# 2-2. 임베딩 모델만 빌드
+uv run --no-sync python scripts/build_optimized_onnx.py --embedding-only
+
+# 2-3. 리랭커만 빌드
+uv run --no-sync python scripts/build_optimized_onnx.py --reranker-only
+
+# 2-4. 기존 모델 덮어쓰기
+uv run --no-sync python scripts/build_optimized_onnx.py --overwrite
+
+# 2-5. 빌드 후 수치 검증만 실행
+uv run --no-sync python scripts/build_optimized_onnx.py --verify
+```
+
+**빌드 출력 디렉토리** (`data/models/`):
+
+| 디렉토리 | 설명 | 크기 |
+|----------|------|------|
+| `kure-v1-ort-opt/` | 임베딩 FP32 최적화 | ~1.1GB |
+| `kure-v1-ort-opt-qdq/` | 임베딩 QDQ INT8 (16 FP32) | ~700MB |
+| `reranker-ort-opt/` | 리랭커 FP32 최적화 | ~1.1GB |
+| `reranker-ort-opt-qdq/` | 리랭커 QDQ INT8 | ~700MB |
+
+> **디스크 요구량**: 빌드 중간 파일 포함 최소 **10GB** 여유 필요.
+> 빌드 중 임시 파일(onnx-export-tmp)은 자동 삭제됩니다.
+
+### Step 3: 임베딩 생성 (두 variant 비교)
+
+두 variant로 **각각 별도 LanceDB 테이블**에 임베딩하여 비교합니다.
+
+```bash
+cd backend
+
+# 3-1. data/ 폴더에 법령/판례 JSON 준비
+# data/law_v3.json, data/precedents_v2.json 필요
+# Google Drive에서 복원: rclone copy --config rclone.conf gdrive:data/ data/ --progress
+
+# 3-2. Variant A: ORT-opt FP32 (무손실)로 임베딩
+USE_ONNX_EMBEDDING=true \
+ONNX_EMBEDDING_VARIANT=ort-opt \
+LANCEDB_URI=./lancedb_data_ort_opt \
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
+
+# 3-3. Variant B: QDQ INT8 (cosine 0.999)로 임베딩
+USE_ONNX_EMBEDDING=true \
+ONNX_EMBEDDING_VARIANT=ort-opt-qdq \
+LANCEDB_URI=./lancedb_data_qdq \
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
+
+# 3-4. 기존 PyTorch FP32 임베딩도 비교하려면
+USE_ONNX_EMBEDDING=false \
+LANCEDB_URI=./lancedb_data_pytorch \
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
+```
+
+> **주의**: `LANCEDB_URI`를 variant별로 다르게 설정하여 데이터가 섞이지 않도록 합니다.
+> GPU 서버에서 실행 시 임베딩 속도가 크게 빨라집니다 (배치 크기 자동 조정).
+
+### Step 4: RAG 검색 품질 비교
+
+```bash
+cd backend
+
+# 4-1. Variant A (ORT-opt FP32)로 RAG 평가
+USE_ONNX_EMBEDDING=true \
+ONNX_EMBEDDING_VARIANT=ort-opt \
+LANCEDB_URI=./lancedb_data_ort_opt \
+uv run --no-sync python -m evaluation.run
+
+# 4-2. Variant B (QDQ INT8)로 RAG 평가
+USE_ONNX_EMBEDDING=true \
+ONNX_EMBEDDING_VARIANT=ort-opt-qdq \
+LANCEDB_URI=./lancedb_data_qdq \
+uv run --no-sync python -m evaluation.run
+
+# 4-3. PyTorch 기준선
+USE_ONNX_EMBEDDING=false \
+LANCEDB_URI=./lancedb_data_pytorch \
+uv run --no-sync python -m evaluation.run
+```
+
+**평가 지표 목표**: Recall@10 ≥ 0.8, MRR ≥ 0.7, Hit Rate ≥ 0.9
+
+### Step 5: 리랭커 variant 비교 (선택)
+
+리랭커도 ONNX variant를 비교하려면:
+
+```bash
+# .env 또는 환경변수로 설정
+USE_ONNX_RERANKER=true
+ONNX_RERANKER_VARIANT=ort-opt       # 또는 ort-opt-qdq
+```
+
+### ONNX 환경 변수 요약
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `USE_ONNX_EMBEDDING` | `false` | ONNX 임베딩 사용 여부 |
+| `ONNX_EMBEDDING_VARIANT` | `ort-opt` | `ort-opt` (FP32) 또는 `ort-opt-qdq` (INT8) |
+| `USE_ONNX_RERANKER` | `false` | ONNX 리랭커 사용 여부 |
+| `ONNX_RERANKER_VARIANT` | `ort-opt` | `ort-opt` (FP32) 또는 `ort-opt-qdq` (INT8) |
+| `ONNX_INTRA_OP_THREADS` | `0` | 0=자동, 4=Mac ARM P코어만 권장 |
+| `ONNX_ENABLE_IO_BINDING` | `false` | CPU EP에서 무효 (GPU EP용) |
+| `ONNX_ENABLE_BF16_FASTMATH` | `false` | Graviton3+ 전용 (Mac ARM 미지원) |
+| `ONNX_QDQ_SENSITIVE_LAYERS` | `""` | 커스텀 민감 레이어 (빈 문자열=기본 16개) |
+| `ONNX_QUALITY_GATE_ENABLED` | `true` | 품질 게이트 활성화 |
+| `ONNX_QUALITY_GATE_FALLBACK` | `true` | 품질 미달 시 PyTorch 폴백 |
+
+### 관련 스크립트
+
+| 스크립트 | 용도 |
+|----------|------|
+| `build_optimized_onnx.py` | ONNX 모델 빌드 (변환+최적화+양자화+검증) |
+| `benchmark_arm_optimization.py` | ARM 최적화 벤치마크 (latency, cosine) |
+| `sweep_sensitive_layers.py` | QDQ INT8 민감 레이어 탐색 (최적 FP32 레이어 결정) |
+| `benchmark_new_optimizations.py` | Session Config / CoreML / Dynamic INT8 벤치마크 |
+| `download_models.py` | HuggingFace 모델 다운로드 (PyTorch 원본) |
+
+### 벤치마크 보고서
+
+- `docs/04-report/features/arm-onnx-optimization-benchmark.md` — 전체 최적화 벤치마크 결과
+
+---
+
 ## 법률 용어 PostgreSQL 로드 (load_legal_terms_data.py)
 
 `lawterms_v1.json` (81,488건 → ~72,700 고유 용어)을 PostgreSQL `legal_terms` 테이블로 로드합니다.

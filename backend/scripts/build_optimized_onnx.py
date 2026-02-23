@@ -13,14 +13,14 @@ PyTorch 체크포인트에서 최적화된 ONNX 모델을 빌드합니다.
   6. model_versions.json 메타데이터 저장
   7. 토크나이저 + config.json 복사
 
-출력 변형:
-  - kure-v1-ort-opt            : 임베딩 Fusion FP32
-  - kure-v1-ort-opt-fp16       : 임베딩 Fusion + FP16
-  - kure-v1-ort-opt-static128  : 임베딩 Fusion FP32 + Static Shape (batch=1, seq=128)
-  - kure-v1-ort-opt-qdq        : 임베딩 QDQ 선택적 INT8 (민감 레이어 FP32 유지)
+출력 변형 (현재 유효):
+  - kure-v1-ort-opt            : 임베딩 Fusion FP32 (무손실, cosine 1.0)
+  - kure-v1-ort-opt-qdq        : 임베딩 QDQ 선택적 INT8 (16 FP32 레이어, cosine 0.999)
   - reranker-ort-opt           : 리랭커 Fusion FP32
-  - reranker-ort-opt-fp16      : 리랭커 Fusion + FP16
-  - reranker-ort-opt-qdq       : 리랭커 QDQ 선택적 INT8 (민감 레이어 FP32 유지)
+  - reranker-ort-opt-qdq       : 리랭커 QDQ 선택적 INT8
+
+삭제된 변형 (벤치마크 결과 역효과/실패):
+  - fp16, static128, static64, static64-qdq (Mac ARM에서 역효과)
 
 사용법:
   cd backend && uv run python scripts/build_optimized_onnx.py
@@ -81,11 +81,14 @@ EMB_ONNX_EXPORT_DIR = DATA_MODELS_DIR / "kure-v1-onnx-export-tmp"
 EMB_ORT_OPT_DIR = DATA_MODELS_DIR / "kure-v1-ort-opt"
 EMB_ORT_OPT_FP16_DIR = DATA_MODELS_DIR / "kure-v1-ort-opt-fp16"
 EMB_ORT_OPT_STATIC128_DIR = DATA_MODELS_DIR / "kure-v1-ort-opt-static128"
+EMB_ORT_OPT_STATIC64_DIR = DATA_MODELS_DIR / "kure-v1-ort-opt-static64"
 EMB_ORT_OPT_QDQ_DIR = DATA_MODELS_DIR / "kure-v1-ort-opt-qdq"
+EMB_ORT_OPT_STATIC64_QDQ_DIR = DATA_MODELS_DIR / "kure-v1-ort-opt-static64-qdq"
 
 # Static shape 설정
 EMB_STATIC_BATCH_SIZE = 1
 EMB_STATIC_SEQ_LENGTH = 128
+EMB_STATIC64_SEQ_LENGTH = 64
 
 # --- 리랭커 모델 ---
 RR_MODEL_NAME = "dragonkue/bge-reranker-v2-m3-ko"
@@ -117,8 +120,9 @@ MAX_ABS_DIFF_THRESHOLD_QDQ = 0.03  # 임베딩 INT8: 정규화 벡터, 실측 ~0
 MAX_ABS_DIFF_THRESHOLD_QDQ_RR = 0.5  # 리랭커 INT8: logit 스케일이 커서 abs diff 큼, 실측 ~0.45
 
 # QDQ 기본 민감 레이어 (XLM-RoBERTa Large 24 layers)
-# 경험적 선택: 첫 2개 + 마지막 2개. --sensitivity-sweep로 실측 갱신 가능.
-DEFAULT_SENSITIVE_LAYERS = [0, 1, 22, 23]
+# sweep_sensitive_layers.py 실측 결과: cosine >= 0.999 달성에 16개 FP32 필요.
+# INT8 레이어 = [3, 4, 5, 7, 8, 10, 11, 16] (8개만 양자화)
+DEFAULT_SENSITIVE_LAYERS = [0, 1, 2, 6, 9, 12, 13, 14, 15, 17, 18, 19, 20, 21, 22, 23]
 NUM_TRANSFORMER_LAYERS = 24
 
 # --- 테스트 데이터 ---
@@ -639,31 +643,40 @@ def convert_to_static_shape(
     print(f"    [{label}] Static shape 변환 중 (batch={batch_size}, seq={seq_length})...")
     try:
         import onnx
-        from onnxruntime.tools.make_dynamic_shape_fixed import make_dynamic_shape_fixed
+        from onnxruntime.tools.make_dynamic_shape_fixed import make_input_shape_fixed
 
         static_dir.mkdir(parents=True, exist_ok=True)
 
-        model = onnx.load(str(fp32_path))
-        fixed_model = make_dynamic_shape_fixed(
-            model,
-            {
-                "batch_size": batch_size,
-                "sequence_length": seq_length,
-            },
-        )
-
-        # 외부 데이터 파일이 있으면 외부 데이터 포맷 사용
+        # 외부 데이터가 있으면 data_path 기준으로 로드
         data_file = fp32_dir / "model_optimized.onnx.data"
         if data_file.exists():
-            from onnxruntime.transformers.onnx_model import OnnxModel
+            model = onnx.load(str(fp32_path), load_external_data=False)
+            from onnx.external_data_helper import load_external_data_for_model
 
-            onnx_model = OnnxModel(fixed_model)
-            onnx_model.save_model_to_file(
+            load_external_data_for_model(model, str(fp32_dir))
+        else:
+            model = onnx.load(str(fp32_path))
+
+        # ORT 1.23.2+: 입력별로 고정 shape 적용
+        input_shape_map = {
+            "input_ids": [batch_size, seq_length],
+            "attention_mask": [batch_size, seq_length],
+        }
+        for input_name, fixed_shape in input_shape_map.items():
+            make_input_shape_fixed(model.graph, input_name, fixed_shape)
+
+        # 외부 데이터 모델: 가중치를 외부 파일로 저장
+        if data_file.exists():
+            onnx.save_model(
+                model,
                 str(static_path),
-                use_external_data_format=True,
+                save_as_external_data=True,
+                all_tensors_to_one_file=True,
+                location="model_optimized.onnx.data",
+                size_threshold=1024,
             )
         else:
-            onnx.save(fixed_model, str(static_path))
+            onnx.save(model, str(static_path))
 
         # 결과 확인
         static_data_file = static_dir / "model_optimized.onnx.data"
@@ -1424,6 +1437,22 @@ def build_embedding_models(
         copied = _copy_tokenizer_and_config(EMB_ONNX_EXPORT_DIR, EMB_ORT_OPT_STATIC128_DIR)
         print(f"    토크나이저 파일 복사: {copied}개")
 
+    # Step 3b-2: Static Shape 변환 (batch=1, seq=64)
+    print(f"\n  {SUBSEPARATOR}")
+    print("  Step 3b-2: Static Shape 변환 (batch=1, seq=64)")
+    print(f"  {SUBSEPARATOR}")
+
+    static64_ok = convert_to_static_shape(
+        EMB_ORT_OPT_DIR, EMB_ORT_OPT_STATIC64_DIR,
+        seq_length=EMB_STATIC64_SEQ_LENGTH,
+        label="임베딩 Static64",
+        overwrite=overwrite,
+    )
+
+    if static64_ok:
+        copied = _copy_tokenizer_and_config(EMB_ONNX_EXPORT_DIR, EMB_ORT_OPT_STATIC64_DIR)
+        print(f"    토크나이저 파일 복사: {copied}개")
+
     # Step 3c: QDQ 선택적 양자화 (raw ONNX에서 양자화)
     print(f"\n  {SUBSEPARATOR}")
     print("  Step 3c: QDQ 선택적 양자화 (민감 레이어 FP32 유지)")
@@ -1446,6 +1475,32 @@ def build_embedding_models(
     if qdq_stats is not None and qdq_stats:
         copied = _copy_tokenizer_and_config(emb_qdq_source, EMB_ORT_OPT_QDQ_DIR)
         print(f"    토크나이저 파일 복사: {copied}개")
+
+    # Step 3c-2: Static64 기반 QDQ 양자화
+    if static64_ok:
+        print(f"\n  {SUBSEPARATOR}")
+        print("  Step 3c-2: Static64 + QDQ 양자화 (민감 레이어 FP32 유지)")
+        print(f"  {SUBSEPARATOR}")
+
+        qdq_static64_stats = quantize_qdq(
+            emb_qdq_source, EMB_ORT_OPT_STATIC64_QDQ_DIR,
+            label="임베딩 Static64 QDQ",
+            use_static=use_static_quantize,
+            model_type="embedding",
+            overwrite=overwrite,
+        )
+        if qdq_static64_stats is not None and qdq_static64_stats:
+            # Static shape 변환 적용 (QDQ 모델에 static64 shape 고정)
+            static64_qdq_model_path = EMB_ORT_OPT_STATIC64_QDQ_DIR / "model_optimized.onnx"
+            if static64_qdq_model_path.exists():
+                convert_to_static_shape(
+                    EMB_ORT_OPT_STATIC64_QDQ_DIR, EMB_ORT_OPT_STATIC64_QDQ_DIR,
+                    seq_length=EMB_STATIC64_SEQ_LENGTH,
+                    label="임베딩 Static64 QDQ shape 고정",
+                    overwrite=True,
+                )
+            copied = _copy_tokenizer_and_config(emb_qdq_source, EMB_ORT_OPT_STATIC64_QDQ_DIR)
+            print(f"    토크나이저 파일 복사: {copied}개")
 
     # Step 4: 수치 동등성 검증
     print(f"\n  {SUBSEPARATOR}")
@@ -1495,6 +1550,28 @@ def build_embedding_models(
             fusion_stats, qdq_quality, "ort-optimizer-qdq-int8",
         )
 
+    if EMB_ORT_OPT_STATIC64_DIR.exists():
+        static64_quality = verify_embedding_quality(
+            EMB_ORT_OPT_STATIC64_DIR, "model_optimized.onnx",
+            label="Static64",
+            cosine_threshold=COSINE_THRESHOLD_FP32,
+            max_diff_threshold=MAX_ABS_DIFF_THRESHOLD_FP32,
+        )
+        results["kure-v1-ort-opt-static64"] = _build_embedding_meta(
+            fusion_stats, static64_quality, "ort-optimizer-fp32-static64",
+        )
+
+    if EMB_ORT_OPT_STATIC64_QDQ_DIR.exists():
+        static64_qdq_quality = verify_embedding_quality(
+            EMB_ORT_OPT_STATIC64_QDQ_DIR, "model_optimized.onnx",
+            label="Static64 QDQ",
+            cosine_threshold=COSINE_THRESHOLD_QDQ,
+            max_diff_threshold=MAX_ABS_DIFF_THRESHOLD_QDQ,
+        )
+        results["kure-v1-ort-opt-static64-qdq"] = _build_embedding_meta(
+            fusion_stats, static64_qdq_quality, "ort-optimizer-qdq-int8-static64",
+        )
+
     # 임시 디렉토리 → 벤치마크용 raw ONNX 보존
     print(f"\n  {SUBSEPARATOR}")
     print("  정리")
@@ -1516,8 +1593,12 @@ def build_embedding_models(
         print(f"    FP16: {_format_size(_dir_total_size(EMB_ORT_OPT_FP16_DIR))}")
     if EMB_ORT_OPT_STATIC128_DIR.exists():
         print(f"    Static128: {_format_size(_dir_total_size(EMB_ORT_OPT_STATIC128_DIR))}")
+    if EMB_ORT_OPT_STATIC64_DIR.exists():
+        print(f"    Static64:  {_format_size(_dir_total_size(EMB_ORT_OPT_STATIC64_DIR))}")
     if EMB_ORT_OPT_QDQ_DIR.exists():
         print(f"    QDQ INT8:  {_format_size(_dir_total_size(EMB_ORT_OPT_QDQ_DIR))}")
+    if EMB_ORT_OPT_STATIC64_QDQ_DIR.exists():
+        print(f"    Static64 QDQ: {_format_size(_dir_total_size(EMB_ORT_OPT_STATIC64_QDQ_DIR))}")
 
     return results
 

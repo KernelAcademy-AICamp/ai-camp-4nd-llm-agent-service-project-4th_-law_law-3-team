@@ -2617,6 +2617,8 @@ dev = [
     { name = "matplotlib" },
     { name = "mypy" },
     { name = "nbformat" },
+    { name = "onnx-simplifier" },
+    { name = "onnxruntime-extensions" },
     { name = "optimum", extra = ["onnxruntime"] },
     { name = "plotly" },
     { name = "pytest" },
@@ -2634,6 +2636,8 @@ dev = [
     { name = "matplotlib" },
     { name = "mypy" },
     { name = "nbformat" },
+    { name = "onnx-simplifier" },
+    { name = "onnxruntime-extensions" },
     { name = "optimum", extra = ["onnxruntime"] },
     { name = "plotly" },
     { name = "pytest" },
@@ -2675,6 +2679,8 @@ requires-dist = [
     { name = "nbformat", marker = "extra == 'dev'", specifier = ">=5.9.0" },
     { name = "neo4j", specifier = ">=5.15.0" },
     { name = "numpy", specifier = ">=1.24.0" },
+    { name = "onnx-simplifier", marker = "extra == 'dev'", specifier = ">=0.4.36" },
+    { name = "onnxruntime-extensions", marker = "extra == 'dev'", specifier = ">=0.10.0" },
     { name = "openai", specifier = ">=1.12.0" },
     { name = "optimum", extras = ["onnxruntime"], marker = "extra == 'dev'", specifier = ">=1.17.0" },
     { name = "pandas", specifier = ">=2.0.0" },
@@ -2715,6 +2721,8 @@ dev = [
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "mypy", specifier = ">=1.8.0" },
     { name = "nbformat", specifier = ">=5.9.0" },
+    { name = "onnx-simplifier", specifier = ">=0.4.36" },
+    { name = "onnxruntime-extensions", specifier = ">=0.10.0" },
     { name = "optimum", extras = ["onnxruntime"], specifier = ">=1.17.0" },
     { name = "plotly", specifier = ">=5.18.0" },
     { name = "pytest", specifier = ">=9.0.2" },
@@ -3689,6 +3697,15 @@ wheels = [
 ]
 
 [[package]]
+name = "onnx-simplifier"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "onnxsim" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/93/37/229570fd8ca86aca41ec893525950de95a33891521d63da3517162545dc8/onnx_simplifier-0.5.0.tar.gz", hash = "sha256:6f15c75a68161a618d5e2ef9fd5e9417fe296b13dd71560406b510fbf027825f", size = 728, upload-time = "2026-02-21T10:35:22Z" }
+
+[[package]]
 name = "onnxruntime"
 version = "1.23.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3718,6 +3735,43 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4a/93/aba75358133b3a941d736816dd392f687e7eab77215a6e429879080b76b6/onnxruntime-1.23.2-cp313-cp313-win_amd64.whl", hash = "sha256:1f9cc0a55349c584f083c1c076e611a7c35d5b867d5d6e6d6c823bf821978088", size = 13470276, upload-time = "2025-10-22T03:47:31.193Z" },
     { url = "https://files.pythonhosted.org/packages/7c/3d/6830fa61c69ca8e905f237001dbfc01689a4e4ab06147020a4518318881f/onnxruntime-1.23.2-cp313-cp313t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:9d2385e774f46ac38f02b3a91a91e30263d41b2f1f4f26ae34805b2a9ddef466", size = 15229610, upload-time = "2025-10-22T03:46:32.239Z" },
     { url = "https://files.pythonhosted.org/packages/b6/ca/862b1e7a639460f0ca25fd5b6135fb42cf9deea86d398a92e44dfda2279d/onnxruntime-1.23.2-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e2b9233c4947907fd1818d0e581c049c41ccc39b2856cc942ff6d26317cee145", size = 17394184, upload-time = "2025-10-22T03:47:08.127Z" },
+]
+
+[[package]]
+name = "onnxruntime-extensions"
+version = "0.15.2"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/83/c7/adece52214441020be22cbc25ad4c21a77cd2ed83d00ce47b38f3d9ed4c9/onnxruntime_extensions-0.15.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:042f93582dd97b488c63ea45f607c6666833373f1be28f0fa7d3874cbd5b60cb", size = 1716904, upload-time = "2026-02-04T23:12:49.043Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/eb/b8b967e5a0a61d5d86fe3843be2998738ab490fdb068ee4d93085c2fc6a8/onnxruntime_extensions-0.15.2-cp311-cp311-macosx_11_0_universal2.whl", hash = "sha256:dadc2d2c33dac1a4e5fa082827f26995bff649df72b16e7d8bc97a484f9477df", size = 3494915, upload-time = "2026-02-04T23:12:50.53Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/b7/24134afe15b5e3dee898e47b199b8661609b36d5848ef72cefe6186ed7c7/onnxruntime_extensions-0.15.2-cp311-cp311-macosx_11_0_x86_64.whl", hash = "sha256:acca61cb0ab5c54e2d237b3629c9bb73c686a727c014d375c1400d8db1c8bc05", size = 1895814, upload-time = "2026-02-04T23:12:52.548Z" },
+    { url = "https://files.pythonhosted.org/packages/58/1c/6c2355415b98a25e02c9e3c9fdb41f9c4c7e8cb6914067bebc2b11f15dad/onnxruntime_extensions-0.15.2-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:6e507a9310aa2e200cc5b471bf04b4e95139be37af248a41c95e6528fa1ac065", size = 2535455, upload-time = "2026-02-04T23:13:06.297Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/af/f3230010393e38b9066445a8c7c065b7084523efd4b3f0febd19aa67f3af/onnxruntime_extensions-0.15.2-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:47f19c732a24f400a8c6a845ebdf1a9b83fa3e779e9dcf1bdfe864e72c77e15a", size = 2642952, upload-time = "2026-02-04T23:12:53.593Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/db/c19329597724766194291d4366f77807570dddd36ad623fc244630000f8a/onnxruntime_extensions-0.15.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:5f53065f014ed4bf424e668456019cf6dae98fbe86b9f8494af9a33c75728280", size = 1717050, upload-time = "2026-02-04T23:12:54.992Z" },
+    { url = "https://files.pythonhosted.org/packages/76/6b/d405cd16c4ff25e0e4dc3c5d128282da515f7ec841a1dd71014422f9e6d8/onnxruntime_extensions-0.15.2-cp312-cp312-macosx_11_0_universal2.whl", hash = "sha256:8deef9b8a2f7a2cde109db7a28c2e64bf4f4cdb7cc62462ff8e2d30bc439ddf5", size = 3495998, upload-time = "2026-02-04T23:12:57.999Z" },
+    { url = "https://files.pythonhosted.org/packages/23/75/711b2f9c6a1467bda1d2dc1c1e496a12f7e5ea011fccbcccfd9610592b54/onnxruntime_extensions-0.15.2-cp312-cp312-macosx_11_0_x86_64.whl", hash = "sha256:38d8898ac4d5b92fa8a9e15c010191767fa78d7c6e0c040e9ebf377f9e1a5141", size = 1896936, upload-time = "2026-02-04T23:13:00.538Z" },
+    { url = "https://files.pythonhosted.org/packages/56/4d/4c20c172f232498ce71e80ab8bc7281ee43cfc2f1d99440b37dc0f65e287/onnxruntime_extensions-0.15.2-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:bc9c4a7ef0e1da68c5792406f883db670eb616cc0af7fa85c74ac851fef3d334", size = 2535808, upload-time = "2026-02-04T23:13:08.969Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/b5/64ac09815875afa7fadec5dbc52ec9f0b9039bbf614223b2408209fa84b9/onnxruntime_extensions-0.15.2-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c159a9d05c3133122a92d1b4ade8be4c216222e15736dbd73d9aef3eb12da27f", size = 2644100, upload-time = "2026-02-04T23:12:56.71Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/5a/c5e843ae9e0e4f8270178ebc6840b109b0f6fbfc50f10ec637fd1661cca2/onnxruntime_extensions-0.15.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:b94dd079499e7de7242b665c67153d09b45b3a013e68e71bc48dd766f8637616", size = 1717060, upload-time = "2026-02-04T23:13:04.467Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/59/7d74d1d7898f1a84337d0a4d9341dc5d95dadeaff795f25addf4de92b548/onnxruntime_extensions-0.15.2-cp313-cp313-macosx_11_0_universal2.whl", hash = "sha256:8b354c0f06ef1a5053f4ee3f8bc8c21a3d6ee9e1d1c9cdfb5e14d1b099597857", size = 3496176, upload-time = "2026-02-04T23:13:07.664Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/1f/0889d9c366788eecedb3065f940fbffe6e526d3b128dae5f80993dcffde7/onnxruntime_extensions-0.15.2-cp313-cp313-macosx_11_0_x86_64.whl", hash = "sha256:ee19b88eee9bcf62717ff1673fe10c56bd09e3adc56b5c952cba592674de960f", size = 1897069, upload-time = "2026-02-04T23:13:11.397Z" },
+    { url = "https://files.pythonhosted.org/packages/22/cd/728ae7203ea20a16b0ffc715e41ef82e942699c8b9a46b0f67d1ea183306/onnxruntime_extensions-0.15.2-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:e98f3f84759db69dd101f68ccdc577ba66be2140307e84ae76c07021dc5f4644", size = 2535885, upload-time = "2026-02-04T23:13:13.031Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/0c/4d6dc572feb31afe33b6ebd4c9f11a1082079bf2875c7dab82b4c6d47d08/onnxruntime_extensions-0.15.2-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:de3506eae2be7beb27921d8a596dbbdc118c0260c47b21084a9ca446c5a05a79", size = 2644139, upload-time = "2026-02-04T23:12:58.939Z" },
+]
+
+[[package]]
+name = "onnxsim"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "onnx" },
+    { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/26/5b/054c0f307e342fa2c8de26385d830c5a1fa57f44302b5bc121a90ee6fb71/onnxsim-0.5.0.tar.gz", hash = "sha256:0469dcd54185baa2e14d55460559602905c6fa43d458bcffa8ce4b08f5f4e8e8", size = 20995842, upload-time = "2026-02-20T11:26:25.659Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4f/45/5fc03a25c25d1c88e38440fea6dc3e6f36c6799d6da7e292efe032b76b10/onnxsim-0.5.0-cp312-cp312-macosx_10_15_universal2.whl", hash = "sha256:74eb19b73b543d8870f376560e4f989b570e536914d32b8024f03fbbfa89ca6f", size = 3309838, upload-time = "2026-02-20T11:26:12.137Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/51/6b96f3716f7d6e033eb8b26e96ab12287c111f6b66dbc576c2d2c6b050b8/onnxsim-0.5.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:bf333017201440da27057bb10aca007696905570870c6340036fe7ff75edd26a", size = 2210054, upload-time = "2026-02-20T11:26:14.163Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/3b/26f9161a9024949e7eb6770fa97df0aa3720f3e2c89e6484411698129a6f/onnxsim-0.5.0-cp312-cp312-win_amd64.whl", hash = "sha256:44afe46a5b3cc4d264892efd884f990366f716092a9ebc3b30d6bc31fd57f06c", size = 1316720, upload-time = "2026-02-20T11:26:16.242Z" },
 ]
 
 [[package]]

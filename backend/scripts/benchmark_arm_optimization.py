@@ -15,6 +15,9 @@ Phase 8: BF16 Fastmath 벤치마크 (Graviton3 전용, Linux ARM만)
 Phase 9: Static Shape 벤치마크 (임베딩 전용, dynamic vs static128)
 Phase 10: 복합 최적화 (BF16 + Static128, Graviton3 전용)
 Phase 11: QDQ INT8 선택적 양자화 (민감 레이어 FP32 유지)
+Phase 12: Static64 Shape 벤치마크 (임베딩 전용, dynamic vs static64)
+Phase 13: IO Binding 벤치마크 (numpy→ORT 복사 오버헤드 제거)
+Phase 14: Static64 + QDQ INT8 복합 벤치마크 (임베딩 전용)
 
 각 Phase에서 임베딩 + 리랭커 양쪽 측정:
   - 단일 쿼리 레이턴시 (10회, 워밍업 3회)
@@ -29,6 +32,8 @@ Phase 11: QDQ INT8 선택적 양자화 (민감 레이어 FP32 유지)
   cd backend && uv run python scripts/benchmark_arm_optimization.py --skip-bf16-test
   cd backend && uv run python scripts/benchmark_arm_optimization.py --skip-static-test
   cd backend && uv run python scripts/benchmark_arm_optimization.py --skip-qdq-test
+  cd backend && uv run python scripts/benchmark_arm_optimization.py --skip-static64-test
+  cd backend && uv run python scripts/benchmark_arm_optimization.py --skip-io-binding-test
   cd backend && uv run python scripts/benchmark_arm_optimization.py --output results.json
 """
 
@@ -85,6 +90,8 @@ RR_MODEL_NAME = "dragonkue/bge-reranker-v2-m3-ko"
 RR_ONNX_DIR = PROJECT_ROOT / "data" / "models" / "reranker-onnx"
 RR_ORT_OPT_DIR = PROJECT_ROOT / "data" / "models" / "reranker-ort-opt"
 RR_ORT_OPT_FP16_DIR = PROJECT_ROOT / "data" / "models" / "reranker-ort-opt-fp16"
+EMB_ORT_OPT_STATIC64_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-ort-opt-static64"
+EMB_ORT_OPT_STATIC64_QDQ_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-ort-opt-static64-qdq"
 EMB_ORT_OPT_QDQ_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-ort-opt-qdq"
 RR_ORT_OPT_QDQ_DIR = PROJECT_ROOT / "data" / "models" / "reranker-ort-opt-qdq"
 
@@ -390,27 +397,47 @@ def _encode_onnx_raw(
 
     input_names = [inp.name for inp in session.get_inputs()]
     use_static = static_max_length > 0
-    inputs = tokenizer(
-        texts, return_tensors="np",
-        padding="max_length" if use_static else True,
-        truncation=True,
-        max_length=static_max_length if use_static else 512,
-    )
-    feed: dict[str, Any] = {
-        "input_ids": inputs["input_ids"],
-        "attention_mask": inputs["attention_mask"],
-    }
-    if "token_type_ids" in input_names:
-        feed["token_type_ids"] = inputs.get(
-            "token_type_ids", np.zeros_like(inputs["input_ids"]),
+
+    if use_static:
+        # Static 모델은 batch=1 고정 → 텍스트별 개별 추론 후 결합
+        all_embs = []
+        for text in texts:
+            inputs = tokenizer(
+                [text], return_tensors="np",
+                padding="max_length", truncation=True,
+                max_length=static_max_length,
+            )
+            feed: dict[str, Any] = {
+                "input_ids": inputs["input_ids"],
+                "attention_mask": inputs["attention_mask"],
+            }
+            if "token_type_ids" in input_names:
+                feed["token_type_ids"] = inputs.get(
+                    "token_type_ids", np.zeros_like(inputs["input_ids"]),
+                )
+            outputs = session.run(None, feed)
+            vec = outputs[0][:, 0, :]
+            n = np.linalg.norm(vec, axis=1, keepdims=True)
+            all_embs.append(vec / np.clip(n, a_min=1e-9, a_max=None))
+        emb = np.concatenate(all_embs, axis=0)
+    else:
+        inputs = tokenizer(
+            texts, return_tensors="np",
+            padding=True, truncation=True, max_length=512,
         )
-
-    outputs = session.run(None, feed)
-
-    # CLS pooling + L2 norm (KURE-v1은 pooling_mode_cls_token=True)
-    emb = outputs[0][:, 0, :]
-    norm = np.linalg.norm(emb, axis=1, keepdims=True)
-    emb = emb / np.clip(norm, a_min=1e-9, a_max=None)
+        feed = {
+            "input_ids": inputs["input_ids"],
+            "attention_mask": inputs["attention_mask"],
+        }
+        if "token_type_ids" in input_names:
+            feed["token_type_ids"] = inputs.get(
+                "token_type_ids", np.zeros_like(inputs["input_ids"]),
+            )
+        outputs = session.run(None, feed)
+        # CLS pooling + L2 norm (KURE-v1은 pooling_mode_cls_token=True)
+        emb = outputs[0][:, 0, :]
+        norm = np.linalg.norm(emb, axis=1, keepdims=True)
+        emb = emb / np.clip(norm, a_min=1e-9, a_max=None)
 
     del session, tokenizer
     gc.collect()
@@ -1892,6 +1919,397 @@ def run_phase_11(
 
 
 # ============================================================
+# Phase 12: Static64 Shape 벤치마크 (임베딩 전용)
+# ============================================================
+
+
+def run_phase_12(
+    baseline: dict[str, dict[str, Any]],
+    *,
+    run_embedding: bool = True,
+) -> dict[str, dict[str, Any]]:
+    """Phase 12: Static64 Shape (batch=1, seq=64) 벤치마크.
+
+    법률 검색 쿼리 대부분 10-50토큰. Static128 대비 GEMM 연산량 절반.
+    Dynamic vs Static128 vs Static64 비교.
+    """
+    print(f"\n{SEPARATOR}")
+    print("  Phase 12: Static64 Shape (임베딩 전용)")
+    print(SEPARATOR)
+
+    results: dict[str, dict[str, Any]] = {}
+
+    if not run_embedding:
+        print("  [스킵] 임베딩 미실행 모드")
+        return results
+
+    if not EMB_ORT_OPT_STATIC64_DIR.exists():
+        print(f"  [스킵] static64 디렉토리 없음: {EMB_ORT_OPT_STATIC64_DIR.name}")
+        print("    빌드: uv run python scripts/build_optimized_onnx.py")
+        return results
+
+    static64_file = _find_onnx_file(EMB_ORT_OPT_STATIC64_DIR)
+    if not static64_file:
+        print("  [스킵] static64 ONNX 모델 파일 없음")
+        return results
+
+    dynamic_file = _find_onnx_file(EMB_ORT_OPT_DIR) if EMB_ORT_OPT_DIR.exists() else None
+    if not dynamic_file:
+        print("  [스킵] dynamic ORT-opt 디렉토리 없음")
+        return results
+
+    texts = EMB_TEST_QUERIES
+
+    print("\n  === Dynamic vs Static128 vs Static64 ===")
+
+    # Dynamic baseline
+    print("    [Dynamic] 측정 중...")
+    emb_dyn, med_dyn, _, _ = _measure_latency(
+        lambda: _encode_onnx_raw(texts, EMB_ORT_OPT_DIR, dynamic_file),
+    )
+
+    # Static128 (있으면)
+    med_s128 = 0.0
+    if EMB_ORT_OPT_STATIC128_DIR.exists():
+        s128_file = _find_onnx_file(EMB_ORT_OPT_STATIC128_DIR)
+        if s128_file:
+            print("    [Static128] 측정 중...")
+            _, med_s128, _, _ = _measure_latency(
+                lambda: _encode_onnx_raw(
+                    texts, EMB_ORT_OPT_STATIC128_DIR, s128_file,
+                    static_max_length=128,
+                ),
+            )
+
+    # Static64
+    print("    [Static64] 측정 중...")
+    emb_s64, med_s64, mean_s64, std_s64 = _measure_latency(
+        lambda: _encode_onnx_raw(
+            texts, EMB_ORT_OPT_STATIC64_DIR, static64_file,
+            static_max_length=64,
+        ),
+    )
+
+    cos = _cosine_similarity(emb_dyn, emb_s64)
+    max_diff = float(np.max(np.abs(emb_dyn - emb_s64)))
+    speedup_vs_dyn = med_dyn / med_s64 if med_s64 > 0 else 0.0
+    speedup_vs_s128 = med_s128 / med_s64 if med_s64 > 0 and med_s128 > 0 else 0.0
+
+    pt_ms = baseline.get("emb_pytorch_cpu", {}).get("median_ms", 1.0)
+    speedup_vs_pt = pt_ms / med_s64 if med_s64 > 0 else 0.0
+
+    print(f"    Dynamic:   {med_dyn:.1f}ms")
+    if med_s128 > 0:
+        print(f"    Static128: {med_s128:.1f}ms")
+    print(f"    Static64:  {med_s64:.1f}ms ({speedup_vs_dyn:.2f}x vs Dynamic)")
+    if med_s128 > 0:
+        print(f"    Static64 vs Static128: {speedup_vs_s128:.2f}x")
+    print(f"    cosine(Dyn vs Static64): {cos:.6f}")
+    print(f"    max_abs_diff: {max_diff:.8f}")
+
+    results["emb_static64"] = {
+        "median_ms_dynamic": med_dyn,
+        "median_ms_static128": med_s128,
+        "median_ms_static64": med_s64,
+        "median_ms": med_s64,
+        "speedup_vs_dynamic": speedup_vs_dyn,
+        "speedup_vs_static128": speedup_vs_s128,
+        "speedup": speedup_vs_pt,
+        "cosine_dyn_vs_static64": cos,
+        "max_abs_diff": max_diff,
+        "mean_ms": mean_s64, "std_ms": std_s64,
+    }
+
+    return results
+
+
+# ============================================================
+# Phase 13: IO Binding 벤치마크
+# ============================================================
+
+
+def _encode_onnx_io_binding(
+    texts: list[str],
+    model_dir: Path,
+    file_name: str,
+    *,
+    static_max_length: int = 0,
+) -> np.ndarray:
+    """IO Binding을 사용한 ORT 임베딩 생성.
+
+    numpy→ORT 데이터 복사 오버헤드를 제거하여 레이턴시를 줄인다.
+    """
+    import onnxruntime as ort
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        str(model_dir), trust_remote_code=True,
+    )
+    model_path = str(model_dir / file_name)
+    session = ort.InferenceSession(
+        model_path, providers=["CPUExecutionProvider"],
+    )
+
+    input_names = [inp.name for inp in session.get_inputs()]
+    output_names = [out.name for out in session.get_outputs()]
+
+    use_static = static_max_length > 0
+
+    if use_static:
+        # Static 모델은 batch=1 고정 → 텍스트별 개별 추론 후 결합
+        all_embs = []
+        for text in texts:
+            inputs = tokenizer(
+                [text], return_tensors="np",
+                padding="max_length", truncation=True,
+                max_length=static_max_length,
+            )
+            feed: dict[str, Any] = {
+                "input_ids": inputs["input_ids"],
+                "attention_mask": inputs["attention_mask"],
+            }
+            if "token_type_ids" in input_names:
+                feed["token_type_ids"] = inputs.get(
+                    "token_type_ids", np.zeros_like(inputs["input_ids"]),
+                )
+            binding = session.io_binding()
+            for name, arr in feed.items():
+                binding.bind_cpu_input(name, arr)
+            for out_name in output_names:
+                binding.bind_output(out_name, "cpu")
+            session.run_with_iobinding(binding)
+            raw = binding.copy_outputs_to_cpu()
+            vec = raw[0][:, 0, :]
+            n = np.linalg.norm(vec, axis=1, keepdims=True)
+            all_embs.append(vec / np.clip(n, a_min=1e-9, a_max=None))
+        emb = np.concatenate(all_embs, axis=0)
+    else:
+        inputs = tokenizer(
+            texts, return_tensors="np",
+            padding=True, truncation=True, max_length=512,
+        )
+        feed = {
+            "input_ids": inputs["input_ids"],
+            "attention_mask": inputs["attention_mask"],
+        }
+        if "token_type_ids" in input_names:
+            feed["token_type_ids"] = inputs.get(
+                "token_type_ids", np.zeros_like(inputs["input_ids"]),
+            )
+        binding = session.io_binding()
+        for name, arr in feed.items():
+            binding.bind_cpu_input(name, arr)
+        for out_name in output_names:
+            binding.bind_output(out_name, "cpu")
+        session.run_with_iobinding(binding)
+        raw_outputs = binding.copy_outputs_to_cpu()
+        emb = raw_outputs[0][:, 0, :]
+        norm = np.linalg.norm(emb, axis=1, keepdims=True)
+        emb = emb / np.clip(norm, a_min=1e-9, a_max=None)
+
+    del session, tokenizer, binding
+    gc.collect()
+    return emb
+
+
+def run_phase_13(
+    baseline: dict[str, dict[str, Any]],
+    *,
+    run_embedding: bool = True,
+) -> dict[str, dict[str, Any]]:
+    """Phase 13: IO Binding 벤치마크.
+
+    session.run() vs session.run_with_iobinding() 비교.
+    numpy→ORT 데이터 복사 오버헤드 제거 효과를 측정.
+    """
+    print(f"\n{SEPARATOR}")
+    print("  Phase 13: IO Binding (numpy→ORT 복사 제거)")
+    print(SEPARATOR)
+
+    results: dict[str, dict[str, Any]] = {}
+
+    if not run_embedding:
+        print("  [스킵] 임베딩 미실행 모드")
+        return results
+
+    if not EMB_ORT_OPT_DIR.exists():
+        print("  [스킵] ORT-opt 디렉토리 없음")
+        return results
+
+    opt_file = _find_onnx_file(EMB_ORT_OPT_DIR)
+    if not opt_file:
+        print("  [스킵] ONNX 모델 파일 없음")
+        return results
+
+    texts = EMB_TEST_QUERIES
+
+    print("\n  === 임베딩: session.run() vs IO Binding ===")
+
+    # 기본 session.run()
+    print("    [session.run()] 측정 중...")
+    emb_base, med_base, _, _ = _measure_latency(
+        lambda: _encode_onnx_raw(texts, EMB_ORT_OPT_DIR, opt_file),
+    )
+
+    # IO Binding
+    print("    [IO Binding] 측정 중...")
+    emb_iob, med_iob, mean_iob, std_iob = _measure_latency(
+        lambda: _encode_onnx_io_binding(texts, EMB_ORT_OPT_DIR, opt_file),
+    )
+
+    cos = _cosine_similarity(emb_base, emb_iob)
+    speedup_vs_base = med_base / med_iob if med_iob > 0 else 0.0
+
+    pt_ms = baseline.get("emb_pytorch_cpu", {}).get("median_ms", 1.0)
+    speedup_vs_pt = pt_ms / med_iob if med_iob > 0 else 0.0
+
+    print(f"    session.run(): {med_base:.1f}ms")
+    print(f"    IO Binding:    {med_iob:.1f}ms ({speedup_vs_base:.2f}x)")
+    print(f"    cosine: {cos:.6f}")
+
+    results["emb_io_binding"] = {
+        "median_ms_base": med_base,
+        "median_ms_io_binding": med_iob,
+        "median_ms": med_iob,
+        "speedup_vs_base": speedup_vs_base,
+        "speedup": speedup_vs_pt,
+        "cosine": cos,
+        "mean_ms": mean_iob, "std_ms": std_iob,
+    }
+
+    # Static64 + IO Binding (있으면)
+    if EMB_ORT_OPT_STATIC64_DIR.exists():
+        s64_file = _find_onnx_file(EMB_ORT_OPT_STATIC64_DIR)
+        if s64_file:
+            print("\n  === Static64 + IO Binding ===")
+
+            print("    [Static64 session.run()] 측정 중...")
+            _, med_s64, _, _ = _measure_latency(
+                lambda: _encode_onnx_raw(
+                    texts, EMB_ORT_OPT_STATIC64_DIR, s64_file,
+                    static_max_length=64,
+                ),
+            )
+
+            print("    [Static64 IO Binding] 측정 중...")
+            emb_s64_iob, med_s64_iob, mean_s64_iob, std_s64_iob = _measure_latency(
+                lambda: _encode_onnx_io_binding(
+                    texts, EMB_ORT_OPT_STATIC64_DIR, s64_file,
+                    static_max_length=64,
+                ),
+            )
+
+            speedup_s64 = med_s64 / med_s64_iob if med_s64_iob > 0 else 0.0
+            speedup_s64_pt = pt_ms / med_s64_iob if med_s64_iob > 0 else 0.0
+
+            print(f"    Static64 run():       {med_s64:.1f}ms")
+            print(f"    Static64 IO Binding:  {med_s64_iob:.1f}ms ({speedup_s64:.2f}x)")
+
+            results["emb_static64_io_binding"] = {
+                "median_ms_base": med_s64,
+                "median_ms_io_binding": med_s64_iob,
+                "median_ms": med_s64_iob,
+                "speedup_vs_base": speedup_s64,
+                "speedup": speedup_s64_pt,
+                "mean_ms": mean_s64_iob, "std_ms": std_s64_iob,
+            }
+
+    return results
+
+
+# ============================================================
+# Phase 14: Static64 + QDQ INT8 복합 벤치마크 (임베딩 전용)
+# ============================================================
+
+
+def run_phase_14(
+    baseline: dict[str, dict[str, Any]],
+    *,
+    run_embedding: bool = True,
+) -> dict[str, dict[str, Any]]:
+    """Phase 14: Static64 + QDQ INT8 복합 벤치마크.
+
+    Static64 shape 고정 + QDQ INT8 양자화 복합 적용 모델의
+    속도/품질을 측정한다. 임베딩 전용.
+    """
+    print(f"\n{SEPARATOR}")
+    print("  Phase 14: Static64 + QDQ INT8 복합 (임베딩 전용)")
+    print(SEPARATOR)
+
+    results: dict[str, dict[str, Any]] = {}
+
+    if not run_embedding:
+        print("  [스킵] 임베딩 미실행 모드")
+        return results
+
+    if not EMB_ORT_OPT_STATIC64_QDQ_DIR.exists():
+        print(f"  [스킵] static64-qdq 디렉토리 없음: {EMB_ORT_OPT_STATIC64_QDQ_DIR.name}")
+        print("    빌드: uv run python scripts/build_optimized_onnx.py --embedding")
+        return results
+
+    qdq_file = _find_onnx_file(EMB_ORT_OPT_STATIC64_QDQ_DIR)
+    if not qdq_file:
+        print("  [스킵] static64-qdq ONNX 모델 파일 없음")
+        return results
+
+    texts = EMB_TEST_QUERIES
+
+    print("\n  === Static64 QDQ INT8 ===")
+    print("    속도 측정 중...")
+    _measure_rss_mb()
+    emb, median_ms, mean_ms, std_ms = _measure_latency(
+        lambda: _encode_onnx_raw(
+            texts, EMB_ORT_OPT_STATIC64_QDQ_DIR, qdq_file,
+            static_max_length=64,
+        ),
+    )
+    rss_after = _measure_rss_mb()
+
+    emb_pt = baseline.get("emb_pytorch_cpu", {}).get("embeddings")
+    cos = _cosine_similarity(emb_pt, emb) if emb_pt is not None else 0.0
+    pt_ms = baseline.get("emb_pytorch_cpu", {}).get("median_ms", 1.0)
+    speedup = pt_ms / median_ms if median_ms > 0 else 0.0
+
+    # QDQ128과 비교 (있으면)
+    qdq128_ms = 0.0
+    if EMB_ORT_OPT_QDQ_DIR.exists():
+        qdq128_file = _find_onnx_file(EMB_ORT_OPT_QDQ_DIR)
+        if qdq128_file:
+            print("    [QDQ128 비교] 측정 중...")
+            _, qdq128_ms, _, _ = _measure_latency(
+                lambda: _encode_onnx_raw(
+                    texts, EMB_ORT_OPT_QDQ_DIR, qdq128_file,
+                ),
+            )
+
+    speedup_vs_qdq128 = qdq128_ms / median_ms if median_ms > 0 and qdq128_ms > 0 else 0.0
+
+    # 모델 크기
+    qdq_path = EMB_ORT_OPT_STATIC64_QDQ_DIR / qdq_file
+    size_mb = qdq_path.stat().st_size / (1024 * 1024)
+
+    print(f"    {len(texts)}건: median={median_ms:.1f}ms ({speedup:.2f}x vs PyTorch)")
+    if qdq128_ms > 0:
+        print(f"    QDQ128: {qdq128_ms:.1f}ms → Static64 QDQ: {median_ms:.1f}ms "
+              f"({speedup_vs_qdq128:.2f}x)")
+    print(f"    cosine vs PyTorch: {cos:.6f}")
+    print(f"    모델 크기: {size_mb:.1f}MB")
+    print(f"    RSS: {rss_after:.0f}MB")
+
+    results["emb_static64_qdq"] = {
+        "median_ms": median_ms, "mean_ms": mean_ms,
+        "std_ms": std_ms, "speedup": speedup,
+        "speedup_vs_qdq128": speedup_vs_qdq128,
+        "median_ms_qdq128": qdq128_ms,
+        "cosine": cos, "rss_mb": rss_after,
+        "model_size_mb": size_mb,
+        "embeddings": emb,
+    }
+
+    return results
+
+
+# ============================================================
 # Phase 7: 종합 보고서
 # ============================================================
 
@@ -1908,6 +2326,9 @@ def _collect_summary_rows(
     phase9: dict[str, dict[str, Any]] | None = None,
     phase10: dict[str, dict[str, Any]] | None = None,
     phase11: dict[str, dict[str, Any]] | None = None,
+    phase12: dict[str, dict[str, Any]] | None = None,
+    phase13: dict[str, dict[str, Any]] | None = None,
+    phase14: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """지정 모델 타입(emb/rr)의 모든 결과를 요약 행으로 수집."""
     rows: list[dict[str, Any]] = []
@@ -2043,6 +2464,51 @@ def _collect_summary_rows(
                 "rss_mb": data.get("rss_mb", 0),
             })
 
+    # Static64 (Phase 12, 임베딩만)
+    if phase12 and prefix == "emb":
+        if "emb_static64" in phase12:
+            data = phase12["emb_static64"]
+            rows.append({
+                "name": "ORT-opt Static64",
+                "median_ms": data["median_ms"],
+                "speedup": data.get("speedup", 0),
+                quality_key: data.get("cosine_dyn_vs_static64", 0),
+                "rss_mb": 0,
+            })
+
+    # IO Binding (Phase 13, 임베딩만)
+    if phase13 and prefix == "emb":
+        if "emb_io_binding" in phase13:
+            data = phase13["emb_io_binding"]
+            rows.append({
+                "name": "ORT-opt + IO Binding",
+                "median_ms": data["median_ms"],
+                "speedup": data.get("speedup", 0),
+                quality_key: data.get("cosine", 0),
+                "rss_mb": 0,
+            })
+        if "emb_static64_io_binding" in phase13:
+            data = phase13["emb_static64_io_binding"]
+            rows.append({
+                "name": "Static64 + IO Binding",
+                "median_ms": data["median_ms"],
+                "speedup": data.get("speedup", 0),
+                quality_key: 0,
+                "rss_mb": 0,
+            })
+
+    # Static64 + QDQ INT8 (Phase 14, 임베딩만)
+    if phase14 and prefix == "emb":
+        if "emb_static64_qdq" in phase14:
+            data = phase14["emb_static64_qdq"]
+            rows.append({
+                "name": "Static64 + QDQ INT8",
+                "median_ms": data["median_ms"],
+                "speedup": data.get("speedup", 0),
+                quality_key: data.get(quality_key, 0),
+                "rss_mb": data.get("rss_mb", 0),
+            })
+
     return rows
 
 
@@ -2059,6 +2525,9 @@ def generate_report(
     phase9: dict[str, dict[str, Any]] | None = None,
     phase10: dict[str, dict[str, Any]] | None = None,
     phase11: dict[str, dict[str, Any]] | None = None,
+    phase12: dict[str, dict[str, Any]] | None = None,
+    phase13: dict[str, dict[str, Any]] | None = None,
+    phase14: dict[str, dict[str, Any]] | None = None,
     run_embedding: bool = True,
     run_reranker: bool = True,
     output_json: str | None = None,
@@ -2108,6 +2577,12 @@ def generate_report(
         json_results["phase10_combined"] = _sanitize(phase10)
     if phase11:
         json_results["phase11_qdq"] = _sanitize(phase11)
+    if phase12:
+        json_results["phase12_static64"] = _sanitize(phase12)
+    if phase13:
+        json_results["phase13_io_binding"] = _sanitize(phase13)
+    if phase14:
+        json_results["phase14_static64_qdq"] = _sanitize(phase14)
     json_results["phase6_profiling"] = phase6
 
     # JSON 저장
@@ -2171,7 +2646,8 @@ def generate_report(
             baseline, phase2, phase3, phase4, phase5,
             model_type="emb",
             phase8=phase8, phase9=phase9, phase10=phase10,
-            phase11=phase11,
+            phase11=phase11, phase12=phase12, phase13=phase13,
+            phase14=phase14,
         )
         if emb_rows:
             _print_table("임베딩 비교", emb_rows, "Cosine")
@@ -2191,7 +2667,8 @@ def generate_report(
             output_md, env_info, md_lines,
             baseline, phase2, phase3, phase4, phase5, phase6,
             phase8=phase8, phase9=phase9, phase10=phase10,
-            phase11=phase11,
+            phase11=phase11, phase12=phase12, phase13=phase13,
+            phase14=phase14,
             run_embedding=run_embedding,
             run_reranker=run_reranker,
         )
@@ -2212,6 +2689,9 @@ def _write_md_report(
     phase9: dict[str, dict[str, Any]] | None = None,
     phase10: dict[str, dict[str, Any]] | None = None,
     phase11: dict[str, dict[str, Any]] | None = None,
+    phase12: dict[str, dict[str, Any]] | None = None,
+    phase13: dict[str, dict[str, Any]] | None = None,
+    phase14: dict[str, dict[str, Any]] | None = None,
     run_embedding: bool = True,
     run_reranker: bool = True,
 ) -> None:
@@ -2301,7 +2781,8 @@ def _write_md_report(
             baseline, phase2, phase3, phase4, phase5,
             model_type=model_type,
             phase8=phase8, phase9=phase9, phase10=phase10,
-            phase11=phase11,
+            phase11=phase11, phase12=phase12, phase13=phase13,
+            phase14=phase14,
         )
         # baseline 제외한 최적 방법 찾기
         candidates = [r for r in all_rows if r["name"] != "PyTorch FP32 (CPU)"]
@@ -2364,6 +2845,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-qdq-test", action="store_true",
         help="QDQ INT8 선택적 양자화 벤치마크 (Phase 11) 스킵",
+    )
+    parser.add_argument(
+        "--skip-static64-test", action="store_true",
+        help="Static64 Shape 벤치마크 (Phase 12) 스킵",
+    )
+    parser.add_argument(
+        "--skip-io-binding-test", action="store_true",
+        help="IO Binding 벤치마크 (Phase 13) 스킵",
+    )
+    parser.add_argument(
+        "--skip-static64-qdq-test", action="store_true",
+        help="Static64 + QDQ INT8 복합 벤치마크 (Phase 14) 스킵",
     )
     parser.add_argument(
         "--output", type=str, default=None,
@@ -2508,6 +3001,39 @@ def main() -> None:
         print("  Phase 11: 스킵 (--skip-qdq-test)")
         print(SEPARATOR)
 
+    # Phase 12: Static64 Shape (임베딩 전용)
+    phase12: dict[str, dict[str, Any]] = {}
+    if not args.skip_static64_test:
+        phase12 = run_phase_12(
+            baseline, run_embedding=run_emb,
+        )
+    else:
+        print(f"\n{SEPARATOR}")
+        print("  Phase 12: 스킵 (--skip-static64-test)")
+        print(SEPARATOR)
+
+    # Phase 13: IO Binding
+    phase13: dict[str, dict[str, Any]] = {}
+    if not args.skip_io_binding_test:
+        phase13 = run_phase_13(
+            baseline, run_embedding=run_emb,
+        )
+    else:
+        print(f"\n{SEPARATOR}")
+        print("  Phase 13: 스킵 (--skip-io-binding-test)")
+        print(SEPARATOR)
+
+    # Phase 14: Static64 + QDQ INT8 복합
+    phase14: dict[str, dict[str, Any]] = {}
+    if not args.skip_static64_qdq_test:
+        phase14 = run_phase_14(
+            baseline, run_embedding=run_emb,
+        )
+    else:
+        print(f"\n{SEPARATOR}")
+        print("  Phase 14: 스킵 (--skip-static64-qdq-test)")
+        print(SEPARATOR)
+
     # Phase 7: 종합 보고서
     report_path: Path | None = None
     if not args.no_report:
@@ -2516,7 +3042,8 @@ def main() -> None:
     generate_report(
         env_info, baseline, phase2, phase3, phase4, phase5, phase6,
         phase8=phase8 or None, phase9=phase9 or None, phase10=phase10 or None,
-        phase11=phase11 or None,
+        phase11=phase11 or None, phase12=phase12 or None,
+        phase13=phase13 or None, phase14=phase14 or None,
         run_embedding=run_emb, run_reranker=run_rr,
         output_json=args.output,
         output_md=report_path,
