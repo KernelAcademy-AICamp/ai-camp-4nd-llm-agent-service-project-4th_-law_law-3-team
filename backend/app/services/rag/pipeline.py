@@ -18,11 +18,13 @@ from app.services.rag.rerank import rerank_documents
 from app.services.rag.retrieval import (
     _extract_id_data_type_map,
     _populate_content,
+    fetch_ai_summaries,
     fetch_document_contents,
-    fetch_lancedb_summaries,
     search_relevant_documents,
     search_without_content,
+    search_without_content_traced,
 )
+from app.services.rag.trace_store import RagStepResult, summarize_doc
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,7 @@ class PipelineConfig:
 
     n_results: int = 10
     doc_type: Optional[str] = None
-    enable_rewrite: bool = False
+    enable_rewrite: bool = True
     num_rewrite_queries: int = 3
     enable_rerank: bool = False
     rerank_top_k: int = 5
@@ -206,12 +208,9 @@ class RAGPipeline:
 
         # Step 3: 리랭킹 (선택)
         if config.enable_rerank and all_documents:
-            # 요약문 조회 (LanceDB) → 리랭킹용 content 주입
-            source_ids = [
-                d.get("metadata", {}).get("doc_id", "")
-                for d in all_documents
-            ]
-            summaries = fetch_lancedb_summaries(source_ids)
+            # ai_summary 조회 (PostgreSQL) → 리랭킹용 content 주입
+            id_type_map = _extract_id_data_type_map(all_documents)
+            summaries = fetch_ai_summaries(id_type_map)
             _populate_content(all_documents, summaries)
 
             rerank_start = time.monotonic()
@@ -248,6 +247,181 @@ class RAGPipeline:
 
         return result
 
+    def execute_traced(
+        self,
+        query: str,
+        config: Optional[PipelineConfig] = None,
+    ) -> tuple[PipelineResult, list[RagStepResult]]:
+        """파이프라인 실행 + 단계별 트레이스 수집.
+
+        execute()와 동일한 결과를 반환하면서,
+        각 단계(리라이팅, 벡터, 키워드, RRF, 리랭킹, 최종)의
+        중간 결과를 RagStepResult 리스트로 함께 반환.
+        """
+        config = config or PipelineConfig()
+        pipeline_start = time.monotonic()
+
+        result = PipelineResult(original_query=query)
+        metrics = result.metrics
+        steps: list[RagStepResult] = []
+
+        # Step 1: 쿼리 리라이팅 (선택)
+        queries = [query]
+        if config.enable_rewrite:
+            rewrite_start = time.monotonic()
+            queries = rewrite_query(
+                query=query,
+                num_queries=config.num_rewrite_queries,
+                use_llm=config.use_llm_rewrite,
+            )
+            result.rewritten_queries = queries
+            steps.append(RagStepResult(
+                step_name="query_rewrite",
+                documents=[],
+                count=len(queries),
+                time_ms=(time.monotonic() - rewrite_start) * 1000,
+                metadata={"original": query, "rewritten": queries},
+            ))
+
+        # Step 2: 검색 (traced)
+        search_start = time.monotonic()
+        all_documents: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+
+        # traced 검색은 리랭킹 활성화 시에만 (search_without_content 대체)
+        all_vector: list[dict[str, Any]] = []
+        all_keyword: list[dict[str, Any]] = []
+        all_fused_ids: list[str] = []
+        vector_time_total = 0.0
+        keyword_time_total = 0.0
+
+        for q in queries:
+            if config.enable_rerank:
+                docs, intermediates = search_without_content_traced(
+                    query=q,
+                    n_results=config.n_results,
+                    doc_type=config.doc_type,
+                )
+                all_vector.extend(intermediates.get("vector_results", []))
+                all_keyword.extend(intermediates.get("keyword_results", []))
+                all_fused_ids.extend(intermediates.get("fused_source_ids", []))
+                vector_time_total += intermediates.get("vector_time_ms", 0)
+                keyword_time_total += intermediates.get("keyword_time_ms", 0)
+            else:
+                docs = search_relevant_documents(
+                    query=q,
+                    n_results=config.n_results,
+                    doc_type=config.doc_type,
+                )
+
+            for doc in docs:
+                doc_id = doc.get("metadata", {}).get("doc_id", "")
+                if doc_id and doc_id not in seen_ids:
+                    seen_ids.add(doc_id)
+                    all_documents.append(doc)
+
+        metrics.search_time_ms = (time.monotonic() - search_start) * 1000
+        metrics.total_searched = len(all_documents)
+        result.total_retrieved = len(all_documents)
+
+        # ai_summary 조회 (PostgreSQL) → 트레이스 표시 + 리랭킹 공용
+        # all_documents(RRF 융합)뿐 아니라 벡터/키워드 전체 ID를 대상으로 조회
+        summaries: dict[str, str] = {}
+        if config.enable_rerank and all_documents:
+            all_trace_docs = all_vector + all_keyword + all_documents
+            id_type_map = _extract_id_data_type_map(all_trace_docs)
+            summaries = fetch_ai_summaries(id_type_map)
+
+            # 벡터/키워드 결과에도 ai_summary를 content로 주입 (트레이스용)
+            for doc in all_vector:
+                doc_id = doc.get("metadata", {}).get("doc_id", "")
+                if doc_id and doc_id in summaries:
+                    doc["content"] = summaries[doc_id]
+            for doc in all_keyword:
+                doc_id = doc.get("metadata", {}).get("doc_id", "")
+                if doc_id and doc_id in summaries:
+                    doc["content"] = summaries[doc_id]
+
+            # 리랭킹용 content 주입
+            _populate_content(all_documents, summaries)
+
+        # 벡터 검색 스텝
+        steps.append(RagStepResult(
+            step_name="vector_search",
+            documents=[summarize_doc(d, include_content=True) for d in all_vector],
+            count=len(all_vector),
+            time_ms=vector_time_total,
+        ))
+
+        # 키워드 검색 스텝
+        if all_keyword:
+            steps.append(RagStepResult(
+                step_name="keyword_search",
+                documents=[summarize_doc(d, include_content=True) for d in all_keyword],
+                count=len(all_keyword),
+                time_ms=keyword_time_total,
+            ))
+
+        # RRF 융합 스텝 (건수만 표시)
+        if all_fused_ids:
+            steps.append(RagStepResult(
+                step_name="rrf_fusion",
+                documents=[],
+                count=len(all_fused_ids),
+                time_ms=0,
+            ))
+
+        # Step 3: 리랭킹 (선택)
+        if config.enable_rerank and all_documents:
+
+            rerank_start = time.monotonic()
+            reranked = rerank_documents(
+                query=query,
+                documents=all_documents,
+                top_k=config.rerank_top_k,
+            )
+            rerank_ms = (time.monotonic() - rerank_start) * 1000
+            metrics.rerank_time_ms = rerank_ms
+            metrics.total_reranked = len(reranked)
+            result.reranked = True
+
+            steps.append(RagStepResult(
+                step_name="rerank",
+                documents=[summarize_doc(d, include_content=True) for d in reranked],
+                count=len(reranked),
+                time_ms=rerank_ms,
+            ))
+
+            contents = fetch_document_contents(
+                _extract_id_data_type_map(reranked)
+            )
+            _populate_content(reranked, contents)
+            result.documents = reranked
+        else:
+            all_documents.sort(
+                key=lambda x: x.get("similarity", 0), reverse=True
+            )
+            result.documents = all_documents[: config.n_results]
+
+        # 최종 컨텍스트 스텝
+        steps.append(RagStepResult(
+            step_name="final_context",
+            documents=[summarize_doc(d) for d in result.documents],
+            count=len(result.documents),
+            time_ms=0,
+        ))
+
+        metrics.total_time_ms = (time.monotonic() - pipeline_start) * 1000
+
+        logger.info(
+            "RAG 파이프라인(traced) 완료: %d건 검색 → %d건 반환 (%.0fms)",
+            result.total_retrieved,
+            len(result.documents),
+            metrics.total_time_ms,
+        )
+
+        return result, steps
+
     async def execute_async(
         self,
         query: str,
@@ -255,6 +429,14 @@ class RAGPipeline:
     ) -> PipelineResult:
         """파이프라인 실행 (비동기)."""
         return await asyncio.to_thread(self.execute, query, config)
+
+    async def execute_traced_async(
+        self,
+        query: str,
+        config: Optional[PipelineConfig] = None,
+    ) -> tuple[PipelineResult, list[RagStepResult]]:
+        """파이프라인 실행 + 트레이스 (비동기)."""
+        return await asyncio.to_thread(self.execute_traced, query, config)
 
 
 # ---------------------------------------------------------------------------
@@ -312,3 +494,11 @@ async def search_with_pipeline_async(
 ) -> PipelineResult:
     """통합 RAG 파이프라인 비동기 검색."""
     return await _default_pipeline.execute_async(query, config)
+
+
+async def search_with_pipeline_traced_async(
+    query: str,
+    config: Optional[PipelineConfig] = None,
+) -> tuple[PipelineResult, list[RagStepResult]]:
+    """통합 RAG 파이프라인 비동기 검색 + 트레이스."""
+    return await _default_pipeline.execute_traced_async(query, config)

@@ -396,7 +396,7 @@ def search_without_content(
     Returns:
         관련 문서 목록 (content는 빈 문자열)
     """
-    vector_fetch = n_results * 3 if settings.USE_HYBRID_SEARCH else n_results
+    vector_fetch = n_results
     vector_results = _search_vector_ids(query, vector_fetch, doc_type)
 
     if not settings.USE_HYBRID_SEARCH:
@@ -448,6 +448,86 @@ def search_without_content(
     return merged
 
 
+def search_without_content_traced(
+    query: str,
+    n_results: int = 5,
+    doc_type: Optional[str] = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """하이브리드 검색 + 중간 결과 반환 (트레이스용).
+
+    search_without_content()와 동일한 검색 로직이나,
+    벡터/키워드/RRF 각 단계의 중간 결과를 함께 반환.
+
+    Returns:
+        (merged_results, intermediates) 튜플.
+        intermediates: {"vector_results", "keyword_results", "fused_source_ids"}
+    """
+    import time as _time
+
+    intermediates: dict[str, Any] = {
+        "vector_results": [],
+        "vector_time_ms": 0.0,
+        "keyword_results": [],
+        "keyword_time_ms": 0.0,
+        "fused_source_ids": [],
+    }
+
+    vector_fetch = n_results
+
+    t0 = _time.monotonic()
+    vector_results = _search_vector_ids(query, vector_fetch, doc_type)
+    intermediates["vector_time_ms"] = (_time.monotonic() - t0) * 1000
+    intermediates["vector_results"] = vector_results
+
+    if not settings.USE_HYBRID_SEARCH:
+        return vector_results[:n_results], intermediates
+
+    from app.services.rag.keyword_search import (
+        is_fts_available_sync,
+        search_by_keyword,
+    )
+
+    if not is_fts_available_sync():
+        return vector_results[:n_results], intermediates
+
+    t1 = _time.monotonic()
+    keyword_results = search_by_keyword(
+        query, n_results=vector_fetch, doc_type=doc_type
+    )
+    intermediates["keyword_time_ms"] = (_time.monotonic() - t1) * 1000
+    intermediates["keyword_results"] = keyword_results
+
+    if not keyword_results:
+        return vector_results[:n_results], intermediates
+
+    for doc in keyword_results:
+        meta = doc.get("metadata", {})
+        if "data_type" not in meta:
+            meta["data_type"] = _resolve_data_type(meta.get("doc_type", ""))
+
+    from app.services.rag.fusion import reciprocal_rank_fusion
+
+    vector_source_ids = _unique_source_ids(vector_results)
+    keyword_source_ids = _unique_source_ids(keyword_results)
+    fused_source_ids = reciprocal_rank_fusion(vector_source_ids, keyword_source_ids)
+    intermediates["fused_source_ids"] = fused_source_ids
+
+    vector_best = _best_doc_per_source(vector_results)
+    keyword_best = _best_doc_per_source(keyword_results)
+
+    merged: list[dict[str, Any]] = []
+    for sid in fused_source_ids:
+        if sid in vector_best:
+            merged.append(vector_best[sid])
+        elif sid in keyword_best:
+            merged.append(keyword_best[sid])
+
+        if len(merged) >= n_results:
+            break
+
+    return merged, intermediates
+
+
 def search_relevant_documents(
     query: str,
     n_results: int = 5,
@@ -472,14 +552,68 @@ def search_relevant_documents(
     return docs
 
 
-def fetch_lancedb_summaries(source_ids: list[str]) -> dict[str, str]:
-    """LanceDB에서 source_id별 요약문(청크 텍스트) 조회.
+def fetch_ai_summaries(
+    id_to_data_type: dict[str, str],
+) -> dict[str, str]:
+    """source_id별 ai_summary를 PostgreSQL에서 배치 조회.
+
+    리랭킹용 요약문으로 사용. 모든 인제스트 테이블에 ai_summary 컬럼이 존재.
 
     Args:
-        source_ids: 조회할 source_id 목록
+        id_to_data_type: {source_id: data_type(한국어)} 매핑
 
     Returns:
-        {source_id: 요약문 텍스트} 매핑
+        {source_id: ai_summary 텍스트} 매핑
+    """
+    if not id_to_data_type:
+        return {}
+
+    # data_type별 source_id 그룹화
+    type_groups: dict[str, list[str]] = {}
+    for source_id, data_type in id_to_data_type.items():
+        type_groups.setdefault(data_type, []).append(source_id)
+
+    result: dict[str, str] = {}
+
+    with sync_session_factory() as session:
+        for data_type, source_ids in type_groups.items():
+            table_configs = DOCUMENT_TABLE_REGISTRY.get(data_type)
+            if not table_configs:
+                continue
+
+            remaining_ids = set(source_ids)
+
+            for tc in table_configs:
+                if not remaining_ids:
+                    break
+
+                safe_table = _validate_identifier(tc.table_name)
+                safe_id_col = _validate_identifier(tc.id_column)
+
+                sql = text(
+                    f"SELECT {safe_id_col}, ai_summary "
+                    f"FROM {safe_table} "
+                    f"WHERE {safe_id_col} = ANY(:ids) "
+                    f"AND ai_summary IS NOT NULL"
+                )
+                rows = session.execute(
+                    sql, {"ids": list(remaining_ids)}
+                ).fetchall()
+
+                for row in rows:
+                    sid = str(row[0])
+                    summary = str(row[1]) if row[1] else ""
+                    if summary:
+                        result[sid] = summary
+                        remaining_ids.discard(sid)
+
+    return result
+
+
+def fetch_lancedb_summaries(source_ids: list[str]) -> dict[str, str]:
+    """(deprecated) LanceDB에서 source_id별 청크 텍스트 조회.
+
+    리랭킹에는 fetch_ai_summaries()를 사용하세요.
     """
     if not source_ids:
         return {}
@@ -490,8 +624,7 @@ def fetch_lancedb_summaries(source_ids: list[str]) -> dict[str, str]:
         db = lancedb.connect(settings.LANCEDB_URI)
         table = db.open_table(settings.LANCEDB_TABLE_NAME)
 
-        # SQL injection 방어: source_id에서 영숫자+하이픈+언더스코어만 허용
-        safe_pattern = re.compile(r"^[\w\-]+$")
+        safe_pattern = re.compile(r"^[\w\\-]+$")
         safe_ids = [sid for sid in source_ids if safe_pattern.match(sid)]
         if not safe_ids:
             return {}

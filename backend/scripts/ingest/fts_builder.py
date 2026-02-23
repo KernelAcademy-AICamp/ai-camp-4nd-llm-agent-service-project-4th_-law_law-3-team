@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 1000
 
+# PostgreSQL tsvector 최대 1MB (1,048,575 bytes)
+# 한글 1자 ≈ 3 bytes UTF-8, 안전 마진 고려하여 300,000자 제한
+_MAX_FULLTEXT_CHARS = 300_000
+
 
 def run_fts_rebuild(
     config: IngestConfig,
@@ -111,6 +115,10 @@ def run_fts_rebuild(
                     fulltext = config.orm_fulltext_fn(row)
                     if not fulltext.strip():
                         continue
+
+                    # PostgreSQL tsvector 1MB 제한 방지
+                    if len(fulltext) > _MAX_FULLTEXT_CHARS:
+                        fulltext = fulltext[:_MAX_FULLTEXT_CHARS]
 
                     tokens = tokenizer.morphs(fulltext)
                     tsvector_str = build_tsvector_string(tokens)

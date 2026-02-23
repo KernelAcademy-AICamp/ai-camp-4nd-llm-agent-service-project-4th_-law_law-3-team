@@ -48,45 +48,46 @@ def rewrite_query(
     Returns:
         확장된 쿼리 리스트 (원본 쿼리가 첫 번째)
     """
-    queries = [query]
-
     if not use_llm:
         # LLM 미사용 시 키워드 기반 확장
         keywords = extract_legal_keywords(query)
         if keywords:
-            expanded = f"{query} {' '.join(keywords)}"
-            queries.append(expanded)
-        return queries[:num_queries]
+            return [f"{query} {' '.join(keywords)}"]
+        return [query]
 
     try:
         model = get_chat_model(temperature=0.3)
 
-        prompt = f"""다음 법률 검색 쿼리를 {num_queries - 1}개의 다른 표현으로 바꿔주세요.
-각 쿼리는 같은 의미를 가지되 다른 단어나 표현을 사용해야 합니다.
-법률 용어와 일상 용어를 적절히 혼용해주세요.
+        prompt = f"""사용자의 질문을 법률 문서 검색에 최적화된 검색 쿼리 1개로 변환하세요.
 
-원본 쿼리: {query}
+규칙:
+- 일상 표현을 법률 용어로 변환 (예: "사기당했어" → "사기죄", "쫓겨날 것 같아" → "명도소송 퇴거")
+- 관련 법률 개념을 추가 (예: "형사고소", "손해배상청구", "민사소송")
+- 플랫폼/서비스명은 법적 행위로 변환 (예: "당근마켓" → "중고거래", "배민" → "배달 음식", "쿠팡" → "전자상거래")
+- 불필요한 수식어, 감탄사 제거
+- 키워드 나열이 아닌 자연스러운 문장 형태로 작성 (벡터 검색 최적화)
+  좋은 예: "중고거래 사기 피해에 대한 형사고소 및 손해배상청구 절차"
+  나쁜 예: "사기죄, 형사고소, 손해배상청구"
 
-다음 형식으로 출력하세요 (번호와 쿼리만, 설명 없이):
-1. [확장된 쿼리 1]
-2. [확장된 쿼리 2]
-..."""
+원본 질문: {query}
+
+검색 쿼리 (설명 없이 쿼리만 출력):"""
 
         response = model.invoke([("user", prompt)])
         content = response.content if hasattr(response, "content") else str(response)
+        rewritten = content.strip().lstrip("1.-) ").strip()
 
-        # 응답에서 쿼리 추출
-        rewritten = _parse_rewritten_queries(content)
-        queries.extend(rewritten)
+        if rewritten:
+            return [rewritten]
 
     except Exception as e:
         logger.warning("쿼리 리라이팅 실패 (LLM): %s", e)
         # 폴백: 키워드 기반 확장
         keywords = extract_legal_keywords(query)
         if keywords:
-            queries.append(f"{query} {' '.join(keywords[:3])}")
+            return [f"{query} {' '.join(keywords[:3])}"]
 
-    return queries[:num_queries]
+    return [query]
 
 
 def _parse_rewritten_queries(content: str) -> List[str]:

@@ -61,8 +61,8 @@ class Settings(BaseSettings):
     # LanceDB 설정 (VECTOR_DB=lancedb 일 때 사용)
     LANCEDB_URI: str = "./lancedb_data"
     LANCEDB_TABLE_NAME: str = "legal_chunks"
-    LANCEDB_INDEX_TYPE: str = ""  # 빈 문자열이면 brute-force, "IVF_FLAT" 등 설정 가능
-    LANCEDB_NPROBES: int = 40  # IVF 인덱스 검색 시 탐색할 파티션 수 (높을수록 정확, 느림)
+    LANCEDB_INDEX_TYPE: str = "IVF_FLAT"  # 빈 문자열이면 brute-force, "IVF_FLAT" 등 설정 가능
+    LANCEDB_NPROBES: int = 30  # IVF 인덱스 검색 시 탐색할 파티션 수 (높을수록 정확, 느림)
     LANCEDB_MODE: str = "local"  # "local" | "remote"
     LANCEDB_SERVICE_URL: str = "http://localhost:8100"  # remote 모드 시 마이크로서비스 URL
     LANCEDB_SERVICE_TIMEOUT: float = 30.0  # HTTP timeout (초)
@@ -100,6 +100,9 @@ class Settings(BaseSettings):
 
     # MeCab 사용자 사전 경로 (법률 복합명사 인식)
     MECAB_USERDIC_PATH: str = "data/mecab_userdic/legal_terms.dic"
+
+    # RAG 트레이스 수집 (디버깅용, 인메모리)
+    ENABLE_RAG_TRACE: bool = True
 
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []
