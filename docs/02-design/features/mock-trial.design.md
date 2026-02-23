@@ -3,10 +3,10 @@
 > **Summary**: Phaser.js 픽셀아트 법정 + LangGraph 다중 에이전트 재판 시뮬레이터의 상세 설계
 >
 > **Project**: law-3-team (법률 서비스 플랫폼)
-> **Version**: 0.4.0
+> **Version**: 0.5.0
 > **Author**: Claude
 > **Date**: 2026-02-12
-> **Status**: Draft (v0.4 보강)
+> **Status**: Draft (v0.5 — Plan v0.7 동기화)
 > **Planning Doc**: [mock-trial.plan.md](../01-plan/features/mock-trial.plan.md)
 
 ### Pipeline References
@@ -168,6 +168,10 @@ class MockTrialState(TypedDict, total=False):
     evidence_cases: list[dict[str, Any]]     # RAG 판례 검색 결과
     evidence_articles: list[dict[str, Any]]  # RAG 법령 검색 결과
     selected_evidence: list[str]             # 사용자 선택 증거 ID
+    excluded_evidence: list[str]             # 증거동의/부동의에서 배제된 증거 ID (v0.5 추가)
+
+    # ── Rate Limiting (v0.5 추가 — 코드에 이미 구현) ──
+    llm_call_count: int                      # 세션 LLM 호출 횟수 (기본 0, 최대 50)
 
     # ── Trial Progress (재판 진행) ──
     stage: str
@@ -231,7 +235,7 @@ class CriminalStage:
     EVIDENCE = "evidence"        # 증거조사 (§290~§313)
     EXAMINATION = "examination"  # 피고인신문 (§296-2)
     CLOSING = "closing"          # 구형 및 최후진술 (§302 검사의견진술, §303 최후진술)
-    VERDICT = "verdict"          # 판결선고 (§43 판결선고방식, §39 판결선고기일, §318 유죄이유)
+    VERDICT = "verdict"          # 판결선고 (§43 판결선고방식, §39 판결선고기일, §323 유죄이유고지)
 
     ALL = [SETUP, IDENTITY, OPENING, EVIDENCE, EXAMINATION, CLOSING, VERDICT]
 
@@ -860,6 +864,21 @@ SYSTEM_PROMPTS = {
 }
 ```
 
+#### 민사 역할 매핑 테이블 (FR-50, v0.5 추가)
+
+> 민사 재판에서는 형사의 검찰/변호인 개념이 원고/피고로 매핑된다. UI 선택 → Backend user_role → 에이전트 역할 매핑을 명확화한다.
+
+| UI 표시 (사용자 선택) | `user_role` (Backend) | CourtAgent `role` | 프롬프트 |
+|---------------------|----------------------|-------------------|---------|
+| "원고 측으로 참여" | `prosecutor` | `prosecutor` (원고 대리인) | `PLAINTIFF_CIVIL_PROMPT` |
+| "피고 측으로 참여" | `attorney` | `attorney` (피고 대리인) | `DEFENDANT_CIVIL_PROMPT` |
+| *(AI)* 판사 | - | `judge` | `JUDGE_SYSTEM_PROMPT` |
+| *(AI)* 상대방 | - | `prosecutor` 또는 `attorney` | 사용자 반대편 |
+| *(AI)* 당사자 본인 | - | `defendant` (원고/피고 본인) | `DEFENDANT_PERSON_PROMPT` |
+| *(AI)* 서기관 | - | `clerk` | `CLERK_SYSTEM_PROMPT` |
+
+**주의**: `user_role`이 `prosecutor`/`attorney` 문자열을 재사용하므로, 민사 UI에서 "검찰" 등 형사 용어가 노출되지 않도록 프론트엔드 레이블을 분리해야 한다.
+
 ### 6.3 서브그래프 구현 설계
 
 ```python
@@ -1052,7 +1071,10 @@ async def argument_node(state: MockTrialState) -> Command[str]:
 # ── 공통 노드 ──
 
 async def evidence_node(state: MockTrialState) -> Command[str]:
-    """[공통] 증거조사 (형사: §290~§313 / 민사: §288~§344)"""
+    """[공통] 증거조사 (형사: §290~§313 / 민사: §288~§344)
+    NOTE(v0.5/FR-49): 이 간소화 설계는 Section 13.1의 증거동의/부동의 상세 설계로 대체됨.
+    구현 시 Section 13.1을 기준으로 한다.
+    """
     # RAG 검색
     cases = await _search_cases(state["case_summary"])
     articles = await _search_articles(state["case_summary"])
@@ -1583,7 +1605,7 @@ export const CRIMINAL_STAGES: StageInfo[] = [
   { id: 'evidence', name: '증거조사', order: 3, legal_basis: '형사소송법 §290~§313', description: '판례/법령 검색, 증거 제출', user_action: '증거 선택/제출', duration_hint: '5-10분' },
   { id: 'examination', name: '피고인신문', order: 4, legal_basis: '형사소송법 §296-2', description: '검사/변호인이 피고인에게 질문', user_action: '질문 입력', duration_hint: '3-5분' },
   { id: 'closing', name: '구형 및 최후진술', order: 5, legal_basis: '형사소송법 §302(검사의견진술), §303(최후진술)', description: '검사 구형, 변호인 변론, 피고인 최후진술', user_action: '변론/최후진술 입력', duration_hint: '3-5분' },
-  { id: 'verdict', name: '판결선고', order: 6, legal_basis: '형사소송법 §43(판결선고방식), §39(판결선고기일), §318(유죄이유)', description: 'AI 판사 판결문 낭독 (한국 판결문 형식)', user_action: '관전', duration_hint: '2-3분' },
+  { id: 'verdict', name: '판결선고', order: 6, legal_basis: '형사소송법 §43(판결선고방식), §39(판결선고기일), §323(유죄이유고지)', description: 'AI 판사 판결문 낭독 (한국 판결문 형식)', user_action: '관전', duration_hint: '2-3분' },
 ]
 
 export const CIVIL_STAGES: StageInfo[] = [
@@ -2003,9 +2025,11 @@ class CourtEventBus {
 
 ## 9. Security Considerations — v0.3 전면 재작성
 
-### 9.1 프롬프트 인젝션 방어 (High)
+### 9.1 프롬프트 인젝션 방어 (**Critical** — FR-39)
 
-**현재 상태**: 시스템 프롬프트에 역할 고정 지시가 실제로 **없음**. case_summary가 5개 에이전트 프롬프트에 직접 삽입되어 공격 벡터 존재.
+**현재 상태 (v0.5)**: 시스템 프롬프트에 역할 고정 지시가 실제로 **없음**. `setup_node`에서 `case_summary`를 **무필터**로 `state`에 저장하고, 이것이 5개 에이전트 프롬프트에 직접 삽입되어 **1건의 인젝션으로 전체 에이전트 오염 가능**.
+
+> ⚠️ CTO 팀 리뷰(v0.7): Critical — `sanitize_user_input()` + `ROLE_BOUNDARY` 구현이 최우선 작업.
 
 **설계**:
 
@@ -2032,7 +2056,7 @@ def sanitize_case_summary(text: str) -> str:
     return text
 ```
 
-### 9.2 XSS 방어 (High)
+### 9.2 XSS 방어 (High — FR-42)
 
 **텍스트 렌더링 정책**:
 
@@ -2050,7 +2074,9 @@ def sanitize_case_summary(text: str) -> str:
 3. mock_trial 전용 엔드포인트(`/api/mock-trial/*`)에서도 세션 검증 적용
 4. 세션 TTL: 모의재판 세션 최대 2시간, 이후 자동 만료
 
-### 9.4 LLM 출력 안전성 (High)
+### 9.4 LLM 출력 안전성 (**Critical** — FR-40)
+
+> ⚠️ CTO 팀 리뷰(v0.7): Critical — `filter_llm_output()` + `OUTPUT_SAFETY_RULES`가 미구현 상태. `CourtAgent.generate()` 반환값에 사후 필터링 없음.
 
 ```python
 # 모든 에이전트 시스템 프롬프트에 공통 안전 규칙 추가
@@ -2090,7 +2116,9 @@ if user_role not in VALID_ROLES.get(case_type, set()):
     raise ValueError(f"유효하지 않은 역할: {user_role}")
 ```
 
-### 9.6 Rate Limiting (Medium)
+### 9.6 Rate Limiting (Medium — FR-37 ✅ 구현 완료)
+
+> ✅ `_check_rate_limit()` 구현 완료 (mock_trial.py L144-166). Plan v0.7에서 Done 확인.
 
 1. **세션 레벨**: `MockTrialState.llm_call_count: int = 0` → `MAX_LLM_CALLS_PER_SESSION = 50` 초과 시 verdict_node 강제 이동
 2. **라운드 레벨**: `argument_node`의 max_rounds 상한 5 (서버 측 강제, 클라이언트 값 무시)
@@ -2120,6 +2148,100 @@ if user_role not in VALID_ROLES.get(case_type, set()):
 - EventBus는 UI 상태 업데이트 전용, 재판 진행 권한은 백엔드에만 존재
 - 단계 전환은 반드시 백엔드 `Command(goto=...)`로만 수행
 - stage 표시는 백엔드 응답의 stage 값을 신뢰 소스(source of truth)로 사용
+
+### 9.11 서브그래프 내부 입력 검증 (High — FR-41, v0.5 추가)
+
+> 서브그래프 노드 간 전달되는 데이터도 검증 필요 (외부 입력만 검증하면 부족).
+
+```python
+# 각 노드 함수 진입부에서 state 필드 검증
+def _validate_node_input(state: MockTrialState, required_fields: list[str]) -> None:
+    """서브그래프 노드 간 상태 전달 시 필수 필드 존재/타입 검증"""
+    for field in required_fields:
+        value = state.get(field)
+        if value is None:
+            raise ValueError(f"필수 state 필드 누락: {field}")
+    # case_type, user_role 등은 화이트리스트 재검증
+    if state.get("case_type") not in VALID_CASE_TYPES:
+        raise ValueError(f"유효하지 않은 case_type: {state.get('case_type')}")
+```
+
+### 9.12 세션 데이터 TTL (Medium — FR-43, v0.5 추가)
+
+- 체크포인터 저장 세션: **24시간** 후 자동 삭제 (Section 9.7과 연계)
+- 삭제 구현: PostgreSQL `pg_cron` 또는 Application 레벨 배치 잡
+- 삭제 대상: `checkpoints` 테이블에서 `created_at < NOW() - INTERVAL '24 hours'`
+
+---
+
+### 9.13 UX 보안/안전 설계 (v0.5 추가)
+
+#### 9.13.1 온보딩 가이드 (High — FR-44)
+
+신규 사용자가 모의재판 시스템을 이해할 수 있도록 단계적 안내를 제공한다.
+
+1. **첫 방문 감지**: `localStorage.getItem('mock_trial_onboarded')` 확인
+2. **가이드 UI**: 3~4 단계 토스트/모달 시퀀스
+   - Step 1: "모의재판은 AI가 법정 역할을 수행하는 교육용 시뮬레이션입니다"
+   - Step 2: "사건 유형(형사/민사)을 선택하고 역할을 정합니다"
+   - Step 3: "각 단계에서 의견을 입력하면 AI가 반응합니다"
+   - Step 4: "판결은 교육 목적이며 법적 효력이 없습니다"
+3. **Skip 버튼**: "다시 보지 않기" 옵션 제공
+4. **재진입**: 설정 메뉴에서 "가이드 다시 보기" 가능
+
+#### 9.13.2 세션 복원 — 중도 퇴장/새로고침 대응 (High — FR-45)
+
+```typescript
+// useTrialState.ts — 세션 복원 로직
+const restoreSession = async (threadId: string): Promise<boolean> => {
+  try {
+    const response = await fetch(`/api/mock-trial/resume`, {
+      method: 'POST',
+      body: JSON.stringify({ thread_id: threadId }),
+    })
+    if (response.ok) {
+      const state = await response.json()
+      // 마지막 stage부터 재개
+      return true
+    }
+    return false  // 세션 만료 등
+  } catch {
+    return false
+  }
+}
+
+// 컴포넌트 마운트 시 복원 시도
+useEffect(() => {
+  const savedThreadId = sessionStorage.getItem('mock_trial_thread_id')
+  if (savedThreadId) {
+    restoreSession(savedThreadId).then(restored => {
+      if (!restored) sessionStorage.removeItem('mock_trial_thread_id')
+    })
+  }
+}, [])
+```
+
+- Backend: 체크포인터에서 마지막 state 조회 → 해당 stage의 interrupt 재전송
+- 만료된 세션: "이전 세션이 만료되었습니다. 새로 시작하시겠습니까?" 안내
+
+#### 9.13.3 예상 소요시간 표시 (Medium — FR-46)
+
+```typescript
+const STAGE_ESTIMATED_MINUTES: Record<string, number> = {
+  opening: 2,
+  evidence: 3,
+  examination: 3,
+  argument: 5,
+  closing: 2,
+  verdict: 2,
+}
+
+// 진행률 바 + 남은 예상 시간 표시
+// "현재 3/6 단계 · 약 12분 남음"
+```
+
+- 각 단계별 예상 시간은 평균 LLM 응답 시간 + 사용자 입력 시간 기반 추정
+- 실제 소요 시간이 예상보다 긴 경우 "예상보다 시간이 걸리고 있습니다" 피드백
 
 ---
 
@@ -2305,11 +2427,13 @@ Backend는 추가 의존성 없음 (기존 LangGraph, get_chat_model, LanceDB �
 
 ### 13.1 증거동의/부동의 절차 설계 (FR-29, FR-30)
 
+> **FR-49(v0.5)**: 이 설계가 Section 6.3의 간소화 evidence_node를 대체하는 **정본(canonical)** 설계임. 구현 시 이 섹션을 기준으로 한다.
+
 `evidence_node` 내부에 증거동의/부동의 하위 흐름을 추가한다.
 
 ```python
 async def evidence_node(state: MockTrialState) -> Command[str]:
-    """[공통] 증거조사 — 증거동의/부동의 포함 (형사소송법 §318, §310-2)"""
+    """[공통] 증거조사 — 증거동의/부동의 포함 (형사소송법 §318(증거동의), §310-2(전문법칙))"""
 
     # 1) RAG 검색
     cases = await _search_cases(state["case_summary"])
@@ -2370,7 +2494,7 @@ def _process_evidence_consent(
     cases: list[dict],
     articles: list[dict],
 ) -> tuple[list[dict], list[dict]]:
-    """증거동의/부동의 처리 (형사소송법 §318)
+    """증거동의/부동의 처리 (형사소송법 §318(증거동의))
 
     Returns:
         (admitted: 동의 증거, excluded: 부동의 증거)
@@ -2508,3 +2632,4 @@ if (canvasFailed) {
 | 0.2 | 2026-02-21 | 실제 코드 패턴 정합성 보강: (1) LLM 클라이언트 정정 get_solar_response_stream→get_chat_model, (2) MockTrialAgent(BaseChatAgent) 설계 추가, (3) _sync_from_ui_state/ChatAction 패턴 추가, (4) useTrialState 훅 + sessionStorage 동기화 설계, (5) Pydantic 스키마 상세화, (6) 모듈 라우터 함수 시그니처, (7) next.config.js rewrites, (8) Implementation Order 상태 표시 | Claude |
 | 0.3 | 2026-02-21 | 5개 관점 에이전트 팀 리뷰 반영: **[보안]** Section 9 전면 재작성 — 프롬프트 인젝션 방어(역할 바운더리+필터링), XSS 방어(텍스트 렌더링 정책), 세션 보안, LLM 출력 안전성(혐오/편향 필터), 입력 검증(화이트리스트), Rate Limiting(세션/라운드/IP), 데이터 보존 정책(24h TTL), 면책 고지 강화, RAG 인용 검증. **[프론트엔드]** EventBus 이벤트 버퍼링 메커니즘(8.3), SSE↔Phaser 스트리밍 연동 시퀀스(8.4), sessionStorage 최소화 전략(8.5), 접근성 A11y 설계(8.6). **[법률]** 형사 증거동의/부동의 설계(8.7.1), 판결문 정형 형식 템플릿(8.7.2), 입증책임 원칙(8.7.3), 법정 어투 few-shot(8.7.4). **[용어 정정]** "최종변론"→"구형 및 최후진술", §318-4→§42~43. **[테스트]** 보안/법률정확성/프론트엔드/호환성 테스트 대폭 추가 | Claude |
 | 0.4 | 2026-02-21 | 종합 분석 반영 — 문서 부채 해소: (1) 의도적 변경 3건 반영 — search_pipeline→search_relevant_documents_async, physics 옵션 제거, Solar LLM→get_chat_model(). (2) 노드 함수 async 키워드 추가 (8개). (3) §42 조문 참조 수정→§43+§39. (4) FR-29~38 상세 설계 추가 (Section 13) — 증거동의/부동의 절차, 보안 구현 상세, 에러 핸들링 보강. (5) 추가 구현 8건 역반영 (Section 14). (6) closing 노드명 통일 — criminal_closing_node/civil_closing_node | Claude |
+| 0.5 | 2026-02-24 | **Plan v0.7 (CTO 팀 리뷰 27건) 동기화**: (1) MockTrialState에 `excluded_evidence`, `llm_call_count` 필드 추가. (2) §318→§323(유죄이유고지) 수정 (Section 3.3, 7.3). (3) Section 9 보안 등급 재조정 — 9.1 Critical(FR-39), 9.4 Critical(FR-40), 9.2 FR-42 참조, 9.6 FR-37 구현완료 표시. (4) 신규 서브섹션 5건 추가 — 9.11 서브그래프 내부 입력 검증(FR-41), 9.12 세션 데이터 TTL(FR-43), 9.13.1 온보딩 가이드(FR-44), 9.13.2 세션 복원(FR-45), 9.13.3 예상 소요시간(FR-46). (5) 민사 역할 매핑 테이블(FR-50). (6) evidence_node 이중 설계 통일 — Section 6.3에 deprecation 노트, Section 13.1을 canonical로 지정(FR-49). (7) §318 증거동의 조문 참조 명확화 | Claude |

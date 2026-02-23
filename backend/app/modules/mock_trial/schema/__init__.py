@@ -294,7 +294,7 @@ CRIMINAL_STAGES: list[dict[str, Any]] = [
         "id": "verdict",
         "name": "판결선고",
         "order": 6,
-        "legal_basis": "형사소송법 §318-4",
+        "legal_basis": "형사소송법 §43(판결선고방식), §39(판결선고기일), §323(유죄이유고지)",
         "description": "AI 판사 판결문 낭독",
         "user_action": "관전",
         "duration_hint": "2-3분",

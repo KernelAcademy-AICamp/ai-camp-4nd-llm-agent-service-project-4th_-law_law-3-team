@@ -5,11 +5,16 @@ SimCourt Profile/Memory/Strategy 패턴을 구현한 법정 에이전트
 Design 문서 Section 6.1 기반
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.multi_agent.subgraphs.mock_trial_prompts import filter_llm_output
+
 logger = logging.getLogger(__name__)
+
+LLM_TIMEOUT_SECONDS = 30
 
 
 @dataclass
@@ -64,12 +69,24 @@ class CourtAgent:
         prompt += "위 맥락을 바탕으로 발언하세요."
 
         model = get_chat_model(temperature=self.temperature)
-        response = await model.ainvoke([
-            ("system", self.system_prompt),
-            ("user", prompt),
-        ])
+        try:
+            response = await asyncio.wait_for(
+                model.ainvoke([
+                    ("system", self.system_prompt),
+                    ("user", prompt),
+                ]),
+                timeout=LLM_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "LLM 타임아웃: agent=%s, stage=%s, timeout=%ds",
+                self.name,
+                stage,
+                LLM_TIMEOUT_SECONDS,
+            )
+            return f"[{self.name}] (응답 생성 중 시간 초과. 잠시 후 다시 시도해주세요.)"
 
-        result = str(response.content)
+        result = filter_llm_output(str(response.content))
         self.short_term.append(result)
         return result
 

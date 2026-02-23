@@ -7,6 +7,7 @@ small_claims.py 서브그래프 패턴을 따릅니다.
 Design 문서 Section 6.3 기반
 """
 
+import html
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -20,7 +21,14 @@ from app.multi_agent.agents.base_chat import ActionType, ChatAction
 from app.multi_agent.subgraphs.mock_trial_agents import CourtAgent
 from app.multi_agent.subgraphs.mock_trial_prompts import (
     AGENT_CONFIGS,
+    BURDEN_OF_PROOF_CIVIL,
+    BURDEN_OF_PROOF_CRIMINAL,
+    STAGE_ESTIMATED_MINUTES,
     SYSTEM_PROMPTS,
+    VERDICT_TEMPLATE_CIVIL,
+    VERDICT_TEMPLATE_CRIMINAL,
+    build_system_prompt,
+    sanitize_user_input,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,12 +58,16 @@ class MockTrialState(TypedDict, total=False):
     evidence_cases: list[dict[str, Any]]
     evidence_articles: list[dict[str, Any]]
     selected_evidence: list[str]
+    excluded_evidence: list[str]
 
     # 재판 진행
     stage: str
     current_round: int
     max_rounds: int
     court_record: list[dict[str, Any]]
+
+    # Rate limiting
+    llm_call_count: int
 
     # 출력 (부모 그래프로 전달)
     response: str
@@ -88,17 +100,35 @@ def _record(
     new_record.append({
         "stage": stage,
         "speaker": speaker,
-        "content": summary,
+        "content": html.escape(summary),
         "timestamp": _now_iso(),
     })
     return new_record
+
+
+def _validate_node_input(state: "MockTrialState", required_keys: list[str]) -> None:
+    """노드 진입 시 필수 상태 키를 검증합니다 (FR-41).
+
+    Args:
+        state: 현재 서브그래프 상태
+        required_keys: 필수 키 목록
+
+    Raises:
+        ValueError: 필수 키가 누락된 경우
+    """
+    missing = [k for k in required_keys if not state.get(k)]
+    if missing:
+        raise ValueError(
+            f"MockTrialState 필수 키 누락: {', '.join(missing)}"
+        )
 
 
 def _init_agents(case_type: str) -> dict[str, dict[str, Any]]:
     """사건 유형에 맞는 에이전트 초기화"""
     agents: dict[str, dict[str, Any]] = {}
     for role, config in AGENT_CONFIGS.items():
-        prompt = SYSTEM_PROMPTS.get((case_type, role), "")
+        base_prompt = SYSTEM_PROMPTS.get((case_type, role), "")
+        prompt = build_system_prompt(base_prompt)
         agent = CourtAgent(
             role=role,
             name=config["name"],
@@ -136,6 +166,31 @@ def _get_opponent_role(state: MockTrialState) -> str:
     if user_role == "prosecutor":
         return "attorney"
     return "prosecutor"
+
+
+MAX_LLM_CALLS_PER_SESSION = 50
+
+
+def _check_rate_limit(state: MockTrialState) -> Command[str] | None:
+    """LLM 호출 횟수 초과 시 verdict_node로 강제 이동"""
+    if state.get("llm_call_count", 0) >= MAX_LLM_CALLS_PER_SESSION:
+        logger.warning(
+            "Rate limit 초과: %d/%d calls",
+            state.get("llm_call_count", 0),
+            MAX_LLM_CALLS_PER_SESSION,
+        )
+        return Command(
+            update={
+                "response": (
+                    "세션당 LLM 호출 횟수 제한(50회)을 초과하여 "
+                    "재판을 종결합니다."
+                ),
+                "speaking_agent": "judge",
+                "agent_used": "mock_trial",
+            },
+            goto="verdict_node",
+        )
+    return None
 
 
 def _case_type_actions() -> list[dict[str, Any]]:
@@ -198,7 +253,9 @@ def setup_node(state: MockTrialState) -> Command[str]:
     case_type = str(user_input.get("case_type", "criminal"))
     user_role = str(user_input.get("user_role", "prosecutor"))
     case_category = str(user_input.get("case_category", ""))
-    case_summary = str(user_input.get("case_summary", state.get("message", "")))
+    case_summary = sanitize_user_input(
+        str(user_input.get("case_summary", state.get("message", "")))
+    )
 
     agents = _init_agents(case_type)
 
@@ -215,9 +272,11 @@ def setup_node(state: MockTrialState) -> Command[str]:
             "current_round": 1,
             "max_rounds": 3,
             "court_record": [],
+            "llm_call_count": 0,
             "evidence_cases": [],
             "evidence_articles": [],
             "selected_evidence": [],
+            "excluded_evidence": [],
             "is_complete": False,
             "agent_used": "mock_trial",
             "output_session_data": {"active_agent": "mock_trial"},
@@ -228,6 +287,10 @@ def setup_node(state: MockTrialState) -> Command[str]:
 
 async def evidence_node(state: MockTrialState) -> Command[str]:
     """[공통] 증거조사 (형사: §290~§313 / 민사: §288~§344)"""
+    _validate_node_input(state, ["case_type", "agents", "case_summary"])
+    if (cmd := _check_rate_limit(state)) is not None:
+        return cmd
+    llm_call_count = state.get("llm_call_count", 0)
     court_record = list(state.get("court_record", []))
 
     # 판사 발언: 증거조사 시작 안내
@@ -235,6 +298,7 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
     judge_response = await judge.generate(
         "evidence", state.get("case_summary", ""), court_record
     )
+    llm_call_count += 1
     court_record = _record(court_record, "evidence", "judge", judge_response)
 
     interrupt_value = interrupt({
@@ -269,6 +333,7 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
         update={
             "stage": "evidence",
             "court_record": court_record,
+            "llm_call_count": llm_call_count,
             "agents": _update_agent_in_state(state.get("agents", {}), judge),
             "response": judge_response,
             "speaking_agent": "judge",
@@ -280,13 +345,27 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
 
 async def verdict_node(state: MockTrialState) -> Command[str]:
     """[공통] 판결선고"""
+    _validate_node_input(state, ["case_type", "agents"])
     court_record = list(state.get("court_record", []))
     judge = _get_agent(state, "judge")
 
+    case_type = state.get("case_type", "criminal")
+    verdict_template = (
+        VERDICT_TEMPLATE_CRIMINAL if case_type == "criminal"
+        else VERDICT_TEMPLATE_CIVIL
+    )
+    burden_of_proof = (
+        BURDEN_OF_PROOF_CRIMINAL if case_type == "criminal"
+        else BURDEN_OF_PROOF_CIVIL
+    )
+    estimated = STAGE_ESTIMATED_MINUTES.get("verdict", 5)
     verdict_context = (
         f"{state.get('case_summary', '')}\n\n"
-        f"사건 유형: {state.get('case_type', '')}\n"
-        "위 법정 기록을 종합하여 판결문을 작성하세요."
+        f"사건 유형: {case_type}\n"
+        f"{burden_of_proof}\n\n"
+        f"{verdict_template}\n\n"
+        f"예상 소요시간: 약 {estimated}분\n"
+        "위 법정 기록과 형식에 따라 판결문을 작성하세요."
     )
     judgment = await judge.generate("verdict", verdict_context, court_record)
     court_record = _record(court_record, "verdict", "judge", judgment)
@@ -317,6 +396,10 @@ async def identity_node(state: MockTrialState) -> Command[str]:
 
     재판장이 피고인 인적사항을 확인하고 진술거부권을 고지합니다.
     """
+    _validate_node_input(state, ["case_type", "agents", "case_summary"])
+    if (cmd := _check_rate_limit(state)) is not None:
+        return cmd
+    llm_call_count = state.get("llm_call_count", 0)
     court_record = list(state.get("court_record", []))
     judge = _get_agent(state, "judge")
 
@@ -324,6 +407,7 @@ async def identity_node(state: MockTrialState) -> Command[str]:
     response = await judge.generate(
         "identity", state.get("case_summary", ""), court_record
     )
+    llm_call_count += 1
     court_record = _record(court_record, "identity", "judge", response)
 
     # 자동 진행 (관전) - interrupt로 표시만 하고 다음 단계로
@@ -344,6 +428,7 @@ async def identity_node(state: MockTrialState) -> Command[str]:
         update={
             "stage": "identity",
             "court_record": court_record,
+            "llm_call_count": llm_call_count,
             "agents": _update_agent_in_state(state.get("agents", {}), judge),
             "response": response,
             "speaking_agent": "judge",
@@ -358,6 +443,9 @@ async def opening_node(state: MockTrialState) -> Command[str]:
 
     검사 공소사실 요지 진술 후, 피고인/변호인 측 의견을 요청합니다.
     """
+    if (cmd := _check_rate_limit(state)) is not None:
+        return cmd
+    llm_call_count = state.get("llm_call_count", 0)
     court_record = list(state.get("court_record", []))
     user_role = state.get("user_role", "prosecutor")
 
@@ -378,6 +466,7 @@ async def opening_node(state: MockTrialState) -> Command[str]:
         attorney_response = await attorney.generate(
             "opening", state.get("case_summary", ""), court_record
         )
+        llm_call_count += 1
         court_record = _record(
             court_record, "opening", "attorney", attorney_response
         )
@@ -390,6 +479,7 @@ async def opening_node(state: MockTrialState) -> Command[str]:
         pros_stmt = await prosecutor.generate(
             "opening", state.get("case_summary", ""), court_record
         )
+        llm_call_count += 1
         court_record = _record(court_record, "opening", "prosecutor", pros_stmt)
         agents = _update_agent_in_state(state.get("agents", {}), prosecutor)
 
@@ -422,6 +512,7 @@ async def opening_node(state: MockTrialState) -> Command[str]:
         update={
             "stage": "opening",
             "court_record": court_record,
+            "llm_call_count": llm_call_count,
             "agents": agents,
             "response": final_response,
             "speaking_agent": user_role,
@@ -436,6 +527,9 @@ async def examination_node(state: MockTrialState) -> Command[str]:
 
     검사/변호인이 피고인에게 질문합니다.
     """
+    if (cmd := _check_rate_limit(state)) is not None:
+        return cmd
+    llm_call_count = state.get("llm_call_count", 0)
     court_record = list(state.get("court_record", []))
     user_role = state.get("user_role", "prosecutor")
 
@@ -445,6 +539,7 @@ async def examination_node(state: MockTrialState) -> Command[str]:
     defendant_stmt = await defendant.generate(
         "examination", state.get("case_summary", ""), court_record
     )
+    llm_call_count += 1
     court_record = _record(
         court_record, "examination", "defendant", defendant_stmt
     )
@@ -475,6 +570,7 @@ async def examination_node(state: MockTrialState) -> Command[str]:
         defendant_answer = await defendant.generate(
             "examination", f"질문: {user_input}", court_record
         )
+        llm_call_count += 1
         court_record = _record(
             court_record, "examination", "defendant", defendant_answer
         )
@@ -485,6 +581,7 @@ async def examination_node(state: MockTrialState) -> Command[str]:
         update={
             "stage": "examination",
             "court_record": court_record,
+            "llm_call_count": llm_call_count,
             "agents": agents,
             "response": defendant_stmt,
             "speaking_agent": "defendant",
@@ -499,6 +596,9 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
 
     검사 구형, 변호인 최후변론, 피고인 최후진술
     """
+    if (cmd := _check_rate_limit(state)) is not None:
+        return cmd
+    llm_call_count = state.get("llm_call_count", 0)
     court_record = list(state.get("court_record", []))
     user_role = state.get("user_role", "prosecutor")
     agents_state = dict(state.get("agents", {}))
@@ -520,6 +620,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
         attorney_response = await attorney.generate(
             "closing", state.get("case_summary", ""), court_record
         )
+        llm_call_count += 1
         court_record = _record(
             court_record, "closing", "attorney", attorney_response
         )
@@ -531,6 +632,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
         pros_closing = await prosecutor.generate(
             "closing", state.get("case_summary", ""), court_record
         )
+        llm_call_count += 1
         court_record = _record(
             court_record, "closing", "prosecutor", pros_closing
         )
@@ -555,6 +657,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
     defendant_stmt = await defendant.generate(
         "closing", state.get("case_summary", ""), court_record
     )
+    llm_call_count += 1
     court_record = _record(
         court_record, "closing", "defendant", defendant_stmt
     )
@@ -564,6 +667,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
         update={
             "stage": "closing",
             "court_record": court_record,
+            "llm_call_count": llm_call_count,
             "agents": agents_state,
             "response": f"[피고인 최후진술] {defendant_stmt}",
             "speaking_agent": "defendant",
@@ -581,6 +685,10 @@ async def pretrial_node(state: MockTrialState) -> Command[str]:
 
     재판장이 쟁점을 정리하고 증거 목록을 확인합니다.
     """
+    _validate_node_input(state, ["case_type", "agents", "case_summary"])
+    if (cmd := _check_rate_limit(state)) is not None:
+        return cmd
+    llm_call_count = state.get("llm_call_count", 0)
     court_record = list(state.get("court_record", []))
     judge = _get_agent(state, "judge")
 
@@ -588,6 +696,7 @@ async def pretrial_node(state: MockTrialState) -> Command[str]:
     response = await judge.generate(
         "pretrial", state.get("case_summary", ""), court_record
     )
+    llm_call_count += 1
     court_record = _record(court_record, "pretrial", "judge", response)
 
     # 자동 진행 (관전)
@@ -608,6 +717,7 @@ async def pretrial_node(state: MockTrialState) -> Command[str]:
         update={
             "stage": "pretrial",
             "court_record": court_record,
+            "llm_call_count": llm_call_count,
             "agents": _update_agent_in_state(state.get("agents", {}), judge),
             "response": response,
             "speaking_agent": "judge",
@@ -622,6 +732,9 @@ async def claims_node(state: MockTrialState) -> Command[str]:
 
     사용자 역할에 따라 원고/피고 입력을 받고 상대측 AI가 답변합니다.
     """
+    if (cmd := _check_rate_limit(state)) is not None:
+        return cmd
+    llm_call_count = state.get("llm_call_count", 0)
     court_record = list(state.get("court_record", []))
     user_role = state.get("user_role", "prosecutor")
     agents_state = dict(state.get("agents", {}))
@@ -643,6 +756,7 @@ async def claims_node(state: MockTrialState) -> Command[str]:
         opponent_response = await attorney.generate(
             "claims", state.get("case_summary", ""), court_record
         )
+        llm_call_count += 1
         court_record = _record(
             court_record, "claims", "attorney", opponent_response
         )
@@ -655,6 +769,7 @@ async def claims_node(state: MockTrialState) -> Command[str]:
         pros_claim = await prosecutor.generate(
             "claims", state.get("case_summary", ""), court_record
         )
+        llm_call_count += 1
         court_record = _record(
             court_record, "claims", "prosecutor", pros_claim
         )
@@ -678,6 +793,7 @@ async def claims_node(state: MockTrialState) -> Command[str]:
         update={
             "stage": "claims",
             "court_record": court_record,
+            "llm_call_count": llm_call_count,
             "agents": agents_state,
             "response": final_response,
             "speaking_agent": _get_opponent_role(state),
@@ -689,6 +805,9 @@ async def claims_node(state: MockTrialState) -> Command[str]:
 
 async def argument_node(state: MockTrialState) -> Command[str]:
     """[민사] 변론 (민사소송법 §134~§148) — 2-3 라운드 루프"""
+    if (cmd := _check_rate_limit(state)) is not None:
+        return cmd
+    llm_call_count = state.get("llm_call_count", 0)
     court_record = list(state.get("court_record", []))
     current_round = state.get("current_round", 1)
     max_rounds = state.get("max_rounds", 3)
@@ -735,6 +854,7 @@ async def argument_node(state: MockTrialState) -> Command[str]:
     rebuttal = await opponent.generate(
         "argument", state.get("case_summary", ""), court_record
     )
+    llm_call_count += 1
     court_record = _record(court_record, "argument", opponent_role, rebuttal)
     agents_state = _update_agent_in_state(agents_state, opponent)
 
@@ -743,6 +863,7 @@ async def argument_node(state: MockTrialState) -> Command[str]:
             "stage": "argument",
             "current_round": current_round + 1,
             "court_record": court_record,
+            "llm_call_count": llm_call_count,
             "agents": agents_state,
             "response": f"[{AGENT_CONFIGS.get(opponent_role, {}).get('name', opponent_role)}] {rebuttal}",
             "speaking_agent": opponent_role,
@@ -757,6 +878,9 @@ async def civil_closing_node(state: MockTrialState) -> Command[str]:
 
     양측 최종 주장을 정리합니다.
     """
+    if (cmd := _check_rate_limit(state)) is not None:
+        return cmd
+    llm_call_count = state.get("llm_call_count", 0)
     court_record = list(state.get("court_record", []))
     user_role = state.get("user_role", "prosecutor")
     agents_state = dict(state.get("agents", {}))
@@ -778,6 +902,7 @@ async def civil_closing_node(state: MockTrialState) -> Command[str]:
     opponent_closing = await opponent.generate(
         "closing", state.get("case_summary", ""), court_record
     )
+    llm_call_count += 1
     court_record = _record(
         court_record, "closing", opponent_role, opponent_closing
     )
@@ -787,6 +912,7 @@ async def civil_closing_node(state: MockTrialState) -> Command[str]:
         update={
             "stage": "closing",
             "court_record": court_record,
+            "llm_call_count": llm_call_count,
             "agents": agents_state,
             "response": f"[{AGENT_CONFIGS.get(opponent_role, {}).get('name', opponent_role)}] {opponent_closing}",
             "speaking_agent": opponent_role,

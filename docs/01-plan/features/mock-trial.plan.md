@@ -5,7 +5,7 @@
 > **Project**: law-3-team (법률 서비스 플랫폼)
 > **Author**: Claude
 > **Date**: 2026-02-12
-> **Status**: Draft (v0.6)
+> **Status**: Draft (v0.7)
 
 ---
 
@@ -225,7 +225,7 @@
 | FR-27 | 전용 페이지(`/mock-trial`)에서 직접 시작 | High | Done |
 | FR-28 | 면책 고지 표시 ("실제 법률 자문이 아닙니다") + 명시적 동의 절차 | High | Done |
 | **법률 정확성 (v0.5 추가)** | | | |
-| FR-29 | 형사 증거조사 시 증거동의/부동의 절차 구현 (형사소송법 §318) | High | In Progress |
+| FR-29 | 형사 증거조사 시 증거동의/부동의 절차 구현 (형사소송법 §318) ※ verdict_node 법적근거도 §318이 아닌 §323(유죄이유) 참조 필요 | High | In Progress |
 | FR-30 | 전문법칙(§310-2) 반영: 증거능력 vs 증명력 구분, 증거능력 판단 | Medium | In Progress |
 | FR-31 | 한국 판결문 정형 형식: 형사(주문→범죄사실→증거요지→법령적용→양형이유), 민사(주문→이유→결론) | High | Done |
 | FR-32 | 양형위원회 양형기준 참조: 범죄군별 권고형 범위(감경/기본/가중), 양형인자 | Medium | In Progress |
@@ -234,8 +234,23 @@
 | **보안 (v0.5 추가)** | | | |
 | FR-35 | 프롬프트 인젝션 방어: 시스템 프롬프트 역할 바운더리 + case_summary 필터링 | High | In Progress |
 | FR-36 | LLM 출력 안전성: 편향/혐오 표현 필터링, 실존 인물 비방 방지 | High | In Progress |
-| FR-37 | 세션 Rate Limiting: 세션당 LLM 호출 최대 50회, max_rounds 서버 강제 | Medium | Pending |
+| FR-37 | 세션 Rate Limiting: 세션당 LLM 호출 최대 50회, max_rounds 서버 강제 (`_check_rate_limit()` 구현 완료, `llm_call_count` 필드 존재) | Medium | Done |
 | FR-38 | 사용자 입력 검증 강화: case_type/user_role 화이트리스트, 단계별 입력 1000자 제한 | Medium | Done |
+| **보안 강화 (v0.7 추가 — CTO 팀 리뷰)** | | | |
+| FR-39 | 프롬프트 인젝션 방어 구현: ROLE_BOUNDARY 시스템 프롬프트 삽입 + `sanitize_user_input()` 정규식 필터링 (case_summary→5개 에이전트 동시 전파 경로 차단) | **Critical** | Pending |
+| FR-40 | LLM 출력 안전 필터: `filter_llm_output()` — 실존 인물 비방, 편향/혐오 표현, 위험 법적 조언 사후 필터링 + `OUTPUT_SAFETY_RULES` 시스템 프롬프트 | **Critical** | Pending |
+| FR-41 | 서브그래프 내부 입력 검증: 각 노드 진입 시 `state["stage"]` 정합성 + `case_type`/`user_role` 재검증 (외부→내부 경계 방어) | High | Pending |
+| FR-42 | XSS 방어: `_record()` 헬퍼에 `html.escape()` 적용, court_record→프론트엔드 렌더링 경로 전체 이스케이프 | High | Pending |
+| FR-43 | 세션 데이터 TTL: 체크포인터 세션 24시간 자동 삭제 cron 구현 | Medium | Pending |
+| **UX 개선 (v0.7 추가 — CTO 팀 리뷰)** | | | |
+| FR-44 | 온보딩 가이드: 첫 방문 시 재판 흐름 안내 (인터랙티브 튜토리얼 또는 단계 안내 모달) | High | Pending |
+| FR-45 | 중도 퇴장/새로고침 복원: 재판 중 이탈 시 체크포인터 기반 세션 복원 + 복원 확인 UI | High | Pending |
+| FR-46 | 예상 소요시간 표시: 재판 시작 전 + 각 단계별 "약 N분 소요" 안내 | Medium | Pending |
+| FR-47 | 빠른 재판 모드(Quick Trial): 3단계 축소 버전 (설정→핵심변론→판결) — MVP 이후 확장 | Low | Deferred |
+| **데이터 모델 정합성 (v0.7 추가 — CTO 팀 리뷰)** | | | |
+| FR-48 | MockTrialState 필드 정합성: Design 문서 Section 3.1과 실제 코드 동기화 — `excluded_evidence`, `llm_call_count` 필드 반영 | High | Pending |
+| FR-49 | evidence_node 설계 통일: Design 문서 Section 6.3 vs 13.1 이중 설계 → 단일 최종 설계로 통합 | Medium | Pending |
+| FR-50 | 민사 역할 매핑 명확화: 사용자 역할 선택 UI ↔ Backend 에이전트 매핑 테이블 명시 (원고↔prosecutor, 피고↔attorney 등) | Medium | Pending |
 
 ### 3.2 Non-Functional Requirements
 
@@ -253,6 +268,13 @@
 | Security | 모든 사용자 입력/LLM 출력 텍스트 이스케이프 (XSS 0건) | 코드 리뷰 |
 | Data Privacy | 체크포인터 세션 데이터 24시간 후 자동 삭제 | 배치 삭제 cron |
 | Minimum Resolution | 최소 1280x720 지원, 1024px 이하 2단 레이아웃 전환 | 반응형 테스트 |
+| **v0.7 추가 (CTO 팀 리뷰)** | | |
+| Security | 서브그래프 내부 입력 검증: 노드 진입 시 stage 정합성 체크 100% | 코드 리뷰 |
+| Security | LLM 출력 필터링: 실존 인물 비방, 편향/혐오 표현 0건 (테스트 세트 기반) | 보안 테스트 |
+| UX | 재판 중 새로고침 시 세션 복원 성공률 > 95% | 체크포인터 테스트 |
+| UX | 온보딩 완료 후 첫 재판 시작까지 이탈률 < 30% | 사용자 테스트 |
+| Accessibility | Phaser canvas 내 에이전트 발언 ARIA live region 미러링 지연 < 500ms | 스크린리더 테스트 |
+| Accessibility | 키보드만으로 ChatPanel 입력 + 증거 선택 + 단계 진행 가능 | 키보드 네비게이션 테스트 |
 
 ---
 
@@ -294,6 +316,15 @@
 | EventBus 이벤트 유실 (Phaser 씬 전환 중 SSE 응답 도착) | Medium | High | bufferedEmit 패턴 또는 scene.sleep/launch 전략 |
 | 법률 용어/절차 부정확 (교육 목적 훼손) | High | Medium | 법률 전문가 리뷰, 양형기준/판결문 형식/입증책임 설계 반영 (FR-29~34) |
 | 접근성(A11y) 미달 (Phaser canvas 스크린리더 접근 불가) | Medium | High | ARIA live region + ChatPanel 텍스트 미러링 |
+| **v0.7 추가 (CTO 팀 리뷰)** | | | |
+| case_summary 5개 에이전트 동시 전파 — 프롬프트 인젝션 1건으로 전체 오염 | **Critical** | High | ROLE_BOUNDARY + sanitize_user_input() 필수 (FR-39). 현재 setup_node에서 case_summary 무필터 저장 |
+| _record() 헬퍼에 html.escape() 미적용 — court_record XSS 경로 | High | Medium | FR-42로 html.escape() 적용. 프론트엔드 렌더링 시에도 이스케이프 확인 |
+| CourtAgent.generate() 결과 무필터 반환 — LLM 출력 안전 필터 부재 | **Critical** | Medium | FR-40으로 filter_llm_output() 구현. 실존 인물, 편향/혐오 사후 필터링 |
+| MVP 범위 과부하 (38→50 FR, 형사+민사 동시) — 완료 지연 리스크 | High | High | **형사 재판 우선 전략**: MVP에서 형사 6단계 완성 후 민사 확장. 세부 전략은 §10 MVP 전략 참조 |
+| 온보딩 부재 — 법률 비전공자 진입 장벽 | High | High | FR-44로 온보딩 가이드 구현. 최소 재판 흐름 안내 모달 |
+| 중도 퇴장/새로고침 시 세션 유실 — 장시간 재판 데이터 손실 | High | Medium | FR-45로 체크포인터 기반 세션 복원 + 복원 확인 UI |
+| 재판 소요시간 불명확 — 사용자 시간 투자 판단 불가 | Medium | High | FR-46으로 예상 시간 안내 (각 단계 + 총 소요시간) |
+| Design 문서 ↔ 코드 필드 불일치 (excluded_evidence, llm_call_count) | High | **현재 발생** | FR-48로 MockTrialState 동기화. Design v0.5 업데이트 필요 |
 
 ---
 
@@ -611,10 +642,20 @@ Backend는 기존 의존성으로 구현 가능:
 | **D. 통합** | 19 | next.config.js rewrites (API 프록시) | `next.config.js` | Step 9 | [완료] |
 | | 20 | Frontend ↔ Backend SSE 연동 | 전체 | Step 17, 9 | [완료] |
 | | 21 | 모듈 등록 확인 + 정적 검증 | `modules.ts`, `api.ts`, 린트 | Step 20 | [완료] |
-| **E. 보안/품질 (v0.5 추가)** | 22 | 프롬프트 인젝션 방어 (역할 바운더리 + 필터링) | `subgraphs/mock_trial_prompts.py` | Step 5 | In Progress |
-| | 23 | LLM 출력 안전성 (편향/혐오 필터링) | `subgraphs/mock_trial.py` | Step 6 | In Progress |
-| | 24 | 세션 Rate Limiting (50회/세션) | `subgraphs/mock_trial.py` | Step 6 | 미착수 |
-| | 25 | 증거동의/부동의 절차 (§318) | `subgraphs/mock_trial.py` | Step 6 | In Progress |
+| **E. 보안/품질 (v0.5 추가)** | 22 | 프롬프트 인젝션 방어: ROLE_BOUNDARY + sanitize_user_input() (FR-39) | `mock_trial_prompts.py`, `mock_trial.py` | Step 5 | 미착수 |
+| | 23 | LLM 출력 안전성: filter_llm_output() + OUTPUT_SAFETY_RULES (FR-40) | `mock_trial_agents.py`, `mock_trial.py` | Step 6 | 미착수 |
+| | 24 | 세션 Rate Limiting — _check_rate_limit() 이미 구현 (FR-37 Done) | `subgraphs/mock_trial.py` | Step 6 | [완료] |
+| | 25 | 증거동의/부동의 절차 (§318) + 전문법칙(§310-2) (FR-29, FR-30) | `subgraphs/mock_trial.py` | Step 6 | In Progress |
+| | 26 | XSS 방어: _record() html.escape() + court_record 이스케이프 (FR-42) | `mock_trial.py`, 프론트엔드 | Step 6 | 미착수 |
+| | 27 | 서브그래프 내부 입력 검증: 노드별 state 정합성 체크 (FR-41) | `subgraphs/mock_trial.py` | Step 6 | 미착수 |
+| | 28 | 세션 데이터 TTL: 체크포인터 24시간 자동 삭제 cron (FR-43) | 인프라/스크립트 | Step 6 | 미착수 |
+| **F. UX 개선 (v0.7 추가)** | 29 | 온보딩 가이드: 첫 방문 시 재판 흐름 안내 모달/튜토리얼 (FR-44) | 프론트엔드 컴포넌트 | Step 17 | 미착수 |
+| | 30 | 중도 퇴장/새로고침 세션 복원 (FR-45) | 프론트엔드 + 백엔드 체크포인터 | Step 20 | 미착수 |
+| | 31 | 예상 소요시간 표시 (FR-46) | 프론트엔드 UI | Step 17 | 미착수 |
+| | 32 | 민사 역할 매핑 UI ↔ Backend 테이블 명확화 (FR-50) | 프론트엔드 + 백엔드 | Step 7 | 미착수 |
+| **G. 문서 정합성 (v0.7 추가)** | 33 | MockTrialState 필드 동기화: Design 문서 ↔ 코드 (FR-48) | Design 문서 + 코드 | - | 미착수 |
+| | 34 | evidence_node 이중 설계 통합 (FR-49) | Design 문서 | - | 미착수 |
+| | 35 | §323 조문 번호 수정 반영 (verdict_node 법적근거) | Design 문서 + 코드 주석 | - | 미착수 |
 
 ### 8.2 서브그래프 상태 스키마
 
@@ -638,6 +679,10 @@ class MockTrialState(TypedDict, total=False):
     evidence_cases: list[dict[str, Any]]     # 판례 검색 결과
     evidence_articles: list[dict[str, Any]]  # 법령 검색 결과
     selected_evidence: list[str]             # 사용자 선택 증거 ID
+    excluded_evidence: list[str]             # 증거동의/부동의에서 배제된 증거 ID (v0.7 추가)
+
+    # Rate Limiting (v0.7 추가 — 코드에 이미 존재)
+    llm_call_count: int                      # 세션 LLM 호출 횟수 (기본 0, 최대 50)
 
     # 재판 진행
     stage: str                  # 형사: "setup" | "identity" | "opening" |
@@ -679,7 +724,7 @@ class MockTrialState(TypedDict, total=False):
 | 3. 증거조사 | `evidence_node` | 형사소송법 §290~§313, §318(증거동의) | RAG 검색 판례/법령 제시, **증거동의/부동의**, 서증 제출, 증인신문 |
 | 4. 피고인신문 | `examination_node` | 형사소송법 §296-2 | 검사/변호인이 피고인에게 질문 (사용자 참여) |
 | 5. 구형 및 최후진술 | `criminal_closing_node` | 형사소송법 §302(검사 의견진술), §303(최후진술) | 검사 구형 → 변호인 변론 → 피고인 최후진술 (사용자 입력) |
-| 6. 판결선고 | `verdict_node` | 형사소송법 §43(판결선고방식), §39(판결선고기일), §318(유죄이유) | AI 판사 판결문 생성 (한국 판결문 형식: 주문→이유→양형) |
+| 6. 판결선고 | `verdict_node` | 형사소송법 §43(판결선고방식), §39(판결선고기일), §323(유죄이유고지) | AI 판사 판결문 생성 (한국 판결문 형식: 주문→이유→양형) |
 
 **민사 변론절차 (민사소송법 기반)**:
 
@@ -718,10 +763,49 @@ interface CourtEvents {
 2. [x] Design 문서 작성 (`/pdca design mock-trial`)
 3. [x] Plan/Design 보강 (v0.4~v0.6) — 기존 코드 현황 반영, 실제 패턴 정합성, 문서 동기화
 4. [x] Analysis 작성 및 보강 (v0.2) — Match Rate 산출 근거, 개선 로드맵 추가
-5. [ ] Error Handling 보강 — LLM 타임아웃, Canvas 폴백, EventBus 큐 (Analysis 70% → 90%)
-6. [ ] Security 보강 — Rate Limiting, 프롬프트 인젝션 방어 구현 (Analysis 80% → 95%)
-7. [ ] Frontend 미구현 항목 구현 — useTrialState 훅 분리, 증거 패널 고도화
-8. [ ] 통합 테스트 및 Gap Re-analysis (`/pdca analyze mock-trial`)
+5. [x] CTO 팀 리뷰 (v0.7) — 5건 Critical, 8건 High, 9건 Medium, 5건 Info 반영
+6. [ ] **[Critical] Security Phase 1** — 프롬프트 인젝션 방어(FR-39) + LLM 출력 필터(FR-40) + XSS 방어(FR-42) 구현
+7. [ ] **[Critical] 문서 정합성** — Design 문서 v0.5 업데이트: MockTrialState 필드 동기화(FR-48), evidence_node 통합(FR-49), §323 수정(Step 35)
+8. [ ] **[High] UX 필수** — 온보딩 가이드(FR-44) + 중도퇴장 세션 복원(FR-45)
+9. [ ] **[High] 내부 입력 검증** — 서브그래프 노드별 state 정합성 체크(FR-41)
+10. [ ] Error Handling 보강 — LLM 타임아웃, Canvas 폴백, EventBus 큐 (Analysis 70% → 90%)
+11. [ ] Frontend 미구현 항목 구현 — useTrialState 훅 분리, 증거 패널 고도화
+12. [ ] 통합 테스트 및 Gap Re-analysis (`/pdca analyze mock-trial`)
+
+---
+
+## 10. MVP 전략 (v0.7 추가 — CTO 팀 리뷰)
+
+### 10.1 형사 재판 우선 전략 (Criminal-First)
+
+현재 FR 50개, 형사+민사 동시 구현은 범위 과부하 리스크가 높음.
+**형사 재판 6단계를 MVP로 먼저 완성**하고 민사는 후속 단계로 분리 권장.
+
+| Phase | 범위 | FR | 목표 |
+|-------|------|-----|------|
+| **MVP (Phase 1)** | 형사 재판 6단계 + 보안 필수 | FR-01~13a, FR-15~28, FR-35~42 | 형사 재판 E2E 동작 + 보안 기본 확보 |
+| **Phase 2** | 민사 재판 6단계 | FR-14a~14f | 민사 변론절차 추가 |
+| **Phase 3** | UX 고도화 + 고급 기능 | FR-44~47 | 온보딩, 세션 복원, 빠른 재판 모드 |
+
+### 10.2 보안 구현 로드맵
+
+| Phase | 작업 | 우선순위 | 예상 난이도 |
+|-------|------|---------|-----------|
+| **Security Phase 1** | ROLE_BOUNDARY + sanitize_user_input() + html.escape() | Critical | 중 (1-2일) |
+| **Security Phase 2** | filter_llm_output() + OUTPUT_SAFETY_RULES | Critical | 중 (1-2일) |
+| **Security Phase 3** | 서브그래프 내부 검증 + 세션 TTL cron | High | 하 (0.5일) |
+
+### 10.3 민사 역할 매핑 테이블
+
+민사 재판 구현 시 역할 매핑 혼동 방지를 위한 명시적 테이블:
+
+| 사용자 선택 (UI) | Backend user_role | 에이전트 역할 | AI 상대측 |
+|------------------|-------------------|-------------|----------|
+| "원고측" | `prosecutor` | 원고 대리인 | 피고 대리인 (AI) |
+| "피고측" | `attorney` | 피고 대리인 | 원고 대리인 (AI) |
+
+> ⚠️ `prosecutor`/`attorney` 네이밍은 형사 기준이므로, 민사에서 의미 혼동 주의.
+> 향후 `plaintiff`/`defendant_side`로 개선 검토 (Breaking Change).
 
 ---
 
@@ -735,3 +819,4 @@ interface CourtEvents {
 | 0.4 | 2026-02-21 | 기존 구현 현황 반영 (초안 코드 8개 파일 + 미구현 12개 항목), LLM 클라이언트 정정 (get_solar_response_stream→get_chat_model), Implementation Plan 상태 표시 추가, Dependencies 정확도 개선 | Claude |
 | 0.6 | 2026-02-21 | 문서 동기화 보강: (1) FR 상태 38건 Pending→Done/In Progress 업데이트, (2) Implementation Step 상태 반영 + Phase E 추가, (3) §42→§43+§39 조문 정정, (4) closing_node→criminal/civil 분리 반영, (5) Next Steps 현행화, (6) 배심원 Out of Scope 명확화, (7) 리스크 완화 전략 현행화 | Claude |
 | 0.5 | 2026-02-21 | 5개 관점 에이전트 팀 리뷰 반영: (1) 법률 용어 정정 — "최종변론"→"구형 및 최후진술", 형사소송법 조문 번호 정정(§318-4→§42~43), 인정신문에 §283-2 추가, (2) FR 10개 추가 — 증거동의/부동의(FR-29), 전문법칙(FR-30), 판결문 형식(FR-31), 양형기준(FR-32), 입증책임(FR-33), 법정어투(FR-34), 프롬프트인젝션방어(FR-35), LLM출력필터링(FR-36), Rate Limiting(FR-37), 입력검증(FR-38), (3) NFR 6개 추가 — 접근성, 보안(2), 데이터보존, 최소해상도, (4) Risks 7개 추가 — 프롬프트인젝션, LLM편향, sessionStorage, EventBus유실, 법률정확성, 접근성 | Claude |
+| 0.7 | 2026-02-24 | CTO 팀 리뷰(design-validator+security-architect+product-manager) 27건 반영: (1) **Critical 5건** — §318→§323 조문 수정, FR-37 상태 Pending→Done, case_summary 프롬프트 인젝션 경로 식별, LLM 출력 필터 부재 식별, 중도퇴장 미설계, (2) **High 8건** — 서브그래프 내부 입력 검증(FR-41), XSS 방어(FR-42), MVP 범위 과부하→형사우선 전략(§10), 온보딩(FR-44), 세션 복원(FR-45), FR 상태 불일치 수정, evidence_node 이중 설계, 민사 역할 매핑, (3) **Medium 9건** — 예상 시간 표시(FR-46), 빠른 재판(FR-47), MockTrialState 필드 동기화(FR-48), evidence_node 통합(FR-49), 역할 매핑 테이블(FR-50), 접근성 구체화, 세션 TTL(FR-43), (4) **Info 5건** — 보안 로드맵 3단계, Implementation Plan Phase F/G 추가, MVP 전략 섹션(§10) 신설, Next Steps 재구성 | Claude |
