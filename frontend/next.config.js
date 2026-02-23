@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
+
 const nextConfig = {
   // Enable standalone output for Docker production builds
   output: 'standalone',
@@ -14,37 +16,37 @@ const nextConfig = {
       // 다른 모듈들은 기존 rewrites 사용
       {
         source: '/api/lawyer-finder/:path*',
-        destination: 'http://127.0.0.1:8000/api/lawyer-finder/:path*',
+        destination: `${BACKEND_URL}/api/lawyer-finder/:path*`,
       },
       {
         source: '/api/lawyer-stats/:path*',
-        destination: 'http://127.0.0.1:8000/api/lawyer-stats/:path*',
+        destination: `${BACKEND_URL}/api/lawyer-stats/:path*`,
       },
       {
         source: '/api/case-precedent/:path*',
-        destination: 'http://127.0.0.1:8000/api/case-precedent/:path*',
+        destination: `${BACKEND_URL}/api/case-precedent/:path*`,
       },
       {
         source: '/api/law-study/:path*',
-        destination: 'http://127.0.0.1:8000/api/law-study/:path*',
+        destination: `${BACKEND_URL}/api/law-study/:path*`,
       },
       {
         source: '/api/small-claims/:path*',
-        destination: 'http://127.0.0.1:8000/api/small-claims/:path*',
+        destination: `${BACKEND_URL}/api/small-claims/:path*`,
       },
       {
         source: '/api/mock-trial/:path*',
-        destination: 'http://127.0.0.1:8000/api/mock-trial/:path*',
+        destination: `${BACKEND_URL}/api/mock-trial/:path*`,
       },
       // /api/chat/stream은 Next.js API Route에서 SSE 프록시 처리
       // (rewrites는 SSE 스트리밍을 버퍼링하므로 API Route 사용)
       {
         source: '/api/chat',
-        destination: 'http://127.0.0.1:8000/api/chat',
+        destination: `${BACKEND_URL}/api/chat`,
       },
       {
         source: '/media/:path*',
-        destination: 'http://127.0.0.1:8000/media/:path*',
+        destination: `${BACKEND_URL}/media/:path*`,
       },
     ]
   },
