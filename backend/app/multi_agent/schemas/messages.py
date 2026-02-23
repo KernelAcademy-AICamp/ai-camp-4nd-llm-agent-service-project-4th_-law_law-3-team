@@ -36,3 +36,4 @@ class ChatResponse(BaseModel):
     actions: list[dict[str, Any]] = []
     session_data: dict[str, Any] = {}
     confidence: float = 1.0
+    emotion: str = "neutral"

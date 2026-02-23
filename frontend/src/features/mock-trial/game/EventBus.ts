@@ -1,10 +1,10 @@
 /** Phaser <-> React 이벤트 통신 버스 */
 
-import type { EvidenceItem } from '../types'
+import type { EvidenceItem, EmotionType } from '../types'
 
 export interface EventMap {
   // Phaser -> React
-  'agent:speak': { agent: string; text: string; streaming: boolean }
+  'agent:speak': { agent: string; text: string; streaming: boolean; emotion?: EmotionType }
   'stage:change': { from: string; to: string; stageNumber: number; totalStages: number }
   'evidence:presented': { cases: EvidenceItem[]; articles: EvidenceItem[] }
   'trial:complete': { judgment: string; feedback: string }

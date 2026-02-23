@@ -89,6 +89,16 @@ STAGE_ESTIMATED_MINUTES: dict[str, int] = {
 }
 
 
+# ── 감정 표현 태그 규칙 (FR-51) ──
+
+EMOTION_TAG_INSTRUCTION = """
+[감정 표현 규칙]
+반드시 발언 첫 줄에 [EMOTION:태그] 형식으로 현재 감정을 표시하세요.
+가능한 태그: neutral, angry, thinking, sad, confident, stern, recording, judging
+예시: [EMOTION:stern] 피고인에게 진술거부권이 있음을 고지합니다.
+"""
+
+
 # ── 판결문 템플릿 (M2) ──
 
 VERDICT_TEMPLATE_CRIMINAL = """[판결문 형식]
@@ -218,6 +228,7 @@ def build_system_prompt(base_prompt: str) -> str:
         f"{base_prompt}\n{ROLE_BOUNDARY}\n"
         f"─── 출력 안전 규칙 ───\n{safety_block}\n"
         f"{COURTROOM_SPEECH_STYLE}"
+        f"{EMOTION_TAG_INSTRUCTION}"
     )
 
 

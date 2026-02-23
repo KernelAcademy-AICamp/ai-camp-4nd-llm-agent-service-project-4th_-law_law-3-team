@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Minimize2 } from 'lucide-react'
 import type { CourtEvent } from '../types'
+import { EMOTION_EMOJI, DEFAULT_ROLE_EMOTION } from '../types'
 import { CHARACTER_NAMES } from '../game/config'
 
 interface ChatPanelProps {
@@ -75,10 +76,13 @@ export function ChatPanel({
         {messages.map((message, index) => {
           const speakerName =
             CHARACTER_NAMES[message.speaker] ?? message.speaker
+          const emotionKey =
+            message.emotion ?? DEFAULT_ROLE_EMOTION[message.speaker] ?? 'neutral'
+          const emoji = EMOTION_EMOJI[emotionKey] ?? '😐'
           return (
             <div key={index} className="text-sm">
               <span className="font-semibold text-gray-700">
-                [{speakerName}]
+                [{speakerName} {emoji}]
               </span>{' '}
               <span className="text-gray-600">{message.content}</span>
             </div>

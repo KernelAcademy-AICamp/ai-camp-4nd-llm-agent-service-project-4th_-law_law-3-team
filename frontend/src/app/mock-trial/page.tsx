@@ -20,8 +20,9 @@ import type {
   CourtEvent,
   ReferenceItem,
   EvidenceItem,
+  EmotionType,
 } from '@/features/mock-trial/types'
-import { CRIMINAL_STAGES, CIVIL_STAGES } from '@/features/mock-trial/types'
+import { CRIMINAL_STAGES, CIVIL_STAGES, DEFAULT_ROLE_EMOTION } from '@/features/mock-trial/types'
 import type { DemoScenario } from '@/features/mock-trial/demo/demo-scenarios'
 
 const MockTrialGame = dynamic(
@@ -104,7 +105,10 @@ export default function MockTrialPage() {
 
   /** 데모 mock AI 응답을 순차적으로 재생 */
   const playMockResponses = useCallback(
-    (responses: { speaker: string; content: string }[], stageId: string) => {
+    (
+      responses: { speaker: string; content: string; emotion?: EmotionType }[],
+      stageId: string
+    ) => {
       if (responses.length === 0) {
         setIsWaiting(false)
         return
@@ -117,17 +121,21 @@ export default function MockTrialPage() {
           return
         }
         const response = responses[index]
+        const emotion: EmotionType =
+          response.emotion ?? DEFAULT_ROLE_EMOTION[response.speaker] ?? 'neutral'
         const event: CourtEvent = {
           stage: stageId,
           speaker: response.speaker,
           content: response.content,
           timestamp: new Date().toISOString(),
+          emotion,
         }
         setMessages((prev) => [...prev, event])
         eventBus.emit('agent:speak', {
           agent: response.speaker,
           text: response.content,
           streaming: false,
+          emotion,
         })
         index++
         setTimeout(playNext, DEMO_RESPONSE_DELAY)

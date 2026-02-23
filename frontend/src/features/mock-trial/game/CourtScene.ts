@@ -6,13 +6,14 @@ import {
   GAME_HEIGHT,
   COURT_BACKGROUND_COLOR,
   CHARACTER_POSITIONS,
+  CHARACTER_NAMES,
 } from './config'
 import { CharacterBase } from './sprites/CharacterBase'
 import { JuryPanel } from './sprites/JuryPanel'
 import { SpeechBubble } from './ui/SpeechBubble'
 import { StageIndicator } from './ui/StageIndicator'
 import { eventBus } from './EventBus'
-import { CRIMINAL_STAGES, CIVIL_STAGES } from '../types'
+import { CRIMINAL_STAGES, CIVIL_STAGES, DEFAULT_ROLE_EMOTION } from '../types'
 
 interface CourtSceneData {
   caseType: string
@@ -143,7 +144,9 @@ export class CourtScene extends Phaser.Scene {
         const bubble = this.speechBubbles.get(data.agent)
         const character = this.characters.get(data.agent)
         if (bubble) {
-          bubble.showText(data.text, !data.streaming)
+          const agentName = CHARACTER_NAMES[data.agent] ?? data.agent
+          const emotion = data.emotion ?? DEFAULT_ROLE_EMOTION[data.agent]
+          bubble.show(agentName, data.text, emotion, !data.streaming)
         }
         if (character) {
           character.setSpeaking(true)

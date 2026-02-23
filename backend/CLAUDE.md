@@ -149,7 +149,7 @@ app/
 │   ├── graph.py         # LangGraph StateGraph 빌드/컴파일
 │   ├── nodes.py         # router_node + 에이전트 노드 함수
 │   ├── router.py        # RulesRouter, AgentType, UserRole, ROLE_AGENTS
-│   ├── state.py         # ChatState TypedDict, 변환 함수
+│   ├── state.py         # ChatState TypedDict (emotion 포함), 변환 함수
 │   ├── agents/          # 에이전트 구현 (BaseChatAgent 상속)
 │   │   ├── base_chat.py              # 베이스 클래스
 │   │   ├── legal_search_agent.py     # 판례/법령 RAG 검색
@@ -161,12 +161,12 @@ app/
 │   │   └── mock_trial_agent.py       # 모의 법정
 │   ├── subgraphs/       # 서브그래프
 │   │   ├── small_claims.py           # 소액소송 서브그래프
-│   │   ├── mock_trial.py             # 모의 법정 서브그래프
-│   │   ├── mock_trial_agents.py      # 모의 법정 에이전트 (검사/변호사/판사)
-│   │   └── mock_trial_prompts.py     # 모의 법정 프롬프트
+│   │   ├── mock_trial.py             # 모의 법정 서브그래프 (MockTrialState.emotion 포함)
+│   │   ├── mock_trial_agents.py      # 모의 법정 에이전트 (generate→tuple[str, str], _parse_emotion)
+│   │   └── mock_trial_prompts.py     # 모의 법정 프롬프트 (EMOTION_TAG_INSTRUCTION 포함)
 │   └── schemas/         # 스키마
 │       ├── plan.py      # AgentPlan, AgentResult
-│       └── messages.py  # 메시지 타입
+│       └── messages.py  # 메시지 타입 (ChatResponse.emotion 포함)
 ├── services/            # 비즈니스 로직
 │   ├── rag/
 │   │   ├── embedding.py  # 임베딩 모델

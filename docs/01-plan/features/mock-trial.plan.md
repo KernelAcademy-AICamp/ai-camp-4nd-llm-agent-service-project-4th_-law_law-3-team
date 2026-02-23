@@ -5,7 +5,7 @@
 > **Project**: law-3-team (법률 서비스 플랫폼)
 > **Author**: Claude
 > **Date**: 2026-02-12
-> **Status**: Draft (v0.7)
+> **Status**: Draft (v0.8)
 
 ---
 
@@ -247,6 +247,8 @@
 | FR-45 | 중도 퇴장/새로고침 복원: 재판 중 이탈 시 체크포인터 기반 세션 복원 + 복원 확인 UI | High | Pending |
 | FR-46 | 예상 소요시간 표시: 재판 시작 전 + 각 단계별 "약 N분 소요" 안내 | Medium | Pending |
 | FR-47 | 빠른 재판 모드(Quick Trial): 3단계 축소 버전 (설정→핵심변론→판결) — MVP 이후 확장 | Low | Deferred |
+| **감정 이모지 시스템 (v0.8 추가)** | | | |
+| FR-51 | 동적 감정 이모지: 에이전트 발언 시 감정(8종: neutral/angry/thinking/sad/confident/stern/recording/judging) 태그 생성 → 채팅 메시지 + Phaser.js 말풍선에 이모지 표시 | High | Pending |
 | **데이터 모델 정합성 (v0.7 추가 — CTO 팀 리뷰)** | | | |
 | FR-48 | MockTrialState 필드 정합성: Design 문서 Section 3.1과 실제 코드 동기화 — `excluded_evidence`, `llm_call_count` 필드 반영 | High | Pending |
 | FR-49 | evidence_node 설계 통일: Design 문서 Section 6.3 vs 13.1 이중 설계 → 단일 최종 설계로 통합 | Medium | Pending |
@@ -653,9 +655,12 @@ Backend는 기존 의존성으로 구현 가능:
 | | 30 | 중도 퇴장/새로고침 세션 복원 (FR-45) | 프론트엔드 + 백엔드 체크포인터 | Step 20 | 미착수 |
 | | 31 | 예상 소요시간 표시 (FR-46) | 프론트엔드 UI | Step 17 | 미착수 |
 | | 32 | 민사 역할 매핑 UI ↔ Backend 테이블 명확화 (FR-50) | 프론트엔드 + 백엔드 | Step 7 | 미착수 |
-| **G. 문서 정합성 (v0.7 추가)** | 33 | MockTrialState 필드 동기화: Design 문서 ↔ 코드 (FR-48) | Design 문서 + 코드 | - | 미착수 |
-| | 34 | evidence_node 이중 설계 통합 (FR-49) | Design 문서 | - | 미착수 |
-| | 35 | §323 조문 번호 수정 반영 (verdict_node 법적근거) | Design 문서 + 코드 주석 | - | 미착수 |
+| **G. 감정 이모지 (v0.8 추가)** | 33 | Backend: CourtAgent.generate() 반환에 emotion 필드 추가 + LLM 프롬프트에 감정 태그 지시 (FR-51) | `mock_trial_agents.py`, `mock_trial_prompts.py`, `mock_trial.py` | Step 5 | 미착수 |
+| | 34 | Frontend: EMOTION_EMOJI 상수 매핑 + ChatPanel/ChatBottomBar 이모지 표시 (FR-51) | `config.ts`, `ChatPanel.tsx`, `ChatBottomBar.tsx`, `types/index.ts` | Step 33 | 미착수 |
+| | 35 | Phaser.js: SpeechBubble에 감정 이모지 텍스트 렌더링 + EventBus emotion 필드 전달 (FR-51) | `SpeechBubble.ts`, `EventBus.ts` | Step 33, 34 | 미착수 |
+| **H. 문서 정합성 (v0.7 추가)** | 36 | MockTrialState 필드 동기화: Design 문서 ↔ 코드 (FR-48) | Design 문서 + 코드 | - | 미착수 |
+| | 37 | evidence_node 이중 설계 통합 (FR-49) | Design 문서 | - | 미착수 |
+| | 38 | §323 조문 번호 수정 반영 (verdict_node 법적근거) | Design 문서 + 코드 주석 | - | 미착수 |
 
 ### 8.2 서브그래프 상태 스키마
 
@@ -769,8 +774,9 @@ interface CourtEvents {
 8. [ ] **[High] UX 필수** — 온보딩 가이드(FR-44) + 중도퇴장 세션 복원(FR-45)
 9. [ ] **[High] 내부 입력 검증** — 서브그래프 노드별 state 정합성 체크(FR-41)
 10. [ ] Error Handling 보강 — LLM 타임아웃, Canvas 폴백, EventBus 큐 (Analysis 70% → 90%)
-11. [ ] Frontend 미구현 항목 구현 — useTrialState 훅 분리, 증거 패널 고도화
-12. [ ] 통합 테스트 및 Gap Re-analysis (`/pdca analyze mock-trial`)
+11. [ ] **[High] 감정 이모지 시스템** — Backend emotion 필드 + Frontend 채팅/말풍선 이모지 표시 (FR-51)
+12. [ ] Frontend 미구현 항목 구현 — useTrialState 훅 분리, 증거 패널 고도화
+13. [ ] 통합 테스트 및 Gap Re-analysis (`/pdca analyze mock-trial`)
 
 ---
 
@@ -819,4 +825,5 @@ interface CourtEvents {
 | 0.4 | 2026-02-21 | 기존 구현 현황 반영 (초안 코드 8개 파일 + 미구현 12개 항목), LLM 클라이언트 정정 (get_solar_response_stream→get_chat_model), Implementation Plan 상태 표시 추가, Dependencies 정확도 개선 | Claude |
 | 0.6 | 2026-02-21 | 문서 동기화 보강: (1) FR 상태 38건 Pending→Done/In Progress 업데이트, (2) Implementation Step 상태 반영 + Phase E 추가, (3) §42→§43+§39 조문 정정, (4) closing_node→criminal/civil 분리 반영, (5) Next Steps 현행화, (6) 배심원 Out of Scope 명확화, (7) 리스크 완화 전략 현행화 | Claude |
 | 0.5 | 2026-02-21 | 5개 관점 에이전트 팀 리뷰 반영: (1) 법률 용어 정정 — "최종변론"→"구형 및 최후진술", 형사소송법 조문 번호 정정(§318-4→§42~43), 인정신문에 §283-2 추가, (2) FR 10개 추가 — 증거동의/부동의(FR-29), 전문법칙(FR-30), 판결문 형식(FR-31), 양형기준(FR-32), 입증책임(FR-33), 법정어투(FR-34), 프롬프트인젝션방어(FR-35), LLM출력필터링(FR-36), Rate Limiting(FR-37), 입력검증(FR-38), (3) NFR 6개 추가 — 접근성, 보안(2), 데이터보존, 최소해상도, (4) Risks 7개 추가 — 프롬프트인젝션, LLM편향, sessionStorage, EventBus유실, 법률정확성, 접근성 | Claude |
+| 0.8 | 2026-02-24 | 감정 이모지 시스템 추가 (FR-51): Backend CourtAgent.generate()에 emotion 필드, Frontend 채팅/말풍선 이모지 표시, 8종 감정 매핑, Implementation Phase G 추가 (Step 33-35) | Claude |
 | 0.7 | 2026-02-24 | CTO 팀 리뷰(design-validator+security-architect+product-manager) 27건 반영: (1) **Critical 5건** — §318→§323 조문 수정, FR-37 상태 Pending→Done, case_summary 프롬프트 인젝션 경로 식별, LLM 출력 필터 부재 식별, 중도퇴장 미설계, (2) **High 8건** — 서브그래프 내부 입력 검증(FR-41), XSS 방어(FR-42), MVP 범위 과부하→형사우선 전략(§10), 온보딩(FR-44), 세션 복원(FR-45), FR 상태 불일치 수정, evidence_node 이중 설계, 민사 역할 매핑, (3) **Medium 9건** — 예상 시간 표시(FR-46), 빠른 재판(FR-47), MockTrialState 필드 동기화(FR-48), evidence_node 통합(FR-49), 역할 매핑 테이블(FR-50), 접근성 구체화, 세션 TTL(FR-43), (4) **Info 5건** — 보안 로드맵 3단계, Implementation Plan Phase F/G 추가, MVP 전략 섹션(§10) 신설, Next Steps 재구성 | Claude |

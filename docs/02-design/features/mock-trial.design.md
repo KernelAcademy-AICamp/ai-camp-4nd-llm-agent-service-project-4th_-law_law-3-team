@@ -3,10 +3,10 @@
 > **Summary**: Phaser.js 픽셀아트 법정 + LangGraph 다중 에이전트 재판 시뮬레이터의 상세 설계
 >
 > **Project**: law-3-team (법률 서비스 플랫폼)
-> **Version**: 0.5.0
+> **Version**: 0.6.0
 > **Author**: Claude
 > **Date**: 2026-02-12
-> **Status**: Draft (v0.5 — Plan v0.7 동기화)
+> **Status**: Draft (v0.6 — 감정 이모지 시스템 추가)
 > **Planning Doc**: [mock-trial.plan.md](../01-plan/features/mock-trial.plan.md)
 
 ### Pipeline References
@@ -184,6 +184,8 @@ class MockTrialState(TypedDict, total=False):
     # ── Output (부모 그래프로 전달) ──
     response: str               # 현재 에이전트 발언
     speaking_agent: str         # 발언 중인 에이전트 역할명
+    emotion: str                # 에이전트 감정 태그 (v0.6 추가, FR-51)
+                                # "neutral"|"angry"|"thinking"|"sad"|"confident"|"stern"|"recording"|"judging"
     actions: list[dict[str, Any]]
     judgment: Optional[str]     # 최종 판결문
     feedback: Optional[str]     # 강점/약점 피드백
@@ -575,8 +577,8 @@ class CourtAgent:
         stage: str,
         context: str,
         court_record: list[dict],
-    ) -> str:
-        """에이전트 발언 생성
+    ) -> tuple[str, str]:
+        """에이전트 발언 + 감정 생성 (v0.6 — FR-51)
 
         Args:
             stage: 현재 재판 단계
@@ -584,7 +586,8 @@ class CourtAgent:
             court_record: 서기 기록 (이전 발언 내역)
 
         Returns:
-            생성된 발언 텍스트
+            (발언 텍스트, 감정 태그) 튜플
+            감정: "neutral"|"angry"|"thinking"|"sad"|"confident"|"stern"|"recording"|"judging"
         """
         memory_context = self._build_memory_context()
         prompt = f"{self.system_prompt}\n\n"
@@ -593,7 +596,12 @@ class CourtAgent:
         prompt += f"[현재 단계] {stage}\n\n"
         prompt += f"[사건 맥락] {context}\n\n"
         prompt += f"[법정 기록]\n{self._format_record(court_record)}\n\n"
-        prompt += "위 맥락을 바탕으로 발언하세요."
+        prompt += (
+            "위 맥락을 바탕으로 발언하세요.\n\n"
+            "반드시 첫 줄에 [EMOTION:태그] 형식으로 현재 감정을 표시하세요.\n"
+            "가능한 태그: neutral, angry, thinking, sad, confident, stern, recording, judging\n"
+            "예시: [EMOTION:stern] 피고인은 진술거부권이 있음을 고지합니다."
+        )
 
         # 기존 통합 LLM 클라이언트 사용 (get_chat_model)
         model = get_chat_model(temperature=self.temperature)
@@ -602,9 +610,23 @@ class CourtAgent:
             ("user", prompt),
         ])
         result = str(response.content)
+
+        # 감정 태그 파싱 (v0.6 — FR-51)
+        emotion, text = self._parse_emotion(result)
+
         # 단기 기억에 추가
-        self.short_term.append(result)
-        return result
+        self.short_term.append(text)
+        return text, emotion
+
+    @staticmethod
+    def _parse_emotion(text: str) -> tuple[str, str]:
+        """[EMOTION:태그] 파싱 → (emotion, clean_text)"""
+        import re
+        VALID_EMOTIONS = {"neutral", "angry", "thinking", "sad", "confident", "stern", "recording", "judging"}
+        match = re.match(r"\[EMOTION:(\w+)\]\s*", text)
+        if match and match.group(1) in VALID_EMOTIONS:
+            return match.group(1), text[match.end():]
+        return "neutral", text
 
     def reflect(self) -> str:
         """단계 종료 시 기억 요약 (reflection)"""
@@ -1472,7 +1494,7 @@ export function MockTrialGame() {
 
 type EventMap = {
   // Phaser → React
-  'agent:speak': { agent: string; text: string; streaming: boolean }
+  'agent:speak': { agent: string; text: string; streaming: boolean; emotion?: EmotionType }
   'stage:change': { from: string; to: string; stageNumber: number; totalStages: number }
   'evidence:presented': { cases: EvidenceItem[]; articles: EvidenceItem[] }
   'trial:complete': { judgment: string; feedback: string }
@@ -2624,10 +2646,225 @@ if (canvasFailed) {
 
 ---
 
+## 15. 감정 이모지 시스템 (v0.6 추가 — FR-51)
+
+### 15.1 개요
+
+에이전트가 발언할 때 감정 상태를 함께 생성하여, 채팅 메시지와 Phaser.js 말풍선에 이모지로 표시한다.
+법정의 긴장감, 감정적 호소, 엄숙한 분위기 등을 시각적으로 전달하여 몰입감을 높인다.
+
+### 15.2 감정 타입 정의
+
+```python
+# Backend: 감정 상수
+VALID_EMOTIONS: set[str] = {
+    "neutral", "angry", "thinking", "sad",
+    "confident", "stern", "recording", "judging",
+}
+```
+
+```typescript
+// Frontend: 감정 타입 + 이모지 매핑
+export type EmotionType =
+  | 'neutral'    // 😐 중립
+  | 'angry'      // 😤 분노/강경
+  | 'thinking'   // 🤔 사유/고민
+  | 'sad'        // 😢 슬픔/호소
+  | 'confident'  // 😊 자신감
+  | 'stern'      // 😠 엄중
+  | 'recording'  // 📝 기록 중
+  | 'judging'    // ⚖️ 판단 중
+
+export const EMOTION_EMOJI: Record<EmotionType, string> = {
+  neutral: '😐',
+  angry: '😤',
+  thinking: '🤔',
+  sad: '😢',
+  confident: '😊',
+  stern: '😠',
+  recording: '📝',
+  judging: '⚖️',
+}
+```
+
+### 15.3 역할별 기본 감정 매핑
+
+각 에이전트 역할에 기본 감정을 설정하여 LLM이 태그를 생략하거나 파싱 실패 시 폴백으로 사용한다.
+
+| 역할 | 기본 감정 | 이모지 | 근거 |
+|------|----------|--------|------|
+| 판사 (judge) | stern | 😠 | 법정 절차의 엄중함 |
+| 검사 (prosecutor) | confident | 😊 | 공소 유지의 자신감 |
+| 변호사 (attorney) | thinking | 🤔 | 법적 논증의 사유 |
+| 피고인 (defendant) | sad | 😢 | 재판 당사자의 감정 |
+| 서기 (clerk) | recording | 📝 | 기록 업무의 중립성 |
+
+```typescript
+// Frontend: 역할별 기본 감정
+export const DEFAULT_ROLE_EMOTION: Record<string, EmotionType> = {
+  judge: 'stern',
+  prosecutor: 'confident',
+  attorney: 'thinking',
+  defendant: 'sad',
+  clerk: 'recording',
+}
+```
+
+### 15.4 Backend 흐름
+
+#### 15.4.1 LLM 프롬프트 감정 태그 지시
+
+각 에이전트의 시스템 프롬프트 말미에 감정 태그 지시를 추가한다:
+
+```python
+# mock_trial_prompts.py — EMOTION_TAG_INSTRUCTION (공통 suffix)
+EMOTION_TAG_INSTRUCTION = """
+[감정 표현 규칙]
+반드시 발언 첫 줄에 [EMOTION:태그] 형식으로 현재 감정을 표시하세요.
+가능한 태그: neutral, angry, thinking, sad, confident, stern, recording, judging
+예시: [EMOTION:stern] 피고인에게 진술거부권이 있음을 고지합니다.
+"""
+```
+
+#### 15.4.2 CourtAgent.generate() 반환 변경
+
+```python
+# 변경 전: str 반환
+response = await judge.generate("identity", case_summary, court_record)
+
+# 변경 후: tuple[str, str] 반환 (text, emotion)
+text, emotion = await judge.generate("identity", case_summary, court_record)
+```
+
+#### 15.4.3 노드 함수 Command 업데이트
+
+모든 노드 함수에서 `emotion` 필드를 Command update에 포함:
+
+```python
+# 변경 전
+return Command(
+    update={"stage": "identity", "response": response, "speaking_agent": "judge"},
+    goto="opening_node",
+)
+
+# 변경 후
+text, emotion = await judge.generate("identity", case_summary, court_record)
+return Command(
+    update={"stage": "identity", "response": text, "speaking_agent": "judge", "emotion": emotion},
+    goto="opening_node",
+)
+```
+
+### 15.5 Frontend 흐름
+
+#### 15.5.1 CourtEvent 타입 확장
+
+```typescript
+// types/index.ts
+export interface CourtEvent {
+  stage: string
+  speaker: string
+  content: string
+  timestamp: string
+  emotion?: EmotionType  // v0.6 추가 (FR-51)
+}
+```
+
+#### 15.5.2 ChatPanel 이모지 표시
+
+```tsx
+// ChatPanel.tsx — 메시지 렌더링
+const speakerName = CHARACTER_NAMES[message.speaker] ?? message.speaker
+const emoji = EMOTION_EMOJI[message.emotion ?? DEFAULT_ROLE_EMOTION[message.speaker] ?? 'neutral']
+
+return (
+  <div key={index} className="text-sm">
+    <span className="font-semibold text-gray-700">
+      [{speakerName} {emoji}]
+    </span>{' '}
+    <span className="text-gray-600">{message.content}</span>
+  </div>
+)
+```
+
+#### 15.5.3 ChatBottomBar 이모지 표시
+
+```tsx
+// ChatBottomBar.tsx — 최근 AI 발언
+const emoji = EMOTION_EMOJI[lastAiMessage.emotion ?? DEFAULT_ROLE_EMOTION[lastAiMessage.speaker] ?? 'neutral']
+
+<span className="font-semibold">[{lastSpeakerName} {emoji}]</span>
+```
+
+#### 15.5.4 SpeechBubble 이모지 표시
+
+Phaser.js SpeechBubble에서 발언자 이름 옆에 이모지를 텍스트로 렌더링한다.
+Phaser `Phaser.GameObjects.Text`는 유니코드 이모지를 지원하므로 별도 이미지 불필요.
+
+```typescript
+// SpeechBubble.ts — show() 메서드
+show(agent: string, text: string, emotion?: string): void {
+  const emoji = EMOTION_EMOJI_MAP[emotion ?? 'neutral'] ?? '😐'
+  const name = CHARACTER_NAMES[agent] ?? agent
+  this.nameText.setText(`${name} ${emoji}`)
+  this.startTyping(text)
+}
+```
+
+#### 15.5.5 EventBus emotion 필드 전달
+
+```typescript
+// EventBus 이벤트 타입 업데이트 (Section 7.2)
+'agent:speak': { agent: string; text: string; streaming: boolean; emotion?: EmotionType }
+
+// useTrialState (또는 MockTrialGame) 내에서 SSE 응답 처리 시
+eventBus.emit('agent:speak', {
+  agent: speakingAgent,
+  text: response,
+  streaming: false,
+  emotion: metadata.emotion ?? DEFAULT_ROLE_EMOTION[speakingAgent],
+})
+```
+
+### 15.6 SSE 메타데이터 전달
+
+Backend SSE 스트리밍 응답의 metadata에 `emotion` 필드를 포함:
+
+```
+data: {"type": "metadata", "speaking_agent": "judge", "emotion": "stern"}
+data: {"type": "token", "text": "피고인에게 진술거부권이 있음을 "}
+data: {"type": "token", "text": "고지합니다."}
+data: {"type": "end"}
+```
+
+### 15.7 감정 표시 UX 예시
+
+```
+채팅 패널:
+┌─────────────────────────────────────────────┐
+│ [판사 😠] 피고인의 인적사항을 확인합니다.     │
+│ [판사 😠] 진술거부권이 있음을 고지합니다.     │
+│ [검사 😊] 피고인은 2025년 3월...             │
+│ [변호사 🤔] 검찰 측 주장에는 논리적 허점이... │
+│ [피고인 😢] 저는 정말 그런 의도가 없었습니다.  │
+│ [서기 📝] 검사 측 모두진술이 완료되었습니다.  │
+└─────────────────────────────────────────────┘
+
+말풍선 (Phaser.js):
+┌───────────────────────────────────┐
+│ 판사 😠                           │
+│ "피고인에게 진술거부권이 있음을    │
+│  고지합니다."                     │
+└───────────────────────────────────┘
+```
+
+---
+
 ## Version History
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 0.6 | 2026-02-24 | **감정 이모지 시스템 (FR-51)**: Section 15 신설 — (1) 8종 감정 타입 정의 + 이모지 매핑, (2) 역할별 기본 감정 폴백, (3) CourtAgent.generate() 반환 tuple[str,str]로 변경, (4) LLM 프롬프트 [EMOTION:태그] 지시, (5) _parse_emotion() 파서, (6) MockTrialState에 emotion 필드 추가, (7) EventBus agent:speak에 emotion 전달, (8) ChatPanel/ChatBottomBar/SpeechBubble 이모지 렌더링, (9) SSE metadata emotion 전달 | Claude |
 | 0.1 | 2026-02-12 | Initial design document — Plan v0.3 기반 상세 설계 | Claude |
 | 0.2 | 2026-02-21 | 실제 코드 패턴 정합성 보강: (1) LLM 클라이언트 정정 get_solar_response_stream→get_chat_model, (2) MockTrialAgent(BaseChatAgent) 설계 추가, (3) _sync_from_ui_state/ChatAction 패턴 추가, (4) useTrialState 훅 + sessionStorage 동기화 설계, (5) Pydantic 스키마 상세화, (6) 모듈 라우터 함수 시그니처, (7) next.config.js rewrites, (8) Implementation Order 상태 표시 | Claude |
 | 0.3 | 2026-02-21 | 5개 관점 에이전트 팀 리뷰 반영: **[보안]** Section 9 전면 재작성 — 프롬프트 인젝션 방어(역할 바운더리+필터링), XSS 방어(텍스트 렌더링 정책), 세션 보안, LLM 출력 안전성(혐오/편향 필터), 입력 검증(화이트리스트), Rate Limiting(세션/라운드/IP), 데이터 보존 정책(24h TTL), 면책 고지 강화, RAG 인용 검증. **[프론트엔드]** EventBus 이벤트 버퍼링 메커니즘(8.3), SSE↔Phaser 스트리밍 연동 시퀀스(8.4), sessionStorage 최소화 전략(8.5), 접근성 A11y 설계(8.6). **[법률]** 형사 증거동의/부동의 설계(8.7.1), 판결문 정형 형식 템플릿(8.7.2), 입증책임 원칙(8.7.3), 법정 어투 few-shot(8.7.4). **[용어 정정]** "최종변론"→"구형 및 최후진술", §318-4→§42~43. **[테스트]** 보안/법률정확성/프론트엔드/호환성 테스트 대폭 추가 | Claude |

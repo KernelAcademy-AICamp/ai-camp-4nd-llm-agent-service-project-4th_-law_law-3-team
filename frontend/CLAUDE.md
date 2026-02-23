@@ -89,7 +89,8 @@ src/features/<module-name>/
 **컴포넌트:**
 - `MockTrialGame` - Phaser.js 기반 픽셀아트 법정 게임
 - `MockTrialSetup` - 사건 입력 및 게임 설정
-- `ChatPanel` - AI 에이전트 채팅 (검사/변호사/판사)
+- `ChatPanel` - AI 에이전트 채팅 (검사/변호사/판사), 감정 이모지 표시
+- `ChatBottomBar` - 하단 입력바, 최근 AI 발언 + 감정 이모지
 - `ReferencePanel` - 법률 참조 패널
 - `EvidencePanel` - 증거 표시
 - `JudgmentDisplay` - 판결 결과
@@ -97,11 +98,17 @@ src/features/<module-name>/
 - `DisclaimerBanner` - 면책 안내
 
 **게임 구조:** `src/features/mock-trial/game/`
-- `CourtScene` - 법정 씬 (Phaser)
+- `CourtScene` - 법정 씬 (Phaser), `agent:speak` 이벤트에서 감정 이모지 전달
 - `LobbyScene` - 로비 씬 (대법원 배경)
-- `EventBus` - 이벤트 시스템
+- `EventBus` - 이벤트 시스템 (`agent:speak`에 `emotion` 필드 포함)
 - `sprites/` - 픽셀아트 캐릭터, 배심원 패널
-- `ui/` - 말풍선, 단계 표시
+- `ui/` - 말풍선 (`SpeechBubble`에 감정 이모지 표시), 단계 표시
+
+**감정 이모지 시스템 (FR-51):**
+- `EmotionType` - 8가지 감정: neutral😐, angry😤, thinking🤔, sad😢, confident😊, stern😠, recording📝, judging⚖️
+- `EMOTION_EMOJI` - 감정→이모지 매핑 상수
+- `DEFAULT_ROLE_EMOTION` - 역할별 기본 감정 (judge→stern, prosecutor→confident, attorney→thinking 등)
+- `CourtEvent.emotion` - 선택적 감정 필드 (Backend LLM이 `[EMOTION:태그]`로 생성)
 
 **의존성:** `phaser` (package.json)
 

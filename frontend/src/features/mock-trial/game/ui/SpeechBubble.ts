@@ -7,9 +7,23 @@ const BUBBLE_RADIUS = 8
 const MAX_WIDTH = 260
 const TYPING_SPEED = 30 // ms per character
 const FONT_SIZE = 13
+const NAME_FONT_SIZE = 11
+
+/** Phaser.js 파일 내 독립 이모지 맵 (types import 대신 별도 정의) */
+const EMOTION_EMOJI_MAP: Record<string, string> = {
+  neutral: '😐',
+  angry: '😤',
+  thinking: '🤔',
+  sad: '😢',
+  confident: '😊',
+  stern: '😠',
+  recording: '📝',
+  judging: '⚖️',
+}
 
 export class SpeechBubble extends Phaser.GameObjects.Container {
   private background: Phaser.GameObjects.Graphics
+  private nameText: Phaser.GameObjects.Text
   private textObject: Phaser.GameObjects.Text
   private fullText = ''
   private displayedLength = 0
@@ -19,17 +33,34 @@ export class SpeechBubble extends Phaser.GameObjects.Container {
     super(scene, x, y)
 
     this.background = scene.add.graphics()
-    this.textObject = scene.add.text(BUBBLE_PADDING, BUBBLE_PADDING, '', {
-      fontSize: `${FONT_SIZE}px`,
-      color: '#1a1a1a',
+    this.nameText = scene.add.text(BUBBLE_PADDING, BUBBLE_PADDING, '', {
+      fontSize: `${NAME_FONT_SIZE}px`,
+      color: '#555555',
       fontFamily: 'sans-serif',
-      wordWrap: { width: MAX_WIDTH - BUBBLE_PADDING * 2 },
-      lineSpacing: 4,
+      fontStyle: 'bold',
     })
+    this.textObject = scene.add.text(
+      BUBBLE_PADDING,
+      BUBBLE_PADDING + NAME_FONT_SIZE + 4,
+      '',
+      {
+        fontSize: `${FONT_SIZE}px`,
+        color: '#1a1a1a',
+        fontFamily: 'sans-serif',
+        wordWrap: { width: MAX_WIDTH - BUBBLE_PADDING * 2 },
+        lineSpacing: 4,
+      }
+    )
 
-    this.add([this.background, this.textObject])
+    this.add([this.background, this.nameText, this.textObject])
     this.setVisible(false)
     scene.add.existing(this)
+  }
+
+  show(name: string, text: string, emotion?: string, immediate = false): void {
+    const emoji = EMOTION_EMOJI_MAP[emotion ?? 'neutral'] ?? '😐'
+    this.nameText.setText(`${name} ${emoji}`)
+    this.showText(text, immediate)
   }
 
   showText(text: string, immediate = false): void {
@@ -67,8 +98,10 @@ export class SpeechBubble extends Phaser.GameObjects.Container {
   private drawBackground(): void {
     this.background.clear()
 
-    const textWidth = Math.min(this.textObject.width + BUBBLE_PADDING * 2, MAX_WIDTH)
-    const textHeight = this.textObject.height + BUBBLE_PADDING * 2
+    const contentWidth = Math.max(this.nameText.width, this.textObject.width)
+    const textWidth = Math.min(contentWidth + BUBBLE_PADDING * 2, MAX_WIDTH)
+    const nameHeight = this.nameText.text ? this.nameText.height + 4 : 0
+    const textHeight = nameHeight + this.textObject.height + BUBBLE_PADDING * 2
 
     // 말풍선 배경
     this.background.fillStyle(0xffffff, 0.95)

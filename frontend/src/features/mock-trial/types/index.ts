@@ -48,6 +48,37 @@ export type CivilStage =
 
 export type TrialStage = CriminalStage | CivilStage
 
+// ── 감정 이모지 (FR-51) ──
+
+export type EmotionType =
+  | 'neutral'
+  | 'angry'
+  | 'thinking'
+  | 'sad'
+  | 'confident'
+  | 'stern'
+  | 'recording'
+  | 'judging'
+
+export const EMOTION_EMOJI: Record<EmotionType, string> = {
+  neutral: '😐',
+  angry: '😤',
+  thinking: '🤔',
+  sad: '😢',
+  confident: '😊',
+  stern: '😠',
+  recording: '📝',
+  judging: '⚖️',
+}
+
+export const DEFAULT_ROLE_EMOTION: Record<string, EmotionType> = {
+  judge: 'stern',
+  prosecutor: 'confident',
+  attorney: 'thinking',
+  defendant: 'sad',
+  clerk: 'recording',
+}
+
 // ── 인터페이스 ──
 
 export interface EvidenceItem {
@@ -74,6 +105,7 @@ export interface CourtEvent {
   speaker: string
   content: string
   timestamp: string
+  emotion?: EmotionType
 }
 
 export interface TrialSetup {

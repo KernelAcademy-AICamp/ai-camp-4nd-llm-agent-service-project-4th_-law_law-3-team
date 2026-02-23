@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Send, Maximize2 } from 'lucide-react'
 import type { CourtEvent } from '../types'
+import { EMOTION_EMOJI, DEFAULT_ROLE_EMOTION } from '../types'
 import { CHARACTER_NAMES } from '../game/config'
 
 interface ChatBottomBarProps {
@@ -46,13 +47,17 @@ export function ChatBottomBar({
   const lastSpeakerName = lastAiMessage
     ? (CHARACTER_NAMES[lastAiMessage.speaker] ?? lastAiMessage.speaker)
     : null
+  const lastEmotionKey = lastAiMessage
+    ? (lastAiMessage.emotion ?? DEFAULT_ROLE_EMOTION[lastAiMessage.speaker] ?? 'neutral')
+    : 'neutral'
+  const lastEmoji = EMOTION_EMOJI[lastEmotionKey] ?? '😐'
 
   return (
     <div className="border-t border-gray-200 bg-white px-3 py-2 space-y-1">
       {/* 최근 AI 발언 1줄 */}
       {lastAiMessage && (
         <div className="text-xs text-gray-500 truncate">
-          <span className="font-semibold">[{lastSpeakerName}]</span>{' '}
+          <span className="font-semibold">[{lastSpeakerName} {lastEmoji}]</span>{' '}
           {lastAiMessage.content}
         </div>
       )}

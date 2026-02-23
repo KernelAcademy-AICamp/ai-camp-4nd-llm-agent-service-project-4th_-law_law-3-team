@@ -37,6 +37,7 @@ class ChatState(TypedDict, total=False):
     actions: list[dict[str, Any]]
     output_session_data: dict[str, Any]
     agent_used: str
+    emotion: str
 
 
 def request_to_state(request: ChatRequest) -> dict[str, Any]:
@@ -71,6 +72,7 @@ def request_to_state(request: ChatRequest) -> dict[str, Any]:
         "actions": [],
         "output_session_data": {},
         "agent_used": "",
+        "emotion": "neutral",
     }
 
 
@@ -90,4 +92,5 @@ def state_to_response(state: dict[str, Any]) -> ChatResponse:
         actions=state.get("actions", []),
         session_data=state.get("output_session_data", {}),
         confidence=state.get("routing_confidence", 1.0),
+        emotion=state.get("emotion", "neutral"),
     )

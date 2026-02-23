@@ -73,6 +73,7 @@ class MockTrialState(TypedDict, total=False):
     # 출력 (부모 그래프로 전달)
     response: str
     speaking_agent: str
+    emotion: str
     actions: list[dict[str, Any]]
     judgment: Optional[str]
     feedback: Optional[str]
@@ -302,7 +303,7 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
 
     # 판사 발언: 증거조사 시작 안내
     judge = _get_agent(state, "judge")
-    judge_response = await judge.generate(
+    judge_response, judge_emotion = await judge.generate(
         "evidence", state.get("case_summary", ""), court_record
     )
     llm_call_count += 1
@@ -314,6 +315,7 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
             "증거를 제출하세요. 판례/법령 검색 결과를 증거로 활용할 수 있습니다."
         ),
         "speaking_agent": "judge",
+        "emotion": judge_emotion,
         "stage": "evidence",
         "evidence": {
             "cases": evidence_cases,
@@ -363,6 +365,7 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
             "agents": _update_agent_in_state(state.get("agents", {}), judge),
             "response": judge_response,
             "speaking_agent": "judge",
+            "emotion": judge_emotion,
             "agent_used": "mock_trial",
         },
         goto=next_node,
@@ -393,7 +396,7 @@ async def verdict_node(state: MockTrialState) -> Command[str]:
         f"예상 소요시간: 약 {estimated}분\n"
         "위 법정 기록과 형식에 따라 판결문을 작성하세요."
     )
-    judgment = await judge.generate("verdict", verdict_context, court_record)
+    judgment, verdict_emotion = await judge.generate("verdict", verdict_context, court_record)
     court_record = _record(court_record, "verdict", "judge", judgment)
     feedback = _generate_feedback(state)
 
@@ -407,6 +410,7 @@ async def verdict_node(state: MockTrialState) -> Command[str]:
             "agents": _update_agent_in_state(state.get("agents", {}), judge),
             "response": f"[판결]\n{judgment}\n\n[피드백]\n{feedback}",
             "speaking_agent": "judge",
+            "emotion": verdict_emotion,
             "agent_used": "mock_trial",
             "output_session_data": {"active_agent": "mock_trial"},
         },
@@ -430,7 +434,7 @@ async def identity_node(state: MockTrialState) -> Command[str]:
     judge = _get_agent(state, "judge")
 
     judge.update_strategy("피고인 인적사항 확인 및 진술거부권 고지")
-    response = await judge.generate(
+    response, identity_emotion = await judge.generate(
         "identity", state.get("case_summary", ""), court_record
     )
     llm_call_count += 1
@@ -440,6 +444,7 @@ async def identity_node(state: MockTrialState) -> Command[str]:
     interrupt({
         "response": f"[재판장] {response}",
         "speaking_agent": "judge",
+        "emotion": identity_emotion,
         "stage": "identity",
         "actions": [
             ChatAction(
@@ -458,6 +463,7 @@ async def identity_node(state: MockTrialState) -> Command[str]:
             "agents": _update_agent_in_state(state.get("agents", {}), judge),
             "response": response,
             "speaking_agent": "judge",
+            "emotion": identity_emotion,
             "agent_used": "mock_trial",
         },
         goto="opening_node",
@@ -489,7 +495,7 @@ async def opening_node(state: MockTrialState) -> Command[str]:
         # AI 변호인 반응
         attorney = _get_agent(state, "attorney")
         attorney.update_strategy("검사 주장에 대한 반박 준비")
-        attorney_response = await attorney.generate(
+        attorney_response, opening_emotion = await attorney.generate(
             "opening", state.get("case_summary", ""), court_record
         )
         llm_call_count += 1
@@ -502,7 +508,7 @@ async def opening_node(state: MockTrialState) -> Command[str]:
         # AI 검사 발언
         prosecutor = _get_agent(state, "prosecutor")
         prosecutor.update_strategy("공소사실 입증을 위한 모두진술")
-        pros_stmt = await prosecutor.generate(
+        pros_stmt, opening_emotion = await prosecutor.generate(
             "opening", state.get("case_summary", ""), court_record
         )
         llm_call_count += 1
@@ -516,6 +522,7 @@ async def opening_node(state: MockTrialState) -> Command[str]:
                 "변호인 측 의견을 진술해주세요."
             ),
             "speaking_agent": "prosecutor",
+            "emotion": opening_emotion,
             "stage": "opening",
             "actions": [
                 ChatAction(
@@ -542,6 +549,7 @@ async def opening_node(state: MockTrialState) -> Command[str]:
             "agents": agents,
             "response": final_response,
             "speaking_agent": user_role,
+            "emotion": opening_emotion,
             "agent_used": "mock_trial",
         },
         goto="evidence_node",
@@ -562,7 +570,7 @@ async def examination_node(state: MockTrialState) -> Command[str]:
     # 피고인 AI 발언
     defendant = _get_agent(state, "defendant")
     defendant.update_strategy("성실하게 답변, 유리한 사정 강조")
-    defendant_stmt = await defendant.generate(
+    defendant_stmt, exam_emotion = await defendant.generate(
         "examination", state.get("case_summary", ""), court_record
     )
     llm_call_count += 1
@@ -577,6 +585,7 @@ async def examination_node(state: MockTrialState) -> Command[str]:
             "피고인에게 질문을 하세요."
         ),
         "speaking_agent": "defendant",
+        "emotion": exam_emotion,
         "stage": "examination",
         "actions": [
             ChatAction(
@@ -593,7 +602,7 @@ async def examination_node(state: MockTrialState) -> Command[str]:
             court_record, "examination", user_role, user_input
         )
         # 피고인 추가 답변
-        defendant_answer = await defendant.generate(
+        defendant_answer, exam_emotion = await defendant.generate(
             "examination", f"질문: {user_input}", court_record
         )
         llm_call_count += 1
@@ -611,6 +620,7 @@ async def examination_node(state: MockTrialState) -> Command[str]:
             "agents": agents,
             "response": defendant_stmt,
             "speaking_agent": "defendant",
+            "emotion": exam_emotion,
             "agent_used": "mock_trial",
         },
         goto="criminal_closing_node",
@@ -643,7 +653,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
         # AI 변호인 최후변론
         attorney = _get_agent(state, "attorney")
         attorney.update_strategy("피고인의 정상참작 사유 강조")
-        attorney_response = await attorney.generate(
+        attorney_response, closing_emotion = await attorney.generate(
             "closing", state.get("case_summary", ""), court_record
         )
         llm_call_count += 1
@@ -655,7 +665,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
         # AI 검사 구형
         prosecutor = _get_agent(state, "prosecutor")
         prosecutor.update_strategy("양형 기준에 따른 구형")
-        pros_closing = await prosecutor.generate(
+        pros_closing, closing_emotion = await prosecutor.generate(
             "closing", state.get("case_summary", ""), court_record
         )
         llm_call_count += 1
@@ -671,6 +681,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
                 "변호인의 최후변론을 해주세요."
             ),
             "speaking_agent": "prosecutor",
+            "emotion": closing_emotion,
             "stage": "closing",
             "actions": [],
         })
@@ -680,7 +691,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
     # 피고인 최후진술
     defendant = _get_agent(state, "defendant")
     defendant.update_strategy("진심 어린 최후진술")
-    defendant_stmt = await defendant.generate(
+    defendant_stmt, closing_emotion = await defendant.generate(
         "closing", state.get("case_summary", ""), court_record
     )
     llm_call_count += 1
@@ -697,6 +708,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
             "agents": agents_state,
             "response": f"[피고인 최후진술] {defendant_stmt}",
             "speaking_agent": "defendant",
+            "emotion": closing_emotion,
             "agent_used": "mock_trial",
         },
         goto="verdict_node",
@@ -719,7 +731,7 @@ async def pretrial_node(state: MockTrialState) -> Command[str]:
     judge = _get_agent(state, "judge")
 
     judge.update_strategy("쟁점 정리 및 증거 목록 확인")
-    response = await judge.generate(
+    response, pretrial_emotion = await judge.generate(
         "pretrial", state.get("case_summary", ""), court_record
     )
     llm_call_count += 1
@@ -729,6 +741,7 @@ async def pretrial_node(state: MockTrialState) -> Command[str]:
     interrupt({
         "response": f"[재판장] {response}",
         "speaking_agent": "judge",
+        "emotion": pretrial_emotion,
         "stage": "pretrial",
         "actions": [
             ChatAction(
@@ -747,6 +760,7 @@ async def pretrial_node(state: MockTrialState) -> Command[str]:
             "agents": _update_agent_in_state(state.get("agents", {}), judge),
             "response": response,
             "speaking_agent": "judge",
+            "emotion": pretrial_emotion,
             "agent_used": "mock_trial",
         },
         goto="claims_node",
@@ -779,7 +793,7 @@ async def claims_node(state: MockTrialState) -> Command[str]:
         # AI 피고측 답변
         attorney = _get_agent(state, "attorney")
         attorney.update_strategy("원고 청구에 대한 항변 제시")
-        opponent_response = await attorney.generate(
+        opponent_response, claims_emotion = await attorney.generate(
             "claims", state.get("case_summary", ""), court_record
         )
         llm_call_count += 1
@@ -792,7 +806,7 @@ async def claims_node(state: MockTrialState) -> Command[str]:
         # AI 원고측 발언
         prosecutor = _get_agent(state, "prosecutor")
         prosecutor.update_strategy("청구원인 구체적 입증")
-        pros_claim = await prosecutor.generate(
+        pros_claim, claims_emotion = await prosecutor.generate(
             "claims", state.get("case_summary", ""), court_record
         )
         llm_call_count += 1
@@ -808,6 +822,7 @@ async def claims_node(state: MockTrialState) -> Command[str]:
                 "피고 측 답변을 해주세요."
             ),
             "speaking_agent": "prosecutor",
+            "emotion": claims_emotion,
             "stage": "claims",
             "actions": [],
         })
@@ -823,6 +838,7 @@ async def claims_node(state: MockTrialState) -> Command[str]:
             "agents": agents_state,
             "response": final_response,
             "speaking_agent": _get_opponent_role(state),
+            "emotion": claims_emotion,
             "agent_used": "mock_trial",
         },
         goto="evidence_node",
@@ -877,7 +893,7 @@ async def argument_node(state: MockTrialState) -> Command[str]:
     opponent_role = _get_opponent_role(state)
     opponent = _get_agent(state, opponent_role)
     opponent.update_strategy(f"라운드 {current_round} 반론")
-    rebuttal = await opponent.generate(
+    rebuttal, argument_emotion = await opponent.generate(
         "argument", state.get("case_summary", ""), court_record
     )
     llm_call_count += 1
@@ -893,6 +909,7 @@ async def argument_node(state: MockTrialState) -> Command[str]:
             "agents": agents_state,
             "response": f"[{AGENT_CONFIGS.get(opponent_role, {}).get('name', opponent_role)}] {rebuttal}",
             "speaking_agent": opponent_role,
+            "emotion": argument_emotion,
             "agent_used": "mock_trial",
         },
         goto="argument_node",
@@ -925,7 +942,7 @@ async def civil_closing_node(state: MockTrialState) -> Command[str]:
     opponent_role = _get_opponent_role(state)
     opponent = _get_agent(state, opponent_role)
     opponent.update_strategy("최종 주장 정리")
-    opponent_closing = await opponent.generate(
+    opponent_closing, civil_closing_emotion = await opponent.generate(
         "closing", state.get("case_summary", ""), court_record
     )
     llm_call_count += 1
@@ -942,6 +959,7 @@ async def civil_closing_node(state: MockTrialState) -> Command[str]:
             "agents": agents_state,
             "response": f"[{AGENT_CONFIGS.get(opponent_role, {}).get('name', opponent_role)}] {opponent_closing}",
             "speaking_agent": opponent_role,
+            "emotion": civil_closing_emotion,
             "agent_used": "mock_trial",
         },
         goto="verdict_node",

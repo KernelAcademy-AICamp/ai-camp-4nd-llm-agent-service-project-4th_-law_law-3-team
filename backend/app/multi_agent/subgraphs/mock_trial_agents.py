@@ -7,6 +7,7 @@ Design 문서 Section 6.1 기반
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -15,6 +16,10 @@ from app.multi_agent.subgraphs.mock_trial_prompts import filter_llm_output
 logger = logging.getLogger(__name__)
 
 LLM_TIMEOUT_SECONDS = 30
+
+VALID_EMOTIONS: frozenset[str] = frozenset({
+    "neutral", "angry", "thinking", "sad", "confident", "stern", "recording", "judging"
+})
 
 
 @dataclass
@@ -46,7 +51,7 @@ class CourtAgent:
         stage: str,
         context: str,
         court_record: list[dict[str, Any]],
-    ) -> str:
+    ) -> tuple[str, str]:
         """에이전트 발언 생성
 
         Args:
@@ -55,7 +60,7 @@ class CourtAgent:
             court_record: 서기 기록 (이전 발언 내역)
 
         Returns:
-            생성된 발언 텍스트
+            (생성된 발언 텍스트, 감정 태그) 튜플
         """
         from app.tools.llm import get_chat_model
 
@@ -84,11 +89,27 @@ class CourtAgent:
                 stage,
                 LLM_TIMEOUT_SECONDS,
             )
-            return f"[{self.name}] (응답 생성 중 시간 초과. 잠시 후 다시 시도해주세요.)"
+            return f"[{self.name}] (응답 생성 중 시간 초과. 잠시 후 다시 시도해주세요.)", "neutral"
 
-        result = filter_llm_output(str(response.content))
-        self.short_term.append(result)
-        return result
+        filtered = filter_llm_output(str(response.content))
+        emotion, text = self._parse_emotion(filtered)
+        self.short_term.append(text)
+        return text, emotion
+
+    @staticmethod
+    def _parse_emotion(text: str) -> tuple[str, str]:
+        """발언 첫 줄의 [EMOTION:태그]를 파싱합니다 (FR-51).
+
+        Args:
+            text: LLM 출력 텍스트
+
+        Returns:
+            (감정 태그, 태그가 제거된 텍스트) 튜플
+        """
+        match = re.match(r"\[EMOTION:(\w+)\]\s*", text)
+        if match and match.group(1) in VALID_EMOTIONS:
+            return match.group(1), text[match.end():]
+        return "neutral", text
 
     def reflect(self) -> str:
         """단계 종료 시 기억 요약 (reflection)
