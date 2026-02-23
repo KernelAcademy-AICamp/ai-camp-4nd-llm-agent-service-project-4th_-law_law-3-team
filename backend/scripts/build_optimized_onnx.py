@@ -100,6 +100,7 @@ COSINE_THRESHOLD_FP32 = 0.9999
 COSINE_THRESHOLD_FP16 = 0.999
 MAX_ABS_DIFF_THRESHOLD_FP32 = 1e-4
 MAX_ABS_DIFF_THRESHOLD_FP16 = 5e-3
+MAX_ABS_DIFF_THRESHOLD_FP16_RR = 1.5e-2  # 리랭커는 분류 logit → 임베딩보다 FP16 diff가 큼
 
 # --- 테스트 데이터 ---
 TEST_TEXTS = [
@@ -273,6 +274,7 @@ def export_reranker_onnx(
             opset=RR_OPSET,
             cache_dir=CACHE_DIR,
             trust_remote_code=True,
+            library_name="transformers",
         )
 
         if not model_file.exists():
@@ -324,7 +326,6 @@ def optimize_model_with_ort(
             model_type="bert",
             num_heads=num_heads,
             hidden_size=hidden_size,
-            use_external_data_format=True,
         )
 
         # 퓨전 통계 출력
@@ -892,7 +893,7 @@ def build_reranker_models(
             RR_ORT_OPT_FP16_DIR, "model_optimized.onnx",
             label="FP16",
             cosine_threshold=COSINE_THRESHOLD_FP16,
-            max_diff_threshold=MAX_ABS_DIFF_THRESHOLD_FP16,
+            max_diff_threshold=MAX_ABS_DIFF_THRESHOLD_FP16_RR,
         )
         results["reranker-ort-opt-fp16"] = _build_reranker_meta(
             fusion_stats, fp16_quality, "ort-optimizer-fp16",
@@ -1009,7 +1010,7 @@ def verify_existing_builds(
         print("\n  === 리랭커 모델 ===")
         for label, model_dir, threshold_cos, threshold_diff in [
             ("FP32", RR_ORT_OPT_DIR, COSINE_THRESHOLD_FP32, MAX_ABS_DIFF_THRESHOLD_FP32),
-            ("FP16", RR_ORT_OPT_FP16_DIR, COSINE_THRESHOLD_FP16, MAX_ABS_DIFF_THRESHOLD_FP16),
+            ("FP16", RR_ORT_OPT_FP16_DIR, COSINE_THRESHOLD_FP16, MAX_ABS_DIFF_THRESHOLD_FP16_RR),
         ]:
             model_file = model_dir / "model_optimized.onnx"
             if model_file.exists():
@@ -1053,9 +1054,9 @@ def print_environment() -> None:
         print("  onnx:        미설치")
 
     try:
-        import optimum
-        print(f"  optimum:     {optimum.__version__}")
-    except ImportError:
+        from importlib.metadata import version as _pkg_version
+        print(f"  optimum:     {_pkg_version('optimum')}")
+    except Exception:
         print("  optimum:     미설치")
 
     try:
