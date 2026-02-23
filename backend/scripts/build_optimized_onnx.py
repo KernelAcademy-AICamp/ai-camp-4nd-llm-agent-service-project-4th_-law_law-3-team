@@ -13,10 +13,11 @@ PyTorch 체크포인트에서 최적화된 ONNX 모델을 빌드합니다.
   7. 토크나이저 + config.json 복사
 
 출력 변형:
-  - kure-v1-ort-opt        : 임베딩 Fusion FP32
-  - kure-v1-ort-opt-fp16   : 임베딩 Fusion + FP16
-  - reranker-ort-opt       : 리랭커 Fusion FP32
-  - reranker-ort-opt-fp16  : 리랭커 Fusion + FP16
+  - kure-v1-ort-opt            : 임베딩 Fusion FP32
+  - kure-v1-ort-opt-fp16       : 임베딩 Fusion + FP16
+  - kure-v1-ort-opt-static128  : 임베딩 Fusion FP32 + Static Shape (batch=1, seq=128)
+  - reranker-ort-opt           : 리랭커 Fusion FP32
+  - reranker-ort-opt-fp16      : 리랭커 Fusion + FP16
 
 사용법:
   cd backend && uv run python scripts/build_optimized_onnx.py
@@ -76,6 +77,11 @@ EMB_ONNX_EXPORT_DIR = DATA_MODELS_DIR / "kure-v1-onnx-export-tmp"
 # 최종 출력 디렉토리
 EMB_ORT_OPT_DIR = DATA_MODELS_DIR / "kure-v1-ort-opt"
 EMB_ORT_OPT_FP16_DIR = DATA_MODELS_DIR / "kure-v1-ort-opt-fp16"
+EMB_ORT_OPT_STATIC128_DIR = DATA_MODELS_DIR / "kure-v1-ort-opt-static128"
+
+# Static shape 설정
+EMB_STATIC_BATCH_SIZE = 1
+EMB_STATIC_SEQ_LENGTH = 128
 
 # --- 리랭커 모델 ---
 RR_MODEL_NAME = "dragonkue/bge-reranker-v2-m3-ko"
@@ -444,6 +450,83 @@ def convert_to_fp16(
 
 
 # ============================================================
+# Step 3b: Static Shape 변환 (임베딩 전용)
+# ============================================================
+
+
+def convert_to_static_shape(
+    fp32_dir: Path,
+    static_dir: Path,
+    *,
+    batch_size: int = EMB_STATIC_BATCH_SIZE,
+    seq_length: int = EMB_STATIC_SEQ_LENGTH,
+    label: str,
+    overwrite: bool = False,
+) -> bool:
+    """FP32 최적화 모델을 고정 shape로 변환.
+
+    동적 축(batch_size, sequence_length)을 고정하여
+    추가 constant folding, reshape 제거를 유도한다.
+    """
+    fp32_path = fp32_dir / "model_optimized.onnx"
+    static_path = static_dir / "model_optimized.onnx"
+
+    if static_path.exists() and not overwrite:
+        print(f"    [{label}] 이미 존재 (건너뜀): {static_dir.name}/")
+        return True
+
+    if not fp32_path.exists():
+        print(f"    [{label}] FP32 모델 없음: {fp32_path}")
+        return False
+
+    print(f"    [{label}] Static shape 변환 중 (batch={batch_size}, seq={seq_length})...")
+    try:
+        import onnx
+        from onnxruntime.tools.make_dynamic_shape_fixed import make_dynamic_shape_fixed
+
+        static_dir.mkdir(parents=True, exist_ok=True)
+
+        model = onnx.load(str(fp32_path))
+        fixed_model = make_dynamic_shape_fixed(
+            model,
+            {
+                "batch_size": batch_size,
+                "sequence_length": seq_length,
+            },
+        )
+
+        # 외부 데이터 파일이 있으면 외부 데이터 포맷 사용
+        data_file = fp32_dir / "model_optimized.onnx.data"
+        if data_file.exists():
+            from onnxruntime.transformers.onnx_model import OnnxModel
+
+            onnx_model = OnnxModel(fixed_model)
+            onnx_model.save_model_to_file(
+                str(static_path),
+                use_external_data_format=True,
+            )
+        else:
+            onnx.save(fixed_model, str(static_path))
+
+        # 결과 확인
+        static_data_file = static_dir / "model_optimized.onnx.data"
+        if static_data_file.exists():
+            graph_size = static_path.stat().st_size
+            weight_size = static_data_file.stat().st_size
+            print(f"    그래프: {_format_size(graph_size)}, 가중치: {_format_size(weight_size)}")
+        else:
+            model_size = static_path.stat().st_size
+            print(f"    모델: {_format_size(model_size)}")
+
+        print(f"    [{label}] Static shape 변환 완료: {static_dir.name}/")
+        return True
+
+    except Exception as e:
+        print(f"    [{label}] Static shape 변환 실패: {e!s:.200s}")
+        return False
+
+
+# ============================================================
 # Step 4: 수치 동등성 검증
 # ============================================================
 
@@ -758,6 +841,21 @@ def build_embedding_models(
             copied = _copy_tokenizer_and_config(EMB_ONNX_EXPORT_DIR, EMB_ORT_OPT_FP16_DIR)
             print(f"    토크나이저 파일 복사: {copied}개")
 
+    # Step 3b: Static Shape 변환 (batch=1, seq=128)
+    print(f"\n  {SUBSEPARATOR}")
+    print("  Step 3b: Static Shape 변환 (batch=1, seq=128)")
+    print(f"  {SUBSEPARATOR}")
+
+    static_ok = convert_to_static_shape(
+        EMB_ORT_OPT_DIR, EMB_ORT_OPT_STATIC128_DIR,
+        label="임베딩 Static128",
+        overwrite=overwrite,
+    )
+
+    if static_ok:
+        copied = _copy_tokenizer_and_config(EMB_ONNX_EXPORT_DIR, EMB_ORT_OPT_STATIC128_DIR)
+        print(f"    토크나이저 파일 복사: {copied}개")
+
     # Step 4: 수치 동등성 검증
     print(f"\n  {SUBSEPARATOR}")
     print("  Step 4: 수치 동등성 검증")
@@ -784,6 +882,17 @@ def build_embedding_models(
             fusion_stats, fp16_quality, "ort-optimizer-fp16",
         )
 
+    if EMB_ORT_OPT_STATIC128_DIR.exists():
+        static_quality = verify_embedding_quality(
+            EMB_ORT_OPT_STATIC128_DIR, "model_optimized.onnx",
+            label="Static128",
+            cosine_threshold=COSINE_THRESHOLD_FP32,
+            max_diff_threshold=MAX_ABS_DIFF_THRESHOLD_FP32,
+        )
+        results["kure-v1-ort-opt-static128"] = _build_embedding_meta(
+            fusion_stats, static_quality, "ort-optimizer-fp32-static128",
+        )
+
     # 임시 디렉토리 정리
     print(f"\n  {SUBSEPARATOR}")
     print("  정리")
@@ -796,6 +905,8 @@ def build_embedding_models(
     print(f"    FP32: {_format_size(_dir_total_size(EMB_ORT_OPT_DIR))}")
     if not skip_fp16 and EMB_ORT_OPT_FP16_DIR.exists():
         print(f"    FP16: {_format_size(_dir_total_size(EMB_ORT_OPT_FP16_DIR))}")
+    if EMB_ORT_OPT_STATIC128_DIR.exists():
+        print(f"    Static128: {_format_size(_dir_total_size(EMB_ORT_OPT_STATIC128_DIR))}")
 
     return results
 
@@ -994,6 +1105,7 @@ def verify_existing_builds(
         for label, model_dir, threshold_cos, threshold_diff in [
             ("FP32", EMB_ORT_OPT_DIR, COSINE_THRESHOLD_FP32, MAX_ABS_DIFF_THRESHOLD_FP32),
             ("FP16", EMB_ORT_OPT_FP16_DIR, COSINE_THRESHOLD_FP16, MAX_ABS_DIFF_THRESHOLD_FP16),
+            ("Static128", EMB_ORT_OPT_STATIC128_DIR, COSINE_THRESHOLD_FP32, MAX_ABS_DIFF_THRESHOLD_FP32),
         ]:
             model_file = model_dir / "model_optimized.onnx"
             if model_file.exists():
@@ -1073,6 +1185,7 @@ def print_environment() -> None:
     for label, directory in [
         ("임베딩 FP32", EMB_ORT_OPT_DIR),
         ("임베딩 FP16", EMB_ORT_OPT_FP16_DIR),
+        ("임베딩 S128", EMB_ORT_OPT_STATIC128_DIR),
         ("리랭커 FP32", RR_ORT_OPT_DIR),
         ("리랭커 FP16", RR_ORT_OPT_FP16_DIR),
     ]:
@@ -1207,6 +1320,7 @@ def main() -> None:
         for label, directory in [
             ("FP32", EMB_ORT_OPT_DIR),
             ("FP16", EMB_ORT_OPT_FP16_DIR),
+            ("Static128", EMB_ORT_OPT_STATIC128_DIR),
         ]:
             if directory.exists():
                 size = _format_size(_dir_total_size(directory))

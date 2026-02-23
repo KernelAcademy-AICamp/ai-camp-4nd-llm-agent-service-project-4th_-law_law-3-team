@@ -11,6 +11,9 @@ Phase 4: ORT-최적화 FP16 — fusion + FP16 효과 측정
 Phase 5: 스레드 최적화 (P코어만 vs 전체코어 비교)
 Phase 6: ORT 프로파일링 (노드별 실행시간 top-10)
 Phase 7: 종합 보고서 (JSON + 마크다운 테이블)
+Phase 8: BF16 Fastmath 벤치마크 (Graviton3 전용, Linux ARM만)
+Phase 9: Static Shape 벤치마크 (임베딩 전용, dynamic vs static128)
+Phase 10: 복합 최적화 (BF16 + Static128, Graviton3 전용)
 
 각 Phase에서 임베딩 + 리랭커 양쪽 측정:
   - 단일 쿼리 레이턴시 (10회, 워밍업 3회)
@@ -22,6 +25,8 @@ Phase 7: 종합 보고서 (JSON + 마크다운 테이블)
   cd backend && uv run python scripts/benchmark_arm_optimization.py --embedding-only
   cd backend && uv run python scripts/benchmark_arm_optimization.py --reranker-only
   cd backend && uv run python scripts/benchmark_arm_optimization.py --skip-profiling
+  cd backend && uv run python scripts/benchmark_arm_optimization.py --skip-bf16-test
+  cd backend && uv run python scripts/benchmark_arm_optimization.py --skip-static-test
   cd backend && uv run python scripts/benchmark_arm_optimization.py --output results.json
 """
 
@@ -67,6 +72,7 @@ CACHE_DIR = str(PROJECT_ROOT / "data" / "models")
 EMB_ONNX_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-onnx"
 EMB_ORT_OPT_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-ort-opt"
 EMB_ORT_OPT_FP16_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-ort-opt-fp16"
+EMB_ORT_OPT_STATIC128_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-ort-opt-static128"
 
 # KURE-v1: XLM-RoBERTa Large
 EMB_NUM_HEADS = 16
@@ -346,8 +352,16 @@ def _encode_onnx_raw(
     model_dir: Path,
     file_name: str,
     num_threads: int = 0,
+    *,
+    enable_bf16_fastmath: bool = False,
+    static_max_length: int = 0,
 ) -> np.ndarray:
-    """ORT 직접 세션으로 임베딩 생성 (CLS pooling + L2 norm)."""
+    """ORT 직접 세션으로 임베딩 생성 (CLS pooling + L2 norm).
+
+    Args:
+        enable_bf16_fastmath: Graviton3 BF16 MMLA fastmath 활성화
+        static_max_length: >0이면 고정 길이 패딩 (예: 128)
+    """
     import onnxruntime as ort
     from transformers import AutoTokenizer
 
@@ -361,15 +375,22 @@ def _encode_onnx_raw(
         session_options.intra_op_num_threads = num_threads
         session_options.inter_op_num_threads = 1
         session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    if enable_bf16_fastmath:
+        session_options.add_session_config_entry(
+            "mlas.enable_gemm_fastmath_arm64_bfloat16", "1",
+        )
     session = ort.InferenceSession(
         model_path, sess_options=session_options,
         providers=["CPUExecutionProvider"],
     )
 
     input_names = [inp.name for inp in session.get_inputs()]
+    use_static = static_max_length > 0
     inputs = tokenizer(
-        texts, return_tensors="np", padding=True,
-        truncation=True, max_length=512,
+        texts, return_tensors="np",
+        padding="max_length" if use_static else True,
+        truncation=True,
+        max_length=static_max_length if use_static else 512,
     )
     feed: dict[str, Any] = {
         "input_ids": inputs["input_ids"],
@@ -417,8 +438,14 @@ def _rerank_onnx_raw(
     model_dir: Path,
     file_name: str,
     num_threads: int = 0,
+    *,
+    enable_bf16_fastmath: bool = False,
 ) -> list[float]:
-    """ORT 직접 세션으로 리랭킹 (배치)."""
+    """ORT 직접 세션으로 리랭킹 (배치).
+
+    Args:
+        enable_bf16_fastmath: Graviton3 BF16 MMLA fastmath 활성화
+    """
     import onnxruntime as ort
     from transformers import AutoTokenizer
 
@@ -430,6 +457,10 @@ def _rerank_onnx_raw(
         session_options.intra_op_num_threads = num_threads
         session_options.inter_op_num_threads = 1
         session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    if enable_bf16_fastmath:
+        session_options.add_session_config_entry(
+            "mlas.enable_gemm_fastmath_arm64_bfloat16", "1",
+        )
     session = ort.InferenceSession(
         model_path, sess_options=session_options,
         providers=["CPUExecutionProvider"],
@@ -1357,6 +1388,385 @@ def _compute_pearson(
 
 
 # ============================================================
+# Phase 8: BF16 Fastmath 벤치마크 (Graviton3 전용)
+# ============================================================
+
+
+def _detect_arm_bf16_support() -> bool:
+    """ARM 서버에서 BF16 MMLA 명령어 지원 여부를 감지한다."""
+    try:
+        cpuinfo = Path("/proc/cpuinfo").read_text(encoding="utf-8")
+        for line in cpuinfo.splitlines():
+            if line.startswith("Features"):
+                features = line.split(":", 1)[1].strip().split()
+                return "bf16" in features
+    except (FileNotFoundError, PermissionError, OSError):
+        pass
+    return False
+
+
+def run_phase_8(
+    baseline: dict[str, dict[str, Any]],
+    env_info: dict[str, Any],
+    *,
+    run_embedding: bool = True,
+    run_reranker: bool = True,
+) -> dict[str, dict[str, Any]]:
+    """Phase 8: BF16 Fastmath 벤치마크 (Graviton3 전용).
+
+    FP32 모델 파일을 유지하면서 MLAS SBGEMM 커널이
+    런타임에 BF16 MMLA 경로를 선택하여 GEMM을 가속한다.
+    Mac ARM은 BF16 MMLA 미지원이므로 스킵.
+    """
+    print(f"\n{SEPARATOR}")
+    print("  Phase 8: BF16 Fastmath (Graviton3)")
+    print(SEPARATOR)
+
+    results: dict[str, dict[str, Any]] = {}
+    is_arm = env_info.get("is_arm", False)
+    is_mac = env_info.get("is_mac", False)
+
+    if not is_arm or is_mac:
+        print("  [스킵] BF16 Fastmath는 Linux ARM (Graviton3+) 전용입니다.")
+        print(f"    현재 환경: {'Mac ARM' if is_mac else env_info.get('machine', 'unknown')}")
+        results["bf16_skipped"] = {"reason": "not_linux_arm"}
+        return results
+
+    bf16_supported = _detect_arm_bf16_support()
+    if not bf16_supported:
+        print("  [스킵] /proc/cpuinfo에 bf16 feature flag가 없습니다.")
+        results["bf16_skipped"] = {"reason": "no_bf16_feature"}
+        return results
+
+    print("  BF16 MMLA 지원 감지됨")
+    texts = EMB_TEST_QUERIES
+
+    if run_embedding and EMB_ORT_OPT_DIR.exists():
+        opt_file = _find_onnx_file(EMB_ORT_OPT_DIR)
+        if opt_file:
+            print("\n  === 임베딩: BF16 OFF vs ON ===")
+
+            # BF16 OFF (기준)
+            print("    [BF16 OFF] 측정 중...")
+            emb_off, med_off, mean_off, std_off = _measure_latency(
+                lambda: _encode_onnx_raw(texts, EMB_ORT_OPT_DIR, opt_file),
+            )
+
+            # BF16 ON
+            print("    [BF16 ON] 측정 중...")
+            emb_on, med_on, mean_on, std_on = _measure_latency(
+                lambda: _encode_onnx_raw(
+                    texts, EMB_ORT_OPT_DIR, opt_file,
+                    enable_bf16_fastmath=True,
+                ),
+            )
+
+            cos = _cosine_similarity(emb_off, emb_on)
+            max_diff = float(np.max(np.abs(emb_off - emb_on)))
+            speedup_vs_off = med_off / med_on if med_on > 0 else 0.0
+
+            pt_ms = baseline.get("emb_pytorch_cpu", {}).get("median_ms", 1.0)
+            speedup_vs_pt = pt_ms / med_on if med_on > 0 else 0.0
+
+            print(f"    BF16 OFF: {med_off:.1f}ms")
+            print(f"    BF16 ON:  {med_on:.1f}ms ({speedup_vs_off:.2f}x)")
+            print(f"    cosine(OFF vs ON): {cos:.6f}")
+            print(f"    max_abs_diff: {max_diff:.8f}")
+
+            results["emb_bf16"] = {
+                "median_ms_off": med_off, "median_ms_on": med_on,
+                "median_ms": med_on,
+                "speedup_vs_off": speedup_vs_off,
+                "speedup": speedup_vs_pt,
+                "cosine_off_vs_on": cos,
+                "max_abs_diff": max_diff,
+                "mean_ms": mean_on, "std_ms": std_on,
+            }
+
+    if run_reranker and RR_ORT_OPT_DIR.exists():
+        opt_file = _find_onnx_file(RR_ORT_OPT_DIR)
+        if opt_file:
+            print("\n  === 리랭커: BF16 OFF vs ON ===")
+
+            print("    [BF16 OFF] 측정 중...")
+            scores_off, med_off, _, _ = _measure_latency(
+                lambda: _rerank_onnx_raw(
+                    RR_QUERY, RR_DOCUMENTS, RR_ORT_OPT_DIR, opt_file,
+                ),
+            )
+
+            print("    [BF16 ON] 측정 중...")
+            scores_on, med_on, mean_on, std_on = _measure_latency(
+                lambda: _rerank_onnx_raw(
+                    RR_QUERY, RR_DOCUMENTS, RR_ORT_OPT_DIR, opt_file,
+                    enable_bf16_fastmath=True,
+                ),
+            )
+
+            pearson = _compute_pearson(scores_off, scores_on)
+            max_diff = max(
+                abs(a - b) for a, b in zip(scores_off, scores_on)
+            )
+            speedup_vs_off = med_off / med_on if med_on > 0 else 0.0
+
+            pt_ms = baseline.get("rr_pytorch_cpu", {}).get("median_ms", 1.0)
+            speedup_vs_pt = pt_ms / med_on if med_on > 0 else 0.0
+
+            print(f"    BF16 OFF: {med_off:.1f}ms")
+            print(f"    BF16 ON:  {med_on:.1f}ms ({speedup_vs_off:.2f}x)")
+            print(f"    Pearson(OFF vs ON): {pearson:.6f}")
+            print(f"    max_abs_diff: {max_diff:.8f}")
+
+            results["rr_bf16"] = {
+                "median_ms_off": med_off, "median_ms_on": med_on,
+                "median_ms": med_on,
+                "speedup_vs_off": speedup_vs_off,
+                "speedup": speedup_vs_pt,
+                "pearson_off_vs_on": pearson,
+                "max_abs_diff": max_diff,
+                "mean_ms": mean_on, "std_ms": std_on,
+            }
+
+    return results
+
+
+# ============================================================
+# Phase 9: Static Shape 벤치마크 (임베딩 전용)
+# ============================================================
+
+
+def run_phase_9(
+    baseline: dict[str, dict[str, Any]],
+    *,
+    run_embedding: bool = True,
+) -> dict[str, dict[str, Any]]:
+    """Phase 9: Static Shape (batch=1, seq=128) 벤치마크.
+
+    동적 shape(가변 패딩)과 고정 shape(128 고정 패딩)의
+    레이턴시 차이를 측정한다. 임베딩 전용 (리랭커는 batch 가변).
+    """
+    print(f"\n{SEPARATOR}")
+    print("  Phase 9: Static Shape (임베딩 전용)")
+    print(SEPARATOR)
+
+    results: dict[str, dict[str, Any]] = {}
+
+    if not run_embedding:
+        print("  [스킵] 임베딩 미실행 모드")
+        return results
+
+    if not EMB_ORT_OPT_STATIC128_DIR.exists():
+        print(f"  [스킵] static128 디렉토리 없음: {EMB_ORT_OPT_STATIC128_DIR.name}")
+        print("    빌드: uv run python scripts/build_optimized_onnx.py")
+        return results
+
+    static_file = _find_onnx_file(EMB_ORT_OPT_STATIC128_DIR)
+    if not static_file:
+        print("  [스킵] static128 ONNX 모델 파일 없음")
+        return results
+
+    dynamic_file = _find_onnx_file(EMB_ORT_OPT_DIR) if EMB_ORT_OPT_DIR.exists() else None
+    if not dynamic_file:
+        print("  [스킵] dynamic ORT-opt 디렉토리 없음")
+        return results
+
+    texts = EMB_TEST_QUERIES
+
+    # 다양한 입력 길이 테스트
+    test_cases = [
+        ("짧은 쿼리 (2-5어절)", texts[:3]),
+        ("중간 쿼리 (5-10어절)", texts),
+        ("긴 쿼리 (반복 패딩)", [t * 3 for t in texts[:3]]),
+    ]
+
+    print("\n  === Dynamic vs Static128 ===")
+
+    # Dynamic baseline
+    print("    [Dynamic] 측정 중...")
+    emb_dyn, med_dyn, mean_dyn, std_dyn = _measure_latency(
+        lambda: _encode_onnx_raw(texts, EMB_ORT_OPT_DIR, dynamic_file),
+    )
+
+    # Static128
+    print("    [Static128] 측정 중...")
+    emb_static, med_static, mean_static, std_static = _measure_latency(
+        lambda: _encode_onnx_raw(
+            texts, EMB_ORT_OPT_STATIC128_DIR, static_file,
+            static_max_length=128,
+        ),
+    )
+
+    cos = _cosine_similarity(emb_dyn, emb_static)
+    max_diff = float(np.max(np.abs(emb_dyn - emb_static)))
+    speedup_vs_dyn = med_dyn / med_static if med_static > 0 else 0.0
+
+    pt_ms = baseline.get("emb_pytorch_cpu", {}).get("median_ms", 1.0)
+    speedup_vs_pt = pt_ms / med_static if med_static > 0 else 0.0
+
+    print(f"    Dynamic:   {med_dyn:.1f}ms")
+    print(f"    Static128: {med_static:.1f}ms ({speedup_vs_dyn:.2f}x vs Dynamic)")
+    print(f"    cosine(Dyn vs Static): {cos:.6f}")
+    print(f"    max_abs_diff: {max_diff:.8f}")
+
+    results["emb_static128"] = {
+        "median_ms_dynamic": med_dyn,
+        "median_ms_static": med_static,
+        "median_ms": med_static,
+        "speedup_vs_dynamic": speedup_vs_dyn,
+        "speedup": speedup_vs_pt,
+        "cosine_dyn_vs_static": cos,
+        "max_abs_diff": max_diff,
+        "mean_ms": mean_static, "std_ms": std_static,
+    }
+
+    # 입력 길이별 상세 측정
+    print("\n    --- 입력 길이별 레이턴시 ---")
+    length_results: list[dict[str, Any]] = []
+    for label, test_texts in test_cases:
+        _, med_d, _, _ = _measure_latency(
+            lambda _t=test_texts: _encode_onnx_raw(
+                _t, EMB_ORT_OPT_DIR, dynamic_file,
+            ),
+        )
+        _, med_s, _, _ = _measure_latency(
+            lambda _t=test_texts: _encode_onnx_raw(
+                _t, EMB_ORT_OPT_STATIC128_DIR, static_file,
+                static_max_length=128,
+            ),
+        )
+        ratio = med_d / med_s if med_s > 0 else 0.0
+        print(f"    {label}: Dynamic={med_d:.1f}ms, Static={med_s:.1f}ms ({ratio:.2f}x)")
+        length_results.append({
+            "label": label, "dynamic_ms": med_d,
+            "static_ms": med_s, "ratio": ratio,
+        })
+
+    results["emb_static128"]["length_tests"] = length_results
+
+    return results
+
+
+# ============================================================
+# Phase 10: 복합 최적화 (BF16 + Static Shape, Graviton3 전용)
+# ============================================================
+
+
+def run_phase_10(
+    baseline: dict[str, dict[str, Any]],
+    env_info: dict[str, Any],
+    *,
+    run_embedding: bool = True,
+) -> dict[str, dict[str, Any]]:
+    """Phase 10: BF16 + Static Shape 복합 최적화 (Graviton3 전용).
+
+    BF16 Fastmath와 Static Shape을 동시에 적용하여
+    최대 성능을 측정한다. 임베딩 전용.
+    """
+    print(f"\n{SEPARATOR}")
+    print("  Phase 10: 복합 최적화 (BF16 + Static128)")
+    print(SEPARATOR)
+
+    results: dict[str, dict[str, Any]] = {}
+    is_arm = env_info.get("is_arm", False)
+    is_mac = env_info.get("is_mac", False)
+
+    if not is_arm or is_mac:
+        print("  [스킵] Graviton3 전용 (Linux ARM만 지원)")
+        return results
+
+    if not _detect_arm_bf16_support():
+        print("  [스킵] BF16 미지원 플랫폼")
+        return results
+
+    if not run_embedding:
+        print("  [스킵] 임베딩 미실행 모드")
+        return results
+
+    if not EMB_ORT_OPT_STATIC128_DIR.exists():
+        print(f"  [스킵] static128 디렉토리 없음: {EMB_ORT_OPT_STATIC128_DIR.name}")
+        return results
+
+    static_file = _find_onnx_file(EMB_ORT_OPT_STATIC128_DIR)
+    dynamic_file = _find_onnx_file(EMB_ORT_OPT_DIR) if EMB_ORT_OPT_DIR.exists() else None
+    if not static_file or not dynamic_file:
+        print("  [스킵] 모델 파일 없음")
+        return results
+
+    texts = EMB_TEST_QUERIES
+
+    print("\n  === 임베딩 복합 최적화 비교 ===")
+
+    # (1) Dynamic FP32 (기준)
+    print("    [Dynamic FP32] 측정 중...")
+    emb_base, med_base, _, _ = _measure_latency(
+        lambda: _encode_onnx_raw(texts, EMB_ORT_OPT_DIR, dynamic_file),
+    )
+
+    # (2) Dynamic + BF16
+    print("    [Dynamic + BF16] 측정 중...")
+    emb_bf16, med_bf16, _, _ = _measure_latency(
+        lambda: _encode_onnx_raw(
+            texts, EMB_ORT_OPT_DIR, dynamic_file,
+            enable_bf16_fastmath=True,
+        ),
+    )
+
+    # (3) Static128 FP32
+    print("    [Static128 FP32] 측정 중...")
+    emb_st, med_st, _, _ = _measure_latency(
+        lambda: _encode_onnx_raw(
+            texts, EMB_ORT_OPT_STATIC128_DIR, static_file,
+            static_max_length=128,
+        ),
+    )
+
+    # (4) Static128 + BF16 (최대 최적화)
+    print("    [Static128 + BF16] 측정 중...")
+    emb_combo, med_combo, mean_combo, std_combo = _measure_latency(
+        lambda: _encode_onnx_raw(
+            texts, EMB_ORT_OPT_STATIC128_DIR, static_file,
+            enable_bf16_fastmath=True,
+            static_max_length=128,
+        ),
+    )
+
+    cos = _cosine_similarity(emb_base, emb_combo)
+    max_diff = float(np.max(np.abs(emb_base - emb_combo)))
+    pt_ms = baseline.get("emb_pytorch_cpu", {}).get("median_ms", 1.0)
+
+    print("\n    결과 비교:")
+    print(f"    {'Variant':<25s} | {'Latency':>10s} | {'vs Base':>8s} | {'vs PyTorch':>10s}")
+    print(f"    {'-'*25} | {'-'*10} | {'-'*8} | {'-'*10}")
+    for label, med in [
+        ("Dynamic FP32", med_base),
+        ("Dynamic + BF16", med_bf16),
+        ("Static128 FP32", med_st),
+        ("Static128 + BF16", med_combo),
+    ]:
+        vs_base = med_base / med if med > 0 else 0
+        vs_pt = pt_ms / med if med > 0 else 0
+        print(f"    {label:<25s} | {med:>8.1f}ms | {vs_base:>6.2f}x | {vs_pt:>8.2f}x")
+
+    print(f"\n    cosine(Base vs Combo): {cos:.6f}")
+    print(f"    max_abs_diff: {max_diff:.8f}")
+
+    results["emb_combined"] = {
+        "median_ms_base": med_base,
+        "median_ms_bf16": med_bf16,
+        "median_ms_static": med_st,
+        "median_ms_combined": med_combo,
+        "median_ms": med_combo,
+        "speedup_vs_base": med_base / med_combo if med_combo > 0 else 0,
+        "speedup": pt_ms / med_combo if med_combo > 0 else 0,
+        "cosine_base_vs_combo": cos,
+        "max_abs_diff": max_diff,
+        "mean_ms": mean_combo, "std_ms": std_combo,
+    }
+
+    return results
+
+
+# ============================================================
 # Phase 7: 종합 보고서
 # ============================================================
 
@@ -1369,6 +1779,9 @@ def _collect_summary_rows(
     phase5: dict[str, dict[str, Any]],
     *,
     model_type: str,
+    phase8: dict[str, dict[str, Any]] | None = None,
+    phase9: dict[str, dict[str, Any]] | None = None,
+    phase10: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """지정 모델 타입(emb/rr)의 모든 결과를 요약 행으로 수집."""
     rows: list[dict[str, Any]] = []
@@ -1453,6 +1866,44 @@ def _collect_summary_rows(
             "rss_mb": 0,
         })
 
+    # BF16 Fastmath (Phase 8)
+    if phase8:
+        bf16_key = f"{prefix}_bf16"
+        if bf16_key in phase8:
+            data = phase8[bf16_key]
+            qual = data.get("cosine_off_vs_on", 0) if prefix == "emb" else data.get("pearson_off_vs_on", 0)
+            rows.append({
+                "name": "ORT-opt FP32 + BF16",
+                "median_ms": data["median_ms"],
+                "speedup": data.get("speedup", 0),
+                quality_key: qual,
+                "rss_mb": 0,
+            })
+
+    # Static Shape (Phase 9, 임베딩만)
+    if phase9 and prefix == "emb":
+        if "emb_static128" in phase9:
+            data = phase9["emb_static128"]
+            rows.append({
+                "name": "ORT-opt Static128",
+                "median_ms": data["median_ms"],
+                "speedup": data.get("speedup", 0),
+                quality_key: data.get("cosine_dyn_vs_static", 0),
+                "rss_mb": 0,
+            })
+
+    # 복합 최적화 (Phase 10, 임베딩만)
+    if phase10 and prefix == "emb":
+        if "emb_combined" in phase10:
+            data = phase10["emb_combined"]
+            rows.append({
+                "name": "Static128 + BF16 (복합)",
+                "median_ms": data["median_ms"],
+                "speedup": data.get("speedup", 0),
+                quality_key: data.get("cosine_base_vs_combo", 0),
+                "rss_mb": 0,
+            })
+
     return rows
 
 
@@ -1465,6 +1916,9 @@ def generate_report(
     phase5: dict[str, dict[str, Any]],
     phase6: dict[str, Any],
     *,
+    phase8: dict[str, dict[str, Any]] | None = None,
+    phase9: dict[str, dict[str, Any]] | None = None,
+    phase10: dict[str, dict[str, Any]] | None = None,
     run_embedding: bool = True,
     run_reranker: bool = True,
     output_json: str | None = None,
@@ -1506,6 +1960,12 @@ def generate_report(
     json_results["phase3_ort_opt_fp32"] = _sanitize(phase3)
     json_results["phase4_ort_opt_fp16"] = _sanitize(phase4)
     json_results["phase5_threads"] = _sanitize(phase5)
+    if phase8:
+        json_results["phase8_bf16"] = _sanitize(phase8)
+    if phase9:
+        json_results["phase9_static"] = _sanitize(phase9)
+    if phase10:
+        json_results["phase10_combined"] = _sanitize(phase10)
     json_results["phase6_profiling"] = phase6
 
     # JSON 저장
@@ -1568,6 +2028,7 @@ def generate_report(
         emb_rows = _collect_summary_rows(
             baseline, phase2, phase3, phase4, phase5,
             model_type="emb",
+            phase8=phase8, phase9=phase9, phase10=phase10,
         )
         if emb_rows:
             _print_table("임베딩 비교", emb_rows, "Cosine")
@@ -1576,6 +2037,7 @@ def generate_report(
         rr_rows = _collect_summary_rows(
             baseline, phase2, phase3, phase4, phase5,
             model_type="rr",
+            phase8=phase8,
         )
         if rr_rows:
             _print_table("리랭커 비교", rr_rows, "Pearson")
@@ -1585,6 +2047,7 @@ def generate_report(
         _write_md_report(
             output_md, env_info, md_lines,
             baseline, phase2, phase3, phase4, phase5, phase6,
+            phase8=phase8, phase9=phase9, phase10=phase10,
             run_embedding=run_embedding,
             run_reranker=run_reranker,
         )
@@ -1601,6 +2064,9 @@ def _write_md_report(
     phase5: dict[str, dict[str, Any]],
     phase6: dict[str, Any],
     *,
+    phase8: dict[str, dict[str, Any]] | None = None,
+    phase9: dict[str, dict[str, Any]] | None = None,
+    phase10: dict[str, dict[str, Any]] | None = None,
     run_embedding: bool = True,
     run_reranker: bool = True,
 ) -> None:
@@ -1689,6 +2155,7 @@ def _write_md_report(
         all_rows = _collect_summary_rows(
             baseline, phase2, phase3, phase4, phase5,
             model_type=model_type,
+            phase8=phase8, phase9=phase9, phase10=phase10,
         )
         # baseline 제외한 최적 방법 찾기
         candidates = [r for r in all_rows if r["name"] != "PyTorch FP32 (CPU)"]
@@ -1735,6 +2202,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-threads", action="store_true",
         help="스레드 최적화 (Phase 5) 스킵",
+    )
+    parser.add_argument(
+        "--skip-bf16-test", action="store_true",
+        help="BF16 Fastmath 벤치마크 (Phase 8) 스킵",
+    )
+    parser.add_argument(
+        "--skip-static-test", action="store_true",
+        help="Static Shape 벤치마크 (Phase 9) 스킵",
+    )
+    parser.add_argument(
+        "--skip-combined-test", action="store_true",
+        help="복합 최적화 벤치마크 (Phase 10) 스킵",
     )
     parser.add_argument(
         "--output", type=str, default=None,
@@ -1834,6 +2313,40 @@ def main() -> None:
         print("  Phase 6: 스킵 (--skip-profiling)")
         print(SEPARATOR)
 
+    # Phase 8: BF16 Fastmath (Graviton3)
+    phase8: dict[str, dict[str, Any]] = {}
+    if not args.skip_bf16_test:
+        phase8 = run_phase_8(
+            baseline, env_info,
+            run_embedding=run_emb, run_reranker=run_rr,
+        )
+    else:
+        print(f"\n{SEPARATOR}")
+        print("  Phase 8: 스킵 (--skip-bf16-test)")
+        print(SEPARATOR)
+
+    # Phase 9: Static Shape (임베딩 전용)
+    phase9: dict[str, dict[str, Any]] = {}
+    if not args.skip_static_test:
+        phase9 = run_phase_9(
+            baseline, run_embedding=run_emb,
+        )
+    else:
+        print(f"\n{SEPARATOR}")
+        print("  Phase 9: 스킵 (--skip-static-test)")
+        print(SEPARATOR)
+
+    # Phase 10: 복합 최적화 (BF16 + Static, Graviton3)
+    phase10: dict[str, dict[str, Any]] = {}
+    if not args.skip_combined_test:
+        phase10 = run_phase_10(
+            baseline, env_info, run_embedding=run_emb,
+        )
+    else:
+        print(f"\n{SEPARATOR}")
+        print("  Phase 10: 스킵 (--skip-combined-test)")
+        print(SEPARATOR)
+
     # Phase 7: 종합 보고서
     report_path: Path | None = None
     if not args.no_report:
@@ -1841,6 +2354,7 @@ def main() -> None:
 
     generate_report(
         env_info, baseline, phase2, phase3, phase4, phase5, phase6,
+        phase8=phase8 or None, phase9=phase9 or None, phase10=phase10 or None,
         run_embedding=run_emb, run_reranker=run_rr,
         output_json=args.output,
         output_md=report_path,

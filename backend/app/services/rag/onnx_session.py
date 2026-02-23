@@ -29,6 +29,7 @@ _MODELS_DIR = Path(__file__).parent.parent.parent.parent / "data" / "models"
 _EMB_VARIANT_MAP: dict[str, str] = {
     "ort-opt": "kure-v1-ort-opt",
     "ort-opt-fp16": "kure-v1-ort-opt-fp16",
+    "ort-opt-static128": "kure-v1-ort-opt-static128",
 }
 _RR_VARIANT_MAP: dict[str, str] = {
     "ort-opt": "reranker-ort-opt",
@@ -46,6 +47,7 @@ class PlatformConfig:
     intra_op_threads: int
     inter_op_threads: int = 1
     execution_mode: str = "sequential"  # sequential | parallel
+    enable_bf16_fastmath: bool = False  # Graviton3 BF16 MMLA fastmath
     description: str = ""
 
 
@@ -90,11 +92,14 @@ def _detect_platform_config() -> PlatformConfig:
             description=f"Mac ARM P코어 ({p_cores})",
         )
 
-    # ARM 서버 (Graviton 등): 전체 물리코어
+    # ARM 서버 (Graviton 등): 전체 물리코어 + BF16 fastmath 감지
     if is_arm:
+        bf16_enabled = _detect_arm_bf16_support() and settings.ONNX_ENABLE_BF16_FASTMATH
+        bf16_label = " + BF16 fastmath" if bf16_enabled else ""
         return PlatformConfig(
             intra_op_threads=cpu_count,
-            description=f"ARM 서버 ({cpu_count} cores)",
+            enable_bf16_fastmath=bf16_enabled,
+            description=f"ARM 서버 ({cpu_count} cores{bf16_label})",
         )
 
     # x86: 전체 코어
@@ -102,6 +107,23 @@ def _detect_platform_config() -> PlatformConfig:
         intra_op_threads=cpu_count,
         description=f"x86 ({cpu_count} cores)",
     )
+
+
+def _detect_arm_bf16_support() -> bool:
+    """ARM 서버에서 BF16 MMLA 명령어 지원 여부를 감지한다.
+
+    Graviton3+ 프로세서는 /proc/cpuinfo의 Features에 bf16을 포함한다.
+    Mac ARM은 이 함수 호출 전에 분기되므로 Linux ARM만 대상.
+    """
+    try:
+        cpuinfo = Path("/proc/cpuinfo").read_text(encoding="utf-8")
+        for line in cpuinfo.splitlines():
+            if line.startswith("Features"):
+                features = line.split(":", 1)[1].strip().split()
+                return "bf16" in features
+    except (FileNotFoundError, PermissionError, OSError):
+        pass
+    return False
 
 
 def _detect_mac_p_cores() -> int:
@@ -165,6 +187,13 @@ def _create_session(
 
     # 그래프 최적화 레벨: 이미 오프라인 최적화된 모델이므로 기본 유지
     session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+    # Graviton3 BF16 fastmath: FP32 GEMM을 내부 BF16 MMLA로 가속
+    if platform_config.enable_bf16_fastmath:
+        session_options.add_session_config_entry(
+            "mlas.enable_gemm_fastmath_arm64_bfloat16", "1",
+        )
+        logger.info("BF16 fastmath 활성화 (Graviton3 MMLA)")
 
     session = ort.InferenceSession(
         str(model_file),
@@ -314,12 +343,14 @@ def encode_embedding_onnx(query: str) -> list[float]:
     if not holder.is_loaded:
         raise RuntimeError("ONNX 임베딩 세션이 로드되지 않았습니다")
 
+    # Static shape variant: 고정 길이 패딩 (batch=1, seq=128)
+    is_static = holder.variant.endswith("-static128")
     inputs = holder.tokenizer(
         query,
         return_tensors="np",
-        padding=True,
+        padding="max_length" if is_static else True,
         truncation=True,
-        max_length=512,
+        max_length=128 if is_static else 512,
     )
 
     feed: dict[str, Any] = {

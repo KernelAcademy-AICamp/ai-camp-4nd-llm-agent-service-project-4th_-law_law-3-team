@@ -103,12 +103,13 @@ class Settings(BaseSettings):
 
     # ONNX 임베딩 최적화
     USE_ONNX_EMBEDDING: bool = False
-    ONNX_EMBEDDING_VARIANT: str = "ort-opt-fp16"  # ort-opt | ort-opt-fp16
+    ONNX_EMBEDDING_VARIANT: str = "ort-opt-fp16"  # ort-opt | ort-opt-fp16 | ort-opt-static128
     USE_ONNX_RERANKER: bool = False
     ONNX_RERANKER_VARIANT: str = "ort-opt-fp16"  # ort-opt | ort-opt-fp16
     ONNX_QUALITY_GATE_ENABLED: bool = True
     ONNX_QUALITY_GATE_FALLBACK: bool = True
     ONNX_INTRA_OP_THREADS: int = 0  # 0 = 자동 (P코어 감지)
+    ONNX_ENABLE_BF16_FASTMATH: bool = True  # Graviton3 BF16 MMLA fastmath (자동 감지 시 활성화)
 
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []

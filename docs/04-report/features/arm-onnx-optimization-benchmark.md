@@ -22,7 +22,8 @@ Mac M1/M3 + ARM 서버(AWS Graviton) 환경에서 ONNX 트랜스포머 최적화
 |---------|------|----------|----------|
 | `ort-opt` | Attention/LayerNorm/GELU Fusion (FP32) | 2.27GB | 정확도 최우선 |
 | `ort-opt-fp16` | Fusion + FP16 mixed precision | 1.13GB | **Mac Air 8GB 권장** |
-| `ort-opt-int8` | Dynamic INT8 quantization (raw export 기반) | 0.57GB | **AWS Graviton 권장** |
+| `ort-opt-static128` | Fusion + Static Shape (batch=1, seq=128) | 2.27GB | **Graviton3 임베딩 권장** |
+| `ort-opt-int8` | Dynamic INT8 quantization (raw export 기반) | 0.57GB | **Graviton 리랭커 권장** |
 
 ### Fusion 통계 (ORT Transformer Optimizer)
 
@@ -78,6 +79,67 @@ CoreMLExecutionProvider 테스트 결과: **실용적이지 않음**.
 | ORT-최적화 FP16 | 1.13GB | 1.14GB |
 | INT8 (dynamic) | 0.57GB | 0.57GB |
 
+## FP32 무손실 최적화 (BF16 Fastmath + Static Shape)
+
+INT8 양자화가 임베딩에서 cosine=0.985로 품질 위험이 있어 배제된 후,
+FP32 가중치/연산 정밀도를 100% 유지하면서 순수 연산 효율성만 극대화하는 전략을 탐색했다.
+
+### BF16 Fastmath (Graviton3 전용, Phase 8)
+
+**원리**: Graviton3의 MMLA 명령어가 FP32 GEMM을 내부적으로 BF16으로 변환하여 SIMD 가속.
+모델 파일은 FP32 유지, MLAS SBGEMM 커널이 런타임에 BF16 경로를 선택한다.
+
+```python
+# 1줄 config로 활성화
+session_options.add_session_config_entry(
+    "mlas.enable_gemm_fastmath_arm64_bfloat16", "1"
+)
+```
+
+- **플랫폼 제한**: Linux ARM (Graviton3+)만 지원. Mac ARM은 BF16 MMLA 미지원.
+- **감지 방법**: `/proc/cpuinfo` Features 필드에 `bf16` 포함 여부 확인
+- **정밀도**: BF16은 exponent 8bit + mantissa 7bit으로 FP16보다 rounding error가 훨씬 작음
+- **예상 성능**: 최대 65% 레이턴시 개선 (Graviton3 벤치마크 기준)
+- **품질 게이트**: cosine >= 0.999 미달 시 자동 비활성화
+
+### Static Shape 최적화 (임베딩 전용, Phase 9)
+
+**원리**: 동적 축(batch_size, sequence_length) 대신 고정 shape(batch=1, seq=128)로 빌드하면,
+그래프 최적화기가 Shape inference를 확정적으로 수행 → 추가 constant folding, reshape 제거.
+
+- **대상**: 임베딩만 (단일 쿼리, 고정 길이). 리랭커는 batch_size 가변이므로 dynamic 유지.
+- **패딩**: `padding="max_length", max_length=128`로 고정 길이 패딩
+- **예상 성능**: 5-15% 레이턴시 개선 (padding 연산 제거 + constant folding)
+- **빌드**: `build_optimized_onnx.py`에서 `onnxruntime.tools.make_dynamic_shape_fixed` 활용
+
+### 복합 최적화 (BF16 + Static128, Phase 10)
+
+Graviton3에서 BF16 Fastmath + Static Shape를 동시 적용하는 최적 조합.
+임베딩 전용 (단일 쿼리 + 고정 shape + BF16 가속).
+
+| Variant | 설명 | 대상 |
+|---------|------|------|
+| Dynamic FP32 | 기존 ORT-opt | 기준선 |
+| Dynamic + BF16 | BF16 fastmath만 적용 | Graviton3 |
+| Static128 FP32 | 고정 shape만 적용 | 모든 ARM |
+| **Static128 + BF16** | **복합 최적화** | **Graviton3 권장** |
+
+### 벤치마크 실행
+
+```bash
+cd backend
+
+# Phase 8/9/10 포함 전체 벤치마크
+uv run python scripts/benchmark_arm_optimization.py
+
+# 개별 Phase 스킵
+uv run python scripts/benchmark_arm_optimization.py --skip-bf16-test    # Phase 8 스킵
+uv run python scripts/benchmark_arm_optimization.py --skip-static-test  # Phase 9 스킵
+uv run python scripts/benchmark_arm_optimization.py --skip-combined-test # Phase 10 스킵
+```
+
+> **참고**: Phase 8, 10은 Linux ARM (Graviton3+)에서만 실행됩니다. Mac ARM에서는 자동 스킵.
+
 ## 핵심 인사이트
 
 ### Mac ARM에서 ONNX FP32가 PyTorch보다 느린 이유
@@ -95,15 +157,16 @@ INT8 dynamic quantization은 가중치를 8-bit로 압축하여:
 
 ## 최종 권장 전략
 
-### AWS Graviton 배포용
+### AWS Graviton3 프로덕션
 
-| 모델 | Variant | 이유 |
-|------|---------|------|
-| **임베딩** | **FP32** (ORT-opt) | INT8 cosine=0.985는 검색 정확도 위험 |
-| **리랭커** | **INT8** (dynamic) | cosine=0.998 양호 + 41% 속도 향상 |
+| 모델 | Variant | 추가 최적화 | 이유 |
+|------|---------|-----------|------|
+| **임베딩** | **FP32** (ort-opt-static128) | BF16 fastmath | Static Shape + BF16 복합 최적화 |
+| **리랭커** | **INT8** (dynamic) | - | cosine=0.998 양호 + 41% 속도 향상 |
 
-- 임베딩은 벡터 유사도 검색의 핵심이므로 cosine >= 0.999 필수
-- 리랭커는 상대적 순위만 중요하므로 cosine=0.998이면 충분
+- 임베딩: INT8 cosine=0.985는 검색 정확도 위험 → FP32 유지 + BF16/Static으로 가속
+- 리랭커: 상대적 순위만 중요하므로 cosine=0.998이면 충분
+- BF16 fastmath: Graviton3 MMLA 하드웨어가 자동 감지되어 활성화
 
 ### Mac 로컬 개발용
 
@@ -111,6 +174,9 @@ INT8 dynamic quantization은 가중치를 8-bit로 압축하여:
 |------|---------|------|
 | 임베딩 | PyTorch FP32 | Mac ARM에서 가장 빠름 (33.8ms) |
 | 리랭커 | PyTorch FP32 | Mac ARM에서 ONNX 대비 빠름 |
+
+> Mac ARM에서는 Apple Accelerate/AMX 가속 덕분에 PyTorch가 ONNX보다 빠르며,
+> BF16 MMLA도 미지원이므로 ONNX FP32 무손실 최적화의 효과가 제한적이다.
 
 ## 플랫폼별 최적 설정
 
@@ -127,11 +193,12 @@ INT8 dynamic quantization은 가중치를 8-bit로 압축하여:
 
 | 설정 | 값 | 이유 |
 |------|-----|------|
-| 임베딩 Variant | `ort-opt` (FP32) | BF16 자동 가속 + 정확도 보장 |
+| 임베딩 Variant | `ort-opt-static128` (FP32) | Static Shape + BF16 복합 가속 |
 | 리랭커 Variant | `ort-opt-int8` | 41% 속도 향상, cosine=0.998 |
 | `intra_op_threads` | 물리코어수 | SMT 없음, 전체 활용 |
 | `inter_op_threads` | 1 | 단일 쿼리 최적화 |
-| BF16 | 자동 (MMLA 하드웨어) | FP32 대비 최대 65% 향상 |
+| BF16 fastmath | 자동 감지 (MMLA 하드웨어) | FP32 대비 최대 65% 향상 |
+| `ONNX_ENABLE_BF16_FASTMATH` | `true` (기본값) | `/proc/cpuinfo` bf16 감지 시 자동 활성화 |
 
 ## 프로덕션 통합
 
@@ -140,12 +207,13 @@ INT8 dynamic quantization은 가중치를 8-bit로 압축하여:
 ```bash
 # backend/.env
 USE_ONNX_EMBEDDING=true
-ONNX_EMBEDDING_VARIANT=ort-opt          # 임베딩: FP32 (정확도 우선)
+ONNX_EMBEDDING_VARIANT=ort-opt-static128  # 임베딩: FP32 Static Shape (Graviton3 권장)
 USE_ONNX_RERANKER=true
-ONNX_RERANKER_VARIANT=ort-opt-int8      # 리랭커: INT8 (속도 우선)
-ONNX_QUALITY_GATE_ENABLED=true          # 시작 시 품질 자동 검증
-ONNX_QUALITY_GATE_FALLBACK=true         # 품질 미달 시 PyTorch 자동 폴백
-ONNX_INTRA_OP_THREADS=0                 # 0 = 자동 (P코어 감지)
+ONNX_RERANKER_VARIANT=ort-opt-int8        # 리랭커: INT8 (속도 우선)
+ONNX_QUALITY_GATE_ENABLED=true            # 시작 시 품질 자동 검증
+ONNX_QUALITY_GATE_FALLBACK=true           # 품질 미달 시 PyTorch 자동 폴백
+ONNX_INTRA_OP_THREADS=0                   # 0 = 자동 (P코어 감지)
+ONNX_ENABLE_BF16_FASTMATH=true            # Graviton3 BF16 MMLA 자동 활성화
 ```
 
 ### 품질 게이트
@@ -218,3 +286,5 @@ uv run uvicorn app.main:app --reload
 | Mac Air 8GB 메모리 부족 (FP32) | 높음 | FP16 variant 사용 (1.1GB) |
 | 임베딩 INT8 cosine=0.985 검색 품질 저하 | **높음** | **임베딩은 FP32 유지** (INT8 사용 금지) |
 | CoreML 노드 미지원 | 확인됨 | 4% 지원 → **사용 불가** |
+| BF16 cosine < 0.999 | 낮음 | 품질 게이트 자동 비활성화 + PyTorch 폴백 |
+| Static Shape 긴 입력 truncation | 낮음 | max_length=128 초과 시 truncation (법률 쿼리 대부분 128토큰 이내) |
