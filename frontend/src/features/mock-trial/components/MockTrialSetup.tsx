@@ -41,8 +41,8 @@ export function MockTrialSetup({ onComplete, onDemoStart }: MockTrialSetupProps)
   ]
 
   const civilRoles: { id: UserRole; name: string; description: string }[] = [
-    { id: 'plaintiff', name: '원고측 대리인', description: '청구원인 입증 및 손해배상 논증' },
-    { id: 'defendant', name: '피고측 대리인', description: '청구 기각 및 항변' },
+    { id: 'prosecutor', name: '원고측 대리인', description: '청구원인 입증 및 손해배상 논증' },
+    { id: 'attorney', name: '피고측 대리인', description: '청구 기각 및 항변' },
   ]
 
   const roles = caseType === 'criminal' ? criminalRoles : civilRoles

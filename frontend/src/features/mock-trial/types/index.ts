@@ -22,7 +22,8 @@ export type CaseCategory = CriminalCategory | CivilCategory
 // ── 역할 ──
 
 export type CriminalRole = 'prosecutor' | 'attorney'
-export type CivilRole = 'plaintiff' | 'defendant'
+/** 민사 역할: Backend API 계약상 prosecutor=원고측, attorney=피고측 매핑 */
+export type CivilRole = 'prosecutor' | 'attorney'
 export type UserRole = CriminalRole | CivilRole
 
 // ── 재판 단계 ──
@@ -183,7 +184,7 @@ export const CRIMINAL_STAGES: StageInfo[] = [
     id: 'verdict',
     name: '판결선고',
     order: 6,
-    legal_basis: '형사소송법 §318-4',
+    legal_basis: '형사소송법 §43(판결선고방식), §39(판결선고기일), §323(유죄이유고지)',
     description: 'AI 판사 판결문 낭독',
     user_action: '관전',
     duration_hint: '2-3분',

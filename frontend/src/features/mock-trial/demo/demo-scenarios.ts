@@ -160,7 +160,7 @@ const CIVIL_DAMAGES_PLAINTIFF: DemoScenario = {
   setup: {
     caseType: 'civil',
     caseCategory: 'civil_damages',
-    userRole: 'plaintiff',
+    userRole: 'prosecutor',
     caseSummary:
       '2025년 4월 15일 서울 강남구 역삼동 교차로에서 피고 차량이 신호위반으로 원고 차량을 추돌하여 원고가 경추 염좌 및 요추 추간판 탈출증 진단을 받았습니다. 원고는 치료비 1,200만원, 휴업손해 800만원, 위자료 500만원 등 총 2,500만원의 손해배상을 청구합니다.',
   },
