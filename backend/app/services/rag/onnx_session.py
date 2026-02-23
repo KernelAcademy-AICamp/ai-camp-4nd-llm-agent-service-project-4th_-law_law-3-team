@@ -211,15 +211,24 @@ def _create_session(
         )
         logger.info("BF16 fastmath 활성화 (Graviton3 MMLA)")
 
+    # EP 자동 감지: CUDA 사용 가능하면 우선, 아니면 CPU fallback
+    available_providers = ort.get_available_providers()
+    if "CUDAExecutionProvider" in available_providers:
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    else:
+        providers = ["CPUExecutionProvider"]
+
     session = ort.InferenceSession(
         str(model_file),
         sess_options=session_options,
-        providers=["CPUExecutionProvider"],
+        providers=providers,
     )
 
+    active_providers = session.get_providers()
     logger.info(
-        "ONNX 세션 생성: %s (threads=%d, mode=%s)",
+        "ONNX 세션 생성: %s (providers=%s, threads=%d, mode=%s)",
         model_file.name,
+        active_providers,
         platform_config.intra_op_threads,
         platform_config.execution_mode,
     )
@@ -404,6 +413,77 @@ def encode_embedding_onnx(query: str) -> list[float]:
 
     result: list[float] = emb[0].tolist()
     return result
+
+
+def encode_embedding_onnx_batch(
+    texts: list[str],
+    batch_size: int = 32,
+    normalize: bool = True,
+) -> list[list[float]]:
+    """ONNX 세션으로 텍스트 배치의 임베딩 벡터를 생성한다.
+
+    인제스트 파이프라인용 배치 함수. CLS pooling + L2 정규화 적용.
+
+    Args:
+        texts: 텍스트 목록
+        batch_size: 서브배치 크기 (OOM 방지)
+        normalize: L2 정규화 적용 여부
+
+    Returns:
+        임베딩 벡터 목록 (각 벡터는 float 리스트)
+
+    Raises:
+        RuntimeError: ONNX 세션이 로드되지 않은 경우
+    """
+    holder = _embedding_holder
+    if not holder.is_loaded:
+        raise RuntimeError("ONNX 임베딩 세션이 로드되지 않았습니다")
+
+    static_length = _parse_static_length(holder.variant)
+    all_embeddings: list[list[float]] = []
+
+    for start in range(0, len(texts), batch_size):
+        sub_texts = texts[start : start + batch_size]
+
+        inputs = holder.tokenizer(
+            sub_texts,
+            return_tensors="np",
+            padding="max_length" if static_length else True,
+            truncation=True,
+            max_length=static_length if static_length else 512,
+        )
+
+        feed: dict[str, Any] = {
+            "input_ids": inputs["input_ids"],
+            "attention_mask": inputs["attention_mask"],
+        }
+        if "token_type_ids" in holder.input_names:
+            feed["token_type_ids"] = inputs.get(
+                "token_type_ids",
+                np.zeros_like(inputs["input_ids"]),
+            )
+
+        if holder.use_io_binding:
+            binding = holder.session.io_binding()
+            for name, arr in feed.items():
+                binding.bind_cpu_input(name, arr)
+            for out_name in holder.output_names:
+                binding.bind_output(out_name, "cpu")
+            holder.session.run_with_iobinding(binding)
+            raw_outputs = binding.copy_outputs_to_cpu()
+        else:
+            raw_outputs = holder.session.run(None, feed)
+
+        # CLS pooling (index 0)
+        emb = raw_outputs[0][:, 0, :]
+
+        if normalize:
+            norm = np.linalg.norm(emb, axis=1, keepdims=True)
+            emb = emb / np.clip(norm, a_min=1e-9, a_max=None)
+
+        all_embeddings.extend(emb.tolist())
+
+    return all_embeddings
 
 
 def predict_reranker_onnx(query: str, documents: list[str]) -> list[float]:

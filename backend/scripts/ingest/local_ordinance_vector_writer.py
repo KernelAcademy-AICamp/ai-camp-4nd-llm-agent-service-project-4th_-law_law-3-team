@@ -35,6 +35,7 @@ from scripts.embedding_common.config import (
 from scripts.embedding_common.device import print_device_info
 from scripts.embedding_common.memory import check_memory_pressure, print_memory_status
 from scripts.embedding_common.model import (
+    _should_use_onnx_embedding,
     clear_memory,
     create_embeddings,
     get_embedding_model,
@@ -277,8 +278,13 @@ def run_local_ordinance_vector_ingest(
         batch_size = hw_config.batch_size
         logger.info("배치 크기 자동 설정: %d", batch_size)
 
-    model = get_embedding_model(device=device)
-    logger.info("임베딩 모델 로드 완료")
+    # 모델 로드 (ONNX 모드에서는 PyTorch 2.3GB 모델 스킵)
+    if _should_use_onnx_embedding():
+        model = None
+        logger.info("ONNX 임베딩 모드 → PyTorch 모델 로드 스킵")
+    else:
+        model = get_embedding_model(device=device)
+        logger.info("PyTorch 임베딩 모델 로드 완료")
 
     cache = EmbeddingCache() if use_cache else None
 

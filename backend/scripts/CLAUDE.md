@@ -35,7 +35,7 @@ from scripts.common import load_items, setup_logging, create_sync_session_factor
 |------|------|
 | `device.py` | GPU/CPU/MPS 디바이스 감지, DeviceInfo |
 | `config.py` | 하드웨어 프로필, 배치 크기 최적 설정 |
-| `model.py` | 임베딩 모델 로딩 (KURE-v1) |
+| `model.py` | 임베딩 모델 로딩 (KURE-v1) + ONNX 배치 분기 |
 | `store.py` | LanceDB 테이블 생성/연결 |
 | `chunking.py` | 텍스트 청킹 (법령/판례) |
 | `schema.py` | 스키마 v2 re-export + 검증 유틸 |
@@ -424,7 +424,7 @@ uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
 ```
 
 > **주의**: `LANCEDB_URI`를 variant별로 다르게 설정하여 데이터가 섞이지 않도록 합니다.
-> GPU 서버에서 실행 시 임베딩 속도가 크게 빨라집니다 (배치 크기 자동 조정).
+> **CUDA 자동 감지**: `onnxruntime-gpu` 설치 시 CUDA EP를 자동 사용합니다. GPU 서버에서 ONNX+CUDA로 인제스트하면 PyTorch CUDA 대비 그래프 최적화+fusion 효과를 볼 수 있습니다. CPU 전용 환경에서는 자동 fallback.
 
 ### Step 4: RAG 검색 품질 비교
 
@@ -470,7 +470,7 @@ ONNX_RERANKER_VARIANT=ort-opt       # 또는 ort-opt-qdq
 | `USE_ONNX_RERANKER` | `false` | ONNX 리랭커 사용 여부 |
 | `ONNX_RERANKER_VARIANT` | `ort-opt` | `ort-opt` (FP32) 또는 `ort-opt-qdq` (INT8) |
 | `ONNX_INTRA_OP_THREADS` | `0` | 0=자동, 4=Mac ARM P코어만 권장 |
-| `ONNX_ENABLE_IO_BINDING` | `false` | CPU EP에서 무효 (GPU EP용) |
+| `ONNX_ENABLE_IO_BINDING` | `false` | CUDA EP에서 유효 (CPU EP에서 무효) |
 | `ONNX_ENABLE_BF16_FASTMATH` | `false` | Graviton3+ 전용 (Mac ARM 미지원) |
 | `ONNX_QDQ_SENSITIVE_LAYERS` | `""` | 커스텀 민감 레이어 (빈 문자열=기본 16개) |
 | `ONNX_QUALITY_GATE_ENABLED` | `true` | 품질 게이트 활성화 |
