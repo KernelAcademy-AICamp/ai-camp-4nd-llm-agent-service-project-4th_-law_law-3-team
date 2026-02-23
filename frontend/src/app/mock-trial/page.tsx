@@ -10,14 +10,16 @@ import { StageProgress } from '@/features/mock-trial/components/StageProgress'
 import { ChatPanel } from '@/features/mock-trial/components/ChatPanel'
 import { ChatBottomBar } from '@/features/mock-trial/components/ChatBottomBar'
 import { ReferencePanel } from '@/features/mock-trial/components/ReferencePanel'
+import { EvidencePanel } from '@/features/mock-trial/components/EvidencePanel'
 import { eventBus } from '@/features/mock-trial/game/EventBus'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import type {
   CaseType,
   CaseCategory,
   UserRole,
   CourtEvent,
   ReferenceItem,
+  EvidenceItem,
 } from '@/features/mock-trial/types'
 import { CRIMINAL_STAGES, CIVIL_STAGES } from '@/features/mock-trial/types'
 import type { DemoScenario } from '@/features/mock-trial/demo/demo-scenarios'
@@ -56,6 +58,15 @@ export default function MockTrialPage() {
   // 패널 토글 상태
   const [isReferencePanelOpen, setIsReferencePanelOpen] = useState(false)
   const [chatDisplayMode, setChatDisplayMode] = useState<'bar' | 'panel'>('bar')
+
+  // H3: 증거 선택 상태
+  const [evidenceCases, setEvidenceCases] = useState<EvidenceItem[]>([])
+  const [evidenceArticles, setEvidenceArticles] = useState<EvidenceItem[]>([])
+  const [selectedEvidenceIds, setSelectedEvidenceIds] = useState<Set<string>>(new Set())
+  const [isEvidenceLoading, setIsEvidenceLoading] = useState(false)
+
+  // H5: 단계 가이드 표시
+  const [showStageGuide, setShowStageGuide] = useState(true)
 
   // 데모 모드 상태
   const [isDemoMode, setIsDemoMode] = useState(false)
@@ -227,6 +238,11 @@ export default function MockTrialPage() {
     }
 
     setCurrentStageId(nextId)
+    setShowStageGuide(true)
+    // 증거 상태 초기화 (증거조사 단계를 벗어날 때)
+    if (currentStageId === 'evidence') {
+      setSelectedEvidenceIds(new Set())
+    }
     const nextIndex = stages.findIndex((s) => s.id === nextId)
     eventBus.emit('stage:change', {
       from: currentStageId,
@@ -302,6 +318,56 @@ export default function MockTrialPage() {
     }
   }, [messages])
 
+  // H3: 증거 토글 핸들러
+  const handleEvidenceToggle = useCallback((id: string) => {
+    setSelectedEvidenceIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
+
+  // H3: 증거 제출 핸들러
+  const handleEvidenceSubmit = useCallback(() => {
+    const allIds = [
+      ...evidenceCases.map((c) => c.id),
+      ...evidenceArticles.map((a) => a.id),
+    ]
+    const excludedIds = allIds.filter((id) => !selectedEvidenceIds.has(id))
+
+    // 백엔드에 선택 결과 전달
+    eventBus.emit('user:input', {
+      text: JSON.stringify({
+        selected_ids: Array.from(selectedEvidenceIds),
+        excluded_ids: excludedIds,
+        text: `증거 ${selectedEvidenceIds.size}건 제출`,
+      }),
+    })
+
+    const submitMessage: CourtEvent = {
+      stage: currentStageId,
+      speaker: 'user',
+      content: `증거 ${selectedEvidenceIds.size}건을 제출했습니다.`,
+      timestamp: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, submitMessage])
+    setIsWaiting(true)
+
+    if (!isDemoMode) {
+      setTimeout(() => setIsWaiting(false), 1000)
+    }
+  }, [evidenceCases, evidenceArticles, selectedEvidenceIds, currentStageId, isDemoMode])
+
+  /** 현재 단계가 증거조사인지 여부 */
+  const isEvidenceStage = currentStageId === 'evidence' && phase === 'trial'
+
+  /** 현재 단계의 StageInfo */
+  const currentStageInfo = stages.find((s) => s.id === currentStageId)
+
   /** 현재 단계에서 "다음 단계" 버튼을 보여줄지 여부 */
   const showNextStageButton =
     isDemoMode && !isWaiting && phase === 'trial' && isDemoStageInputsDone
@@ -340,41 +406,85 @@ export default function MockTrialPage() {
         <StageProgress stages={stages} currentStageId={currentStageId} />
       )}
 
+      {/* H5: 단계 가이드 배너 */}
+      {phase === 'trial' && showStageGuide && currentStageInfo && (
+        <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-start gap-2">
+          <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-blue-700">
+                {currentStageInfo.name}
+              </span>
+              <span className="text-[10px] text-blue-500 bg-blue-100 px-1.5 py-0.5 rounded">
+                {currentStageInfo.legal_basis}
+              </span>
+              <span className="text-[10px] text-gray-400">
+                {currentStageInfo.duration_hint}
+              </span>
+            </div>
+            <p className="text-xs text-blue-600 mt-0.5">
+              {currentStageInfo.description} &middot;{' '}
+              <span className="font-medium">{currentStageInfo.user_action}</span>
+            </p>
+          </div>
+          <button
+            onClick={() => setShowStageGuide(false)}
+            className="text-blue-400 hover:text-blue-600 text-xs shrink-0"
+            aria-label="가이드 닫기"
+          >
+            닫기
+          </button>
+        </div>
+      )}
+
       {/* 메인 콘텐츠 - MockTrialGame은 한 번만 렌더링하여 씬 전환 유지 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 좌: 참조 패널 토글 (trial phase에서만 표시) */}
+        {/* 좌: 참조/증거 패널 토글 (trial phase에서만 표시) */}
         {phase === 'trial' && (
           <>
-            {/* 참조 패널 (접기/펴기) */}
+            {/* 참조/증거 패널 (접기/펴기) */}
             <div
               className={`${
-                isReferencePanelOpen ? 'w-72' : 'w-0'
+                isReferencePanelOpen || isEvidenceStage ? 'w-72' : 'w-0'
               } transition-all duration-300 overflow-hidden border-r border-gray-200 bg-white`}
             >
               <div className="w-72 h-full overflow-y-auto">
-                <ReferencePanel references={references} />
+                {isEvidenceStage ? (
+                  <EvidencePanel
+                    cases={evidenceCases}
+                    articles={evidenceArticles}
+                    selectedIds={selectedEvidenceIds}
+                    onToggle={handleEvidenceToggle}
+                    onSubmit={handleEvidenceSubmit}
+                    isLoading={isEvidenceLoading}
+                  />
+                ) : (
+                  <ReferencePanel references={references} />
+                )}
               </div>
             </div>
 
-            {/* 토글 버튼 */}
-            <button
-              onClick={() => setIsReferencePanelOpen((prev) => !prev)}
-              className="w-6 shrink-0 flex flex-col items-center justify-center bg-gray-100 hover:bg-gray-200 border-r border-gray-200 transition-colors"
-              aria-label={isReferencePanelOpen ? '참조 패널 접기' : '참조 패널 열기'}
-            >
-              {isReferencePanelOpen ? (
-                <ChevronLeft className="w-4 h-4 text-gray-500" />
-              ) : (
-                <>
-                  <ChevronRight className="w-4 h-4 text-gray-500" />
-                  {references.length > 0 && (
-                    <span className="mt-1 text-[10px] font-medium text-blue-600 bg-blue-100 rounded-full w-5 h-5 flex items-center justify-center">
-                      {references.length}
-                    </span>
-                  )}
-                </>
-              )}
-            </button>
+            {/* 토글 버튼 (증거조사 단계에서는 항상 열림) */}
+            {!isEvidenceStage && (
+              <button
+                onClick={() => setIsReferencePanelOpen((prev) => !prev)}
+                className="w-6 shrink-0 flex flex-col items-center justify-center bg-gray-100 hover:bg-gray-200 border-r border-gray-200 transition-colors"
+                aria-label={isReferencePanelOpen ? '참조 패널 접기' : '참조 패널 열기'}
+              >
+                {isReferencePanelOpen ? (
+                  <ChevronLeft className="w-4 h-4 text-gray-500" />
+                ) : (
+                  <>
+                    <ChevronRight className="w-4 h-4 text-gray-500" />
+                    {references.length > 0 && (
+                      <span className="mt-1 text-[10px] font-medium text-blue-600 bg-blue-100 rounded-full w-5 h-5 flex items-center justify-center">
+                        {references.length}
+                      </span>
+                    )}
+                  </>
+                )}
+              </button>
+            )}
           </>
         )}
 

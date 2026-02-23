@@ -30,6 +30,7 @@ from app.multi_agent.subgraphs.mock_trial_prompts import (
     build_system_prompt,
     sanitize_user_input,
 )
+from app.services.service_function.mock_trial_service import get_evidence_searcher
 
 logger = logging.getLogger(__name__)
 
@@ -293,6 +294,12 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
     llm_call_count = state.get("llm_call_count", 0)
     court_record = list(state.get("court_record", []))
 
+    # RAG 검색: 사건 개요로 판례/법령 검색
+    searcher = get_evidence_searcher()
+    query = state.get("case_summary", "")
+    evidence_cases = await searcher.search_cases(query, limit=5)
+    evidence_articles = await searcher.search_articles(query, limit=5)
+
     # 판사 발언: 증거조사 시작 안내
     judge = _get_agent(state, "judge")
     judge_response = await judge.generate(
@@ -308,6 +315,10 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
         ),
         "speaking_agent": "judge",
         "stage": "evidence",
+        "evidence": {
+            "cases": evidence_cases,
+            "articles": evidence_articles,
+        },
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -317,8 +328,19 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
         ],
     })
 
-    user_input = str(interrupt_value) if interrupt_value else ""
-    if user_input and user_input != "submit_evidence":
+    # interrupt_value 파싱: dict(증거 선택) 또는 str(텍스트 입력)
+    selected_ids: list[str] = []
+    excluded_ids: list[str] = []
+    user_input = ""
+
+    if isinstance(interrupt_value, dict):
+        selected_ids = interrupt_value.get("selected_ids", [])
+        excluded_ids = interrupt_value.get("excluded_ids", [])
+        user_input = str(interrupt_value.get("text", ""))
+    elif interrupt_value and str(interrupt_value) != "submit_evidence":
+        user_input = str(interrupt_value)
+
+    if user_input:
         court_record = _record(
             court_record, "evidence", state.get("user_role", ""), user_input
         )
@@ -334,6 +356,10 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
             "stage": "evidence",
             "court_record": court_record,
             "llm_call_count": llm_call_count,
+            "evidence_cases": evidence_cases,
+            "evidence_articles": evidence_articles,
+            "selected_evidence": selected_ids,
+            "excluded_evidence": excluded_ids,
             "agents": _update_agent_in_state(state.get("agents", {}), judge),
             "response": judge_response,
             "speaking_agent": "judge",
