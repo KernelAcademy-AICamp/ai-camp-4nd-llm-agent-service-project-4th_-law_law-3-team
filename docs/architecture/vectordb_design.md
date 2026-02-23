@@ -219,6 +219,7 @@ backend/
 │           ├── __init__.py          # 팩토리 및 export (LANCEDB_MODE 분기)
 │           ├── base.py              # VectorStoreBase 인터페이스
 │           ├── schema_v2.py         # LanceDB 스키마 v2 (단일 테이블 + NULL)
+│           ├── local_ordinance_schema.py  # 자치법규 전용 스키마 (12컬럼, 별도 테이블)
 │           ├── lancedb.py           # LanceDBStore 구현체 (로컬 임베디드)
 │           ├── remote_lancedb.py    # RemoteLanceDBStore (HTTP 클라이언트, remote 모드)
 │           ├── chroma.py            # ChromaDB 구현체 (기존)
@@ -229,6 +230,8 @@ backend/
 │   ├── runpod_lancedb_embeddings.py # RunPod thin wrapper (ingest 호출)
 │   └── colab_lancedb_embeddings.py  # Colab thin wrapper (runpod re-export)
 └── lancedb_data/                    # LanceDB 데이터 저장소
+    ├── legal_chunks.lance/          # 19개 타입 통합 테이블
+    └── local_ordinance_chunks.lance/ # 자치법규 전용 (전체요약+조문요약)
 
 services/
 └── lancedb/                         # LanceDB 마이크로서비스 (Docker)
@@ -263,7 +266,8 @@ services/
 - [x] ruling, claim, reasoning 제거 (메모리 효율화)
 - [x] **판례 데이터 전체 임베딩** (65,107건 → 134,846 청크)
 - [x] **법령 데이터 전체 임베딩** (5,841건 → 118,922 청크)
-- [x] **인제스트 파이프라인 단일화** (config-driven, 19개 타입 지원)
+- [x] **인제스트 파이프라인 단일화** (config-driven, 20개 타입 지원)
+- [x] **자치법규 별도 테이블** (`local_ordinance_chunks`, 12컬럼, 1문서→다중벡터)
 - [x] **청킹 무한루프 버그 수정** (2026-01-29)
 
 ### 진행 예정
@@ -330,7 +334,7 @@ uv run --no-sync python -m scripts.ingest.cli --type precedent --step vector
 # 법령 벡터 임베딩 생성
 uv run --no-sync python -m scripts.ingest.cli --type law --step vector
 
-# 전체 (19개 타입)
+# 전체 (20개 타입)
 uv run --no-sync python -m scripts.ingest.cli --type all --step vector
 
 # 전체 재생성 (기존 데이터 삭제)
@@ -485,7 +489,7 @@ show_stats()
 
 ### 아키텍처
 
-ingest 파이프라인(`scripts/ingest/`)이 config-driven 방식으로 19개 데이터 타입의 벡터 임베딩을 처리합니다.
+ingest 파이프라인(`scripts/ingest/`)이 config-driven 방식으로 20개 데이터 타입의 벡터 임베딩을 처리합니다.
 
 ```python
 # 설정 기반 벡터 임베딩
@@ -707,7 +711,7 @@ print_memory_status()
 |------|------|------|
 | 단일 테이블 스키마 | ✅ 완료 | 20개 컬럼 |
 | JSON → PostgreSQL 로드 | ✅ 완료 | load_lancedb_data.py |
-| 인제스트 파이프라인 | ✅ 완료 | scripts/ingest/ (19개 타입) |
+| 인제스트 파이프라인 | ✅ 완료 | scripts/ingest/ (20개 타입) |
 | RunPod/Colab thin wrapper | ✅ 완료 | ingest 파이프라인 호출 |
 | 분할 처리 (대용량) | ✅ 완료 | split_precedents, split_laws |
 | 임베딩 캐싱 | ✅ 완료 | EmbeddingCache |

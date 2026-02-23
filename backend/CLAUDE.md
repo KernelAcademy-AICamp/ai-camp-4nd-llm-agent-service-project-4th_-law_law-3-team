@@ -207,7 +207,7 @@ app/
 │   ├── trial_statistics.py
 │   ├── fts_index.py           # FTS 전문 검색 인덱스
 │   ├── law.py
-│   └── ingest/                # 인제스트 원본 테이블 (17개)
+│   └── ingest/                # 인제스트 원본 테이블 (20개)
 │       ├── admin_rule_document.py
 │       ├── constitutional_document.py
 │       ├── administration_document.py
@@ -215,6 +215,7 @@ app/
 │       ├── treaty_document.py
 │       ├── interpretation_ministry_document.py
 │       ├── special_admin_appeal_document.py
+│       ├── local_ordinance_document.py  # 자치법규 (160,276건)
 │       └── dec_*_document.py  # 위원회 결정례 (9개)
 └── common/              # (deprecated) 레거시 코드
     └── chat_service.py  # → services/rag/로 이전됨
@@ -555,6 +556,7 @@ app/models/
 | `lawyers` | 변호사 정보 (17,326건) | name, address, specialties(ARRAY), latitude, longitude, region |
 | `legal_terms` | 법률 용어 사전 (~72,700건) | term(UNIQUE), definition, source_code, source_count, term_length, is_korean_only |
 | `trial_statistics` | 재판 통계 | category, court_name, court_type, parent_court, year, case_count |
+| `local_ordinance_documents` | 자치법규 원본 (160,276건) | ordinance_id, ordinance_name, local_government, overall_summary, content |
 | `fts_index` | FTS 전문 검색 인덱스 | source_id, data_type, title, date, tsvector |
 
 ### 변호사 데이터 (lawyers 테이블)
@@ -718,7 +720,8 @@ from scripts.runpod_lancedb_embeddings import (
 ```
 backend/
 ├── lancedb_data/           # LanceDB 데이터
-│   └── legal_chunks.lance/ # 법령 + 판례 통합 테이블
+│   ├── legal_chunks.lance/              # 법령 + 판례 등 19개 타입 통합 테이블
+│   └── local_ordinance_chunks.lance/   # 자치법규 전용 테이블 (전체요약 + 조문요약)
 └── scripts/
     ├── ingest/                         # 메인 인제스트 파이프라인
     ├── embedding_common/               # 공통 임베딩 모듈
