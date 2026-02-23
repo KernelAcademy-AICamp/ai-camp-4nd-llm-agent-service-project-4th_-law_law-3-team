@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { Minimize2 } from 'lucide-react'
 import type { CourtEvent } from '../types'
 import { CHARACTER_NAMES } from '../game/config'
 
@@ -15,6 +16,8 @@ interface ChatPanelProps {
   demoInput?: string | null
   /** 데모 모드: 자동 입력 버튼 클릭 시 호출 */
   onDemoInput?: () => void
+  /** 패널 접기 핸들러 (전달 시 상단에 접기 버튼 표시) */
+  onCollapse?: () => void
 }
 
 export function ChatPanel({
@@ -26,6 +29,7 @@ export function ChatPanel({
   onAction,
   demoInput,
   onDemoInput,
+  onCollapse,
 }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -52,6 +56,20 @@ export function ChatPanel({
 
   return (
     <div className="flex flex-col h-full bg-white">
+      {/* 접기 헤더 */}
+      {onCollapse && (
+        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-gray-50">
+          <span className="text-sm font-semibold text-gray-700">재판 채팅</span>
+          <button
+            onClick={onCollapse}
+            className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+            aria-label="채팅 패널 접기"
+          >
+            <Minimize2 className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* 메시지 목록 */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2">
         {messages.map((message, index) => {

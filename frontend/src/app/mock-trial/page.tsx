@@ -8,8 +8,10 @@ import { DisclaimerBanner } from '@/features/mock-trial/components/DisclaimerBan
 import { MockTrialSetup } from '@/features/mock-trial/components/MockTrialSetup'
 import { StageProgress } from '@/features/mock-trial/components/StageProgress'
 import { ChatPanel } from '@/features/mock-trial/components/ChatPanel'
+import { ChatBottomBar } from '@/features/mock-trial/components/ChatBottomBar'
 import { ReferencePanel } from '@/features/mock-trial/components/ReferencePanel'
 import { eventBus } from '@/features/mock-trial/game/EventBus'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type {
   CaseType,
   CaseCategory,
@@ -50,6 +52,10 @@ export default function MockTrialPage() {
   const [isWaiting, setIsWaiting] = useState(false)
   const [references, setReferences] = useState<ReferenceItem[]>([])
   const referenceIdsRef = useRef<Set<string>>(new Set())
+
+  // 패널 토글 상태
+  const [isReferencePanelOpen, setIsReferencePanelOpen] = useState(false)
+  const [chatDisplayMode, setChatDisplayMode] = useState<'bar' | 'panel'>('bar')
 
   // 데모 모드 상태
   const [isDemoMode, setIsDemoMode] = useState(false)
@@ -336,19 +342,46 @@ export default function MockTrialPage() {
 
       {/* 메인 콘텐츠 - MockTrialGame은 한 번만 렌더링하여 씬 전환 유지 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 좌: 참조 패널 (trial phase에서만 표시) */}
+        {/* 좌: 참조 패널 토글 (trial phase에서만 표시) */}
         {phase === 'trial' && (
-          <div className="w-1/4 min-w-[200px] border-r border-gray-200 bg-white overflow-y-auto">
-            <ReferencePanel references={references} />
-          </div>
+          <>
+            {/* 참조 패널 (접기/펴기) */}
+            <div
+              className={`${
+                isReferencePanelOpen ? 'w-72' : 'w-0'
+              } transition-all duration-300 overflow-hidden border-r border-gray-200 bg-white`}
+            >
+              <div className="w-72 h-full overflow-y-auto">
+                <ReferencePanel references={references} />
+              </div>
+            </div>
+
+            {/* 토글 버튼 */}
+            <button
+              onClick={() => setIsReferencePanelOpen((prev) => !prev)}
+              className="w-6 shrink-0 flex flex-col items-center justify-center bg-gray-100 hover:bg-gray-200 border-r border-gray-200 transition-colors"
+              aria-label={isReferencePanelOpen ? '참조 패널 접기' : '참조 패널 열기'}
+            >
+              {isReferencePanelOpen ? (
+                <ChevronLeft className="w-4 h-4 text-gray-500" />
+              ) : (
+                <>
+                  <ChevronRight className="w-4 h-4 text-gray-500" />
+                  {references.length > 0 && (
+                    <span className="mt-1 text-[10px] font-medium text-blue-600 bg-blue-100 rounded-full w-5 h-5 flex items-center justify-center">
+                      {references.length}
+                    </span>
+                  )}
+                </>
+              )}
+            </button>
+          </>
         )}
 
-        {/* 중앙: Phaser 게임 (항상 단일 인스턴스) */}
+        {/* 중앙: Phaser 게임 + 하단 바 */}
         <div
           className={`flex flex-col overflow-hidden ${
-            phase === 'setup'
-              ? 'flex-1 bg-gray-100'
-              : 'flex-[1.6] bg-gray-50'
+            phase === 'setup' ? 'flex-1 bg-gray-100' : 'flex-1 bg-gray-50'
           }`}
         >
           <div className="flex-1 flex items-center justify-center p-2">
@@ -369,9 +402,22 @@ export default function MockTrialPage() {
               </button>
             </div>
           )}
+
+          {/* 하단 채팅 바 (trial phase, bar 모드일 때) */}
+          {phase === 'trial' && chatDisplayMode === 'bar' && (
+            <ChatBottomBar
+              messages={messages}
+              isWaiting={isWaiting}
+              placeholder="발언을 입력하세요..."
+              onSend={handleSendMessage}
+              onExpand={() => setChatDisplayMode('panel')}
+              demoInput={nextDemoInput}
+              onDemoInput={handleDemoInput}
+            />
+          )}
         </div>
 
-        {/* 우: setup phase → 설정 UI / trial phase → 채팅 패널 */}
+        {/* 우: setup phase → 설정 UI / trial phase + panel 모드 → 채팅 패널 */}
         {phase === 'setup' ? (
           <div className="w-96 border-l border-gray-200 bg-white overflow-y-auto p-6">
             <MockTrialSetup
@@ -379,7 +425,7 @@ export default function MockTrialPage() {
               onDemoStart={handleDemoStart}
             />
           </div>
-        ) : (
+        ) : chatDisplayMode === 'panel' ? (
           <div className="flex-[1.4] border-l border-gray-200">
             <ChatPanel
               messages={messages}
@@ -388,9 +434,10 @@ export default function MockTrialPage() {
               onSend={handleSendMessage}
               demoInput={nextDemoInput}
               onDemoInput={handleDemoInput}
+              onCollapse={() => setChatDisplayMode('bar')}
             />
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )
