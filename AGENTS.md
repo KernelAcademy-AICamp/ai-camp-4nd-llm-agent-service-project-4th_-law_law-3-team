@@ -79,3 +79,10 @@ Backend 모듈명 `snake_case` → API 경로 `/api/kebab-case`
 <타입>(<범위>): <제목>   # 타입: feat, fix, docs, refactor, test 등
 ```
 타입은 영어, 본문은 한국어. 72자 이내.
+
+## Git 작업 규칙 (Codex/에이전트)
+
+- Git 브랜치/커밋 작업 전 `.claude/rules/git-convention.md`를 우선 준수
+- Codex는 repo-local 브리지 스킬 `.codex/skills/git-convention-bridge/SKILL.md`를 먼저 참조
+- 브랜치명은 Codex 제약상 `codex/<type>-...` 매핑 사용 (예: `docs/foo` → `codex/docs-foo`)
+- 새 작업 브랜치는 `dev` 기준으로 생성 (`main` 기준 금지)
