@@ -101,14 +101,17 @@ src/features/<module-name>/
 - `CourtScene` - 법정 씬 (Phaser), `agent:speak` 이벤트에서 감정 이모지 전달
 - `LobbyScene` - 로비 씬 (대법원 배경)
 - `EventBus` - 이벤트 시스템 (`agent:speak`에 `emotion` 필드 포함)
-- `sprites/` - 픽셀아트 캐릭터, 배심원 패널
-- `ui/` - 말풍선 (`SpeechBubble`에 감정 이모지 표시), 단계 표시
+- `sprites/` - 픽셀아트 캐릭터, 배심원 패널, 도트 감정 아이콘 렌더러
+- `sprites/EmotionIconRenderer` - 8x8 도트 스프라이트 감정 아이콘 (PIXEL_SIZE=3, 24x24px)
+- `ui/` - 말풍선 (`SpeechBubble`에 게임풍 감정 심볼 표시), 단계 표시
 
-**감정 이모지 시스템 (FR-51):**
-- `EmotionType` - 8가지 감정: neutral😐, angry😤, thinking🤔, sad😢, confident😊, stern😠, recording📝, judging⚖️
-- `EMOTION_EMOJI` - 감정→이모지 매핑 상수
+**감정 표현 시스템 (FR-51):**
+- `EmotionType` - 8가지 감정: neutral💬, angry💢, thinking❓, sad💧, confident✨, stern❗, recording✏️, judging🔨
+- `EMOTION_EMOJI` - 감정→게임풍 심볼 매핑 상수
 - `DEFAULT_ROLE_EMOTION` - 역할별 기본 감정 (judge→stern, prosecutor→confident, attorney→thinking 등)
 - `CourtEvent.emotion` - 선택적 감정 필드 (Backend LLM이 `[EMOTION:태그]`로 생성)
+- `EmotionIconRenderer` - 8x8 도트 스프라이트로 캐릭터 머리 위 감정 아이콘 렌더링 (pop-in + floating 애니메이션)
+- `CharacterBase.setEmotion/clearEmotion` - 발언 시 도트 아이콘 표시/숨기기
 
 **의존성:** `phaser` (package.json)
 

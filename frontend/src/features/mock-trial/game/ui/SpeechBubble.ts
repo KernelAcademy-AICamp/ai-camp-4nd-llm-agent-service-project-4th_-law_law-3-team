@@ -9,16 +9,16 @@ const TYPING_SPEED = 30 // ms per character
 const FONT_SIZE = 13
 const NAME_FONT_SIZE = 11
 
-/** Phaser.js 파일 내 독립 이모지 맵 (types import 대신 별도 정의) */
+/** Phaser.js 파일 내 독립 이모지 맵 (게임풍 유니코드 심볼) */
 const EMOTION_EMOJI_MAP: Record<string, string> = {
-  neutral: '😐',
-  angry: '😤',
-  thinking: '🤔',
-  sad: '😢',
-  confident: '😊',
-  stern: '😠',
-  recording: '📝',
-  judging: '⚖️',
+  neutral: '💬',
+  angry: '💢',
+  thinking: '❓',
+  sad: '💧',
+  confident: '✨',
+  stern: '❗',
+  recording: '✏️',
+  judging: '🔨',
 }
 
 export class SpeechBubble extends Phaser.GameObjects.Container {

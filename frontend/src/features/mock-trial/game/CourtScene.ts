@@ -137,19 +137,23 @@ export class CourtScene extends Phaser.Scene {
     // agent:speak -> 말풍선 표시 + 캐릭터 애니메이션 + 배심원 반응
     this.unsubscribers.push(
       eventBus.on('agent:speak', (data) => {
-        // 이전 말풍선 숨기기
+        // 이전 말풍선 숨기기 + 감정 아이콘 초기화
         this.speechBubbles.forEach((bubble) => bubble.hide())
-        this.characters.forEach((char) => char.setSpeaking(false))
+        this.characters.forEach((char) => {
+          char.setSpeaking(false)
+          char.clearEmotion()
+        })
 
         const bubble = this.speechBubbles.get(data.agent)
         const character = this.characters.get(data.agent)
+        const emotion = data.emotion ?? DEFAULT_ROLE_EMOTION[data.agent]
         if (bubble) {
           const agentName = CHARACTER_NAMES[data.agent] ?? data.agent
-          const emotion = data.emotion ?? DEFAULT_ROLE_EMOTION[data.agent]
           bubble.show(agentName, data.text, emotion, !data.streaming)
         }
         if (character) {
           character.setSpeaking(true)
+          character.setEmotion(emotion)
         }
 
         this.juryPanel?.reactToSpeech(data.agent, data.text)

@@ -61,14 +61,14 @@ export type EmotionType =
   | 'judging'
 
 export const EMOTION_EMOJI: Record<EmotionType, string> = {
-  neutral: '😐',
-  angry: '😤',
-  thinking: '🤔',
-  sad: '😢',
-  confident: '😊',
-  stern: '😠',
-  recording: '📝',
-  judging: '⚖️',
+  neutral: '💬',
+  angry: '💢',
+  thinking: '❓',
+  sad: '💧',
+  confident: '✨',
+  stern: '❗',
+  recording: '✏️',
+  judging: '🔨',
 }
 
 export const DEFAULT_ROLE_EMOTION: Record<string, EmotionType> = {
