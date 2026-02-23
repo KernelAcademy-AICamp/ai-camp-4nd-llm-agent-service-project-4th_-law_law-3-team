@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 
-from app.api.router import chat_router
+from app.api.router import chat_router, rag_traces_router
 from app.core.auth import verify_api_key
 from app.core.config import settings
 from app.core.rate_limit import limiter
@@ -147,9 +147,19 @@ registry.register_all_modules()
 
 # API 라우터 수동 등록 (모듈 시스템과 별도)
 app.include_router(chat_router, prefix="/api")
+app.include_router(rag_traces_router, prefix="/api")
 
 # 미디어 정적 파일 마운트
 app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
+
+# RAG 트레이스 Gradio 뷰어 마운트 (ENABLE_RAG_TRACE=true일 때)
+if settings.ENABLE_RAG_TRACE:
+    import gradio as gr
+
+    from scripts.rag_trace_viewer import create_gradio_app
+
+    _gradio_app = create_gradio_app()
+    app = gr.mount_gradio_app(app, _gradio_app, path="/trace-viewer")
 
 
 @app.get("/health")
