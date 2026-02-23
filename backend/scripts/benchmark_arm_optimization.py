@@ -14,6 +14,7 @@ Phase 7: 종합 보고서 (JSON + 마크다운 테이블)
 Phase 8: BF16 Fastmath 벤치마크 (Graviton3 전용, Linux ARM만)
 Phase 9: Static Shape 벤치마크 (임베딩 전용, dynamic vs static128)
 Phase 10: 복합 최적화 (BF16 + Static128, Graviton3 전용)
+Phase 11: QDQ INT8 선택적 양자화 (민감 레이어 FP32 유지)
 
 각 Phase에서 임베딩 + 리랭커 양쪽 측정:
   - 단일 쿼리 레이턴시 (10회, 워밍업 3회)
@@ -27,6 +28,7 @@ Phase 10: 복합 최적화 (BF16 + Static128, Graviton3 전용)
   cd backend && uv run python scripts/benchmark_arm_optimization.py --skip-profiling
   cd backend && uv run python scripts/benchmark_arm_optimization.py --skip-bf16-test
   cd backend && uv run python scripts/benchmark_arm_optimization.py --skip-static-test
+  cd backend && uv run python scripts/benchmark_arm_optimization.py --skip-qdq-test
   cd backend && uv run python scripts/benchmark_arm_optimization.py --output results.json
 """
 
@@ -83,6 +85,8 @@ RR_MODEL_NAME = "dragonkue/bge-reranker-v2-m3-ko"
 RR_ONNX_DIR = PROJECT_ROOT / "data" / "models" / "reranker-onnx"
 RR_ORT_OPT_DIR = PROJECT_ROOT / "data" / "models" / "reranker-ort-opt"
 RR_ORT_OPT_FP16_DIR = PROJECT_ROOT / "data" / "models" / "reranker-ort-opt-fp16"
+EMB_ORT_OPT_QDQ_DIR = PROJECT_ROOT / "data" / "models" / "kure-v1-ort-opt-qdq"
+RR_ORT_OPT_QDQ_DIR = PROJECT_ROOT / "data" / "models" / "reranker-ort-opt-qdq"
 
 # bge-reranker-v2-m3-ko: XLM-RoBERTa Large
 RR_NUM_HEADS = 16
@@ -1767,6 +1771,127 @@ def run_phase_10(
 
 
 # ============================================================
+# Phase 11: QDQ INT8 선택적 양자화
+# ============================================================
+
+
+def run_phase_11(
+    baseline: dict[str, dict[str, Any]],
+    *,
+    run_embedding: bool = True,
+    run_reranker: bool = True,
+) -> dict[str, dict[str, Any]]:
+    """Phase 11: QDQ INT8 선택적 양자화 벤치마크.
+
+    민감 레이어(첫/끝 2개)를 FP32로 유지하고 나머지를 INT8 양자화한
+    모델의 속도/품질을 측정한다.
+    """
+    print(f"\n{SEPARATOR}")
+    print("  Phase 11: QDQ INT8 선택적 양자화")
+    print(SEPARATOR)
+
+    results: dict[str, dict[str, Any]] = {}
+    texts = EMB_TEST_QUERIES
+
+    if run_embedding:
+        if EMB_ORT_OPT_QDQ_DIR.exists():
+            qdq_file = _find_onnx_file(EMB_ORT_OPT_QDQ_DIR)
+            if qdq_file:
+                print("\n  === 임베딩 QDQ INT8 ===")
+                print("    속도 측정 중...")
+                _measure_rss_mb()
+                emb, median_ms, mean_ms, std_ms = _measure_latency(
+                    lambda: _encode_onnx_raw(
+                        texts, EMB_ORT_OPT_QDQ_DIR, qdq_file,
+                    ),
+                )
+                rss_after = _measure_rss_mb()
+
+                emb_pt = baseline.get(
+                    "emb_pytorch_cpu", {},
+                ).get("embeddings")
+                cos = (
+                    _cosine_similarity(emb_pt, emb)
+                    if emb_pt is not None else 0.0
+                )
+                pt_ms = baseline.get(
+                    "emb_pytorch_cpu", {},
+                ).get("median_ms", 1.0)
+                speedup = pt_ms / median_ms if median_ms > 0 else 0.0
+
+                # 모델 크기
+                qdq_path = EMB_ORT_OPT_QDQ_DIR / qdq_file
+                size_mb = qdq_path.stat().st_size / (1024 * 1024)
+
+                print(f"    {len(texts)}건: median={median_ms:.1f}ms "
+                      f"({speedup:.2f}x vs PyTorch)")
+                print(f"    cosine vs PyTorch: {cos:.6f}")
+                print(f"    모델 크기: {size_mb:.1f}MB")
+                print(f"    RSS: {rss_after:.0f}MB")
+                results["emb_ort_opt_qdq"] = {
+                    "median_ms": median_ms, "mean_ms": mean_ms,
+                    "std_ms": std_ms, "speedup": speedup,
+                    "cosine": cos, "rss_mb": rss_after,
+                    "model_size_mb": size_mb,
+                    "embeddings": emb,
+                }
+            else:
+                print("  [건너뜀] 임베딩 QDQ 모델 파일 없음")
+        else:
+            print(f"  [건너뜀] 임베딩 QDQ 디렉토리 없음: {EMB_ORT_OPT_QDQ_DIR.name}")
+
+    if run_reranker:
+        if RR_ORT_OPT_QDQ_DIR.exists():
+            qdq_file = _find_onnx_file(RR_ORT_OPT_QDQ_DIR)
+            if qdq_file:
+                print("\n  === 리랭커 QDQ INT8 ===")
+                print("    속도 측정 중...")
+                _measure_rss_mb()
+                scores, median_ms, mean_ms, std_ms = _measure_latency(
+                    lambda: _rerank_onnx_raw(
+                        RR_QUERY, RR_DOCUMENTS,
+                        RR_ORT_OPT_QDQ_DIR, qdq_file,
+                    ),
+                )
+                rss_after = _measure_rss_mb()
+
+                rr_pt = baseline.get(
+                    "rr_pytorch_cpu", {},
+                ).get("scores")
+                pearson = (
+                    _compute_pearson(rr_pt, scores) if rr_pt else 0.0
+                )
+                pt_ms = baseline.get(
+                    "rr_pytorch_cpu", {},
+                ).get("median_ms", 1.0)
+                speedup = pt_ms / median_ms if median_ms > 0 else 0.0
+
+                # 모델 크기
+                qdq_path = RR_ORT_OPT_QDQ_DIR / qdq_file
+                size_mb = qdq_path.stat().st_size / (1024 * 1024)
+
+                print(f"    {len(RR_DOCUMENTS)}건: "
+                      f"median={median_ms:.1f}ms "
+                      f"({speedup:.2f}x vs PyTorch)")
+                print(f"    Pearson vs PyTorch: {pearson:.6f}")
+                print(f"    모델 크기: {size_mb:.1f}MB")
+                print(f"    RSS: {rss_after:.0f}MB")
+                results["rr_ort_opt_qdq"] = {
+                    "median_ms": median_ms, "mean_ms": mean_ms,
+                    "std_ms": std_ms, "speedup": speedup,
+                    "pearson": pearson, "rss_mb": rss_after,
+                    "model_size_mb": size_mb,
+                    "scores": scores,
+                }
+            else:
+                print("  [건너뜀] 리랭커 QDQ 모델 파일 없음")
+        else:
+            print(f"  [건너뜀] 리랭커 QDQ 디렉토리 없음: {RR_ORT_OPT_QDQ_DIR.name}")
+
+    return results
+
+
+# ============================================================
 # Phase 7: 종합 보고서
 # ============================================================
 
@@ -1782,6 +1907,7 @@ def _collect_summary_rows(
     phase8: dict[str, dict[str, Any]] | None = None,
     phase9: dict[str, dict[str, Any]] | None = None,
     phase10: dict[str, dict[str, Any]] | None = None,
+    phase11: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """지정 모델 타입(emb/rr)의 모든 결과를 요약 행으로 수집."""
     rows: list[dict[str, Any]] = []
@@ -1904,6 +2030,19 @@ def _collect_summary_rows(
                 "rss_mb": 0,
             })
 
+    # QDQ INT8 선택적 양자화 (Phase 11)
+    if phase11:
+        qdq_key = f"{prefix}_ort_opt_qdq"
+        if qdq_key in phase11:
+            data = phase11[qdq_key]
+            rows.append({
+                "name": "QDQ INT8 (선택적)",
+                "median_ms": data["median_ms"],
+                "speedup": data.get("speedup", 0),
+                quality_key: data.get(quality_key, 0),
+                "rss_mb": data.get("rss_mb", 0),
+            })
+
     return rows
 
 
@@ -1919,6 +2058,7 @@ def generate_report(
     phase8: dict[str, dict[str, Any]] | None = None,
     phase9: dict[str, dict[str, Any]] | None = None,
     phase10: dict[str, dict[str, Any]] | None = None,
+    phase11: dict[str, dict[str, Any]] | None = None,
     run_embedding: bool = True,
     run_reranker: bool = True,
     output_json: str | None = None,
@@ -1966,6 +2106,8 @@ def generate_report(
         json_results["phase9_static"] = _sanitize(phase9)
     if phase10:
         json_results["phase10_combined"] = _sanitize(phase10)
+    if phase11:
+        json_results["phase11_qdq"] = _sanitize(phase11)
     json_results["phase6_profiling"] = phase6
 
     # JSON 저장
@@ -2029,6 +2171,7 @@ def generate_report(
             baseline, phase2, phase3, phase4, phase5,
             model_type="emb",
             phase8=phase8, phase9=phase9, phase10=phase10,
+            phase11=phase11,
         )
         if emb_rows:
             _print_table("임베딩 비교", emb_rows, "Cosine")
@@ -2037,7 +2180,7 @@ def generate_report(
         rr_rows = _collect_summary_rows(
             baseline, phase2, phase3, phase4, phase5,
             model_type="rr",
-            phase8=phase8,
+            phase8=phase8, phase11=phase11,
         )
         if rr_rows:
             _print_table("리랭커 비교", rr_rows, "Pearson")
@@ -2048,6 +2191,7 @@ def generate_report(
             output_md, env_info, md_lines,
             baseline, phase2, phase3, phase4, phase5, phase6,
             phase8=phase8, phase9=phase9, phase10=phase10,
+            phase11=phase11,
             run_embedding=run_embedding,
             run_reranker=run_reranker,
         )
@@ -2067,6 +2211,7 @@ def _write_md_report(
     phase8: dict[str, dict[str, Any]] | None = None,
     phase9: dict[str, dict[str, Any]] | None = None,
     phase10: dict[str, dict[str, Any]] | None = None,
+    phase11: dict[str, dict[str, Any]] | None = None,
     run_embedding: bool = True,
     run_reranker: bool = True,
 ) -> None:
@@ -2156,6 +2301,7 @@ def _write_md_report(
             baseline, phase2, phase3, phase4, phase5,
             model_type=model_type,
             phase8=phase8, phase9=phase9, phase10=phase10,
+            phase11=phase11,
         )
         # baseline 제외한 최적 방법 찾기
         candidates = [r for r in all_rows if r["name"] != "PyTorch FP32 (CPU)"]
@@ -2214,6 +2360,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-combined-test", action="store_true",
         help="복합 최적화 벤치마크 (Phase 10) 스킵",
+    )
+    parser.add_argument(
+        "--skip-qdq-test", action="store_true",
+        help="QDQ INT8 선택적 양자화 벤치마크 (Phase 11) 스킵",
     )
     parser.add_argument(
         "--output", type=str, default=None,
@@ -2347,6 +2497,17 @@ def main() -> None:
         print("  Phase 10: 스킵 (--skip-combined-test)")
         print(SEPARATOR)
 
+    # Phase 11: QDQ INT8 선택적 양자화
+    phase11: dict[str, dict[str, Any]] = {}
+    if not args.skip_qdq_test:
+        phase11 = run_phase_11(
+            baseline, run_embedding=run_emb, run_reranker=run_rr,
+        )
+    else:
+        print(f"\n{SEPARATOR}")
+        print("  Phase 11: 스킵 (--skip-qdq-test)")
+        print(SEPARATOR)
+
     # Phase 7: 종합 보고서
     report_path: Path | None = None
     if not args.no_report:
@@ -2355,6 +2516,7 @@ def main() -> None:
     generate_report(
         env_info, baseline, phase2, phase3, phase4, phase5, phase6,
         phase8=phase8 or None, phase9=phase9 or None, phase10=phase10 or None,
+        phase11=phase11 or None,
         run_embedding=run_emb, run_reranker=run_rr,
         output_json=args.output,
         output_md=report_path,

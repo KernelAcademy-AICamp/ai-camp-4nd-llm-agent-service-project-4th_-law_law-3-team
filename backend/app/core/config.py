@@ -110,6 +110,7 @@ class Settings(BaseSettings):
     ONNX_QUALITY_GATE_FALLBACK: bool = True
     ONNX_INTRA_OP_THREADS: int = 0  # 0 = 자동 (P코어 감지)
     ONNX_ENABLE_BF16_FASTMATH: bool = True  # Graviton3 BF16 MMLA fastmath (자동 감지 시 활성화)
+    ONNX_QDQ_SENSITIVE_LAYERS: str = ""  # 쉼표 구분 민감 레이어 인덱스 (예: "0,1,22,23"), 빈 문자열이면 기본값 사용
 
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []

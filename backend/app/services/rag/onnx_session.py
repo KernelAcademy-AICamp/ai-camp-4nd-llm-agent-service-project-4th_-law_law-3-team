@@ -30,10 +30,12 @@ _EMB_VARIANT_MAP: dict[str, str] = {
     "ort-opt": "kure-v1-ort-opt",
     "ort-opt-fp16": "kure-v1-ort-opt-fp16",
     "ort-opt-static128": "kure-v1-ort-opt-static128",
+    "ort-opt-qdq": "kure-v1-ort-opt-qdq",
 }
 _RR_VARIANT_MAP: dict[str, str] = {
     "ort-opt": "reranker-ort-opt",
     "ort-opt-fp16": "reranker-ort-opt-fp16",
+    "ort-opt-qdq": "reranker-ort-opt-qdq",
 }
 
 # ONNX 모델 파일명 후보 (우선순위순)
