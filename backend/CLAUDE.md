@@ -173,7 +173,9 @@ app/
 │   │   ├── retrieval.py  # 벡터 검색
 │   │   ├── rerank.py     # 리랭킹
 │   │   ├── query_rewrite.py  # 쿼리 리라이팅
-│   │   └── pipeline.py   # 검색 파이프라인
+│   │   ├── pipeline.py   # 검색 파이프라인
+│   │   ├── onnx_session.py       # ONNX 세션 싱글턴 관리
+│   │   └── onnx_quality_gate.py  # ONNX 품질 게이트 (PyTorch 비교)
 │   └── service_function/ # 통합 서비스 함수
 │       ├── lawyer_service.py       # 변호사 검색/클러스터링
 │       ├── lawyer_stats_service.py # 변호사 통계
@@ -310,6 +312,9 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `USE_ONNX_RERANKER` | ONNX 리랭커 사용 | `false` |
 | `ONNX_RERANKER_VARIANT` | ONNX 리랭커 variant | `ort-opt` |
 | `ONNX_INTRA_OP_THREADS` | ORT 스레드 수 (0=자동, 4=Mac ARM P코어) | `0` |
+| `ONNX_QUALITY_GATE_ENABLED` | ONNX 품질 게이트 활성화 (PyTorch 대비 cosine/pearson 검증) | `true` |
+| `ONNX_QUALITY_GATE_FALLBACK` | 품질 미달 시 자동 PyTorch 폴백 | `true` |
+| `ONNX_INFERENCE_TIMEOUT_SECONDS` | ONNX 추론 타임아웃 (초) | `30.0` |
 
 > **ONNX Variant**: `ort-opt` (FP32 무손실, cosine 1.0) 또는 `ort-opt-qdq` (INT8, cosine 0.999, 23% 빠름).
 > **ONNX EP**: `onnxruntime-gpu` 설치 시 CUDA 자동 감지, 미설치 시 CPU fallback. 인제스트 배치 임베딩도 지원.

@@ -10,9 +10,10 @@ from __future__ import annotations
 import logging
 import os
 import platform
-import re
 import subprocess
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -39,20 +40,6 @@ _RR_VARIANT_MAP: dict[str, str] = {
 # ONNX 모델 파일명 후보 (우선순위순)
 _MODEL_FILE_CANDIDATES = ["model_optimized.onnx", "model.onnx"]
 
-# Static shape variant 접미사에서 max_length 추출 정규식
-_STATIC_LENGTH_PATTERN = re.compile(r"static(\d+)")
-
-
-def _parse_static_length(variant: str) -> int | None:
-    """variant 문자열에서 static shape의 max_length를 추출한다.
-
-    예: "ort-opt-static128" → 128, "ort-opt-static64-qdq" → 64, "ort-opt" → None
-    """
-    match = _STATIC_LENGTH_PATTERN.search(variant)
-    if match:
-        return int(match.group(1))
-    return None
-
 
 @dataclass
 class PlatformConfig:
@@ -76,6 +63,7 @@ class OnnxSessionHolder:
     input_names: list[str] = field(default_factory=list)
     output_names: list[str] = field(default_factory=list)
     use_io_binding: bool = False
+    pooling_strategy: str = "cls"  # cls | mean
     is_loaded: bool = False
 
 
@@ -84,6 +72,117 @@ _embedding_holder = OnnxSessionHolder()
 _reranker_holder = OnnxSessionHolder()
 _init_lock = threading.Lock()
 
+# 런타임 비활성화 플래그 (settings 직접 변경 방지)
+_onnx_embedding_disabled = False
+_onnx_reranker_disabled = False
+
+
+def disable_onnx_embedding() -> None:
+    """ONNX 임베딩을 런타임에 비활성화한다 (PyTorch 폴백)."""
+    global _onnx_embedding_disabled
+    _onnx_embedding_disabled = True
+    logger.warning("ONNX 임베딩 런타임 비활성화 → PyTorch 폴백")
+
+
+def disable_onnx_reranker() -> None:
+    """ONNX 리랭커를 런타임에 비활성화한다 (PyTorch 폴백)."""
+    global _onnx_reranker_disabled
+    _onnx_reranker_disabled = True
+    logger.warning("ONNX 리랭커 런타임 비활성화 → PyTorch 폴백")
+
+
+def is_onnx_embedding_active() -> bool:
+    """ONNX 임베딩이 로드되었고 비활성화되지 않았는지 확인."""
+    return _embedding_holder.is_loaded and not _onnx_embedding_disabled
+
+
+def is_onnx_reranker_active() -> bool:
+    """ONNX 리랭커가 로드되었고 비활성화되지 않았는지 확인."""
+    return _reranker_holder.is_loaded and not _onnx_reranker_disabled
+
+
+# 배치 임베딩 동시성 제어 (ORT 세션은 thread-safe하지만 메모리 폭발 방지)
+_batch_semaphore = threading.Semaphore(1)
+
+# 추론 타임아웃용 스레드풀
+_inference_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="onnx-infer")
+
+
+def _apply_pooling(
+    raw_output: np.ndarray,
+    attention_mask: np.ndarray,
+    strategy: str = "cls",
+) -> np.ndarray:
+    """토큰 임베딩에서 문장 임베딩을 추출한다.
+
+    Args:
+        raw_output: 모델 출력 (batch, seq_len, hidden_dim)
+        attention_mask: 어텐션 마스크 (batch, seq_len)
+        strategy: "cls" (CLS 토큰) 또는 "mean" (평균 풀링)
+
+    Returns:
+        문장 임베딩 (batch, hidden_dim)
+    """
+    if strategy == "mean":
+        mask = attention_mask[:, :, np.newaxis].astype(np.float32)
+        summed = np.sum(raw_output * mask, axis=1)
+        counts = np.clip(mask.sum(axis=1), a_min=1e-9, a_max=None)
+        result: np.ndarray = summed / counts
+        return result
+    # cls (기본값)
+    return raw_output[:, 0, :]
+
+
+def _run_with_timeout(session: Any, feed: dict[str, Any]) -> list[Any]:
+    """ORT 추론을 타임아웃 제한으로 실행한다.
+
+    Args:
+        session: ort.InferenceSession
+        feed: 입력 텐서 딕셔너리
+
+    Returns:
+        추론 결과 리스트
+
+    Raises:
+        TimeoutError: 추론이 타임아웃 초과 시
+        RuntimeError: 추론 실행 실패 시
+    """
+    timeout = settings.ONNX_INFERENCE_TIMEOUT_SECONDS
+    future = _inference_executor.submit(session.run, None, feed)
+    try:
+        result: list[Any] = future.result(timeout=timeout)
+        return result
+    except FuturesTimeoutError:
+        logger.error("ONNX 추론 타임아웃 (%.1f초 초과)", timeout)
+        future.cancel()
+        raise TimeoutError(f"ONNX 추론이 {timeout}초 내에 완료되지 않았습니다")
+
+
+def _detect_cgroup_cpu_limit() -> int | None:
+    """컨테이너 cgroup CPU 제한을 감지한다.
+
+    cgroup v2 → v1 순으로 탐색. 제한이 없거나 읽기 실패 시 None 반환.
+    """
+    # cgroup v2: /sys/fs/cgroup/cpu.max → "quota period" (예: "200000 100000" = 2코어)
+    try:
+        cpu_max = Path("/sys/fs/cgroup/cpu.max").read_text(encoding="utf-8").strip()
+        quota_str, period_str = cpu_max.split()
+        if quota_str != "max":
+            return max(1, int(quota_str) // int(period_str))
+    except (FileNotFoundError, PermissionError, OSError, ValueError):
+        pass
+
+    # cgroup v1: /sys/fs/cgroup/cpu/cpu.cfs_quota_us + cpu.cfs_period_us
+    try:
+        quota = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read_text(encoding="utf-8").strip())
+        if quota > 0:
+            period = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read_text(encoding="utf-8").strip())
+            return max(1, quota // period)
+    except (FileNotFoundError, PermissionError, OSError, ValueError):
+        pass
+
+    return None
+
 
 def _detect_platform_config() -> PlatformConfig:
     """현재 플랫폼에 최적화된 ORT 스레드 설정을 감지한다."""
@@ -91,7 +190,7 @@ def _detect_platform_config() -> PlatformConfig:
     machine = platform.machine()
     is_mac = system == "Darwin"
     is_arm = machine in ("arm64", "aarch64")
-    cpu_count = os.cpu_count() or 4
+    cpu_count = _detect_cgroup_cpu_limit() or os.cpu_count() or 4
 
     # 사용자 지정값이 있으면 우선
     if settings.ONNX_INTRA_OP_THREADS > 0:
@@ -146,10 +245,11 @@ def _detect_mac_p_cores() -> int:
     """Mac Silicon의 P코어(성능코어) 수를 감지한다."""
     try:
         result = subprocess.run(
-            ["sysctl", "-n", "hw.perflevel0.logicalcpu"],
+            ["/usr/sbin/sysctl", "-n", "hw.perflevel0.logicalcpu"],
             capture_output=True,
             text=True,
             timeout=5,
+            env={"PATH": "/usr/sbin:/usr/bin"},
         )
         if result.returncode == 0:
             return int(result.stdout.strip())
@@ -172,13 +272,73 @@ def _resolve_model_dir(variant: str, variant_map: dict[str, str]) -> Optional[Pa
     """variant 문자열을 실제 디렉토리 경로로 변환한다."""
     dir_name = variant_map.get(variant)
     if dir_name is None:
-        logger.error("알 수 없는 ONNX variant: %s (지원: %s)", variant, list(variant_map.keys()))
+        supported = list(variant_map.keys())
+        logger.error(
+            "알 수 없는 ONNX variant: '%s'\n"
+            "  지원 variant: %s\n"
+            "  해결: .env 파일에서 ONNX_EMBEDDING_VARIANT 또는 ONNX_RERANKER_VARIANT를 "
+            "위 목록 중 하나로 설정하세요.",
+            variant,
+            supported,
+        )
         return None
     model_dir = _MODELS_DIR / dir_name
     if not model_dir.exists():
-        logger.warning("ONNX 모델 디렉토리 없음: %s", model_dir)
+        logger.error(
+            "ONNX 모델 디렉토리 없음: %s\n"
+            "  해결: scripts/build_optimized_onnx.py를 실행하여 모델을 빌드하거나, "
+            "data/models/%s 디렉토리를 수동 배치하세요.",
+            model_dir,
+            dir_name,
+        )
         return None
     return model_dir
+
+
+def _verify_model_integrity(model_dir: Path, variant_key: str) -> bool:
+    """ONNX 모델 파일의 무결성을 검증한다.
+
+    Args:
+        model_dir: 모델 디렉토리 경로
+        variant_key: variant 식별자 (로깅용)
+
+    Returns:
+        True이면 무결성 통과
+    """
+    model_file = _find_model_file(model_dir)
+    if model_file is None:
+        logger.error("ONNX 모델 파일 없음: %s", model_dir)
+        return False
+
+    # 최소 파일 크기 검증 (1MB 미만이면 손상 가능성)
+    min_size_bytes = 1_000_000
+    file_size = model_file.stat().st_size
+    if file_size < min_size_bytes:
+        logger.error(
+            "ONNX 모델 파일이 너무 작음 (손상 가능): %s (%d bytes, 최소 %d bytes)",
+            model_file.name,
+            file_size,
+            min_size_bytes,
+        )
+        return False
+
+    # model_versions.json의 verification_passed 확인 (있을 경우)
+    versions_file = model_dir / "model_versions.json"
+    if versions_file.exists():
+        import json
+
+        try:
+            versions = json.loads(versions_file.read_text(encoding="utf-8"))
+            if not versions.get("verification_passed", True):
+                logger.error(
+                    "ONNX 모델 검증 실패 기록: %s (model_versions.json)",
+                    variant_key,
+                )
+                return False
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return True
 
 
 def _create_session(
@@ -201,8 +361,8 @@ def _create_session(
     else:
         session_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
 
-    # 그래프 최적화 레벨: 이미 오프라인 최적화된 모델이므로 기본 유지
-    session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    # 그래프 최적화 레벨: 이미 오프라인 최적화된 모델이므로 런타임 재최적화 불필요
+    session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
 
     # Graviton3 BF16 fastmath: FP32 GEMM을 내부 BF16 MMLA로 가속
     if platform_config.enable_bf16_fastmath:
@@ -239,7 +399,7 @@ def _load_tokenizer(model_dir: Path) -> Any:
     """토크나이저를 로드한다."""
     from transformers import AutoTokenizer
 
-    return AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=True)  # type: ignore[no-untyped-call]
+    return AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=False)  # type: ignore[no-untyped-call]
 
 
 def load_embedding_session() -> bool:
@@ -255,6 +415,9 @@ def load_embedding_session() -> bool:
 
         model_dir = _resolve_model_dir(settings.ONNX_EMBEDDING_VARIANT, _EMB_VARIANT_MAP)
         if model_dir is None:
+            return False
+
+        if not _verify_model_integrity(model_dir, settings.ONNX_EMBEDDING_VARIANT):
             return False
 
         try:
@@ -296,6 +459,9 @@ def load_reranker_session() -> bool:
 
         model_dir = _resolve_model_dir(settings.ONNX_RERANKER_VARIANT, _RR_VARIANT_MAP)
         if model_dir is None:
+            return False
+
+        if not _verify_model_integrity(model_dir, settings.ONNX_RERANKER_VARIANT):
             return False
 
         try:
@@ -374,14 +540,12 @@ def encode_embedding_onnx(query: str) -> list[float]:
     if not holder.is_loaded:
         raise RuntimeError("ONNX 임베딩 세션이 로드되지 않았습니다")
 
-    # Static shape variant: 고정 길이 패딩 (예: static64 → 64, static128 → 128)
-    static_length = _parse_static_length(holder.variant)
     inputs = holder.tokenizer(
         query,
         return_tensors="np",
-        padding="max_length" if static_length else True,
+        padding=True,
         truncation=True,
-        max_length=static_length if static_length else 512,
+        max_length=512,
     )
 
     feed: dict[str, Any] = {
@@ -404,10 +568,10 @@ def encode_embedding_onnx(query: str) -> list[float]:
         holder.session.run_with_iobinding(binding)
         raw_outputs = binding.copy_outputs_to_cpu()
     else:
-        raw_outputs = holder.session.run(None, feed)
+        raw_outputs = _run_with_timeout(holder.session, feed)
 
-    # CLS pooling (index 0) + L2 정규화
-    emb = raw_outputs[0][:, 0, :]
+    # Pooling + L2 정규화
+    emb = _apply_pooling(raw_outputs[0], feed["attention_mask"], holder.pooling_strategy)
     norm = np.linalg.norm(emb, axis=1, keepdims=True)
     emb = emb / np.clip(norm, a_min=1e-9, a_max=None)
 
@@ -439,49 +603,49 @@ def encode_embedding_onnx_batch(
     if not holder.is_loaded:
         raise RuntimeError("ONNX 임베딩 세션이 로드되지 않았습니다")
 
-    static_length = _parse_static_length(holder.variant)
     all_embeddings: list[list[float]] = []
 
-    for start in range(0, len(texts), batch_size):
-        sub_texts = texts[start : start + batch_size]
+    with _batch_semaphore:
+        for start in range(0, len(texts), batch_size):
+            sub_texts = texts[start : start + batch_size]
 
-        inputs = holder.tokenizer(
-            sub_texts,
-            return_tensors="np",
-            padding="max_length" if static_length else True,
-            truncation=True,
-            max_length=static_length if static_length else 512,
-        )
-
-        feed: dict[str, Any] = {
-            "input_ids": inputs["input_ids"],
-            "attention_mask": inputs["attention_mask"],
-        }
-        if "token_type_ids" in holder.input_names:
-            feed["token_type_ids"] = inputs.get(
-                "token_type_ids",
-                np.zeros_like(inputs["input_ids"]),
+            inputs = holder.tokenizer(
+                sub_texts,
+                return_tensors="np",
+                padding=True,
+                truncation=True,
+                max_length=512,
             )
 
-        if holder.use_io_binding:
-            binding = holder.session.io_binding()
-            for name, arr in feed.items():
-                binding.bind_cpu_input(name, arr)
-            for out_name in holder.output_names:
-                binding.bind_output(out_name, "cpu")
-            holder.session.run_with_iobinding(binding)
-            raw_outputs = binding.copy_outputs_to_cpu()
-        else:
-            raw_outputs = holder.session.run(None, feed)
+            feed: dict[str, Any] = {
+                "input_ids": inputs["input_ids"],
+                "attention_mask": inputs["attention_mask"],
+            }
+            if "token_type_ids" in holder.input_names:
+                feed["token_type_ids"] = inputs.get(
+                    "token_type_ids",
+                    np.zeros_like(inputs["input_ids"]),
+                )
 
-        # CLS pooling (index 0)
-        emb = raw_outputs[0][:, 0, :]
+            if holder.use_io_binding:
+                binding = holder.session.io_binding()
+                for name, arr in feed.items():
+                    binding.bind_cpu_input(name, arr)
+                for out_name in holder.output_names:
+                    binding.bind_output(out_name, "cpu")
+                holder.session.run_with_iobinding(binding)
+                raw_outputs = binding.copy_outputs_to_cpu()
+            else:
+                raw_outputs = _run_with_timeout(holder.session, feed)
 
-        if normalize:
-            norm = np.linalg.norm(emb, axis=1, keepdims=True)
-            emb = emb / np.clip(norm, a_min=1e-9, a_max=None)
+            # Pooling
+            emb = _apply_pooling(raw_outputs[0], feed["attention_mask"], holder.pooling_strategy)
 
-        all_embeddings.extend(emb.tolist())
+            if normalize:
+                norm = np.linalg.norm(emb, axis=1, keepdims=True)
+                emb = emb / np.clip(norm, a_min=1e-9, a_max=None)
+
+            all_embeddings.extend(emb.tolist())
 
     return all_embeddings
 
@@ -533,7 +697,7 @@ def predict_reranker_onnx(query: str, documents: list[str]) -> list[float]:
         holder.session.run_with_iobinding(binding)
         raw_outputs = binding.copy_outputs_to_cpu()
     else:
-        raw_outputs = holder.session.run(None, feed)
+        raw_outputs = _run_with_timeout(holder.session, feed)
     logits = raw_outputs[0]
 
     # Sigmoid 적용
@@ -542,6 +706,26 @@ def predict_reranker_onnx(query: str, documents: list[str]) -> list[float]:
     scores: np.ndarray = 1.0 / (1.0 + np.exp(-logits))
 
     return [float(s) for s in scores]
+
+
+def cleanup_sessions() -> None:
+    """ONNX 세션과 스레드풀을 정리한다 (서버 종료 시 호출)."""
+    global _embedding_holder, _reranker_holder
+
+    if _embedding_holder.is_loaded:
+        _embedding_holder.session = None
+        _embedding_holder.tokenizer = None
+        _embedding_holder.is_loaded = False
+        logger.info("ONNX 임베딩 세션 해제")
+
+    if _reranker_holder.is_loaded:
+        _reranker_holder.session = None
+        _reranker_holder.tokenizer = None
+        _reranker_holder.is_loaded = False
+        logger.info("ONNX 리랭커 세션 해제")
+
+    _inference_executor.shutdown(wait=False)
+    logger.info("ONNX 추론 스레드풀 종료")
 
 
 def get_platform_info() -> dict[str, Any]:

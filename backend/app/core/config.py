@@ -110,6 +110,7 @@ class Settings(BaseSettings):
     ONNX_QUALITY_GATE_FALLBACK: bool = True
     ONNX_INTRA_OP_THREADS: int = 0  # 0 = 자동 (P코어 감지)
     ONNX_ENABLE_IO_BINDING: bool = False  # CPU EP에서 무효 (GPU EP에서만 유의미)
+    ONNX_INFERENCE_TIMEOUT_SECONDS: float = 30.0  # 추론 타임아웃 (초)
     ONNX_ENABLE_BF16_FASTMATH: bool = False  # Graviton3+ 전용 (Mac ARM 미지원)
     ONNX_QDQ_SENSITIVE_LAYERS: str = ""  # 쉼표 구분 민감 레이어 인덱스 (예: "0,1,22,23"), 빈 문자열이면 기본값 사용
 

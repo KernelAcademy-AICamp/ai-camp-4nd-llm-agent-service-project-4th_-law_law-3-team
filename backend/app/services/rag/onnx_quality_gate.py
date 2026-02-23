@@ -7,9 +7,12 @@ ONNX 품질 게이트
 
 from __future__ import annotations
 
+import gc
 import logging
 import time
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -21,8 +24,9 @@ logger = logging.getLogger(__name__)
 _EMBEDDING_COSINE_THRESHOLD = 0.995
 _RERANKER_CORRELATION_THRESHOLD = 0.990
 
-# 법률 도메인 대표 쿼리 (품질 검증용)
+# 법률 도메인 대표 쿼리 (품질 검증용, 다양한 길이/분야/패턴 포함)
 _GATE_QUERIES = [
+    # 기본 법률 분야 (8개)
     "교통사고 손해배상 판례",
     "임대차 보증금 반환 청구",
     "근로기준법 해고 부당해고",
@@ -31,6 +35,18 @@ _GATE_QUERIES = [
     "형사소송법 증거능력 배제",
     "행정소송 처분 취소 요건",
     "상속 포기 절차와 기한",
+    # 짧은 쿼리 (2개)
+    "사기죄",
+    "특허침해",
+    # 긴 쿼리 (2개)
+    "아파트 층간소음으로 인한 정신적 손해배상 청구 시 입증책임과 위자료 산정기준",
+    "주식회사 대표이사의 자기거래 승인 절차 위반 시 거래의 효력과 손해배상 범위",
+    # 숫자/조문 포함 (2개)
+    "형법 제329조 절도죄 구성요건",
+    "도로교통법 제148조의2 음주운전 처벌기준 0.08%",
+    # 특수 분야 (2개)
+    "개인정보보호법 위반 과징금 부과 기준",
+    "환경오염 피해 인과관계 추정 규정",
 ]
 
 _GATE_RERANK_QUERY = "교통사고 손해배상 판례"
@@ -76,35 +92,57 @@ def _pearson_correlation(a: list[float], b: list[float]) -> float:
     return float(np.corrcoef(arr_a, arr_b)[0, 1])
 
 
+def _create_temp_embedding_model() -> Any:
+    """품질 게이트 전용 임시 PyTorch 임베딩 모델을 생성한다.
+
+    lru_cache된 get_local_model() 대신 임시 인스턴스를 사용하여
+    ONNX 성공 시 PyTorch 모델이 메모리에 잔류하는 것을 방지한다.
+    """
+    from sentence_transformers import SentenceTransformer
+
+    model_cache_dir = Path(__file__).parent.parent.parent.parent / "data" / "models"
+    return SentenceTransformer(
+        settings.LOCAL_EMBEDDING_MODEL,
+        cache_folder=str(model_cache_dir),
+        trust_remote_code=False,
+        local_files_only=True,
+    )
+
+
 def check_embedding_quality() -> QualityGateResult:
     """임베딩 ONNX vs PyTorch 품질을 비교한다.
 
-    8개 법률 쿼리에 대해 양쪽 임베딩을 생성하고
+    법률 쿼리에 대해 양쪽 임베딩을 생성하고
     평균 cosine similarity를 계산한다.
+    PyTorch 모델은 검증 후 즉시 해제한다 (~2.3GB 절약).
 
     Returns:
         QualityGateResult (passed=True이면 ONNX 사용 가능)
     """
-    from app.services.rag.embedding import get_local_model
     from app.services.rag.onnx_session import encode_embedding_onnx
 
     t0 = time.perf_counter()
+    pt_model = None
 
-    cosines: list[float] = []
-    for query in _GATE_QUERIES:
-        # PyTorch 임베딩
-        model = get_local_model()
-        pt_emb = model.encode(
-            query,
-            show_progress_bar=False,
-            normalize_embeddings=True,
-        ).tolist()
+    try:
+        pt_model = _create_temp_embedding_model()
+        cosines: list[float] = []
+        for query in _GATE_QUERIES:
+            # PyTorch 임베딩
+            pt_emb = pt_model.encode(
+                query,
+                show_progress_bar=False,
+                normalize_embeddings=True,
+            ).tolist()
 
-        # ONNX 임베딩
-        onnx_emb = encode_embedding_onnx(query)
+            # ONNX 임베딩
+            onnx_emb = encode_embedding_onnx(query)
 
-        cosine = _cosine_similarity_vectors(pt_emb, onnx_emb)
-        cosines.append(cosine)
+            cosine = _cosine_similarity_vectors(pt_emb, onnx_emb)
+            cosines.append(cosine)
+    finally:
+        del pt_model
+        gc.collect()
 
     avg_cosine = float(np.mean(cosines))
     min_cosine = float(np.min(cosines))
@@ -147,18 +185,25 @@ def check_reranker_quality() -> QualityGateResult:
 
     동일 쿼리-문서 쌍에 대해 양쪽 점수를 계산하고
     Pearson 상관계수를 비교한다.
+    PyTorch 모델은 검증 후 즉시 해제한다.
 
     Returns:
         QualityGateResult (passed=True이면 ONNX 사용 가능)
     """
     from app.services.rag.onnx_session import predict_reranker_onnx
-    from app.services.rag.rerank import _load_reranker_model
 
     t0 = time.perf_counter()
+    pt_model = None
 
-    # PyTorch 리랭킹
-    model = _load_reranker_model()
-    if model is None:
+    try:
+        import torch
+        from sentence_transformers import CrossEncoder
+
+        pt_model = CrossEncoder(
+            "dragonkue/bge-reranker-v2-m3-ko",
+            activation_fn=torch.nn.Sigmoid(),
+        )
+    except Exception:
         return QualityGateResult(
             passed=False,
             metric_name="pearson",
@@ -168,11 +213,15 @@ def check_reranker_quality() -> QualityGateResult:
             detail="PyTorch 리랭커 모델 로드 실패",
         )
 
-    pairs = [(_GATE_RERANK_QUERY, doc) for doc in _GATE_RERANK_DOCS]
-    pt_scores = [float(s) for s in model.predict(pairs)]
+    try:
+        pairs = [(_GATE_RERANK_QUERY, doc) for doc in _GATE_RERANK_DOCS]
+        pt_scores = [float(s) for s in pt_model.predict(pairs)]
 
-    # ONNX 리랭킹
-    onnx_scores = predict_reranker_onnx(_GATE_RERANK_QUERY, _GATE_RERANK_DOCS)
+        # ONNX 리랭킹
+        onnx_scores = predict_reranker_onnx(_GATE_RERANK_QUERY, _GATE_RERANK_DOCS)
+    finally:
+        del pt_model
+        gc.collect()
 
     correlation = _pearson_correlation(pt_scores, onnx_scores)
     elapsed_ms = (time.perf_counter() - t0) * 1000
@@ -236,10 +285,12 @@ def run_quality_gate() -> dict[str, QualityGateResult]:
         results["embedding"] = emb_result
 
         if not emb_result.passed and settings.ONNX_QUALITY_GATE_FALLBACK:
+            from app.services.rag.onnx_session import disable_onnx_embedding
+
             logger.warning(
-                "임베딩 ONNX 품질 미달 → PyTorch 폴백 (USE_ONNX_EMBEDDING=false)"
+                "임베딩 ONNX 품질 미달 → PyTorch 폴백"
             )
-            settings.USE_ONNX_EMBEDDING = False
+            disable_onnx_embedding()
 
     # 리랭커 품질 검증
     if is_reranker_onnx_loaded():
@@ -247,9 +298,11 @@ def run_quality_gate() -> dict[str, QualityGateResult]:
         results["reranker"] = rr_result
 
         if not rr_result.passed and settings.ONNX_QUALITY_GATE_FALLBACK:
+            from app.services.rag.onnx_session import disable_onnx_reranker
+
             logger.warning(
-                "리랭커 ONNX 품질 미달 → PyTorch 폴백 (USE_ONNX_RERANKER=false)"
+                "리랭커 ONNX 품질 미달 → PyTorch 폴백"
             )
-            settings.USE_ONNX_RERANKER = False
+            disable_onnx_reranker()
 
     return results

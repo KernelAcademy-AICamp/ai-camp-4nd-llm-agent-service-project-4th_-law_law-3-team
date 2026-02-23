@@ -12,8 +12,6 @@ import logging
 from functools import lru_cache
 from typing import Any
 
-from app.core.config import settings
-
 logger = logging.getLogger(__name__)
 
 # 기본 리랭커 모델명 (한국어 특화, BGE v2-m3 기반)
@@ -97,7 +95,7 @@ def rerank_documents(
         return []
 
     # ONNX 리랭커 dispatch
-    if settings.USE_ONNX_RERANKER and _is_onnx_reranker_available():
+    if _is_onnx_reranker_active():
         return _rerank_with_onnx(query, documents, top_k, min_score)
 
     model = _load_reranker_model(model_name)
@@ -147,12 +145,12 @@ def rerank_documents(
         return documents[:top_k]
 
 
-def _is_onnx_reranker_available() -> bool:
-    """ONNX 리랭커 세션이 로드되었는지 확인."""
+def _is_onnx_reranker_active() -> bool:
+    """ONNX 리랭커 세션이 활성 상태인지 확인 (로드됨 + 비활성화되지 않음)."""
     try:
-        from app.services.rag.onnx_session import is_reranker_onnx_loaded
+        from app.services.rag.onnx_session import is_onnx_reranker_active
 
-        return is_reranker_onnx_loaded()
+        return is_onnx_reranker_active()
     except ImportError:
         return False
 
