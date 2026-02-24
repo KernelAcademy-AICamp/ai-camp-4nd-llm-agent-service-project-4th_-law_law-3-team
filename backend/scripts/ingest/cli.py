@@ -123,6 +123,7 @@ def _run_single_type(
     device: str | None,
     profile: str | None,
     no_cache: bool,
+    backend: str | None = None,
 ) -> dict[str, dict[str, int]]:
     """단일 타입 인제스트 실행. 결과 dict 반환."""
     results: dict[str, dict[str, int]] = {}
@@ -158,6 +159,7 @@ def _run_single_type(
                 device=device,
                 profile=profile,
                 use_cache=not no_cache,
+                backend=backend,
             )
         elif config.name == "law":
             # 법령: 전용 라이터 (1문서 → 법령요약 + 조문요약 N개)
@@ -173,6 +175,7 @@ def _run_single_type(
                 device=device,
                 profile=profile,
                 use_cache=not no_cache,
+                backend=backend,
             )
         else:
             results["vector"] = run_vector_ingest(
@@ -183,6 +186,7 @@ def _run_single_type(
                 device=device,
                 profile=profile,
                 use_cache=not no_cache,
+                backend=backend,
             )
 
     # Step: FTS 재빌드
@@ -280,6 +284,12 @@ def main() -> None:
         action="store_true",
         help="임베딩 캐시 비활성화",
     )
+    parser.add_argument(
+        "--backend",
+        choices=["onnx", "onnx-int8"],
+        default=None,
+        help="임베딩 백엔드 (onnx, onnx-int8, 기본: PyTorch)",
+    )
 
     args = parser.parse_args()
 
@@ -317,6 +327,7 @@ def main() -> None:
     print(f"  리셋: {args.reset}")
     print(f"  프로필: {args.profile or '자동'}")
     print(f"  캐시: {'비활성' if args.no_cache else '활성'}")
+    print(f"  백엔드: {args.backend or 'PyTorch'}")
     print(f"{'=' * 60}\n")
 
     for i, type_name in enumerate(target_types, 1):
@@ -338,6 +349,7 @@ def main() -> None:
                 device=args.device,
                 profile=args.profile,
                 no_cache=args.no_cache,
+                backend=args.backend,
             )
 
             # 타입별 결과 출력

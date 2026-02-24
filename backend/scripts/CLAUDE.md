@@ -36,7 +36,7 @@ from scripts.common import load_items, setup_logging, create_sync_session_factor
 |------|------|
 | `device.py` | GPU/CPU/MPS 디바이스 감지, DeviceInfo |
 | `config.py` | 하드웨어 프로필, 배치 크기 최적 설정 |
-| `model.py` | 임베딩 모델 로딩 (KURE-v1) |
+| `model.py` | 임베딩 모델 로딩 (KURE-v1, ONNX/INT8 백엔드 지원) |
 | `store.py` | LanceDB 테이블 생성/연결 |
 | `chunking.py` | 텍스트 청킹 (법령/판례) |
 | `schema.py` | 스키마 v2 re-export + 검증 유틸 |
@@ -608,7 +608,7 @@ data/
 └── incoming/                            # 외부 데이터 임시 저장
 ```
 
-### 2. 데이터 타입 구성 (20개)
+### 2. 데이터 타입 구성 (21개)
 
 | `--type` 타입명 | 데이터 | 건수 | 소스 형식 |
 |-----------------|--------|------|----------|
@@ -631,8 +631,9 @@ data/
 | `dec_industrial` | 산업재해보상보험재심사위원회 결정문 | 782 | 개별 JSON |
 | `dec_environment` | 중앙환경분쟁조정위원회 결정문 | 358 | 개별 JSON |
 | `dec_securities` | 증권선물위원회 결정문 | 636 | 개별 JSON |
+| `dec_media` | 방송미디어통신위원회 결정문 | 811 | 개별 JSON |
 | `local_ordinance` | 자치법규 | 160,276 | 단일 JSON |
-| **합계** | **20개 타입** | **~584,600** | |
+| **합계** | **21개 타입** | **~585,400** | |
 
 ### 3. 사전 조건
 
@@ -657,7 +658,7 @@ uv run python -m scripts.ingest.cli --type <타입명|all> [옵션]
 
 | 옵션 | 값 | 기본값 | 설명 |
 |------|-----|--------|------|
-| `--type` | `all` 또는 20개 타입명 | (필수) | 인제스트 대상 (`all`: 전체 20개, 또는 `precedent`, `dec_fair_trade` 등 개별 타입) |
+| `--type` | `all` 또는 21개 타입명 | (필수) | 인제스트 대상 (`all`: 전체 21개, 또는 `precedent`, `dec_fair_trade` 등 개별 타입) |
 | `--step` | `all`, `db`, `vector`, `fts`, `index` | `all` | 실행 단계 |
 | `--reset` | - | `false` | 기존 데이터 삭제 후 재실행 |
 | `--source` | 파일 경로 | 타입별 기본 경로 | 커스텀 JSON 소스 경로 (`--type all`과 함께 사용 불가) |
@@ -667,6 +668,7 @@ uv run python -m scripts.ingest.cli --type <타입명|all> [옵션]
 | `--device` | `cuda`, `mps`, `cpu` | 자동 감지 | 임베딩 디바이스 (`vector` 단계용) |
 | `--profile` | `desktop`, `laptop`, `mac`, `cpu` | 자동 감지 | 하드웨어 프로필 (`vector` 단계용) |
 | `--no-cache` | - | `false` | 임베딩 캐시 비활성화 (`vector` 단계용) |
+| `--backend` | `onnx`, `onnx-int8` | `None` (PyTorch) | 임베딩 백엔드 (`vector` 단계용, ONNX 양자화 지원) |
 
 ### 5. 단계별 실행 가이드
 
@@ -739,14 +741,14 @@ uv run python -m scripts.ingest.cli --type precedent --verify
 scripts/ingest/
 ├── cli.py              # CLI 진입점 (python -m scripts.ingest.cli)
 ├── config.py           # IngestConfig dataclass + 레지스트리 + get_source_path()
-├── sources.yaml        # 20개 타입 데이터 소스 경로 (YAML 중앙 관리, data/ingest_source/ 기준)
+├── sources.yaml        # 21개 타입 데이터 소스 경로 (YAML 중앙 관리, data/ingest_source/ 기준)
 ├── db_writer.py        # PostgreSQL + FTS 적재
 ├── law_article_vector_writer.py      # 법령 전용 벡터 라이터 (1문서→법령요약+조문요약 N벡터)
 ├── local_ordinance_vector_writer.py  # 자치법규 전용 벡터 라이터 (1문서→다중벡터)
 ├── summary_updater.py  # ai_summary 컬럼만 일괄 업데이트 (FTS/MeCab 불필요)
 ├── shared.py           # 공유 유틸 (토크나이저, FTS 배치)
-├── ingest.md           # 20개 타입 저장 구조 상세 문서
-└── types/              # 데이터 타입별 설정 (20개 타입)
+├── ingest.md           # 21개 타입 저장 구조 상세 문서
+└── types/              # 데이터 타입별 설정 (21개 타입)
     ├── __init__.py     # 타입 자동 등록
     ├── _template.py    # 신규 타입 템플릿
     ├── _dec_comm_common.py  # 위원회 결정례 공통 (벡터/FTS 메타)
@@ -769,6 +771,7 @@ scripts/ingest/
     ├── dec_industrial.py    # 산업재해보상보험재심사위원회 결정문
     ├── dec_environment.py   # 중앙환경분쟁조정위원회 결정문
     ├── dec_securities.py    # 증권선물위원회 결정문
+    ├── dec_media.py         # 방송미디어통신위원회 결정문
     └── local_ordinance.py   # 자치법규 (별도 벡터 테이블: local_ordinance_chunks)
 ```
 

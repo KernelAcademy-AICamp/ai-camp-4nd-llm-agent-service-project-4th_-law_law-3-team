@@ -212,7 +212,7 @@ app/
 │   ├── trial_statistics.py
 │   ├── fts_index.py           # FTS 전문 검색 인덱스
 │   ├── law.py
-│   └── ingest/                # 인제스트 원본 테이블 (20개)
+│   └── ingest/                # 인제스트 원본 테이블 (21개)
 │       ├── admin_rule_document.py
 │       ├── constitutional_document.py
 │       ├── administration_document.py
@@ -221,7 +221,7 @@ app/
 │       ├── interpretation_ministry_document.py
 │       ├── special_admin_appeal_document.py
 │       ├── local_ordinance_document.py  # 자치법규 (160,276건)
-│       └── dec_*_document.py  # 위원회 결정례 (9개)
+│       └── dec_*_document.py  # 위원회 결정례 (10개)
 └── common/              # (deprecated) 레거시 코드
     └── chat_service.py  # → services/rag/로 이전됨
 ```

@@ -245,6 +245,7 @@ def run_local_ordinance_vector_ingest(
     device: str | None = None,
     profile: str | None = None,
     use_cache: bool = True,
+    backend: str | None = None,
 ) -> dict[str, int]:
     """
     자치법규 JSON → 다중 벡터 임베딩 → local_ordinance_chunks 테이블 저장
@@ -277,8 +278,8 @@ def run_local_ordinance_vector_ingest(
         batch_size = hw_config.batch_size
         logger.info("배치 크기 자동 설정: %d", batch_size)
 
-    model = get_embedding_model(device=device)
-    logger.info("임베딩 모델 로드 완료")
+    model = get_embedding_model(device=device, backend=backend)
+    logger.info("임베딩 모델 로드 완료 (backend=%s)", backend or "pytorch")
 
     cache = EmbeddingCache() if use_cache else None
 
