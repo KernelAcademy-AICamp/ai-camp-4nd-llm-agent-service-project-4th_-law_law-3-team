@@ -54,6 +54,7 @@ MECAB_DICT_INDEX_CANDIDATES = [
     "/opt/homebrew/lib/mecab/mecab-dict-index",
     "/opt/homebrew/libexec/mecab/mecab-dict-index",
     "/opt/homebrew/Cellar/mecab-ko/0.996-ko-0.9.2/libexec/mecab/mecab-dict-index",
+    "/opt/homebrew/Cellar/mecab/0.996/libexec/mecab/mecab-dict-index",
 ]
 SYS_DICT_CANDIDATES = [
     "/usr/lib/x86_64-linux-gnu/mecab/dic/mecab-ko-dic",
