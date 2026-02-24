@@ -36,6 +36,7 @@ _EMB_VARIANT_MAP: dict[str, str] = {
 _RR_VARIANT_MAP: dict[str, str] = {
     "ort-opt": "reranker-ort-opt",
     "ort-opt-qdq": "reranker-ort-opt-qdq",
+    "ort-opt-qdq-6fp32": "reranker-ort-opt-qdq-6fp32",
 }
 
 # ONNX 모델 파일명 후보 (우선순위순)

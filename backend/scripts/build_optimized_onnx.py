@@ -119,10 +119,16 @@ MAX_ABS_DIFF_THRESHOLD_FP16_RR = 1.5e-2  # 리랭커는 분류 logit → 임베�
 MAX_ABS_DIFF_THRESHOLD_QDQ = 0.03  # 임베딩 INT8: 정규화 벡터, 실측 ~0.021
 MAX_ABS_DIFF_THRESHOLD_QDQ_RR = 0.5  # 리랭커 INT8: logit 스케일이 커서 abs diff 큼, 실측 ~0.45
 
-# QDQ 기본 민감 레이어 (XLM-RoBERTa Large 24 layers)
+# QDQ 기본 민감 레이어 — 임베딩 (KURE-v1, XLM-RoBERTa Large 24 layers)
 # sweep_sensitive_layers.py 실측 결과: cosine >= 0.999 달성에 16개 FP32 필요.
 # INT8 레이어 = [3, 4, 5, 7, 8, 10, 11, 16] (8개만 양자화)
 DEFAULT_SENSITIVE_LAYERS = [0, 1, 2, 6, 9, 12, 13, 14, 15, 17, 18, 19, 20, 21, 22, 23]
+
+# QDQ 기본 민감 레이어 — 리랭커 (bge-reranker-v2-m3-ko, XLM-RoBERTa Large 24 layers)
+# sweep_reranker_sensitive_layers.py 실측 결과: pearson >= 0.999 달성에 4개 FP32 필요.
+# INT8 레이어 = [0,1,3,4,5,8,9,10,11,12,13,14,16,17,18,19,20,21,22,23] (20개 양자화)
+DEFAULT_SENSITIVE_LAYERS_RR = [2, 6, 7, 15]
+
 NUM_TRANSFORMER_LAYERS = 24
 
 # --- 테스트 데이터 ---
@@ -854,7 +860,10 @@ def quantize_qdq(
         return None
 
     if sensitive_layers is None:
-        sensitive_layers = DEFAULT_SENSITIVE_LAYERS
+        sensitive_layers = (
+            DEFAULT_SENSITIVE_LAYERS_RR if model_type == "reranker"
+            else DEFAULT_SENSITIVE_LAYERS
+        )
 
     quant_mode = "static (entropy)" if use_static else "dynamic"
     print(f"    [{label}] QDQ 선택적 양자화 중... (per_channel={per_channel}, {quant_mode})")

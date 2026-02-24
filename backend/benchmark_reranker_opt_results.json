@@ -1,0 +1,154 @@
+{
+  "timestamp": "2026-02-24 22:12:45",
+  "model": "dragonkue/bge-reranker-v2-m3-ko",
+  "query": "교통사고 손해배상 판례",
+  "num_documents": 15,
+  "num_warmup": 2,
+  "num_iterations": 10,
+  "pytorch_baseline_ms": 3238.2,
+  "quality_thresholds": {
+    "pearson": 0.99,
+    "spearman": 0.99,
+    "top3_match": 3,
+    "top5_match": 4,
+    "max_diff": 0.05
+  },
+  "profiling": {
+    "profile_file": "/Users/gimjuhyeong/dev/law-3-team/backend/ort_reranker_profile_2026-02-24_22-09-47.json",
+    "top_ops": [
+      {
+        "op": "MatMul",
+        "time_ms": 1778.4,
+        "pct": 93.9
+      },
+      {
+        "op": "BiasGelu",
+        "time_ms": 40.9,
+        "pct": 2.2
+      },
+      {
+        "op": "SkipLayerNormalization",
+        "time_ms": 14.1,
+        "pct": 0.7
+      },
+      {
+        "op": "FusedMatMul",
+        "time_ms": 11.5,
+        "pct": 0.6
+      },
+      {
+        "op": "Gather",
+        "time_ms": 10.8,
+        "pct": 0.6
+      },
+      {
+        "op": "Transpose",
+        "time_ms": 9.8,
+        "pct": 0.5
+      },
+      {
+        "op": "Add",
+        "time_ms": 9.2,
+        "pct": 0.5
+      },
+      {
+        "op": "Where",
+        "time_ms": 9.1,
+        "pct": 0.5
+      },
+      {
+        "op": "Softmax",
+        "time_ms": 5.7,
+        "pct": 0.3
+      },
+      {
+        "op": "IsNaN",
+        "time_ms": 1.6,
+        "pct": 0.1
+      }
+    ],
+    "total_time_ms": 1893.0
+  },
+  "results": [
+    {
+      "label": "ORT-opt (현재 설정)",
+      "median_ms": 1815.1,
+      "mean_ms": 1814.7,
+      "std_ms": 59.8,
+      "min_ms": 1719.5,
+      "max_ms": 1889.4,
+      "pearson": 1.0,
+      "spearman": 1.0
+    },
+    {
+      "label": "ORT-opt (ORT_DISABLE_ALL)",
+      "median_ms": 1904.1,
+      "mean_ms": 1901.4,
+      "std_ms": 26.3,
+      "min_ms": 1854.3,
+      "max_ms": 1934.5,
+      "pearson": 1.0,
+      "spearman": 1.0
+    },
+    {
+      "label": "ORT-opt (전체 Config 최적화)",
+      "median_ms": 1960.8,
+      "mean_ms": 1963.1,
+      "std_ms": 13.3,
+      "min_ms": 1943.6,
+      "max_ms": 1989.8,
+      "pearson": 1.0,
+      "spearman": 1.0
+    },
+    {
+      "label": "CoreML EP (ALL)",
+      "median_ms": 2002.7,
+      "mean_ms": 2042.1,
+      "std_ms": 71.8,
+      "min_ms": 1971.1,
+      "max_ms": 2168.3,
+      "pearson": 1.0,
+      "spearman": 1.0
+    },
+    {
+      "label": "CoreML EP (CPU+ANE)",
+      "median_ms": 2093.9,
+      "mean_ms": 2108.1,
+      "std_ms": 43.4,
+      "min_ms": 2078.1,
+      "max_ms": 2222.3,
+      "pearson": 1.0,
+      "spearman": 1.0
+    },
+    {
+      "label": "CoreML EP (CPUOnly)",
+      "median_ms": 2107.6,
+      "mean_ms": 2140.6,
+      "std_ms": 88.6,
+      "min_ms": 2074.0,
+      "max_ms": 2346.9,
+      "pearson": 1.0,
+      "spearman": 1.0
+    },
+    {
+      "label": "session.run (기본)",
+      "median_ms": 2107.0,
+      "mean_ms": 2116.7,
+      "std_ms": 118.6,
+      "min_ms": 1960.4,
+      "max_ms": 2329.5,
+      "pearson": 1.0,
+      "spearman": 1.0
+    },
+    {
+      "label": "IO Binding (CPU)",
+      "median_ms": 2138.2,
+      "mean_ms": 2142.0,
+      "std_ms": 28.4,
+      "min_ms": 2115.6,
+      "max_ms": 2215.6,
+      "pearson": 1.0,
+      "spearman": 1.0
+    }
+  ]
+}
