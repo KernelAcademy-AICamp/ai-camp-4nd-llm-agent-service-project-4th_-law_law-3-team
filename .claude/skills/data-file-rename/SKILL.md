@@ -10,7 +10,7 @@ description: 외부에서 들어온 법률 데이터 JSON 파일을 프로젝트
 이 스킬은 **데이터 라이프사이클의 첫 단계**입니다:
 
 ```
-외부 데이터 도착 → [data-file-rename] → data/ 배치 → [ingest-pipeline] → DB/벡터 적재
+외부 데이터 도착 → [data-file-rename] → data/ingest_source/ 배치 → [ingest-pipeline] → DB/벡터 적재
 ```
 
 ## 스크립트 위치
@@ -122,18 +122,19 @@ uv run python -m scripts.ingest.cli --type all --step all --reset
 
 ```
 data/
-├── incoming/              ← 외부 파일 임시 저장 (이 스킬이 처리)
+├── incoming/                    ← 외부 파일 임시 저장 (이 스킬이 처리)
 │   ├── .gitkeep
 │   └── (외부에서 받은 JSON 파일들)
 │
-├── law_v3.json            ← 리네임 후 배치 위치
-├── precedents_v2.json
-├── decisions_committee/
-│   └── dec_comm_*_v<N>.json
-├── interpretation_ministry/
-│   └── intp_min_*_v<N>.json
-└── special_admin_appeal/
-    └── sadm_case_*_v<N>.json
+└── ingest_source/               ← 리네임 후 배치 위치 (인제스트 전용)
+    ├── law_v3.json
+    ├── precedents_v2.json
+    ├── decisions_committee/
+    │   └── dec_comm_*_v<N>.json
+    ├── interpretation_ministry/
+    │   └── intp_min_*_v<N>.json
+    └── special_admin_appeal/
+        └── sadm_case_*_v<N>.json
 ```
 
 ## 에러 처리

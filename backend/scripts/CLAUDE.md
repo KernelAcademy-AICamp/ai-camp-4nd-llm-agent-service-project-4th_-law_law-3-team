@@ -564,36 +564,48 @@ config-driven 인제스트 파이프라인. 데이터 타입별 설정을 `types
 
 ### 1. DB 적재 데이터 소스 위치
 
-모든 소스는 프로젝트 루트 `data/` 하위에 위치합니다. (`config.py`의 `DATA_DIR`)
+모든 인제스트 소스는 `data/ingest_source/` 하위에 위치합니다. (`config.py`의 `DATA_DIR` + `sources.yaml` 상대경로)
 
 ```
 data/
-├── law_v3.json                    # 법령
-├── precedents_v2.json             # 판례
-├── admin_rule_v2.json             # 행정규칙
-├── constitutional_v2.json         # 헌재결정례
-├── administration_v2.json         # 행정심판례
-├── legislation_v2.json            # 법령해석례
-├── treaty_v2.json                 # 조약
-├── interpretation_ministry/       # 부처해석례 (28개 부처별 JSON)
-│   ├── intp_min_경찰청_v2.json
-│   ├── intp_min_고용노동부_v2.json
-│   └── ...
-├── special_admin_appeal/          # 특별행정심판례 (2개 기관별 JSON)
-│   ├── sadm_case_조세심판원_v2.json
-│   └── sadm_case_해양안전심판원_v2.json
-├── local_rules_v1.json            # 자치법규 (160,276건)
-└── decisions_committee/           # 위원회 결정문 (10개 위원회별 JSON)
-    ├── dec_comm_개인정보보호위원회_v2.json
-    ├── dec_comm_고용보험심사위원회_v2.json
-    ├── dec_comm_공정거래위원회_v3.json
-    ├── dec_comm_국가인권위원회_v2.json
-    ├── dec_comm_국민권익위원회_v2.json
-    ├── dec_comm_금융위원회_v2.json
-    ├── dec_comm_노동위원회_v2.json
-    ├── dec_comm_산업재해보상위험재심사위원회_v2.json
-    ├── dec_comm_중앙환경분쟁조정위원회_v2.json
-    └── dec_comm_증권선물위원회_v2.json
+├── ingest_source/                       # 인제스트 파이프라인 전용 데이터
+│   ├── law_v3.json                      # 법령
+│   ├── precedents_v2.json               # 판례
+│   ├── admin_rule_v3.json               # 행정규칙
+│   ├── constitutional_v2.json           # 헌재결정례
+│   ├── administration_v2.json           # 행정심판례
+│   ├── legislation_v2.json              # 법령해석례
+│   ├── treaty_v2.json                   # 조약
+│   ├── local_rules_v1.json              # 자치법규 (160,276건)
+│   ├── interpretation_ministry/         # 부처해석례 (33개 부처별 JSON)
+│   │   ├── intp_min_경찰청_v2.json
+│   │   ├── intp_min_고용노동부_v2.json
+│   │   └── ...
+│   ├── special_admin_appeal/            # 특별행정심판례 (4개 기관별 JSON)
+│   │   ├── sadm_case_조세심판원_v2.json
+│   │   ├── sadm_case_해양안전심판원_v2.json
+│   │   ├── sadm_case_국민권익위원회_v1.json
+│   │   └── sadm_case_인사혁신처_v1.json
+│   └── decisions_committee/             # 위원회 결정문 (11개 위원회별 JSON)
+│       ├── dec_comm_개인정보보호위원회_v2.json
+│       ├── dec_comm_고용보험심사위원회_v2.json
+│       ├── dec_comm_공정거래위원회_v3.json
+│       ├── dec_comm_국가인권위원회_v2.json
+│       ├── dec_comm_국민권익위원회_v2.json
+│       ├── dec_comm_금융위원회_v2.json
+│       ├── dec_comm_노동위원회_v2.json
+│       ├── dec_comm_방송미디어통신위원회_v1.json
+│       ├── dec_comm_산업재해보상위험재심사위원회_v2.json
+│       ├── dec_comm_중앙환경분쟁조정위원회_v2.json
+│       └── dec_comm_증권선물위원회_v2.json
+│
+├── lawyers.json                         # 변호사 데이터 (인제스트 외)
+├── lawterms_v1.json                     # 법률 용어 사전 (인제스트 외)
+├── population.json                      # 인구 데이터 (인제스트 외)
+├── law_abbreviations.json               # 법령 약칭 (인제스트 외)
+├── law_hierarchy.json                   # 법령 체계도 (인제스트 외)
+├── trial_statistics_data/               # 재판 통계 CSV (인제스트 외)
+└── incoming/                            # 외부 데이터 임시 저장
 ```
 
 ### 2. 데이터 타입 구성 (20개)
@@ -607,8 +619,8 @@ data/
 | `administration` | 행정심판례 | 34,254 | 단일 JSON |
 | `legislation` | 법령해석례 | 8,597 | 단일 JSON |
 | `treaty` | 조약 | 3,589 | 단일 JSON |
-| `interpretation_ministry` | 부처해석례 (28개 부처) | 37,325 | 디렉토리 |
-| `special_admin_appeal` | 특별행정심판례 (2개 기관) | 148,778 | 디렉토리 |
+| `interpretation_ministry` | 부처해석례 (33개 부처) | 37,455 | 디렉토리 |
+| `special_admin_appeal` | 특별행정심판례 (4개 기관) | 149,073 | 디렉토리 |
 | `dec_privacy` | 개인정보보호위원회 결정문 | 1,448 | 개별 JSON |
 | `dec_employment` | 고용보험심사위원회 결정문 | 118 | 개별 JSON |
 | `dec_fair_trade` | 공정거래위원회 결정문 | ~7,728 | 개별 JSON |
@@ -620,7 +632,7 @@ data/
 | `dec_environment` | 중앙환경분쟁조정위원회 결정문 | 358 | 개별 JSON |
 | `dec_securities` | 증권선물위원회 결정문 | 636 | 개별 JSON |
 | `local_ordinance` | 자치법규 | 160,276 | 단일 JSON |
-| **합계** | **20개 타입** | **~584,200** | |
+| **합계** | **20개 타입** | **~584,600** | |
 
 ### 3. 사전 조건
 
@@ -727,7 +739,7 @@ uv run python -m scripts.ingest.cli --type precedent --verify
 scripts/ingest/
 ├── cli.py              # CLI 진입점 (python -m scripts.ingest.cli)
 ├── config.py           # IngestConfig dataclass + 레지스트리 + get_source_path()
-├── sources.yaml        # 20개 타입 데이터 소스 경로 (YAML 중앙 관리)
+├── sources.yaml        # 20개 타입 데이터 소스 경로 (YAML 중앙 관리, data/ingest_source/ 기준)
 ├── db_writer.py        # PostgreSQL + FTS 적재
 ├── law_article_vector_writer.py      # 법령 전용 벡터 라이터 (1문서→법령요약+조문요약 N벡터)
 ├── local_ordinance_vector_writer.py  # 자치법규 전용 벡터 라이터 (1문서→다중벡터)

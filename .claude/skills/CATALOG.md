@@ -89,7 +89,7 @@ RAG 파이프라인 구현, 평가, 데이터 적재.
 | `langchain-rag-patterns` | 601 | RAG 구현 시 | LangChain/LangGraph RAG 패턴 |
 | `rag-evaluation-workflow` | 182 | RAG 변경 후 | Recall/MRR/NDCG 자동 평가 |
 | `legal-rag-experiment-tracking` | 219 | 실험 기록 시 | 실험 메타데이터 템플릿 |
-| `ingest-pipeline` | 135 | 데이터 적재 시 | 19개 타입 벡터 임베딩/FTS |
+| `ingest-pipeline` | 135 | 데이터 적재 시 | 20개 타입 벡터 임베딩/FTS |
 
 | 에이전트 | 설명 |
 |---------|------|

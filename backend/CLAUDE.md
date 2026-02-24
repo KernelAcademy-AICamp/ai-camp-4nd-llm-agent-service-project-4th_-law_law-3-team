@@ -61,9 +61,10 @@ rclone copy --config rclone.conf gdrive:data/ data/ --progress
 ### 6. 데이터 로드 (PostgreSQL)
 
 ```bash
-# data/ 폴더에 법령/판례 JSON 파일 필요
-# - data/law_v3.json
-# - data/precedents_v2.json
+# data/ingest_source/ 폴더에 법령/판례 JSON 파일 필요
+# - data/ingest_source/law_v3.json
+# - data/ingest_source/precedents_v2.json
+# (sources.yaml에서 경로 관리)
 
 uv run python scripts/load_lancedb_data.py --type all
 ```
