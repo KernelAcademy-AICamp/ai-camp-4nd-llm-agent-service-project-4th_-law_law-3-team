@@ -19,6 +19,7 @@ import logging
 import re
 from typing import Any, Optional
 
+from langsmith import traceable
 from sqlalchemy import func, select
 
 from app.core.database import async_session_factory, sync_session_factory
@@ -33,6 +34,7 @@ _INVALID_TOKEN_RE = re.compile(r"['\\\x00]")
 _CONCEPT_AND_MIN_RESULTS = 5
 
 
+@traceable(name="mecab_tokenize")
 def _tokenize(text: str) -> list[str]:
     """텍스트를 MeCab 토큰으로 분해 (2자 이상만)."""
     try:
@@ -53,6 +55,7 @@ def _clean_token(token: str) -> str:
     return _INVALID_TOKEN_RE.sub("", token)
 
 
+@traceable(name="build_concept_and_tsquery")
 def _build_concept_and_tsquery(query: str) -> str:
     """개념 단위 AND tsquery 생성.
 
@@ -86,6 +89,7 @@ def _build_concept_and_tsquery(query: str) -> str:
     return " & ".join(parts)
 
 
+@traceable(name="build_or_tsquery")
 def _build_or_tsquery(query: str) -> str:
     """전체 OR tsquery 생성 (fallback용)."""
     tokens = [_clean_token(t) for t in _tokenize(query)]
@@ -115,6 +119,7 @@ def _map_data_type_to_doc_type(data_type: str) -> str:
     return mapping.get(data_type, data_type.lower() if data_type else "")
 
 
+@traceable(name="execute_fts_query")
 def _execute_fts_query(
     session: Any,
     tsquery_str: str,
@@ -166,11 +171,13 @@ def _execute_fts_query(
             "content": "",
             "metadata": metadata,
             "similarity": row.rank / max_rank,
+            "score_type": "fts_rank",
         })
 
     return documents
 
 
+@traceable(name="keyword_search")
 def search_by_keyword(
     query: str,
     n_results: int = 50,

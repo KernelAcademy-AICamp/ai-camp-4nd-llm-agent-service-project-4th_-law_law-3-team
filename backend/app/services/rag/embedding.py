@@ -10,6 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
+from langsmith import traceable
 from openai import OpenAI
 
 from app.core.config import settings
@@ -131,6 +132,7 @@ def get_local_model() -> "SentenceTransformer":
     )
 
 
+@traceable(name="embedding")
 def create_query_embedding(query: str) -> List[float]:
     """
     쿼리 텍스트를 임베딩 벡터로 변환

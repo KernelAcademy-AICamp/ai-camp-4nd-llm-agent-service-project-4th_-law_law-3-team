@@ -9,22 +9,13 @@ import logging
 from collections.abc import AsyncGenerator
 from typing import Any, Literal
 
-from app.core.config import settings
 from app.multi_agent.agents.base_chat import BaseChatAgent
 from app.multi_agent.schemas.plan import AgentResult
 from app.services.rag.pipeline import (
     PipelineConfig,
     search_with_pipeline_async,
-    search_with_pipeline_traced_async,
 )
 from app.services.rag.query_rewrite import rewrite_conversational_query
-from app.services.rag.trace_store import (
-    RagStepResult,
-    RagTrace,
-    generate_trace_id,
-    now_utc,
-    trace_store,
-)
 from app.services.service_function import (
     PrecedentService,
     get_precedent_service,
@@ -121,37 +112,15 @@ class LegalSearchAgent(BaseChatAgent):
              graph_contexts, context, sources)
         """
         # 1. 하이브리드 검색 + 리랭킹 (RAGPipeline)
-        trace_steps: list[RagStepResult] = []
-
-        if settings.ENABLE_RAG_TRACE:
-            precedent_result, p_steps = await search_with_pipeline_traced_async(
-                message, self.precedent_config
-            )
-            # 판례 스텝에 prefix 추가
-            for s in p_steps:
-                s.step_name = f"[판례] {s.step_name}"
-            trace_steps.extend(p_steps)
-
-            law_result, l_steps = await search_with_pipeline_traced_async(
-                message, self.law_config
-            )
-            # 법령 스텝에 prefix 추가
-            for s in l_steps:
-                s.step_name = f"[법령] {s.step_name}"
-            trace_steps.extend(l_steps)
-        else:
-            precedent_result = await search_with_pipeline_async(
-                message, self.precedent_config
-            )
-            law_result = await search_with_pipeline_async(
-                message, self.law_config
-            )
+        precedent_result = await search_with_pipeline_async(
+            message, self.precedent_config
+        )
+        law_result = await search_with_pipeline_async(
+            message, self.law_config
+        )
 
         precedent_results = precedent_result.documents
         law_results = law_result.documents
-
-        # 트레이스 임시 저장 (process에서 response와 함께 최종 저장)
-        self._last_trace_steps = trace_steps
 
         # 2. 판례 상세 정보 조회
         source_ids = [
@@ -215,10 +184,6 @@ class LegalSearchAgent(BaseChatAgent):
         user_location: dict[str, float] | None = None,
     ) -> AgentResult:
         """법률 검색 및 응답 생성"""
-        import time as _time
-
-        trace_start = _time.monotonic()
-
         # 대화형 쿼리 리라이팅: RAG 검색에만 적용
         search_query = await rewrite_conversational_query(message, history)
         _, _, _, _, context, sources = await self._prepare_rag_data(search_query)
@@ -229,35 +194,6 @@ class LegalSearchAgent(BaseChatAgent):
             context=context,
             history=history,
         )
-
-        # 트레이스 저장
-        if settings.ENABLE_RAG_TRACE:
-            total_ms = (_time.monotonic() - trace_start) * 1000
-            trace = RagTrace(
-                trace_id=generate_trace_id(),
-                timestamp=now_utc(),
-                query=message,
-                search_query=search_query,
-                agent_used=self.name,
-                response_full=response or "",
-                steps=getattr(self, "_last_trace_steps", []),
-                pipeline_config={
-                    "focus": self.focus,
-                    "precedent": {
-                        "n_results": self.precedent_config.n_results,
-                        "enable_rerank": self.precedent_config.enable_rerank,
-                        "rerank_top_k": self.precedent_config.rerank_top_k,
-                    },
-                    "law": {
-                        "n_results": self.law_config.n_results,
-                        "enable_rerank": self.law_config.enable_rerank,
-                        "rerank_top_k": self.law_config.rerank_top_k,
-                    },
-                },
-                total_time_ms=total_ms,
-            )
-            trace_store.add(trace)
-            self._last_trace_steps = []
 
         return AgentResult(
             message=response,
@@ -452,10 +388,6 @@ class LegalSearchAgent(BaseChatAgent):
         user_location: dict[str, float] | None = None,
     ) -> AsyncGenerator[tuple[str, Any], None]:
         """스트리밍 법률 검색 및 응답 생성"""
-        import time as _time
-
-        trace_start = _time.monotonic()
-
         # 대화형 쿼리 리라이팅: RAG 검색에만 적용
         search_query = await rewrite_conversational_query(message, history)
         _, _, _, _, context, sources = await self._prepare_rag_data(search_query)
@@ -464,29 +396,9 @@ class LegalSearchAgent(BaseChatAgent):
         model = get_chat_model()
         messages = self._build_messages(message, context, history)
 
-        response_chunks: list[str] = []
         async for chunk in model.astream(messages):
             if chunk.content and isinstance(chunk.content, str):
-                response_chunks.append(chunk.content)
                 yield ("token", {"content": chunk.content})
-
-        # 트레이스 저장
-        if settings.ENABLE_RAG_TRACE:
-            total_ms = (_time.monotonic() - trace_start) * 1000
-            full_response = "".join(response_chunks)
-            trace = RagTrace(
-                trace_id=generate_trace_id(),
-                timestamp=now_utc(),
-                query=message,
-                search_query=search_query,
-                agent_used=self.name,
-                response_full=full_response,
-                steps=getattr(self, "_last_trace_steps", []),
-                pipeline_config={"focus": self.focus},
-                total_time_ms=total_ms,
-            )
-            trace_store.add(trace)
-            self._last_trace_steps = []
 
         yield ("sources", {"sources": sources})
         yield ("metadata", {

@@ -12,6 +12,8 @@ import logging
 from functools import lru_cache
 from typing import Any
 
+from langsmith import traceable
+
 logger = logging.getLogger(__name__)
 
 # 기본 리랭커 모델명 (한국어 특화, BGE v2-m3 기반)
@@ -66,6 +68,7 @@ def _adaptive_truncate(content: str) -> str:
     return content[:_HEAD_CHARS] + "\n...\n" + content[-_TAIL_CHARS:]
 
 
+@traceable(name="rerank")
 def rerank_documents(
     query: str,
     documents: list[dict[str, Any]],
@@ -126,6 +129,7 @@ def rerank_documents(
                 continue
             doc_copy = doc.copy()
             doc_copy["rerank_score"] = score
+            doc_copy["score_type"] = "rerank"
             reranked.append(doc_copy)
             if len(reranked) >= top_k:
                 break

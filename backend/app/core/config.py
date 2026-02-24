@@ -1,3 +1,4 @@
+import os
 from typing import List
 from urllib.parse import urlparse, urlunparse
 
@@ -101,8 +102,9 @@ class Settings(BaseSettings):
     # MeCab 사용자 사전 경로 (법률 복합명사 인식)
     MECAB_USERDIC_PATH: str = "data/mecab_userdic/legal_terms.dic"
 
-    # RAG 트레이스 수집 (디버깅용, 인메모리)
-    ENABLE_RAG_TRACE: bool = True
+    # LangSmith 트레이싱 (LANGCHAIN_API_KEY 환경변수 필요)
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_PROJECT: str = "law-platform"
 
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []
@@ -121,3 +123,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# LangSmith/LangChain은 os.environ에서 직접 읽으므로 설정값을 내보냄
+if settings.LANGCHAIN_TRACING_V2:
+    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+    os.environ.setdefault("LANGCHAIN_PROJECT", settings.LANGCHAIN_PROJECT)

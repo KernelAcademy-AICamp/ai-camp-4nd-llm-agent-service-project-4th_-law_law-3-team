@@ -12,6 +12,7 @@ import logging
 import re
 from typing import Any, NamedTuple, Optional
 
+from langsmith import traceable
 from sqlalchemy import select, text
 
 from app.core.config import settings
@@ -172,6 +173,7 @@ def _best_doc_per_source(docs: list[dict[str, Any]]) -> dict[str, dict[str, Any]
 # ---------------------------------------------------------------------------
 
 
+@traceable(name="vector_search")
 def _search_vector_ids(
     query: str,
     n_results: int,
@@ -229,6 +231,7 @@ def _search_vector_ids(
                 "date": raw_meta.get("date", ""),
             },
             "similarity": similarity,
+            "score_type": "cosine",
         }
 
     # 유사도 내림차순 정렬 (RRF 랭킹용)
@@ -242,6 +245,7 @@ def _search_vector_ids(
 # ---------------------------------------------------------------------------
 
 
+@traceable(name="fetch_contents")
 def fetch_document_contents(
     id_to_data_type: dict[str, str],
 ) -> dict[str, str]:
@@ -377,6 +381,7 @@ def _populate_content(
             doc["content"] = contents[sid]
 
 
+@traceable(name="hybrid_search")
 def search_without_content(
     query: str,
     n_results: int = 5,
@@ -396,8 +401,7 @@ def search_without_content(
     Returns:
         관련 문서 목록 (content는 빈 문자열)
     """
-    vector_fetch = n_results
-    vector_results = _search_vector_ids(query, vector_fetch, doc_type)
+    vector_results = _search_vector_ids(query, n_results, doc_type)
 
     if not settings.USE_HYBRID_SEARCH:
         return vector_results[:n_results]
@@ -412,7 +416,7 @@ def search_without_content(
         return vector_results[:n_results]
 
     keyword_results = search_by_keyword(
-        query, n_results=vector_fetch, doc_type=doc_type
+        query, n_results=n_results, doc_type=doc_type
     )
 
     if not keyword_results:
@@ -424,7 +428,7 @@ def search_without_content(
         if "data_type" not in meta:
             meta["data_type"] = _resolve_data_type(meta.get("doc_type", ""))
 
-    # RRF 병합
+    # RRF 병합 — 리랭킹을 위해 전체 반환 (잘라내지 않음)
     from app.services.rag.fusion import reciprocal_rank_fusion
 
     vector_source_ids = _unique_source_ids(vector_results)
@@ -442,90 +446,7 @@ def search_without_content(
         elif sid in keyword_best:
             merged.append(keyword_best[sid])
 
-        if len(merged) >= n_results:
-            break
-
     return merged
-
-
-def search_without_content_traced(
-    query: str,
-    n_results: int = 5,
-    doc_type: Optional[str] = None,
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """하이브리드 검색 + 중간 결과 반환 (트레이스용).
-
-    search_without_content()와 동일한 검색 로직이나,
-    벡터/키워드/RRF 각 단계의 중간 결과를 함께 반환.
-
-    Returns:
-        (merged_results, intermediates) 튜플.
-        intermediates: {"vector_results", "keyword_results", "fused_source_ids"}
-    """
-    import time as _time
-
-    intermediates: dict[str, Any] = {
-        "vector_results": [],
-        "vector_time_ms": 0.0,
-        "keyword_results": [],
-        "keyword_time_ms": 0.0,
-        "fused_source_ids": [],
-    }
-
-    vector_fetch = n_results
-
-    t0 = _time.monotonic()
-    vector_results = _search_vector_ids(query, vector_fetch, doc_type)
-    intermediates["vector_time_ms"] = (_time.monotonic() - t0) * 1000
-    intermediates["vector_results"] = vector_results
-
-    if not settings.USE_HYBRID_SEARCH:
-        return vector_results[:n_results], intermediates
-
-    from app.services.rag.keyword_search import (
-        is_fts_available_sync,
-        search_by_keyword,
-    )
-
-    if not is_fts_available_sync():
-        return vector_results[:n_results], intermediates
-
-    t1 = _time.monotonic()
-    keyword_results = search_by_keyword(
-        query, n_results=vector_fetch, doc_type=doc_type
-    )
-    intermediates["keyword_time_ms"] = (_time.monotonic() - t1) * 1000
-    intermediates["keyword_results"] = keyword_results
-
-    if not keyword_results:
-        return vector_results[:n_results], intermediates
-
-    for doc in keyword_results:
-        meta = doc.get("metadata", {})
-        if "data_type" not in meta:
-            meta["data_type"] = _resolve_data_type(meta.get("doc_type", ""))
-
-    from app.services.rag.fusion import reciprocal_rank_fusion
-
-    vector_source_ids = _unique_source_ids(vector_results)
-    keyword_source_ids = _unique_source_ids(keyword_results)
-    fused_source_ids = reciprocal_rank_fusion(vector_source_ids, keyword_source_ids)
-    intermediates["fused_source_ids"] = fused_source_ids
-
-    vector_best = _best_doc_per_source(vector_results)
-    keyword_best = _best_doc_per_source(keyword_results)
-
-    merged: list[dict[str, Any]] = []
-    for sid in fused_source_ids:
-        if sid in vector_best:
-            merged.append(vector_best[sid])
-        elif sid in keyword_best:
-            merged.append(keyword_best[sid])
-
-        if len(merged) >= n_results:
-            break
-
-    return merged, intermediates
 
 
 def search_relevant_documents(
@@ -552,6 +473,7 @@ def search_relevant_documents(
     return docs
 
 
+@traceable(name="fetch_summaries")
 def fetch_ai_summaries(
     id_to_data_type: dict[str, str],
 ) -> dict[str, str]:

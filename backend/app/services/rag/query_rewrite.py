@@ -8,6 +8,8 @@ import logging
 import re
 from typing import List
 
+from langsmith import traceable
+
 from app.tools.llm import get_chat_model
 
 logger = logging.getLogger(__name__)
@@ -32,21 +34,20 @@ LEGAL_KEYWORDS = [
 ]
 
 
+@traceable(name="query_rewrite")
 def rewrite_query(
     query: str,
-    num_queries: int = 3,
     use_llm: bool = True,
 ) -> List[str]:
     """
-    쿼리를 다양한 형태로 확장
+    쿼리를 법률 검색에 최적화된 형태로 리라이팅
 
     Args:
         query: 원본 검색 쿼리
-        num_queries: 생성할 쿼리 수 (원본 포함)
         use_llm: LLM 사용 여부 (False면 키워드 기반 확장)
 
     Returns:
-        확장된 쿼리 리스트 (원본 쿼리가 첫 번째)
+        리라이팅된 쿼리 리스트 (1개)
     """
     if not use_llm:
         # LLM 미사용 시 키워드 기반 확장
@@ -186,6 +187,7 @@ def _is_followup_query(message: str) -> bool:
     return False
 
 
+@traceable(name="conversational_rewrite")
 async def rewrite_conversational_query(
     message: str,
     history: list[dict[str, str]] | None = None,
