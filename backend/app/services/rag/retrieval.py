@@ -172,6 +172,72 @@ def _best_doc_per_source(docs: list[dict[str, Any]]) -> dict[str, dict[str, Any]
 # ---------------------------------------------------------------------------
 
 
+def _search_law_article_chunks(
+    query_embedding: list[float],
+    n_results: int,
+) -> list[dict[str, Any]]:
+    """law_article_chunks 테이블에서 법령 벡터 검색.
+
+    source_id별 최고 유사도 청크만 유지하여 반환.
+    """
+    import lancedb
+
+    from app.tools.vectorstore.law_article_schema import (
+        TABLE_NAME as LA_TABLE,
+    )
+
+    try:
+        db = lancedb.connect(settings.LANCEDB_URI)
+        if LA_TABLE not in db.table_names():
+            logger.warning("law_article_chunks 테이블 없음 → 빈 결과")
+            return []
+
+        table = db.open_table(LA_TABLE)
+        results_df = (
+            table.search(query_embedding)
+            .metric("cosine")
+            .limit(n_results)
+            .to_pandas()
+        )
+    except Exception as e:
+        logger.warning("law_article_chunks 검색 실패: %s", e)
+        return []
+
+    if results_df.empty:
+        return []
+
+    # source_id별 최고 유사도 유지
+    best: dict[str, dict[str, Any]] = {}
+    for _, row in results_df.iterrows():
+        source_id = str(row.get("source_id", ""))
+        if not source_id:
+            continue
+
+        similarity = 1 - float(row.get("_distance", 1.0))
+
+        if source_id in best and similarity <= best[source_id].get("similarity", 0):
+            continue
+
+        best[source_id] = {
+            "id": source_id,
+            "content": "",
+            "metadata": {
+                "case_name": str(row.get("title", "")),
+                "case_number": "",
+                "data_type": "법령",
+                "doc_type": "law",
+                "court_name": str(row.get("source_name", "")),
+                "doc_id": source_id,
+                "date": str(row.get("date", "") or ""),
+            },
+            "similarity": similarity,
+        }
+
+    docs = list(best.values())
+    docs.sort(key=lambda d: d.get("similarity", 0), reverse=True)
+    return docs
+
+
 def _search_vector_ids(
     query: str,
     n_results: int,
@@ -181,13 +247,21 @@ def _search_vector_ids(
 
     동일 source_id 청크 중 최고 유사도만 유지하고
     유사도 내림차순으로 정렬하여 반환.
+
+    법령(doc_type="law") 검색 시 law_article_chunks 전용 테이블 사용.
     """
-    store = get_vector_store()
     query_embedding = create_query_embedding(query)
+
+    # 법령 전용 테이블 분기
+    resolved_type = _resolve_data_type(doc_type) if doc_type else None
+    if resolved_type == "법령":
+        return _search_law_article_chunks(query_embedding, n_results)
+
+    store = get_vector_store()
 
     where: dict[str, str] | None = None
     if doc_type:
-        where = {"data_type": _resolve_data_type(doc_type)}
+        where = {"data_type": resolved_type or _resolve_data_type(doc_type)}
 
     results = store.search(
         query_embedding=query_embedding,
@@ -197,6 +271,10 @@ def _search_vector_ids(
     )
 
     if not results or not results.get("ids") or not results["ids"][0]:
+        # doc_type 미지정(전체 검색) 시 법령도 포함
+        if doc_type is None:
+            law_docs = _search_law_article_chunks(query_embedding, n_results)
+            return law_docs
         return []
 
     # source_id 단위 deduplicate (최고 유사도 유지)
@@ -231,9 +309,20 @@ def _search_vector_ids(
             "similarity": similarity,
         }
 
-    # 유사도 내림차순 정렬 (RRF 랭킹용)
     docs = list(best.values())
     docs.sort(key=lambda d: d.get("similarity", 0), reverse=True)
+
+    # doc_type 미지정(전체 검색) 시 법령 결과도 병합
+    if doc_type is None:
+        law_docs = _search_law_article_chunks(query_embedding, n_results)
+        if law_docs:
+            for ld in law_docs:
+                sid = ld["metadata"]["doc_id"]
+                if sid not in best or ld["similarity"] > best[sid].get("similarity", 0):
+                    best[sid] = ld
+            docs = list(best.values())
+            docs.sort(key=lambda d: d.get("similarity", 0), reverse=True)
+
     return docs
 
 
@@ -475,6 +564,9 @@ def search_relevant_documents(
 def fetch_lancedb_summaries(source_ids: list[str]) -> dict[str, str]:
     """LanceDB에서 source_id별 요약문(청크 텍스트) 조회.
 
+    legal_chunks 테이블과 law_article_chunks 테이블 모두에서 조회합니다.
+    law_article_chunks에서는 Basic(전체요약)만 반환합니다.
+
     Args:
         source_ids: 조회할 source_id 목록
 
@@ -484,34 +576,60 @@ def fetch_lancedb_summaries(source_ids: list[str]) -> dict[str, str]:
     if not source_ids:
         return {}
 
+    # SQL injection 방어: source_id에서 영숫자+하이픈+언더스코어만 허용
+    safe_pattern = re.compile(r"^[\w\-]+$")
+    safe_ids = [sid for sid in source_ids if safe_pattern.match(sid)]
+    if not safe_ids:
+        return {}
+
+    result: dict[str, str] = {}
+
     try:
         import lancedb
 
-        db = lancedb.connect(settings.LANCEDB_URI)
-        table = db.open_table(settings.LANCEDB_TABLE_NAME)
+        from app.tools.vectorstore.law_article_schema import (
+            TABLE_NAME as LA_TABLE,
+        )
 
-        # SQL injection 방어: source_id에서 영숫자+하이픈+언더스코어만 허용
-        safe_pattern = re.compile(r"^[\w\-]+$")
-        safe_ids = [sid for sid in source_ids if safe_pattern.match(sid)]
-        if not safe_ids:
-            return {}
+        db = lancedb.connect(settings.LANCEDB_URI)
 
         ids_str = ", ".join(
             "'{}'".format(sid.replace("'", "''")) for sid in safe_ids
         )
-        df = table.search().where(
-            f"source_id IN ({ids_str})", prefilter=True
-        ).select(["source_id", "content"]).limit(len(safe_ids) * 2).to_pandas()
 
-        result: dict[str, str] = {}
-        for _, row in df.iterrows():
-            sid = row["source_id"]
-            if sid not in result:
-                result[sid] = row["content"]
+        # 1. legal_chunks (기존 테이블)
+        if settings.LANCEDB_TABLE_NAME in db.table_names():
+            table = db.open_table(settings.LANCEDB_TABLE_NAME)
+            df = table.search().where(
+                f"source_id IN ({ids_str})", prefilter=True
+            ).select(["source_id", "content"]).limit(len(safe_ids) * 2).to_pandas()
+
+            for _, row in df.iterrows():
+                sid = row["source_id"]
+                if sid not in result:
+                    result[sid] = row["content"]
+
+        # 2. law_article_chunks (법령 조문 테이블) — 미발견 ID만 조회
+        remaining = [sid for sid in safe_ids if sid not in result]
+        if remaining and LA_TABLE in db.table_names():
+            la_table = db.open_table(LA_TABLE)
+            remaining_str = ", ".join(
+                "'{}'".format(sid.replace("'", "''")) for sid in remaining
+            )
+            la_df = la_table.search().where(
+                f"source_id IN ({remaining_str}) AND summary_type = 'Basic'",
+                prefilter=True,
+            ).select(["source_id", "content"]).limit(len(remaining) * 2).to_pandas()
+
+            for _, row in la_df.iterrows():
+                sid = row["source_id"]
+                if sid not in result:
+                    result[sid] = row["content"]
+
         return result
     except Exception as e:
         logger.warning("LanceDB 요약문 조회 실패: %s", e)
-        return {}
+        return result
 
 
 async def search_relevant_documents_async(

@@ -151,7 +151,8 @@ GC + 메모리 정리
 
 ```
 backend/lancedb_data/
-├── legal_chunks.lance/              # 19개 타입 통합 테이블
+├── legal_chunks.lance/              # 판례 등 통합 테이블 (법령은 law_article_chunks로 이관)
+├── law_article_chunks.lance/       # 법령 전용 (법령요약 + 조문요약 N개)
 └── local_ordinance_chunks.lance/   # 자치법규 전용 (전체요약 + 조문요약)
 ```
 
@@ -728,6 +729,7 @@ scripts/ingest/
 ├── config.py           # IngestConfig dataclass + 레지스트리 + get_source_path()
 ├── sources.yaml        # 20개 타입 데이터 소스 경로 (YAML 중앙 관리)
 ├── db_writer.py        # PostgreSQL + FTS 적재
+├── law_article_vector_writer.py      # 법령 전용 벡터 라이터 (1문서→법령요약+조문요약 N벡터)
 ├── local_ordinance_vector_writer.py  # 자치법규 전용 벡터 라이터 (1문서→다중벡터)
 ├── summary_updater.py  # ai_summary 컬럼만 일괄 업데이트 (FTS/MeCab 불필요)
 ├── shared.py           # 공유 유틸 (토크나이저, FTS 배치)
