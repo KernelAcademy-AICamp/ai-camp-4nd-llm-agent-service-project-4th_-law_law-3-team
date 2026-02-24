@@ -2,6 +2,10 @@
 """
 법률 데이터 PostgreSQL 로드 스크립트
 
+.. deprecated::
+    새 인제스트 파이프라인은 ``scripts/ingest/cli.py`` 를 사용하세요.
+    이 스크립트는 레거시 모델(Law, LegalDocument) 호환성을 위해 유지됩니다.
+
 JSON 파일에서 법률 데이터를 읽어 PostgreSQL에 저장합니다.
 
 사용법:

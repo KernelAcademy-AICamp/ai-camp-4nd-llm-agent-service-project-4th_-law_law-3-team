@@ -66,7 +66,7 @@ rclone copy --config rclone.conf gdrive:data/ data/ --progress
 # - data/ingest_source/precedents_v2.json
 # (sources.yaml에서 경로 관리)
 
-uv run python scripts/load_lancedb_data.py --type all
+uv run python -m scripts.ingest.cli --type all --step db
 ```
 
 ### 7. LanceDB 데이터
@@ -178,7 +178,9 @@ app/
 │   │   ├── retrieval.py  # 벡터 검색
 │   │   ├── rerank.py     # 리랭킹
 │   │   ├── query_rewrite.py  # 쿼리 리라이팅
-│   │   └── pipeline.py   # 검색 파이프라인
+│   │   ├── pipeline.py   # 검색 파이프라인
+│   │   ├── onnx_session.py       # ONNX 세션 싱글턴 관리
+│   │   └── onnx_quality_gate.py  # ONNX 품질 게이트 (PyTorch 비교)
 │   └── service_function/ # 통합 서비스 함수
 │       ├── lawyer_service.py       # 변호사 검색/클러스터링
 │       ├── lawyer_stats_service.py # 변호사 통계
@@ -310,6 +312,18 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `UPSTAGE_MODEL` | Solar 모델명 | `solar-pro3-260126` |
 | `USE_DB_LAWYERS` | 변호사 데이터 소스 (true: PostgreSQL, false: JSON) | `false` |
 | `USE_LEGAL_TERM_DICT` | 법률 용어 사전 사용 (true: MeCab 토큰 보강) | `false` |
+| `USE_ONNX_EMBEDDING` | ONNX 임베딩 사용 (쿼리 + 인제스트 배치, CUDA 자동 감지) | `false` |
+| `ONNX_EMBEDDING_VARIANT` | ONNX 임베딩 variant | `ort-opt` |
+| `USE_ONNX_RERANKER` | ONNX 리랭커 사용 | `false` |
+| `ONNX_RERANKER_VARIANT` | ONNX 리랭커 variant | `ort-opt` |
+| `ONNX_INTRA_OP_THREADS` | ORT 스레드 수 (0=자동, 4=Mac ARM P코어) | `0` |
+| `ONNX_QUALITY_GATE_ENABLED` | ONNX 품질 게이트 활성화 (PyTorch 대비 cosine/pearson 검증) | `true` |
+| `ONNX_QUALITY_GATE_FALLBACK` | 품질 미달 시 자동 PyTorch 폴백 | `true` |
+| `ONNX_INFERENCE_TIMEOUT_SECONDS` | ONNX 추론 타임아웃 (초) | `30.0` |
+
+> **ONNX Variant**: `ort-opt` (FP32 무손실, cosine 1.0) 또는 `ort-opt-qdq` (INT8, cosine 0.999, 23% 빠름).
+> **ONNX EP**: `onnxruntime-gpu` 설치 시 CUDA 자동 감지, 미설치 시 CPU fallback. 인제스트 배치 임베딩도 지원.
+> ONNX 모델 빌드 및 RAG 비교 테스트 가이드: `scripts/CLAUDE.md`의 "ONNX 최적화 모델 빌드 + RAG 테스트 환경 구축" 참조.
 
 자세한 설정은 `.env.example` 참조.
 
@@ -526,16 +540,16 @@ uv run alembic downgrade -1
 
 ```bash
 # 법령 데이터 로드 (data/law_v3.json → PostgreSQL)
-uv run python scripts/load_lancedb_data.py --type law
+uv run python -m scripts.ingest.cli --type law --step db
 
 # 판례 데이터 로드 (data/precedents_v2.json → PostgreSQL)
-uv run python scripts/load_lancedb_data.py --type precedent
+uv run python -m scripts.ingest.cli --type precedent --step db
 
 # 전체 로드 (법령 + 판례)
-uv run python scripts/load_lancedb_data.py --type all
+uv run python -m scripts.ingest.cli --type all --step db
 
 # 기존 데이터 삭제 후 재로드
-uv run python scripts/load_lancedb_data.py --type all --reset
+uv run python -m scripts.ingest.cli --type all --step db --reset
 ```
 
 ### 모델 파일 위치

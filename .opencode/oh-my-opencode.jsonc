@@ -22,7 +22,12 @@
     "librarian": { "model": "opencode/big-pickle" },
 
     // Cheap/Local exploration (짧은 변경, 반복 작업, 초안 작성)
-    "explore": { "model": "ollama/deepseek-coder-v2:16b-lite-instruct-q4_K_M" },
+    // 폴백: Ollama 모델 없으면 opencode 무료 모델 사용
+    "explore": { 
+      "model": "ollama/deepseek-coder-v2:16b-lite-instruct-q4_K_M",
+      "fallback": "opencode/gpt-5-nano",
+      "stream": false
+    },
 
     // No Gemini; keep multimodal on OpenAI for now
     "multimodal-looker": { "model": "openai/gpt-5.2" }

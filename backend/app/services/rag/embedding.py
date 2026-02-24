@@ -6,6 +6,9 @@
 
 import asyncio
 import logging
+import threading
+from collections import OrderedDict
+from concurrent.futures import Future, ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
@@ -26,6 +29,31 @@ MODEL_CACHE_DIR = Path(__file__).parent.parent.parent.parent / "data" / "models"
 # 모델 가용성 상태 (모듈 레벨 캐싱)
 _embedding_model_available: Optional[bool] = None
 _embedding_model_warning_shown = False
+
+# 쿼리 임베딩 LRU 캐시 (thread-safe)
+# 1024차원 float * 1024개 ≈ 4MB (무시할 수 있는 수준)
+QUERY_CACHE_MAX_SIZE = 1024
+_query_cache: OrderedDict[str, List[float]] = OrderedDict()
+_query_cache_lock = threading.Lock()
+_query_cache_hits = 0
+_query_cache_misses = 0
+
+# Thundering herd 방지: 동일 쿼리 동시 요청 시 첫 번째만 계산
+_inflight_futures: dict[str, Future[List[float]]] = {}
+_inflight_lock = threading.Lock()
+
+# 임베딩 전용 스레드풀 (이벤트 루프 블로킹 방지)
+_EMBEDDING_THREAD_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="embedding")
+
+
+def _is_onnx_embedding_active() -> bool:
+    """ONNX 임베딩 세션이 활성 상태인지 확인 (로드됨 + 비활성화되지 않음)."""
+    try:
+        from app.services.rag.onnx_session import is_onnx_embedding_active
+
+        return is_onnx_embedding_active()
+    except ImportError:
+        return False
 
 
 def _get_model_cache_path(model_name: str) -> Path:
@@ -131,20 +159,13 @@ def get_local_model() -> "SentenceTransformer":
     )
 
 
-def create_query_embedding(query: str) -> List[float]:
-    """
-    쿼리 텍스트를 임베딩 벡터로 변환
+def _compute_embedding(query: str) -> List[float]:
+    """쿼리 임베딩을 실제로 계산한다 (캐시 미스 시 호출)."""
+    if _is_onnx_embedding_active():
+        from app.services.rag.onnx_session import encode_embedding_onnx
 
-    Args:
-        query: 검색 쿼리 텍스트
-
-    Returns:
-        임베딩 벡터 (float 리스트)
-
-    Raises:
-        EmbeddingModelNotFoundError: 로컬 모델 미캐시 시
-    """
-    if settings.USE_LOCAL_EMBEDDING:
+        return encode_embedding_onnx(query)
+    elif settings.USE_LOCAL_EMBEDDING:
         model = get_local_model()
         embedding = model.encode(
             query,
@@ -159,6 +180,77 @@ def create_query_embedding(query: str) -> List[float]:
             input=query,
         )
         return response.data[0].embedding
+
+
+def create_query_embedding(query: str) -> List[float]:
+    """
+    쿼리 텍스트를 임베딩 벡터로 변환 (LRU 캐시 + thundering herd 방지)
+
+    동일 쿼리의 반복 호출 시 캐시된 결과를 즉시 반환한다.
+    동일 쿼리 동시 요청 시 첫 번째만 계산하고 나머지는 결과를 공유한다.
+
+    Args:
+        query: 검색 쿼리 텍스트
+
+    Returns:
+        임베딩 벡터 (float 리스트)
+
+    Raises:
+        EmbeddingModelNotFoundError: 로컬 모델 미캐시 시
+    """
+    global _query_cache_hits, _query_cache_misses
+
+    # 캐시 히트 확인
+    with _query_cache_lock:
+        if query in _query_cache:
+            _query_cache_hits += 1
+            _query_cache.move_to_end(query)
+            total = _query_cache_hits + _query_cache_misses
+            if total % 100 == 0:
+                hit_rate = _query_cache_hits / total * 100
+                logger.info(
+                    "쿼리 캐시 히트율: %.1f%% (%d/%d)",
+                    hit_rate, _query_cache_hits, total,
+                )
+            return list(_query_cache[query])
+
+    # Thundering herd 방지: 동일 쿼리가 이미 진행 중이면 결과 대기
+    with _inflight_lock:
+        if query in _inflight_futures:
+            future = _inflight_futures[query]
+        else:
+            future = Future()
+            _inflight_futures[query] = future
+            future = None  # 이 스레드가 계산 담당
+
+    if future is not None:
+        # 다른 스레드가 계산 중 → 결과 대기
+        return list(future.result())
+
+    # 이 스레드가 계산 담당
+    try:
+        result = _compute_embedding(query)
+
+        # 캐시에 저장
+        with _query_cache_lock:
+            _query_cache_misses += 1
+            _query_cache[query] = list(result)
+            if len(_query_cache) > QUERY_CACHE_MAX_SIZE:
+                _query_cache.popitem(last=False)
+
+        # 대기 중인 스레드에 결과 전달
+        with _inflight_lock:
+            inflight = _inflight_futures.pop(query, None)
+            if inflight is not None:
+                inflight.set_result(result)
+
+        return result
+    except Exception as exc:
+        with _inflight_lock:
+            inflight = _inflight_futures.pop(query, None)
+            if inflight is not None:
+                inflight.set_exception(exc)
+        raise
 
 
 async def create_query_embedding_async(query: str) -> List[float]:
@@ -176,4 +268,5 @@ async def create_query_embedding_async(query: str) -> List[float]:
     Raises:
         EmbeddingModelNotFoundError: 로컬 모델 미캐시 시
     """
-    return await asyncio.to_thread(create_query_embedding, query)
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_EMBEDDING_THREAD_POOL, create_query_embedding, query)

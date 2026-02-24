@@ -54,6 +54,47 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("리랭커 모델 로드 실패: %s", e)
 
+    # ONNX 세션 로드 + 품질 게이트 + warmup
+    if settings.USE_ONNX_EMBEDDING or settings.USE_ONNX_RERANKER:
+        from app.services.rag.onnx_session import (
+            disable_onnx_embedding,
+            disable_onnx_reranker,
+            load_embedding_session,
+            load_reranker_session,
+            warmup_embedding,
+            warmup_reranker,
+        )
+
+        if settings.USE_ONNX_EMBEDDING:
+            logger.info("ONNX 임베딩 세션을 로드합니다...")
+            if load_embedding_session():
+                warmup_embedding()
+            else:
+                logger.warning("ONNX 임베딩 로드 실패 → PyTorch 유지")
+                disable_onnx_embedding()
+
+        if settings.USE_ONNX_RERANKER:
+            logger.info("ONNX 리랭커 세션을 로드합니다...")
+            if load_reranker_session():
+                warmup_reranker()
+            else:
+                logger.warning("ONNX 리랭커 로드 실패 → PyTorch 유지")
+                disable_onnx_reranker()
+
+        # 품질 게이트 (ONNX가 로드된 경우에만)
+        if settings.USE_ONNX_EMBEDDING or settings.USE_ONNX_RERANKER:
+            from app.services.rag.onnx_quality_gate import run_quality_gate
+
+            logger.info("ONNX 품질 게이트를 실행합니다...")
+            gate_results = run_quality_gate()
+            for name, result in gate_results.items():
+                status = "PASS" if result.passed else "FAIL"
+                logger.info(
+                    "품질 게이트 [%s] %s: %s=%.6f (기준 %.4f) [%.0fms]",
+                    name, status, result.metric_name,
+                    result.metric_value, result.threshold, result.elapsed_ms,
+                )
+
     # 벡터 인덱스 생성 (LANCEDB_INDEX_TYPE이 설정된 경우에만)
     if settings.LANCEDB_INDEX_TYPE:
         try:
@@ -104,6 +145,12 @@ async def lifespan(app: FastAPI):
         )
 
     yield
+
+    # 종료 시: ONNX 세션 정리
+    if settings.USE_ONNX_EMBEDDING or settings.USE_ONNX_RERANKER:
+        from app.services.rag.onnx_session import cleanup_sessions
+
+        cleanup_sessions()
 
     # 종료 시: 체크포인터 정리
     if settings.USE_PERSISTENT_CHECKPOINTER:

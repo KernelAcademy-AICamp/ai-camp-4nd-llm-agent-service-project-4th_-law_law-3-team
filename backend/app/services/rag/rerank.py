@@ -100,6 +100,10 @@ def rerank_documents(
     if not documents:
         return []
 
+    # ONNX 리랭커 dispatch
+    if _is_onnx_reranker_active():
+        return _rerank_with_onnx(query, documents, top_k, min_score)
+
     model = _load_reranker_model(model_name)
     if model is None:
         return documents[:top_k]
@@ -145,6 +149,61 @@ def rerank_documents(
     except Exception as e:
         logger.warning("리랭킹 실패: %s", e)
         return documents[:top_k]
+
+
+def _is_onnx_reranker_active() -> bool:
+    """ONNX 리랭커 세션이 활성 상태인지 확인 (로드됨 + 비활성화되지 않음)."""
+    try:
+        from app.services.rag.onnx_session import is_onnx_reranker_active
+
+        return is_onnx_reranker_active()
+    except ImportError:
+        return False
+
+
+def _rerank_with_onnx(
+    query: str,
+    documents: list[dict[str, Any]],
+    top_k: int,
+    min_score: float,
+) -> list[dict[str, Any]]:
+    """ONNX 세션으로 리랭킹을 수행한다."""
+    from app.services.rag.onnx_session import predict_reranker_onnx
+
+    try:
+        doc_texts = [
+            _adaptive_truncate(doc.get("content", ""))
+            for doc in documents
+        ]
+        all_scores = predict_reranker_onnx(query, doc_texts)
+
+        scored_docs = sorted(
+            zip(documents, all_scores),
+            key=lambda x: x[1],
+            reverse=True,
+        )
+
+        reranked: list[dict[str, Any]] = []
+        for doc, score in scored_docs:
+            if score < min_score:
+                continue
+            doc_copy = doc.copy()
+            doc_copy["rerank_score"] = score
+            reranked.append(doc_copy)
+            if len(reranked) >= top_k:
+                break
+
+        if not reranked:
+            return documents[:top_k]
+
+        return reranked
+
+    except Exception as e:
+        logger.warning("ONNX 리랭킹 실패, PyTorch 폴백: %s", e)
+        return rerank_documents(
+            query, documents, top_k,
+            min_score=min_score,
+        )
 
 
 async def rerank_documents_async(

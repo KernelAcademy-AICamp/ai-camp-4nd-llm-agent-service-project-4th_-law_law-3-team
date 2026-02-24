@@ -65,6 +65,10 @@ def _auto_convert_onnx(backend: str, data_dir: Path) -> None:
                     "optimum 설치 확인: uv sync --dev"
                 )
 
+# ONNX 배치 임베딩 1회 확인 플래그
+_onnx_embedding_checked: bool = False
+_onnx_embedding_available: bool = False
+
 
 def get_embedding_model(
     device: Optional[str] = None,
@@ -156,6 +160,57 @@ def get_embedding_model(
     return model
 
 
+def _should_use_onnx_embedding() -> bool:
+    """ONNX 배치 임베딩 사용 가능 여부를 확인한다.
+
+    settings.USE_ONNX_EMBEDDING 확인 + 세션 로드를 1회만 시도.
+    """
+    global _onnx_embedding_checked, _onnx_embedding_available
+
+    if _onnx_embedding_checked:
+        return _onnx_embedding_available
+
+    _onnx_embedding_checked = True
+
+    try:
+        from app.core.config import settings
+
+        if not settings.USE_ONNX_EMBEDDING:
+            _onnx_embedding_available = False
+            return False
+
+        from app.services.rag.onnx_session import (
+            is_embedding_onnx_loaded,
+            load_embedding_session,
+        )
+
+        if not is_embedding_onnx_loaded():
+            loaded = load_embedding_session()
+            if not loaded:
+                print("[WARN] ONNX 임베딩 세션 로드 실패 → PyTorch fallback")
+                _onnx_embedding_available = False
+                return False
+
+        _onnx_embedding_available = True
+        print("[INFO] ONNX 배치 임베딩 활성화")
+        return True
+    except Exception as e:
+        print(f"[WARN] ONNX 확인 중 오류 → PyTorch fallback: {e}")
+        _onnx_embedding_available = False
+        return False
+
+
+def _create_embeddings_onnx(
+    texts: list[str],
+    batch_size: int = 32,
+    normalize: bool = True,
+) -> list[list[float]]:
+    """ONNX 세션으로 배치 임베딩을 생성한다."""
+    from app.services.rag.onnx_session import encode_embedding_onnx_batch
+
+    return encode_embedding_onnx_batch(texts, batch_size=batch_size, normalize=normalize)
+
+
 def create_embeddings(
     texts: list[str],
     model: Optional[SentenceTransformer] = None,
@@ -165,15 +220,26 @@ def create_embeddings(
     """
     텍스트 목록을 임베딩 벡터로 변환
 
+    ONNX 모드 활성화 시 ONNX 배치 임베딩을 우선 사용하고,
+    실패 시 PyTorch로 자동 fallback한다.
+
     Args:
         texts: 텍스트 목록
-        model: 임베딩 모델 (None이면 자동 로드)
+        model: 임베딩 모델 (None이면 자동 로드, ONNX 모드에서는 무시)
         batch_size: 배치 크기
         normalize: L2 정규화 적용
 
     Returns:
         임베딩 벡터 목록
     """
+    # ONNX 경로: model=None (인제스트에서 ONNX 모드일 때) 또는 ONNX 활성화 상태
+    if _should_use_onnx_embedding():
+        try:
+            return _create_embeddings_onnx(texts, batch_size, normalize)
+        except Exception as e:
+            print(f"[WARN] ONNX 배치 임베딩 실패 → PyTorch fallback: {e}")
+
+    # PyTorch 경로
     if model is None:
         model = get_embedding_model()
 

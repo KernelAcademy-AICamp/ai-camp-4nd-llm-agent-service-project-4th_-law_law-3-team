@@ -67,6 +67,9 @@ dev = [
     "matplotlib>=3.10.8",
     "optimum[onnxruntime]>=1.17.0",
     "onnxruntime>=1.17.0",
+    "scipy>=1.11.0",
+    "onnx-simplifier>=0.4.36",
+    "onnxruntime-extensions>=0.10.0",
 ]
 
 [build-system]
@@ -122,4 +125,7 @@ dev = [
     "matplotlib>=3.10.8",
     "optimum[onnxruntime]>=1.17.0",
     "onnxruntime>=1.17.0",
+    "scipy>=1.11.0",
+    "onnx-simplifier>=0.4.36",
+    "onnxruntime-extensions>=0.10.0",
 ]
