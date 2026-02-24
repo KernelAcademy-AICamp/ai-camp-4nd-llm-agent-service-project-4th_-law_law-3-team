@@ -316,9 +316,11 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `ONNX_QUALITY_GATE_FALLBACK` | 품질 미달 시 자동 PyTorch 폴백 | `true` |
 | `ONNX_INFERENCE_TIMEOUT_SECONDS` | ONNX 추론 타임아웃 (초) | `30.0` |
 
-> **ONNX Variant**: `ort-opt` (FP32 무손실, cosine 1.0) 또는 `ort-opt-qdq` (INT8, cosine 0.999, 23% 빠름).
+> **ONNX Variant (임베딩)**: `ort-opt` (FP32 무손실, cosine 1.0) 또는 `ort-opt-qdq` (INT8, cosine 0.999, 23% 빠름).
+> **ONNX Variant (리랭커)**: `ort-opt` (FP32 무손실) | `ort-opt-qdq` (INT8, 4 FP32, Pearson 0.9999, 3.52x) | `ort-opt-qdq-6fp32` (INT8, 6 FP32, Pearson 0.9994, Spearman 0.993).
 > **ONNX EP**: `onnxruntime-gpu` 설치 시 CUDA 자동 감지, 미설치 시 CPU fallback. 인제스트 배치 임베딩도 지원.
 > ONNX 모델 빌드 및 RAG 비교 테스트 가이드: `scripts/CLAUDE.md`의 "ONNX 최적화 모델 빌드 + RAG 테스트 환경 구축" 참조.
+> **리랭커 ONNX variant 테스트**: `docs/04-report/features/reranker-onnx-variant-test-guide.md` (다운로드, .env 설정, 수동 추론, 트러블슈팅).
 
 자세한 설정은 `.env.example` 참조.
 

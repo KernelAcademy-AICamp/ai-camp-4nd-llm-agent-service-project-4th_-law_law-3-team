@@ -1,0 +1,160 @@
+{
+  "timestamp": "2026-02-24 22:22:58",
+  "pearson_target": 0.999,
+  "model": "dragonkue/bge-reranker-v2-m3-ko",
+  "test_data": {
+    "query": "교통사고 손해배상 판례",
+    "num_documents": 15
+  },
+  "sensitivity_ranking": [
+    {
+      "layer": 6,
+      "pearson_when_fp32": 0.9990687402536074
+    },
+    {
+      "layer": 7,
+      "pearson_when_fp32": 0.9990433552324957
+    },
+    {
+      "layer": 15,
+      "pearson_when_fp32": 0.9988925813358615
+    },
+    {
+      "layer": 2,
+      "pearson_when_fp32": 0.9988524721387045
+    },
+    {
+      "layer": 16,
+      "pearson_when_fp32": 0.9987065166981693
+    },
+    {
+      "layer": 10,
+      "pearson_when_fp32": 0.9986972329885472
+    },
+    {
+      "layer": 12,
+      "pearson_when_fp32": 0.9985565515357685
+    },
+    {
+      "layer": 5,
+      "pearson_when_fp32": 0.9983006857230227
+    },
+    {
+      "layer": 14,
+      "pearson_when_fp32": 0.9982936350863386
+    },
+    {
+      "layer": 1,
+      "pearson_when_fp32": 0.9982437402814762
+    },
+    {
+      "layer": 18,
+      "pearson_when_fp32": 0.9982124007334146
+    },
+    {
+      "layer": 4,
+      "pearson_when_fp32": 0.9981696218993246
+    },
+    {
+      "layer": 11,
+      "pearson_when_fp32": 0.9981163993817526
+    },
+    {
+      "layer": 8,
+      "pearson_when_fp32": 0.9977568489131422
+    },
+    {
+      "layer": 0,
+      "pearson_when_fp32": 0.9977423761206171
+    },
+    {
+      "layer": 13,
+      "pearson_when_fp32": 0.9976605840435017
+    },
+    {
+      "layer": 20,
+      "pearson_when_fp32": 0.9975519848692526
+    },
+    {
+      "layer": 22,
+      "pearson_when_fp32": 0.9973702266636449
+    },
+    {
+      "layer": 23,
+      "pearson_when_fp32": 0.9973407378500289
+    },
+    {
+      "layer": 21,
+      "pearson_when_fp32": 0.9972400905384328
+    },
+    {
+      "layer": 19,
+      "pearson_when_fp32": 0.9972196131463624
+    },
+    {
+      "layer": 17,
+      "pearson_when_fp32": 0.9971000774563645
+    },
+    {
+      "layer": 3,
+      "pearson_when_fp32": 0.9970966719359157
+    },
+    {
+      "layer": 9,
+      "pearson_when_fp32": 0.9969210349570194
+    }
+  ],
+  "expansion_results": [
+    {
+      "n_fp32_layers": 4,
+      "sensitive_layers": [
+        2,
+        6,
+        7,
+        15
+      ],
+      "pearson": 0.9999704705528469,
+      "spearman": 0.9678571428571429,
+      "latency_ms": 919.6482915067463,
+      "meets_target": true
+    },
+    {
+      "n_fp32_layers": 6,
+      "sensitive_layers": [
+        2,
+        6,
+        7,
+        10,
+        15,
+        16
+      ],
+      "pearson": 0.9993923433848132,
+      "spearman": 0.9928571428571428,
+      "latency_ms": 981.1965210028575,
+      "meets_target": true
+    },
+    {
+      "n_fp32_layers": 8,
+      "sensitive_layers": [
+        2,
+        5,
+        6,
+        7,
+        10,
+        12,
+        15,
+        16
+      ],
+      "pearson": 0.9975430804186729,
+      "spearman": 0.9857142857142854,
+      "latency_ms": 1109.345624994603,
+      "meets_target": false
+    }
+  ],
+  "ort_opt_fp32": {
+    "label": "ORT-opt FP32",
+    "pearson": 0.9999999999981487,
+    "spearman": 1.0,
+    "latency_ms": 2102.3288539945497
+  }
+}
