@@ -1,6 +1,6 @@
 # Skills & Agents Catalog
 
-스킬 31개, 에이전트 5개, 규칙 6개의 분류 및 의존관계 인덱스.
+스킬 32개, 에이전트 5개, 규칙 7개의 분류 및 의존관계 인덱스.
 
 > 최종 업데이트: 2026-02-24
 
@@ -18,7 +18,7 @@
 | [도메인 지식](#6-도메인-지식) | 2 | - | 한국 법률, Neo4j 그래프 |
 | [멀티에이전트](#7-멀티에이전트) | 2 | - | LangGraph 패턴, 디버깅 |
 | [외부 CLI](#8-외부-cli) | 3 | 1 | Gemini, Codex, CLI 조합 |
-| [운영](#9-운영) | - | 2 | 의존성 감사, E2E 테스트 |
+| [운영](#9-운영) | 1 | 2 | Google Drive 백업/복원, 의존성 감사, E2E 테스트 |
 
 ---
 
@@ -162,12 +162,19 @@ LangGraph 기반 멀티 에이전트 시스템.
 
 ## 9. 운영
 
-배포 전 검증, 의존성 관리.
+배포 전 검증, 의존성 관리, Google Drive 백업/복원.
+
+| 스킬 | 줄 수 | 적용 시점 | 설명 |
+|------|------|----------|------|
+| `google-drive-operations` | 239 | 백업/복원/데이터 동기화 시 | rclone 기반 DB 백업, 복원, data/ 동기화, 새 환경 세팅 |
 
 | 에이전트 | 설명 |
 |---------|------|
 | `dependency-auditor` | CVE 스캔, 라이선스/버전 호환성 |
 | `e2e-scenario-tester` | 판례검색→변호사찾기→소액소송 E2E 시나리오 |
+
+**규칙 연동**: `rules/google-drive-operations.md`
+**연계**: `data-file-rename` (리네임) → `google-drive-operations` (Drive 동기화) → `ingest-pipeline` (DB 적재)
 
 ---
 
@@ -180,6 +187,7 @@ LangGraph 기반 멀티 에이전트 시스템.
 | `database-operations.md` | DB 작업 시 | 마이그레이션 절차, Feature Flag |
 | `git-convention.md` | 커밋/PR 시 | Conventional Commits, 브랜치 전략 |
 | `cli-tool-routing.md` | CLI 사용 시 | 도구 선택 매트릭스, Fallback |
+| `google-drive-operations.md` | 백업/복원/동기화 시 | rclone 사전 검증, copy vs sync, 민감 파일 보호 |
 | `wsl2-docker.md` | Docker 실행 시 | WSL2 환경 docker.exe 규칙 |
 
 ---
@@ -193,7 +201,8 @@ LangGraph 기반 멀티 에이전트 시스템.
 400+ 줄 : multi-cli-integration (496), code-verification (463), korean-legal-domain (443)
 300+ 줄 : codex-cli-delegation (381), ui-ux-pro-max (377), neo4j-graph-construction (357)
 200+ 줄 : python-coding-standards (298), update-docs (292), gemini-cli-delegation (249)
-           langgraph-debugging (225), legal-rag-experiment-tracking (219), plan-review (203)
+           google-drive-operations (239), langgraph-debugging (225)
+           legal-rag-experiment-tracking (219), plan-review (203)
            api-contract-sync (199), rag-evaluation-workflow (182), react-nextjs-frontend (180)
            summary-quality-audit (179), alembic-migration-safety (166), project-commit (151)
 100+ 줄 : tdd-methodology (145), postgresql-migration (138), ingest-pipeline (135)
@@ -202,4 +211,4 @@ LangGraph 기반 멀티 에이전트 시스템.
  ~64 줄 : project-review (64)
 ```
 
-**총 줄 수**: ~9,941줄 (평균 321줄/스킬, 31개)
+**총 줄 수**: ~10,180줄 (평균 318줄/스킬, 32개)
