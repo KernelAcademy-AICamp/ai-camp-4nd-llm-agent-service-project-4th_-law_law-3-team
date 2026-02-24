@@ -46,7 +46,7 @@ from scripts.ingest.vector_writer import build_ann_index, run_vector_ingest
 
 logger = setup_logging(__name__)
 
-VALID_STEPS = ("all", "db", "vector", "fts", "index")
+VALID_STEPS = ("all", "db", "vector", "fts", "index", "onnx-export")
 BATCH_SIZE_DB = 1000
 
 
@@ -231,7 +231,7 @@ def main() -> None:
     parser.add_argument(
         "--type",
         choices=type_choices,
-        required=True,
+        default=None,
         help=f"인제스트 대상 타입 (all: 전체, {', '.join(available_types)})",
     )
     parser.add_argument(
@@ -292,6 +292,31 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    # ONNX 모델 변환 (--type 불필요)
+    if args.step == "onnx-export":
+        from scripts.benchmark_embedding_quantize import export_onnx, quantize_int8
+
+        print(f"\n{'=' * 60}")
+        print("  ONNX 모델 변환")
+        print(f"{'=' * 60}")
+
+        start = time.time()
+        print("\n  [1/2] ONNX FP32 변환")
+        onnx_ok = export_onnx()
+
+        if onnx_ok:
+            print("\n  [2/2] ONNX INT8 양자화")
+            quantize_int8()
+
+        elapsed = time.time() - start
+        print(f"\n  완료: {elapsed:.1f}초")
+        print(f"{'=' * 60}")
+        return
+
+    # --type 필수 검증 (onnx-export 외)
+    if args.type is None:
+        parser.error("--type은 필수입니다 (onnx-export 제외)")
 
     # --type all + --source 조합 차단
     if args.type == "all" and args.source:

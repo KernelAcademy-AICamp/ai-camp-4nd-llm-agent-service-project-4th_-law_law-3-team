@@ -15,6 +15,8 @@ from scripts.embedding_common.config import DEFAULT_CONFIG
 from scripts.embedding_common.device import get_device, get_optimal_cuda_device
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from sentence_transformers import SentenceTransformer
 
 _cached_model: Optional[object] = None
@@ -27,6 +29,41 @@ _ONNX_MODEL_DIRS: dict[str, str] = {
     "onnx": "models/kure-v1-onnx",
     "onnx-int8": "models/kure-v1-onnx-int8",
 }
+
+
+def _auto_convert_onnx(backend: str, data_dir: Path) -> None:
+    """ONNX 모델이 없을 때 자동 변환 (FP32 export + INT8 양자화)"""
+    fp32_path = data_dir / _ONNX_MODEL_DIRS["onnx"]
+
+    # FP32 ONNX가 없으면 먼저 변환
+    if not fp32_path.exists():
+        print("[INFO] ONNX FP32 모델이 없습니다. 자동 변환 중...")
+        try:
+            from scripts.benchmark_embedding_quantize import export_onnx
+
+            if not export_onnx():
+                raise RuntimeError("ONNX FP32 변환 실패")
+        except ImportError:
+            raise FileNotFoundError(
+                f"ONNX 모델을 찾을 수 없고 자동 변환도 실패했습니다: {fp32_path}\n"
+                "optimum 설치 확인: uv sync --dev"
+            )
+
+    # INT8 요청인데 INT8 디렉토리가 없으면 양자화
+    if backend == "onnx-int8":
+        int8_path = data_dir / _ONNX_MODEL_DIRS["onnx-int8"]
+        if not int8_path.exists():
+            print("[INFO] ONNX INT8 모델이 없습니다. 자동 양자화 중...")
+            try:
+                from scripts.benchmark_embedding_quantize import quantize_int8
+
+                if not quantize_int8():
+                    raise RuntimeError("INT8 양자화 실패")
+            except ImportError:
+                raise FileNotFoundError(
+                    f"INT8 모델을 찾을 수 없고 자동 양자화도 실패했습니다: {int8_path}\n"
+                    "optimum 설치 확인: uv sync --dev"
+                )
 
 
 def get_embedding_model(
@@ -73,11 +110,28 @@ def get_embedding_model(
         onnx_path = data_dir / _ONNX_MODEL_DIRS[backend]
 
         if not onnx_path.exists():
-            raise FileNotFoundError(
-                f"ONNX 모델 디렉토리를 찾을 수 없습니다: {onnx_path}\n"
-                f"먼저 ONNX 변환을 실행하세요: "
-                f"uv run python scripts/benchmark_embedding_quantize.py"
-            )
+            # ONNX 모델 자동 변환
+            _auto_convert_onnx(backend, data_dir)
+
+        # INT8: model_quantized.onnx → model.onnx 자동 리네임
+        quantized = onnx_path / "model_quantized.onnx"
+        model_onnx = onnx_path / "model.onnx"
+        if quantized.exists() and not model_onnx.exists():
+            quantized.rename(model_onnx)
+            print("[INFO] Renamed model_quantized.onnx → model.onnx")
+
+        # INT8: config/tokenizer 파일 누락 시 FP32 ONNX에서 복사
+        if not (onnx_path / "config.json").exists():
+            fp32_path = data_dir / _ONNX_MODEL_DIRS["onnx"]
+            if fp32_path.exists():
+                import shutil
+
+                for f in fp32_path.iterdir():
+                    if f.is_file() and f.suffix in (".json", ".txt"):
+                        dst = onnx_path / f.name
+                        if not dst.exists():
+                            shutil.copy2(f, dst)
+                print(f"[INFO] Copied config/tokenizer from {fp32_path}")
 
         print(f"[INFO] Loading ONNX model: {onnx_path} (backend={backend})")
         model = SentenceTransformer(

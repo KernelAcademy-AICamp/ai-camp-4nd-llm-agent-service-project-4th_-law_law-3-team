@@ -88,13 +88,20 @@ def export_onnx() -> bool:
 
 
 def quantize_int8() -> bool:
-    """ONNX INT8 양자화."""
-    if ONNX_INT8_DIR.exists() and (ONNX_INT8_DIR / "model_quantized.onnx").exists():
+    """ONNX INT8 양자화.
+
+    양자화 후 SentenceTransformer 로드를 위해:
+    1. model_quantized.onnx → model.onnx 리네임
+    2. config/tokenizer 파일을 FP32 ONNX 디렉토리에서 복사
+    """
+    if ONNX_INT8_DIR.exists() and (ONNX_INT8_DIR / "model.onnx").exists():
         print(f"  INT8 모델 이미 존재: {ONNX_INT8_DIR}")
         return True
 
     print("  INT8 양자화 중...")
     try:
+        import shutil
+
         from optimum.onnxruntime import ORTQuantizer
         from optimum.onnxruntime.configuration import AutoQuantizationConfig
 
@@ -106,6 +113,26 @@ def quantize_int8() -> bool:
             save_dir=str(ONNX_INT8_DIR),
             quantization_config=qconfig,
         )
+
+        # model_quantized.onnx → model.onnx 리네임
+        # SentenceTransformer(backend="onnx")는 model.onnx를 찾음
+        quantized_path = ONNX_INT8_DIR / "model_quantized.onnx"
+        target_path = ONNX_INT8_DIR / "model.onnx"
+        if quantized_path.exists() and not target_path.exists():
+            quantized_path.rename(target_path)
+            print("  model_quantized.onnx → model.onnx 리네임")
+
+        # config/tokenizer 파일 복사 (FP32 ONNX → INT8)
+        copied = 0
+        for f in ONNX_DIR.iterdir():
+            if f.is_file() and f.suffix in (".json", ".txt") and f.name != "ort_config.json":
+                dst = ONNX_INT8_DIR / f.name
+                if not dst.exists():
+                    shutil.copy2(f, dst)
+                    copied += 1
+        if copied:
+            print(f"  config/tokenizer 파일 {copied}개 복사 완료")
+
         print(f"  INT8 양자화 완료: {ONNX_INT8_DIR}")
         return True
     except Exception as e:
@@ -241,7 +268,7 @@ def print_comparison(
         embed_baseline = fp32_avg
         embed_int8 = int8_avg
         new_total = pipeline_total - embed_baseline + embed_int8
-        print(f"\n  파이프라인 전체 영향 (추정):")
+        print("\n  파이프라인 전체 영향 (추정):")
         print(f"    현재:  {pipeline_total:.0f}ms (임베딩 {embed_baseline:.0f}ms)")
         print(f"    INT8:  {new_total:.0f}ms (임베딩 {embed_int8:.0f}ms)")
         saved_total = pipeline_total - new_total
