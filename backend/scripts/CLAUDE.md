@@ -630,7 +630,7 @@ data/
 | PostgreSQL 실행 | `db`, `fts` | `docker compose up -d postgres` → `docker logs law-platform-db` |
 | Alembic 마이그레이션 | `db`, `fts` | `uv run alembic upgrade head` → `uv run alembic current` |
 | MeCab 시스템 패키지 | `db` (FTS 동시 생성), `fts` | `mecab --version` (미설치 시 에러 발생, fallback 없음) |
-| 임베딩 모델 (2.3GB) | `vector` | `uv run python scripts/download_models.py --check` |
+| 임베딩+리랭커 모델 (~4.4GB) | `vector` | `uv run python scripts/download_models.py --check` |
 | PyTorch | `vector` | `uv pip install torch` (환경별 수동 설치, `--no-sync` 필수) |
 | `DATABASE_URL` 환경변수 | `db`, `fts` | `backend/.env`에 `DATABASE_URL=postgresql://lawuser:lawpassword@localhost:5432/lawdb` |
 | JSON 소스 파일 | 전체 | `data/` 하위에 배치 (위 섹션 1 참조) |

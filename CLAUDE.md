@@ -110,7 +110,7 @@ Frontend: `modules.ts`에서 `enabled: false`
 | **Neo4j** | 법령 계급, 판례 인용 그래프 (5,572 법령 + 65,107 판례) | - | `backend/CLAUDE.md` |
 | **MeCab userdic** | 법률 복합명사 사전 (37,366 엔트리) | - | `backend/CLAUDE.md` |
 
-임베딩 모델: `nlpai-lab/KURE-v1` (2.3GB), `uv run python scripts/download_models.py`로 다운로드 필요.
+임베딩 모델: `nlpai-lab/KURE-v1` (2.3GB) + 리랭커: `dragonkue/bge-reranker-v2-m3-ko` (2.1GB), `uv run python scripts/download_models.py`로 다운로드 필요.
 
 ## RAG 평가 시스템
 

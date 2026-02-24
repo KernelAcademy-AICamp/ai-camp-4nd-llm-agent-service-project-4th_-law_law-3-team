@@ -10,9 +10,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# 모델 캐시 디렉토리 (프로젝트 내 backend/data/models/)
+MODEL_CACHE_DIR = Path(__file__).parent.parent.parent.parent / "data" / "models"
 
 # 기본 리랭커 모델명 (한국어 특화, BGE v2-m3 기반)
 DEFAULT_RERANKER_MODEL = "dragonkue/bge-reranker-v2-m3-ko"
@@ -36,8 +40,10 @@ def _load_reranker_model(model_name: str = DEFAULT_RERANKER_MODEL) -> Any:
         import torch
         from sentence_transformers import CrossEncoder
 
+        MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         model = CrossEncoder(
             model_name,
+            cache_folder=str(MODEL_CACHE_DIR),
             activation_fn=torch.nn.Sigmoid(),
         )
         logger.info("리랭커 모델 로드 완료: %s", model_name)
