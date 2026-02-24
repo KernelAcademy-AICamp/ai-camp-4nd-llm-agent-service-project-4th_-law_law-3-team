@@ -1,8 +1,8 @@
 # Skills & Agents Catalog
 
-스킬 30개, 에이전트 5개, 규칙 6개의 분류 및 의존관계 인덱스.
+스킬 31개, 에이전트 5개, 규칙 6개의 분류 및 의존관계 인덱스.
 
-> 최종 업데이트: 2026-02-20
+> 최종 업데이트: 2026-02-24
 
 ---
 
@@ -13,7 +13,7 @@
 | [워크플로우](#1-워크플로우) | 4 | - | 커밋, 리뷰, 문서 동기화, 플랜 검토 |
 | [코드 품질](#2-코드-품질) | 5 | 1 | 검증, 코딩 표준, TDD, 에러 처리 |
 | [프론트엔드](#3-프론트엔드) | 6 | - | React/Next.js, 성능, UI/UX, 모의 법정 |
-| [RAG/검색](#4-rag검색) | 4 | 1 | RAG 패턴, 평가, 실험 추적, 인제스트 |
+| [RAG/검색](#4-rag검색) | 5 | 1 | 파일 리네임, RAG 패턴, 평가, 실험 추적, 인제스트 |
 | [데이터/DB](#5-데이터db) | 4 | - | PostgreSQL, Alembic, 위치검색, 요약감사 |
 | [도메인 지식](#6-도메인-지식) | 2 | - | 한국 법률, Neo4j 그래프 |
 | [멀티에이전트](#7-멀티에이전트) | 2 | - | LangGraph 패턴, 디버깅 |
@@ -84,6 +84,7 @@ RAG 파이프라인 구현, 평가, 데이터 적재.
 
 | 스킬 | 줄 수 | 적용 시점 | 설명 |
 |------|------|----------|------|
+| `data-file-rename` | 105 | 외부 데이터 수신 시 | incoming 파일 → 프로젝트 네이밍 변환 (63개 매핑) |
 | `langchain-rag-patterns` | 601 | RAG 구현 시 | LangChain/LangGraph RAG 패턴 |
 | `rag-evaluation-workflow` | 182 | RAG 변경 후 | Recall/MRR/NDCG 자동 평가 |
 | `legal-rag-experiment-tracking` | 219 | 실험 기록 시 | 실험 메타데이터 템플릿 |
@@ -93,7 +94,8 @@ RAG 파이프라인 구현, 평가, 데이터 적재.
 |---------|------|
 | `rag-quality-monitor` | query_rewrite → retrieval → rerank 품질 측정 |
 
-**흐름**: `ingest-pipeline` → `langchain-rag-patterns` → `rag-evaluation-workflow` → `legal-rag-experiment-tracking`
+**흐름**: `data-file-rename` → `ingest-pipeline` → `langchain-rag-patterns` → `rag-evaluation-workflow` → `legal-rag-experiment-tracking`
+**연계**: `data-file-rename`은 `korean-legal-domain` (도메인 지식 섹션)의 데이터 구조를 참조
 
 ---
 
@@ -196,7 +198,8 @@ LangGraph 기반 멀티 에이전트 시스템.
            summary-quality-audit (179), alembic-migration-safety (166), project-commit (151)
 100+ 줄 : tdd-methodology (145), postgresql-migration (138), ingest-pipeline (135)
            spatial-query-patterns (133), vercel-react-best-practices (120)
+           data-file-rename (105)
  ~64 줄 : project-review (64)
 ```
 
-**총 줄 수**: ~9,836줄 (평균 328줄/스킬, 30개)
+**총 줄 수**: ~9,941줄 (평균 321줄/스킬, 31개)
