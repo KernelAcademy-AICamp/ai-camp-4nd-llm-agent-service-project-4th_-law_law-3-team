@@ -98,20 +98,34 @@ src/features/<module-name>/
 - `DisclaimerBanner` - 면책 안내
 
 **게임 구조:** `src/features/mock-trial/game/`
-- `CourtScene` - 법정 씬 (Phaser), `agent:speak` 이벤트에서 감정 이모지 전달
-- `LobbyScene` - 로비 씬 (대법원 배경)
+
+씬 체인: `PreloadScene` → `LobbyScene` → `CourtScene`
+
+- `PreloadScene` - 에셋 로딩 (스프라이트시트, 배경, 오디오, 타일맵) + 애니메이션 등록
+- `CourtScene` - 법정 씬 (타일맵 → 배경이미지 → Graphics 3단계 fallback)
+- `LobbyScene` - 로비 씬 (대법원 배경 + 국기 펄럭임 오버레이 + 캐릭터 입장 시퀀스)
 - `EventBus` - 이벤트 시스템 (`agent:speak`에 `emotion` 필드 포함)
-- `sprites/` - 픽셀아트 캐릭터, 배심원 패널, 도트 감정 아이콘 렌더러
+- `AssetConfig` - 에셋 키/경로/프레임 크기 중앙 관리, `hasTexture()` fallback 헬퍼
+- `AudioManager` - BGM/SFX 관리 (에셋 없으면 무음 fallback)
+- `config` - 게임 레이아웃 상수 (캐릭터 위치, 국기 위치/스케일, 입장 시퀀스)
+- `sprites/LpcSpriteConfig` - LPC 스프라이트시트 설정 (832x1344, 13열x21행, 64px 프레임)
+- `sprites/CharacterBase` - LPC 스프라이트 캐릭터 (walk/speak/react/idle + 감정 아이콘)
 - `sprites/EmotionIconRenderer` - 8x8 도트 스프라이트 감정 아이콘 (PIXEL_SIZE=3, 24x24px)
-- `ui/` - 말풍선 (`SpeechBubble`에 게임풍 감정 심볼 표시), 단계 표시
+- `ui/SpeechBubble` - 말풍선 (NineSlice 이미지 또는 Graphics fallback + 타이핑 효과)
+- `ui/StageIndicator` - 재판 단계 진행 표시
+
+**에셋 파이프라인:** `public/assets/mock-trial/`
+- `sprites/` - LPC 캐릭터 6종 (832x1344 PNG) + 국기 스프라이트시트 2종 (2816x1536, 4프레임)
+- `backgrounds/` - 로비 배경 (대법원 픽셀아트), 법정 내부 배경
+- `tilesets/` - Tiled 타일맵 (court-map.json + court-tiles.png)
+- `audio/` - BGM (lobby, court) + SFX (gavel, typing, objection, stage-change)
+- `ui/` - 말풍선 NineSlice + 꼬리 이미지
+- `effects/` - 감정 아이콘 스프라이트시트
 
 **감정 표현 시스템 (FR-51):**
-- `EmotionType` - 8가지 감정: neutral💬, angry💢, thinking❓, sad💧, confident✨, stern❗, recording✏️, judging🔨
-- `EMOTION_EMOJI` - 감정→게임풍 심볼 매핑 상수
+- `EmotionType` - 8가지 감정: neutral, angry, thinking, sad, confident, stern, recording, judging
 - `DEFAULT_ROLE_EMOTION` - 역할별 기본 감정 (judge→stern, prosecutor→confident, attorney→thinking 등)
-- `CourtEvent.emotion` - 선택적 감정 필드 (Backend LLM이 `[EMOTION:태그]`로 생성)
-- `EmotionIconRenderer` - 8x8 도트 스프라이트로 캐릭터 머리 위 감정 아이콘 렌더링 (pop-in + floating 애니메이션)
-- `CharacterBase.setEmotion/clearEmotion` - 발언 시 도트 아이콘 표시/숨기기
+- `CharacterBase.setEmotion/clearEmotion` - 감정 아이콘 스프라이트시트 또는 Graphics 도트 렌더링
 
 **의존성:** `phaser` (package.json)
 

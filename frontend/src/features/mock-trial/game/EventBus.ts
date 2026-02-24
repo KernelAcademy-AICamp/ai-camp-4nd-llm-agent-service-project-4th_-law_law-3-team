@@ -16,6 +16,9 @@ export interface EventMap {
   'game:advance_stage': Record<string, never>
   'agent:animate': { agent: string; animation: 'idle' | 'speak' | 'react' }
   'setup:complete': { caseType: string; userRole: string; caseSummary: string }
+
+  // Audio
+  'audio:toggle': Record<string, never>
 }
 
 class CourtEventBus {

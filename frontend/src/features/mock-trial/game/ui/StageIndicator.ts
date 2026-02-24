@@ -1,9 +1,8 @@
-/** 단계 표시 바 (Phaser Graphics) */
+/** 단계 표시 바 (이미지 에셋 또는 Graphics fallback) */
 
 import Phaser from 'phaser'
 
 const BAR_HEIGHT = 28
-const PADDING_X = 16
 const DOT_RADIUS = 6
 const DOT_SPACING = 100
 
@@ -31,6 +30,19 @@ export class StageIndicator extends Phaser.GameObjects.Container {
 
     const totalWidth = (stageNames.length - 1) * DOT_SPACING
     const startX = (width - totalWidth) / 2
+
+    // 단계 간 연결선
+    if (stageNames.length > 1) {
+      const lineGraphics = scene.add.graphics()
+      lineGraphics.lineStyle(2, 0x455a64, 0.6)
+      lineGraphics.lineBetween(
+        startX,
+        BAR_HEIGHT / 2,
+        startX + totalWidth,
+        BAR_HEIGHT / 2
+      )
+      this.add(lineGraphics)
+    }
 
     stageNames.forEach((name, index) => {
       const dotX = startX + index * DOT_SPACING
@@ -63,12 +75,13 @@ export class StageIndicator extends Phaser.GameObjects.Container {
   private updateVisual(): void {
     this.dots.forEach((dot, index) => {
       if (index < this.currentIndex) {
-        dot.setFillStyle(0x4caf50) // 완료: 녹색
+        dot.setFillStyle(0x4caf50)
+        dot.setStrokeStyle(0)
       } else if (index === this.currentIndex) {
-        dot.setFillStyle(0xffd700) // 현재: 금색
+        dot.setFillStyle(0xffd700)
         dot.setStrokeStyle(2, 0xffffff)
       } else {
-        dot.setFillStyle(0x666666) // 미진행: 회색
+        dot.setFillStyle(0x666666)
         dot.setStrokeStyle(0)
       }
     })

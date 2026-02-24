@@ -3,8 +3,12 @@
 export const GAME_WIDTH = 800
 export const GAME_HEIGHT = 480
 
-/** 픽셀아트 기본 단위 (12x16 그리드 = 48x64px) */
+/** 픽셀아트 기본 단위 (12x16 그리드 = 48x64px) - PixelCharacterRenderer용 보존 */
 export const PIXEL_SIZE = 4
+
+/** LPC 스프라이트 스케일 */
+export const CHARACTER_SCALE = 1.0
+export const JUROR_SCALE = 0.55
 
 /** 캐릭터 색상 (Graphics API 플레이스홀더) */
 export const CHARACTER_COLORS: Record<string, number> = {
@@ -27,13 +31,22 @@ export const CHARACTER_NAMES: Record<string, string> = {
 /** 법정 배경 색상 */
 export const COURT_BACKGROUND_COLOR = 0xf5f0e8
 
-/** 법정 내 캐릭터 배치 좌표 */
+/** 법정 내 캐릭터 배치 좌표 (LPC 스프라이트 발 앵커 기준, 타일맵 오버라이드 가능) */
 export const CHARACTER_POSITIONS: Record<string, { x: number; y: number }> = {
-  judge: { x: 400, y: 140 },
-  prosecutor: { x: 200, y: 260 },
-  attorney: { x: 560, y: 260 },
-  defendant: { x: 400, y: 340 },
-  clerk: { x: 120, y: 140 },
+  judge: { x: 400, y: 172 },
+  prosecutor: { x: 200, y: 292 },
+  attorney: { x: 560, y: 292 },
+  defendant: { x: 400, y: 372 },
+  clerk: { x: 120, y: 172 },
+}
+
+/** 캐릭터별 말풍선 앵커 오프셋 (LPC 스프라이트 발 앵커 기준, 머리 위) */
+export const BUBBLE_OFFSETS: Record<string, { x: number; y: number }> = {
+  judge: { x: 0, y: -80 },
+  prosecutor: { x: 0, y: -75 },
+  attorney: { x: 0, y: -75 },
+  defendant: { x: 0, y: -75 },
+  clerk: { x: 0, y: -75 },
 }
 
 /** 배심원 4명 좌표 (우측 배치) */
@@ -44,13 +57,13 @@ export const JURY_POSITIONS: { x: number; y: number }[] = [
   { x: 760, y: 200 },
 ]
 
-/** 로비 캐릭터 최종 도착 위치 (건물 앞 하단) */
+/** 로비 캐릭터 최종 도착 위치 (건물 앞 하단, LPC 발 앵커 기준) */
 export const LOBBY_CHARACTER_POSITIONS: Record<string, { x: number; y: number }> = {
-  clerk: { x: 160, y: 355 },
-  defendant: { x: 300, y: 365 },
-  judge: { x: 400, y: 335 },
-  prosecutor: { x: 540, y: 365 },
-  attorney: { x: 640, y: 355 },
+  clerk: { x: 160, y: 387 },
+  defendant: { x: 300, y: 397 },
+  judge: { x: 400, y: 367 },
+  prosecutor: { x: 540, y: 397 },
+  attorney: { x: 640, y: 387 },
 }
 
 /** 로비 입장 시퀀스 설정 */
@@ -62,10 +75,10 @@ export interface LobbyEntranceEntry {
 }
 
 export const LOBBY_ENTRANCE_SEQUENCE: LobbyEntranceEntry[] = [
-  { role: 'clerk', startX: -60, startY: 355, delay: 0 },
-  { role: 'defendant', startX: -60, startY: 365, delay: 600 },
-  { role: 'prosecutor', startX: 860, startY: 365, delay: 1200 },
-  { role: 'attorney', startX: -60, startY: 355, delay: 1800 },
+  { role: 'clerk', startX: -60, startY: 387, delay: 0 },
+  { role: 'defendant', startX: -60, startY: 397, delay: 600 },
+  { role: 'prosecutor', startX: 860, startY: 397, delay: 1200 },
+  { role: 'attorney', startX: -60, startY: 387, delay: 1800 },
   { role: 'judge', startX: 400, startY: -80, delay: 2800 },
 ]
 
@@ -74,3 +87,9 @@ export const ENTRANCE_WALK_DURATION = 1200
 
 /** squash&stretch 주기 (ms) */
 export const ENTRANCE_BOUNCE_PERIOD = 150
+
+/** 로비 국기 애니메이션 배치 (배경 위 오버레이, 브라우저에서 미세 조정) */
+export const LOBBY_FLAGS: { id: string; x: number; y: number; scale: number; depth: number }[] = [
+  { id: 'korea', x: 274, y: 108, scale: 0.44, depth: 3 },
+  { id: 'court', x: 274, y: 132, scale: 0.40, depth: 2 },
+]
