@@ -79,16 +79,20 @@ uv pip install torch --index-url https://download.pytorch.org/whl/cu128
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all
 ```
 
-### 8. 임베딩 모델 다운로드 ⚠️ 중요
+### 8. 임베딩/리랭커 모델 다운로드 ⚠️ 중요
 
-검색 API를 사용하려면 **반드시 임베딩 모델을 먼저 다운로드**해야 합니다.
+검색 API를 사용하려면 **임베딩 모델과 리랭커 모델을 먼저 다운로드**해야 합니다.
 
 ```bash
-# 모델 다운로드 (약 2.3GB, 네트워크 상태에 따라 시간 소요)
+# 전체 모델 다운로드 (임베딩 ~2.3GB + 리랭커 ~2.1GB)
 uv run python scripts/download_models.py
 
 # 캐시 상태만 확인
 uv run python scripts/download_models.py --check
+
+# 임베딩 또는 리랭커만 다운로드
+uv run python scripts/download_models.py --embedding-only
+uv run python scripts/download_models.py --reranker-only
 ```
 
 > **참고**: 서버 시작 시 모델이 없으면 경고만 표시하고 서버는 실행됩니다.
@@ -720,7 +724,8 @@ from scripts.runpod_lancedb_embeddings import (
 ```
 backend/
 ├── lancedb_data/           # LanceDB 데이터
-│   ├── legal_chunks.lance/              # 법령 + 판례 등 19개 타입 통합 테이블
+│   ├── legal_chunks.lance/              # 판례 등 통합 테이블 (법령은 law_article_chunks로 이관)
+│   ├── law_article_chunks.lance/       # 법령 전용 테이블 (법령요약 + 조문요약 N개)
 │   └── local_ordinance_chunks.lance/   # 자치법규 전용 테이블 (전체요약 + 조문요약)
 └── scripts/
     ├── ingest/                         # 메인 인제스트 파이프라인
@@ -760,25 +765,24 @@ results = table.search(query_vector).metric('cosine').limit(10).to_pandas()
 2. **--no-sync 필수** - `uv run --no-sync`로 실행
 3. **GPU 자동 감지** - VRAM에 따라 batch_size 자동 설정
 
-## Embedding Model (임베딩 모델)
+## Embedding / Reranker Model (임베딩 · 리랭커 모델)
 
-검색 API는 쿼리를 벡터로 변환하기 위해 **임베딩 모델**이 필요합니다.
+검색 API는 **임베딩 모델**(쿼리→벡터)과 **리랭커 모델**(문서 재정렬)이 필요합니다.
+두 모델 모두 `backend/data/models/`에 캐시됩니다.
 
 ### 모델 정보
 
-| 항목 | 값 |
-|------|-----|
-| 모델명 | `nlpai-lab/KURE-v1` |
-| 크기 | 약 2.3GB |
-| 차원 | 1024 |
-| 캐시 경로 | `backend/data/models/` |
+| 용도 | 모델명 | 크기 | 비고 |
+|------|--------|------|------|
+| 임베딩 | `nlpai-lab/KURE-v1` | ~2.3GB | 1024차원, SentenceTransformer |
+| 리랭커 | `dragonkue/bge-reranker-v2-m3-ko` | ~2.1GB | CrossEncoder, Sigmoid |
 
 ### 모델 다운로드
 
 ```bash
 cd backend
 
-# 모델 다운로드 (네트워크 상태에 따라 시간 소요)
+# 전체 모델 다운로드 (임베딩 + 리랭커)
 uv run python scripts/download_models.py
 
 # 캐시 상태만 확인
@@ -787,8 +791,12 @@ uv run python scripts/download_models.py --check
 # 재다운로드 (기존 캐시 무시)
 uv run python scripts/download_models.py --force
 
-# 다른 모델 다운로드
-uv run python scripts/download_models.py --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+# 임베딩 또는 리랭커만 다운로드
+uv run python scripts/download_models.py --embedding-only
+uv run python scripts/download_models.py --reranker-only
+
+# 특정 모델만 다운로드 (SentenceTransformer)
+uv run python scripts/download_models.py --model nlpai-lab/KURE-v1
 ```
 
 ### 서버 동작 방식
@@ -812,9 +820,10 @@ uv run python scripts/download_models.py --model sentence-transformers/paraphras
 
 | 파일 | 설명 |
 |------|------|
-| `app/services/rag/retrieval.py` | `check_embedding_model_availability()`, `get_local_model()`, `create_query_embedding()` |
+| `app/services/rag/embedding.py` | 임베딩 모델 로드 (`cache_folder` → `data/models/`) |
+| `app/services/rag/rerank.py` | 리랭커 모델 로드 (`cache_folder` → `data/models/`) |
 | `app/core/errors.py` | `EmbeddingModelNotFoundError` 예외 클래스 |
-| `scripts/download_models.py` | 모델 다운로드 CLI |
+| `scripts/download_models.py` | 모델 다운로드 CLI (임베딩 + 리랭커) |
 | `app/main.py` | lifespan에서 시작 시 체크 |
 
 ### 환경 변수

@@ -7,6 +7,7 @@
 | 스크립트 | 용도 |
 |----------|------|
 | `ingest/cli.py` | **메인** 인제스트 파이프라인 CLI (`python -m scripts.ingest.cli`) |
+| `rename_incoming_data.py` | 외부 데이터 파일 → 프로젝트 네이밍 규칙 변환 (63개 매핑) |
 | `runpod_lancedb_embeddings.py` | RunPod 노트북용 thin wrapper (ingest 파이프라인 호출) |
 | `colab_lancedb_embeddings.py` | Google Colab 노트북용 thin wrapper (runpod wrapper re-export) |
 | `check_environment.py` | 데이터 로드 전 환경 검증 (Python, MeCab, Docker, Alembic 등) |
@@ -150,7 +151,8 @@ GC + 메모리 정리
 
 ```
 backend/lancedb_data/
-├── legal_chunks.lance/              # 19개 타입 통합 테이블
+├── legal_chunks.lance/              # 판례 등 통합 테이블 (법령은 law_article_chunks로 이관)
+├── law_article_chunks.lance/       # 법령 전용 (법령요약 + 조문요약 N개)
 └── local_ordinance_chunks.lance/   # 자치법규 전용 (전체요약 + 조문요약)
 ```
 
@@ -493,6 +495,69 @@ KAKAO_REST_API_KEY=your_kakao_rest_api_key
 
 ---
 
+## 데이터 파일 리네임 (rename_incoming_data.py)
+
+외부 소스(법제처 API, 크롤링 등)에서 받은 법률 데이터 JSON 파일을 프로젝트 네이밍 규칙에 맞게 변환합니다.
+인제스트 파이프라인의 **전처리 단계**로 동작합니다.
+
+```
+외부 데이터 도착 → [rename_incoming_data.py] → data/ 배치 → [ingest pipeline] → DB/벡터 적재
+```
+
+### 사용법
+
+```bash
+cd backend
+
+# 1. 외부 파일을 data/incoming/ 에 복사
+cp ~/downloads/ppc.json ../data/incoming/
+
+# 2. 미리보기 (dry-run, 기본 동작)
+uv run python scripts/rename_incoming_data.py
+
+# 3. 실제 복사 실행
+uv run python scripts/rename_incoming_data.py --execute
+
+# 4. 복사 대신 이동
+uv run python scripts/rename_incoming_data.py --execute --move
+
+# 5. 매핑 테이블 전체 출력 (63개 항목)
+uv run python scripts/rename_incoming_data.py --show-mapping
+```
+
+### CLI 옵션
+
+| 옵션 | 설명 | 기본값 |
+|------|------|--------|
+| (기본) | dry-run 미리보기 | ✅ |
+| `--execute` | 실제 복사/이동 수행 | `false` |
+| `--move` | 복사 대신 이동 (`--execute`와 함께) | `false` |
+| `--file <이름>` | 특정 파일만 처리 | 전체 |
+| `--show-mapping` | 63개 매핑 테이블 출력 | - |
+| `--incoming-dir <경로>` | incoming 디렉토리 변경 | `data/incoming/` |
+
+### 네이밍 규칙
+
+| 데이터 유형 | 패턴 | 예시 |
+|------------|------|------|
+| 단일 파일 | `<타입>_v<N>.json` | `law_v3.json`, `precedents_v2.json` |
+| 부처 해석례 | `intp_min_<부처명>_v<N>.json` | `intp_min_고용노동부_v3.json` |
+| 위원회 결정문 | `dec_comm_<위원회명>_v<N>.json` | `dec_comm_금융위원회_v3.json` |
+| 특별행정심판 | `sadm_case_<기관명>_v<N>.json` | `sadm_case_조세심판원_v2.json` |
+
+### 버전 자동 감지
+
+대상 디렉토리를 스캔하여 자동으로 다음 버전 번호를 결정합니다:
+- `data/law_v3.json` 존재 → 새 파일은 `law_v4.json`
+- 해당 파일 없음 → `v1` (신규)
+- macOS APFS의 Unicode NFD/NFC 차이를 자동 처리
+
+### 관련 스킬
+
+- `.claude/skills/data-file-rename/SKILL.md` — 상세 가이드 (매핑 테이블, 연계 스킬)
+
+---
+
 ## 인제스트 파이프라인 (scripts/ingest/)
 
 config-driven 인제스트 파이프라인. 데이터 타입별 설정을 `types/` 하위에 정의하면 벡터 DB + PostgreSQL + FTS를 일괄 처리합니다.
@@ -566,7 +631,7 @@ data/
 | PostgreSQL 실행 | `db`, `fts` | `docker compose up -d postgres` → `docker logs law-platform-db` |
 | Alembic 마이그레이션 | `db`, `fts` | `uv run alembic upgrade head` → `uv run alembic current` |
 | MeCab 시스템 패키지 | `db` (FTS 동시 생성), `fts` | `mecab --version` (미설치 시 에러 발생, fallback 없음) |
-| 임베딩 모델 (2.3GB) | `vector` | `uv run python scripts/download_models.py --check` |
+| 임베딩+리랭커 모델 (~4.4GB) | `vector` | `uv run python scripts/download_models.py --check` |
 | PyTorch | `vector` | `uv pip install torch` (환경별 수동 설치, `--no-sync` 필수) |
 | `DATABASE_URL` 환경변수 | `db`, `fts` | `backend/.env`에 `DATABASE_URL=postgresql://lawuser:lawpassword@localhost:5432/lawdb` |
 | JSON 소스 파일 | 전체 | `data/` 하위에 배치 (위 섹션 1 참조) |
@@ -664,6 +729,7 @@ scripts/ingest/
 ├── config.py           # IngestConfig dataclass + 레지스트리 + get_source_path()
 ├── sources.yaml        # 20개 타입 데이터 소스 경로 (YAML 중앙 관리)
 ├── db_writer.py        # PostgreSQL + FTS 적재
+├── law_article_vector_writer.py      # 법령 전용 벡터 라이터 (1문서→법령요약+조문요약 N벡터)
 ├── local_ordinance_vector_writer.py  # 자치법규 전용 벡터 라이터 (1문서→다중벡터)
 ├── summary_updater.py  # ai_summary 컬럼만 일괄 업데이트 (FTS/MeCab 불필요)
 ├── shared.py           # 공유 유틸 (토크나이저, FTS 배치)
