@@ -670,7 +670,10 @@ CREATE TABLE fts_index (
 | 013 | `fix_column_names_legislation_treaty` | 법령해석/조약 컬럼명 수정 |
 | 014 | `add_admin_rule_v3_columns` | 행정규칙 v3 스키마 컬럼 |
 | 015 | `add_local_ordinance_documents_table` | 자치법규 테이블 추가 |
+| 016 | `add_dec_media_documents_table` | 방송미디어통신위원회 결정례 테이블 |
+| f61f09ed1c72 | `widen_fts_index_date_to_50` | fts_index.date VARCHAR(20)→VARCHAR(50) 확장 |
+| 017 | `fts_index_composite_pk` | fts_index PK를 `source_id` → `(source_id, data_type)` 복합 PK로 변경. 타입 간 serial_number 충돌 해결. TRUNCATE 포함 (전체 FTS 재빌드 필요) |
 
 ---
 
-*최종 업데이트: 2026-02-20*
+*최종 업데이트: 2026-02-25*
