@@ -698,6 +698,10 @@ uv run --no-sync python -m scripts.ingest.cli --type precedent --step vector
 uv run --no-sync python -m scripts.ingest.cli --type law --step vector
 uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
 
+# ONNX INT8 벡터 적재 (CPU 최적화, ONNX 모델 미존재 시 자동 변환)
+uv run --no-sync python -m scripts.ingest.cli --step onnx-export              # 명시적 ONNX 변환
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --backend onnx-int8  # INT8 적재
+
 # 통계 확인
 uv run --no-sync python -m scripts.ingest.cli --type all --stats
 ```

@@ -658,8 +658,8 @@ uv run python -m scripts.ingest.cli --type <타입명|all> [옵션]
 
 | 옵션 | 값 | 기본값 | 설명 |
 |------|-----|--------|------|
-| `--type` | `all` 또는 21개 타입명 | (필수) | 인제스트 대상 (`all`: 전체 21개, 또는 `precedent`, `dec_fair_trade` 등 개별 타입) |
-| `--step` | `all`, `db`, `vector`, `fts`, `index` | `all` | 실행 단계 |
+| `--type` | `all` 또는 21개 타입명 | `None` | 인제스트 대상 (`onnx-export` 제외 필수, `all`: 전체 21개) |
+| `--step` | `all`, `db`, `vector`, `fts`, `index`, `onnx-export` | `all` | 실행 단계 |
 | `--reset` | - | `false` | 기존 데이터 삭제 후 재실행 |
 | `--source` | 파일 경로 | 타입별 기본 경로 | 커스텀 JSON 소스 경로 (`--type all`과 함께 사용 불가) |
 | `--batch-size` | 정수 | DB: 1000, 벡터: 하드웨어 자동 | 배치 크기 |
@@ -678,6 +678,7 @@ uv run python -m scripts.ingest.cli --type <타입명|all> [옵션]
 | `vector` | JSON → LanceDB 벡터 임베딩 (1문서=1벡터) | 임베딩 모델, PyTorch | 최초 적재, 데이터 갱신 |
 | `fts` | PostgreSQL ORM에서 읽어 tsvector만 재빌드 | PostgreSQL, (MeCab), `db` 완료 | 토크나이저/userdic 변경 후 |
 | `index` | LanceDB ANN 인덱스 재빌드 (IVF_FLAT) | `vector` 완료 | 벡터 데이터 변경 후 |
+| `onnx-export` | PyTorch → ONNX FP32 변환 + INT8 양자화 | `optimum[onnxruntime]` | ONNX 백엔드 최초 사용 전 (자동 변환도 지원) |
 | `all` | `db` → `vector` → `index` 순차 실행 | 전체 | 최초 적재 |
 
 **ai_summary만 업데이트** (JSON 요약 필드 변경 후):
