@@ -26,10 +26,14 @@ law-3-team/
 │   │   │   ├── database.py          # DB 연결
 │   │   │   ├── errors.py            # 공통 예외
 │   │   │   └── registry.py          # 모듈 자동 등록
-│   │   ├── multi_agent/             # 멀티 에이전트 시스템
-│   │   │   ├── orchestrator.py      # 오케스트레이션
-│   │   │   ├── routing/             # 라우팅 (rules_router)
-│   │   │   └── agents/              # 에이전트 구현체
+│   │   ├── multi_agent/             # LangGraph 멀티 에이전트 시스템
+│   │   │   ├── graph.py             # StateGraph 빌드/컴파일
+│   │   │   ├── nodes.py             # router_node + 에이전트 노드
+│   │   │   ├── router.py            # RulesRouter, AgentType
+│   │   │   ├── state.py             # ChatState TypedDict
+│   │   │   ├── agents/              # 에이전트 구현체
+│   │   │   ├── subgraphs/           # 서브그래프 (소액소송, 모의법정)
+│   │   │   └── schemas/             # 스키마
 │   │   ├── services/                # 비즈니스 로직
 │   │   │   ├── rag/                 # RAG 검색 서비스
 │   │   │   └── service_function/    # 통합 서비스 함수
