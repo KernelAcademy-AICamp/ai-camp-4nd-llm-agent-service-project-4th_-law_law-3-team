@@ -178,18 +178,27 @@ def _search_vector_ids(
     query: str,
     n_results: int,
     doc_type: Optional[str] = None,
+    exclude_doc_types: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     """벡터 검색 — source_id + metadata 반환 (content 미포함).
 
     동일 source_id 청크 중 최고 유사도만 유지하고
     유사도 내림차순으로 정렬하여 반환.
+
+    Args:
+        query: 검색 쿼리
+        n_results: 반환할 결과 수
+        doc_type: 포함할 문서 유형 필터
+        exclude_doc_types: 제외할 data_type 목록 (한국어, doc_type 미지정 시만 적용)
     """
     store = get_vector_store()
     query_embedding = create_query_embedding(query)
 
-    where: dict[str, str] | None = None
+    where: dict[str, Any] | None = None
     if doc_type:
         where = {"data_type": _resolve_data_type(doc_type)}
+    elif exclude_doc_types:
+        where = {"data_type": {"$not_in": exclude_doc_types}}
 
     results = store.search(
         query_embedding=query_embedding,
@@ -386,6 +395,7 @@ def search_without_content(
     query: str,
     n_results: int = 5,
     doc_type: Optional[str] = None,
+    exclude_doc_types: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     """
     하이브리드 검색 (content 미포함).
@@ -397,11 +407,14 @@ def search_without_content(
         query: 검색 쿼리
         n_results: 반환할 결과 수
         doc_type: 문서 유형 필터
+        exclude_doc_types: 제외할 data_type 목록 (한국어)
 
     Returns:
         관련 문서 목록 (content는 빈 문자열)
     """
-    vector_results = _search_vector_ids(query, n_results, doc_type)
+    vector_results = _search_vector_ids(
+        query, n_results, doc_type, exclude_doc_types
+    )
 
     if not settings.USE_HYBRID_SEARCH:
         return vector_results[:n_results]
@@ -416,7 +429,10 @@ def search_without_content(
         return vector_results[:n_results]
 
     keyword_results = search_by_keyword(
-        query, n_results=n_results, doc_type=doc_type
+        query,
+        n_results=n_results,
+        doc_type=doc_type,
+        exclude_doc_types=exclude_doc_types,
     )
 
     if not keyword_results:
@@ -453,6 +469,7 @@ def search_relevant_documents(
     query: str,
     n_results: int = 5,
     doc_type: Optional[str] = None,
+    exclude_doc_types: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     """
     관련 법률 문서 하이브리드 검색 (원문 포함).
@@ -463,11 +480,12 @@ def search_relevant_documents(
         query: 검색 쿼리
         n_results: 반환할 결과 수
         doc_type: 문서 유형 필터
+        exclude_doc_types: 제외할 data_type 목록 (한국어)
 
     Returns:
         관련 문서 목록 (content는 PostgreSQL 원문)
     """
-    docs = search_without_content(query, n_results, doc_type)
+    docs = search_without_content(query, n_results, doc_type, exclude_doc_types)
     contents = fetch_document_contents(_extract_id_data_type_map(docs))
     _populate_content(docs, contents)
     return docs
@@ -573,11 +591,214 @@ async def search_relevant_documents_async(
     query: str,
     n_results: int = 5,
     doc_type: Optional[str] = None,
+    exclude_doc_types: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     """관련 법률 문서 비동기 검색.
 
     sync 함수를 별도 스레드에서 실행하여 이벤트 루프 블로킹 방지.
     """
     return await asyncio.to_thread(
-        search_relevant_documents, query, n_results, doc_type
+        search_relevant_documents, query, n_results, doc_type, exclude_doc_types
     )
+
+
+# ---------------------------------------------------------------------------
+# 병렬 async 래퍼
+# ---------------------------------------------------------------------------
+
+
+async def search_without_content_async(
+    query: str,
+    n_results: int = 5,
+    doc_type: Optional[str] = None,
+    exclude_doc_types: Optional[list[str]] = None,
+) -> list[dict[str, Any]]:
+    """벡터 + FTS 병렬 하이브리드 검색 (async, content 미포함).
+
+    벡터 검색과 FTS 키워드 검색을 ``asyncio.gather``로 동시에 실행한 뒤
+    RRF로 병합한다. 동기 ``search_without_content``의 병렬 버전.
+    """
+    from app.services.rag.keyword_search import (
+        is_fts_available_sync,
+        search_by_keyword,
+    )
+
+    # 하이브리드 검색 비활성화 또는 FTS 불가 시 벡터 검색만
+    if not settings.USE_HYBRID_SEARCH or not is_fts_available_sync():
+        vector_results = await asyncio.to_thread(
+            _search_vector_ids, query, n_results, doc_type, exclude_doc_types,
+        )
+        return vector_results[:n_results]
+
+    # 벡터 + FTS 동시 실행
+    vector_results, keyword_results = await asyncio.gather(
+        asyncio.to_thread(
+            _search_vector_ids, query, n_results, doc_type, exclude_doc_types,
+        ),
+        asyncio.to_thread(
+            search_by_keyword,
+            query,
+            n_results=n_results,
+            doc_type=doc_type,
+            exclude_doc_types=exclude_doc_types,
+        ),
+    )
+
+    if not keyword_results:
+        return vector_results[:n_results]
+
+    # keyword_results에 data_type 보강
+    for doc in keyword_results:
+        meta = doc.get("metadata", {})
+        if "data_type" not in meta:
+            meta["data_type"] = _resolve_data_type(meta.get("doc_type", ""))
+
+    from app.services.rag.fusion import reciprocal_rank_fusion
+
+    vector_source_ids = _unique_source_ids(vector_results)
+    keyword_source_ids = _unique_source_ids(keyword_results)
+    fused_source_ids = reciprocal_rank_fusion(vector_source_ids, keyword_source_ids)
+
+    vector_best = _best_doc_per_source(vector_results)
+    keyword_best = _best_doc_per_source(keyword_results)
+
+    merged: list[dict[str, Any]] = []
+    for sid in fused_source_ids:
+        if sid in vector_best:
+            merged.append(vector_best[sid])
+        elif sid in keyword_best:
+            merged.append(keyword_best[sid])
+
+    return merged
+
+
+def _fetch_contents_for_type(
+    data_type: str,
+    source_ids: list[str],
+) -> dict[str, str]:
+    """단일 data_type에 대한 원문 조회 (스레드 풀 병렬화용)."""
+    table_configs = DOCUMENT_TABLE_REGISTRY.get(data_type)
+    if not table_configs:
+        logger.warning("미등록 data_type: %s (%d건)", data_type, len(source_ids))
+        return {}
+
+    result: dict[str, str] = {}
+    remaining_ids = set(source_ids)
+
+    with sync_session_factory() as session:
+        for tc in table_configs:
+            if not remaining_ids:
+                break
+
+            safe_table = _validate_identifier(tc.table_name)
+            safe_id_col = _validate_identifier(tc.id_column)
+            safe_content_cols = [_validate_identifier(c) for c in tc.content_columns]
+
+            cols = ", ".join([safe_id_col, *safe_content_cols])
+            sql = text(
+                f"SELECT {cols} FROM {safe_table} "
+                f"WHERE {safe_id_col} = ANY(:ids)"
+            )
+            rows = session.execute(sql, {"ids": list(remaining_ids)}).fetchall()
+
+            for row in rows:
+                sid = str(row[0])
+                parts = [
+                    str(row[col_idx + 1])
+                    for col_idx in range(len(tc.content_columns))
+                    if row[col_idx + 1]
+                ]
+                result[sid] = "\n\n".join(parts)
+                remaining_ids.discard(sid)
+
+    return result
+
+
+async def fetch_document_contents_async(
+    id_to_data_type: dict[str, str],
+) -> dict[str, str]:
+    """source_id별 원문을 data_type 그룹별로 병렬 조회 (async).
+
+    동기 ``fetch_document_contents``의 병렬 버전.
+    """
+    if not id_to_data_type:
+        return {}
+
+    type_groups: dict[str, list[str]] = {}
+    for source_id, data_type in id_to_data_type.items():
+        type_groups.setdefault(data_type, []).append(source_id)
+
+    tasks = [
+        asyncio.to_thread(_fetch_contents_for_type, dt, sids)
+        for dt, sids in type_groups.items()
+    ]
+    group_results = await asyncio.gather(*tasks)
+
+    merged: dict[str, str] = {}
+    for partial in group_results:
+        merged.update(partial)
+    return merged
+
+
+def _fetch_summaries_for_type(
+    data_type: str,
+    source_ids: list[str],
+) -> dict[str, str]:
+    """단일 data_type에 대한 ai_summary 조회 (스레드 풀 병렬화용)."""
+    table_configs = DOCUMENT_TABLE_REGISTRY.get(data_type)
+    if not table_configs:
+        return {}
+
+    result: dict[str, str] = {}
+    remaining_ids = set(source_ids)
+
+    with sync_session_factory() as session:
+        for tc in table_configs:
+            if not remaining_ids:
+                break
+
+            safe_table = _validate_identifier(tc.table_name)
+            safe_id_col = _validate_identifier(tc.id_column)
+
+            sql = text(
+                f"SELECT {safe_id_col}, ai_summary "
+                f"FROM {safe_table} "
+                f"WHERE {safe_id_col} = ANY(:ids) "
+                f"AND ai_summary IS NOT NULL"
+            )
+            rows = session.execute(sql, {"ids": list(remaining_ids)}).fetchall()
+
+            for row in rows:
+                sid = str(row[0])
+                summary = str(row[1]) if row[1] else ""
+                if summary:
+                    result[sid] = summary
+                    remaining_ids.discard(sid)
+
+    return result
+
+
+async def fetch_ai_summaries_async(
+    id_to_data_type: dict[str, str],
+) -> dict[str, str]:
+    """source_id별 ai_summary를 data_type 그룹별로 병렬 조회 (async).
+
+    동기 ``fetch_ai_summaries``의 병렬 버전.
+    """
+    if not id_to_data_type:
+        return {}
+
+    type_groups: dict[str, list[str]] = {}
+    for source_id, data_type in id_to_data_type.items():
+        type_groups.setdefault(data_type, []).append(source_id)
+
+    tasks = [
+        asyncio.to_thread(_fetch_summaries_for_type, dt, sids)
+        for dt, sids in type_groups.items()
+    ]
+    group_results = await asyncio.gather(*tasks)
+
+    merged: dict[str, str] = {}
+    for partial in group_results:
+        merged.update(partial)
+    return merged

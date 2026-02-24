@@ -125,6 +125,7 @@ def _execute_fts_query(
     tsquery_str: str,
     n_results: int,
     doc_type: Optional[str],
+    exclude_doc_types: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     """tsquery 문자열로 FTS 검색 실행."""
     tsquery_expr = func.to_tsquery("simple", tsquery_str)
@@ -143,6 +144,8 @@ def _execute_fts_query(
     if doc_type:
         data_type = _map_doc_type_to_data_type(doc_type)
         stmt = stmt.where(FtsIndex.data_type == data_type)
+    elif exclude_doc_types:
+        stmt = stmt.where(FtsIndex.data_type.not_in(exclude_doc_types))
 
     stmt = stmt.order_by(rank_expr.desc()).limit(n_results)
 
@@ -182,6 +185,7 @@ def search_by_keyword(
     query: str,
     n_results: int = 50,
     doc_type: Optional[str] = None,
+    exclude_doc_types: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     """
     PostgreSQL tsvector 기반 키워드 검색.
@@ -192,6 +196,7 @@ def search_by_keyword(
         query: 검색 쿼리
         n_results: 반환할 최대 결과 수
         doc_type: 문서 유형 필터 ("precedent", "law")
+        exclude_doc_types: 제외할 data_type 목록 (한국어)
 
     Returns:
         [{"id": source_id, "content": "", "metadata": dict, "similarity": float}, ...]
@@ -203,7 +208,9 @@ def search_by_keyword(
     try:
         with sync_session_factory() as session:
             # Step 1: 개념 AND 검색 (빠름, GIN 인덱스 활용)
-            results = _execute_fts_query(session, concept_tsq, n_results, doc_type)
+            results = _execute_fts_query(
+                session, concept_tsq, n_results, doc_type, exclude_doc_types
+            )
 
             if len(results) >= _CONCEPT_AND_MIN_RESULTS:
                 return results
@@ -218,7 +225,9 @@ def search_by_keyword(
             if not or_tsq:
                 return results
 
-            return _execute_fts_query(session, or_tsq, n_results, doc_type)
+            return _execute_fts_query(
+                session, or_tsq, n_results, doc_type, exclude_doc_types
+            )
 
     except Exception as e:
         logger.warning("키워드 검색 실패 (fts_index 미생성 또는 비어있음): %s", e)

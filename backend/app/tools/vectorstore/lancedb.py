@@ -404,10 +404,27 @@ class LanceDBStore(VectorStoreBase):
         return value.replace("'", "''")
 
     def _build_filter_conditions(self, where: Dict[str, Any]) -> List[str]:
-        """WHERE 조건 빌드"""
+        """WHERE 조건 빌드.
+
+        지원 형식:
+        - ``str``: ``key = 'value'``
+        - ``int/float``: ``key = value``
+        - ``list``: ``key IN (...)``
+        - ``dict({"$not_in": [...]})``: ``key NOT IN (...)``
+        """
         conditions = []
         for key, value in where.items():
-            if isinstance(value, str):
+            if isinstance(value, dict):
+                not_in_values = value.get("$not_in")
+                if not_in_values and isinstance(not_in_values, list):
+                    if all(isinstance(v, str) for v in not_in_values):
+                        formatted = ", ".join(
+                            [f"'{self._escape_sql(v)}'" for v in not_in_values]
+                        )
+                    else:
+                        formatted = ", ".join([str(v) for v in not_in_values])
+                    conditions.append(f"{key} NOT IN ({formatted})")
+            elif isinstance(value, str):
                 escaped_value = self._escape_sql(value)
                 conditions.append(f"{key} = '{escaped_value}'")
             elif isinstance(value, (int, float)):

@@ -22,9 +22,12 @@ from app.services.rag.retrieval import (
     _extract_id_data_type_map,
     _populate_content,
     fetch_ai_summaries,
+    fetch_ai_summaries_async,
     fetch_document_contents,
+    fetch_document_contents_async,
     search_relevant_documents,
     search_without_content,
+    search_without_content_async,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,6 +45,8 @@ class PipelineConfig:
     Attributes:
         n_results: 검색할 후보 수
         doc_type: 문서 유형 필터 ("precedent", "law" 또는 한국어 data_type)
+        exclude_doc_types: 제외할 data_type 목록 (한국어, 예: ["판례"]).
+            doc_type과 상호 배타적 — 동시 지정 시 doc_type 우선.
         enable_rewrite: 쿼리 리라이팅 활성화
         enable_rerank: 리랭킹 활성화
         rerank_top_k: 리랭킹 후 반환할 결과 수
@@ -50,6 +55,7 @@ class PipelineConfig:
 
     n_results: int = 10
     doc_type: Optional[str] = None
+    exclude_doc_types: Optional[list[str]] = None
     enable_rewrite: bool = True
     enable_rerank: bool = False
     rerank_top_k: int = 5
@@ -188,6 +194,7 @@ class RAGPipeline:
                     "original_query": query,
                     "rewritten_queries": queries,
                     "[config] doc_type": config.doc_type,
+                    "[config] exclude_doc_types": config.exclude_doc_types,
                     "[config] n_results": config.n_results,
                     "[config] enable_rewrite": config.enable_rewrite,
                     "[config] enable_rerank": config.enable_rerank,
@@ -207,11 +214,19 @@ class RAGPipeline:
             else search_relevant_documents
         )
 
+        # exclude_doc_types는 doc_type이 없을 때만 적용
+        exclude = (
+            config.exclude_doc_types
+            if not config.doc_type and config.exclude_doc_types
+            else None
+        )
+
         for q in queries:
             docs = search_fn(
                 query=q,
                 n_results=config.n_results,
                 doc_type=config.doc_type,
+                exclude_doc_types=exclude,
             )
             for doc in docs:
                 doc_id = doc.get("metadata", {}).get("doc_id", "")
@@ -269,8 +284,136 @@ class RAGPipeline:
         query: str,
         config: Optional[PipelineConfig] = None,
     ) -> PipelineResult:
-        """파이프라인 실행 (비동기)."""
-        return await asyncio.to_thread(self.execute, query, config)
+        """파이프라인 실행 (비동기, 내부 병렬화).
+
+        동기 execute()와 동일한 로직이지만 검색/조회를 병렬로 수행한다.
+        - 다중 리라이팅 쿼리를 asyncio.gather로 병렬 검색
+        - 각 검색 내부에서 벡터 + FTS를 병렬 실행
+        - 요약문/원문 조회를 data_type별 병렬 실행
+        """
+        config = config or PipelineConfig()
+        pipeline_start = time.monotonic()
+
+        result = PipelineResult(original_query=query)
+        metrics = result.metrics
+
+        # Step 1: 쿼리 리라이팅 (CPU-bound → to_thread)
+        queries = [query]
+        if config.enable_rewrite:
+            queries = await asyncio.to_thread(
+                rewrite_query,
+                query=query,
+                use_llm=config.use_llm_rewrite,
+            )
+            result.rewritten_queries = queries
+
+        # LangSmith extra 기록
+        run_tree = get_current_run_tree()
+        if run_tree is not None:
+            run_tree.extra = {
+                **(run_tree.extra or {}),
+                "metadata": {
+                    **(run_tree.extra or {}).get("metadata", {}),
+                    "original_query": query,
+                    "rewritten_queries": queries,
+                    "[config] doc_type": config.doc_type,
+                    "[config] exclude_doc_types": config.exclude_doc_types,
+                    "[config] n_results": config.n_results,
+                    "[config] enable_rewrite": config.enable_rewrite,
+                    "[config] enable_rerank": config.enable_rerank,
+                    "[config] rerank_top_k": config.rerank_top_k,
+                    "[config] use_llm_rewrite": config.use_llm_rewrite,
+                },
+            }
+
+        # Step 2: 다중 쿼리 병렬 검색 (각 쿼리 내 벡터+FTS도 병렬)
+        search_start = time.monotonic()
+
+        exclude = (
+            config.exclude_doc_types
+            if not config.doc_type and config.exclude_doc_types
+            else None
+        )
+
+        if config.enable_rerank:
+            search_tasks = [
+                search_without_content_async(
+                    query=q,
+                    n_results=config.n_results,
+                    doc_type=config.doc_type,
+                    exclude_doc_types=exclude,
+                )
+                for q in queries
+            ]
+        else:
+            search_tasks = [
+                asyncio.to_thread(
+                    search_relevant_documents,
+                    query=q,
+                    n_results=config.n_results,
+                    doc_type=config.doc_type,
+                    exclude_doc_types=exclude,
+                )
+                for q in queries
+            ]
+
+        query_results = await asyncio.gather(*search_tasks)
+
+        # 결과 병합 (deduplicate)
+        all_documents: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for docs in query_results:
+            for doc in docs:
+                doc_id = doc.get("metadata", {}).get("doc_id", "")
+                if doc_id and doc_id not in seen_ids:
+                    seen_ids.add(doc_id)
+                    all_documents.append(doc)
+
+        metrics.search_time_ms = (time.monotonic() - search_start) * 1000
+        metrics.total_searched = len(all_documents)
+        result.total_retrieved = len(all_documents)
+
+        # Step 3: 리랭킹
+        if config.enable_rerank and all_documents:
+            # 요약문 병렬 조회
+            id_type_map = _extract_id_data_type_map(all_documents)
+            summaries = await fetch_ai_summaries_async(id_type_map)
+            _populate_content(all_documents, summaries)
+
+            # 리랭킹 (CPU-bound → to_thread)
+            rerank_start = time.monotonic()
+            reranked = await asyncio.to_thread(
+                rerank_documents,
+                query=query,
+                documents=all_documents,
+                top_k=config.rerank_top_k,
+            )
+            metrics.rerank_time_ms = (time.monotonic() - rerank_start) * 1000
+            metrics.total_reranked = len(reranked)
+            result.reranked = True
+
+            # 원문 병렬 조회
+            contents = await fetch_document_contents_async(
+                _extract_id_data_type_map(reranked)
+            )
+            _populate_content(reranked, contents)
+            result.documents = reranked
+        else:
+            all_documents.sort(
+                key=lambda x: x.get("similarity", 0), reverse=True
+            )
+            result.documents = all_documents[: config.n_results]
+
+        metrics.total_time_ms = (time.monotonic() - pipeline_start) * 1000
+
+        logger.info(
+            "RAG 파이프라인(async) 완료: %d건 검색 → %d건 반환 (%.0fms)",
+            result.total_retrieved,
+            len(result.documents),
+            metrics.total_time_ms,
+        )
+
+        return result
 
 
 # ---------------------------------------------------------------------------
