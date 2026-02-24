@@ -341,22 +341,21 @@ legal_search_node(state, writer)
     ├─ 1. state에서 search_focus 읽기 ("precedent" | "law")
     │     focus = state.get("search_focus", "precedent")
     │
-    ├─ 2. 하이브리드 검색 (판례 + 법령)
-    │     search_relevant_documents(query, doc_type=focus)
+    ├─ 2. 쿼리 리라이팅 (에이전트 레벨 1회)
+    │     rewrite_conversational_query(message, history)
     │
-    ├─ 3. 판례 상세 조회
-    │     precedent_service.get_precedent_detail(case_id)
+    ├─ 3. Focus + Supplementary 병렬 검색 (asyncio.gather)
+    │     ├─ Focus: search_with_pipeline_async(query, focus_config)
+    │     └─ Supplementary: search_with_pipeline_async(query, supplementary_config)
+    │     각 파이프라인 내부: 다중쿼리 병렬 → 벡터+FTS 병렬 → 리랭킹
     │
-    ├─ 4. 법령 조회 (참조조문 기반)
-    │     law_service.fetch_laws_by_names(law_names)
+    ├─ 4. 판례 상세 조회 (focus=precedent인 경우)
+    │     precedent_service.get_details(source_ids)
     │
-    ├─ 5. 그래프 컨텍스트 보강
-    │     graph_service.enrich_case_context(case_number)
-    │
-    ├─ 6. LLM 스트리밍 응답 생성
+    ├─ 5. LLM 스트리밍 응답 생성
     │     agent.process_stream(message, ...) → StreamWriter
     │
-    └─ 7. state 업데이트 반환
+    └─ 6. state 업데이트 반환
           {"response": ..., "sources": ..., "agent_used": ...}
 ```
 

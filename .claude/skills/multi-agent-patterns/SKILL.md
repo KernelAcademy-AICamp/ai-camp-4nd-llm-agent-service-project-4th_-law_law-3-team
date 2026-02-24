@@ -56,7 +56,7 @@ backend/app/multi_agent/
 ├── agents/
 │   ├── __init__.py          # Export all agents
 │   ├── base_chat.py         # BaseChatAgent, SimpleChatAgent, ActionType, ChatAction
-│   ├── legal_search_agent.py    # LegalSearchAgent (RAG 기반, search_focus)
+│   ├── legal_search_agent.py    # LegalSearchAgent (RAG 기반, Focus+Supplementary 병렬)
 │   ├── lawyer_finder_agent.py   # LawyerFinderAgent
 │   ├── small_claims_agent.py    # SmallClaimsAgent
 │   ├── storyboard_agent.py      # StoryboardAgent (LLM 타임라인)

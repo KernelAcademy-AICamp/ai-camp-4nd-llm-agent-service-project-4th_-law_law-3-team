@@ -152,7 +152,7 @@ app/
 │   ├── state.py         # ChatState TypedDict, 변환 함수
 │   ├── agents/          # 에이전트 구현 (BaseChatAgent 상속)
 │   │   ├── base_chat.py              # 베이스 클래스
-│   │   ├── legal_search_agent.py     # 판례/법령 RAG 검색
+│   │   ├── legal_search_agent.py     # 판례/법령 RAG 검색 (Focus+Supplementary 병렬)
 │   │   ├── lawyer_finder_agent.py    # 변호사 찾기
 │   │   ├── small_claims_agent.py     # 소액소송
 │   │   ├── storyboard_agent.py       # 사건 타임라인
@@ -170,10 +170,11 @@ app/
 ├── services/            # 비즈니스 로직
 │   ├── rag/
 │   │   ├── embedding.py  # 임베딩 모델
-│   │   ├── retrieval.py  # 벡터 검색
+│   │   ├── retrieval.py  # 벡터 검색 + async 병렬 래퍼
 │   │   ├── rerank.py     # 리랭킹
 │   │   ├── query_rewrite.py  # 쿼리 리라이팅
-│   │   └── pipeline.py   # 검색 파이프라인
+│   │   ├── keyword_search.py  # FTS 키워드 검색
+│   │   └── pipeline.py   # 검색 파이프라인 (동기 + async)
 │   └── service_function/ # 통합 서비스 함수
 │       ├── lawyer_service.py       # 변호사 검색/클러스터링
 │       ├── lawyer_stats_service.py # 변호사 통계
@@ -267,7 +268,7 @@ START → router_node ──(Command)──→ legal_search_node ───→ EN
 **에이전트 목록:**
 | 에이전트 | 역할 | 노드 | RAG | LLM |
 |---------|------|------|-----|-----|
-| `LegalSearchAgent` | 판례/법령 RAG 검색 (search_focus 분기) | `legal_search_node` | ✅ | ✅ |
+| `LegalSearchAgent` | 판례/법령 RAG 검색 (Focus+Supplementary 병렬) | `legal_search_node` | ✅ | ✅ |
 | `LawyerFinderAgent` | 위치 기반 변호사 추천 | `lawyer_finder_node` | ❌ | ❌ |
 | `SmallClaimsAgent` | 소액소송 단계별 가이드 | `small_claims_subgraph` | ✅ | ❌ |
 | `StoryboardAgent` | 사건 타임라인 생성 | `storyboard_node` | ❌ | ✅ |
@@ -315,7 +316,7 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 ```python
 from app.services.rag.retrieval import get_retrieval_service, create_query_embedding
 
-# 검색 서비스
+# 검색 서비스 (동기)
 service = get_retrieval_service()
 results = service.search(
     query="손해배상 판례",
@@ -326,6 +327,24 @@ results = service.search(
 # 임베딩 생성
 embedding = create_query_embedding("검색 쿼리")
 ```
+
+```python
+# 파이프라인 (async, 내부 병렬화)
+from app.services.rag.pipeline import search_with_pipeline_async, PipelineConfig
+
+config = PipelineConfig(
+    n_results=15, doc_type="precedent",
+    enable_rerank=True, rerank_top_k=5,
+)
+result = await search_with_pipeline_async(query, config)
+# result.documents, result.metrics, result.rewritten_queries
+```
+
+**async 파이프라인 내부 병렬화:**
+- 다중 리라이팅 쿼리 → `asyncio.gather` 병렬 검색
+- 각 검색 내 벡터 + FTS → `asyncio.gather` 병렬 실행
+- 요약문/원문 조회 → data_type별 `asyncio.gather` 병렬
+- 리랭킹 → `asyncio.to_thread` (CPU-bound)
 
 ### 통합 서비스 함수 (`app/services/service_function/`)
 
