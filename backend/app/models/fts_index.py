@@ -45,8 +45,9 @@ class FtsIndex(Base):
     )
     data_type = Column(
         String(20),
+        primary_key=True,
         nullable=False,
-        comment="문서 유형 (법령/판례)",
+        comment="문서 유형 (법령/판례/헌재결정례/행정심판례 등)",
     )
     title = Column(
         Text,
@@ -55,7 +56,7 @@ class FtsIndex(Base):
         comment="법령명 또는 사건명",
     )
     date = Column(
-        String(20),
+        String(50),
         nullable=True,
         comment="시행일(법령) 또는 선고일(판례)",
     )

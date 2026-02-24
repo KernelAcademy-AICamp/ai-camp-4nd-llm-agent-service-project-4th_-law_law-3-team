@@ -357,6 +357,134 @@ source_id, data_type, title, date, source_name, case_number + content_tsvector
 
 ---
 
+## FTS 운영 가이드
+
+### FTS 적재 방식
+
+| 단계 | 소스 | fulltext 함수 | 사용 시점 |
+|------|------|--------------|----------|
+| `--step db` | JSON 파일 | `_fulltext_fn(item)` | 최초 적재 (ORM + FTS 동시) |
+| `--step fts` | ORM 테이블 | `_orm_fulltext_fn(row)` | FTS만 재빌드 (토크나이저/userdic 변경 후) |
+
+### FTS 트러블슈팅 가이드
+
+#### 해결된 주요 문제
+
+##### 1. fts_index PK 충돌 (Migration 017으로 해결)
+
+**증상**: FTS 적재율이 타입마다 40-50%로 낮음. 나중에 적재한 타입이 이전 타입의 FTS를 덮어씀.
+
+**원인**: `fts_index`의 PK가 `source_id` 단독이었으나, 서로 다른 타입(판례, 헌재결정례, 행정심판례 등)이 동일한 `serial_number`를 사용.
+`ON CONFLICT (source_id) DO UPDATE`가 타입을 구분하지 못하고 덮어씀 (58,394건 충돌 확인).
+
+**해결**: Migration 017에서 PK를 `(source_id, data_type)` 복합 PK로 변경.
+- `backend/app/models/fts_index.py`: `data_type`에 `primary_key=True` 추가
+- `backend/scripts/ingest/shared.py`: `index_elements=["source_id", "data_type"]`
+- `backend/scripts/build_fts_index.py`: 동일 변경
+- Migration 017은 TRUNCATE 포함 → 적용 후 전체 FTS 재빌드 필수
+
+##### 2. dec_* 위원회결정례 source_id 충돌 (접두사로 해결)
+
+**증상**: 위원회결정례 FTS 적재율 74% (57,613건 중 42,709건만 적재).
+
+**원인**: 11개 dec_* 타입이 모두 `data_type='위원회결정례'`를 공유하면서, 서로 다른 위원회의 `결정문일련번호`가 중복 (8,915건, 14,904건 손실).
+복합 PK `(source_id, data_type)`로도 해결 불가 (data_type이 동일하므로).
+
+**해결**: `_dec_comm_common.py`에서 FTS source_id를 `{config.name}:{serial_number}` 형식으로 변경.
+- 예: `dec_labor:12345`, `dec_fair_trade:12345` → 유니크
+- `data_type`은 여전히 `위원회결정례`로 통합 검색 유지
+- 벡터 DB의 source_id는 변경하지 않음 (LanceDB에 PK 제약 없음)
+
+##### 3. fts_builder.py tsvector 1MB 초과 (truncate 추가로 해결)
+
+**증상**: `--step fts` 실행 시 `ProgramLimitExceeded` 오류로 특정 문서 FTS 생성 실패.
+
+**원인**: `db_writer.py`에는 `_MAX_FULLTEXT_CHARS = 300,000` truncate가 있었으나, `fts_builder.py`에는 없었음.
+PostgreSQL tsvector 최대 크기 1,048,575 바이트 제한.
+
+**해결**: `fts_builder.py`에도 동일한 `_MAX_FULLTEXT_CHARS = 300_000` 상수 + truncate 로직 추가.
+
+##### 4. dec_* 병렬 `--reset` 연쇄 삭제
+
+**증상**: dec_* 11개를 `--reset` 옵션으로 병렬 실행하면 최종 FTS 건수가 크게 줄어듦.
+
+**원인**: `--reset`은 `DELETE FROM fts_index WHERE data_type='위원회결정례'`를 실행.
+11개가 동일한 data_type을 공유하므로 병렬 실행 시 서로의 데이터를 삭제.
+
+**해결**: 수동 삭제 후 `--reset` 없이 병렬 실행 (위 섹션 "안전한 재빌드 방법" 참조).
+
+#### 일반적인 FTS 갭 원인 (참고)
+
+##### 빈 fulltext (원본 텍스트 부재)
+
+`fulltext.strip()`이 빈 문자열이면 FTS 레코드를 생성하지 않습니다 (`db_writer.py:191`, `fts_builder.py:113`).
+원본 JSON에 본문 텍스트 필드가 없는 문서에 해당합니다.
+현재 모든 타입 100% 적재 → 해당 케이스 없음 (fulltext 구성 함수 개선으로 해결됨).
+
+##### MeCab 토크나이징 오류 (개별 레코드)
+
+`--step db`/`--step fts` 시 FTS 생성은 try/except로 감싸져 있어, MeCab 실패해도 ORM 적재는 계속됩니다.
+
+**진단 방법**:
+```sql
+SELECT min(serial_number::int), max(serial_number::int), count(*)
+FROM <orm_table> p
+WHERE NOT EXISTS (SELECT 1 FROM fts_index f WHERE f.source_id = p.<id_col> AND f.data_type='<타입>');
+```
+
+**해결**: `--step fts --reset`으로 ORM에서 FTS 재빌드.
+
+#### 3. PostgreSQL tsvector 1MB 제한
+
+단일 문서의 tsvector가 1,048,575 바이트를 초과하면 `ProgramLimitExceeded` 오류가 발생합니다.
+`db_writer.py`와 `fts_builder.py` 모두 `_MAX_FULLTEXT_CHARS = 300,000`으로 truncate합니다.
+
+**영향 타입**: dec_fair_trade (공정거래위원회 일부 결정문)
+
+#### 4. dec_* `data_type` 공유 문제 (해결됨)
+
+11개 위원회 결정례 타입이 모두 `data_type="위원회결정례"`를 공유합니다.
+
+**해결된 문제들**:
+- **source_id 충돌**: 11개 dec_* 타입 간 `결정문일련번호`(serial_number) 중복 (8,915건).
+  `_dec_comm_common.py`에서 FTS source_id를 `{config.name}:{serial_number}` 형식으로 접두사 추가하여 해결.
+- **`--reset` 연쇄 삭제**: `DELETE FROM fts_index WHERE data_type='위원회결정례'`가 모든 위원회 FTS를 삭제.
+
+**안전한 재빌드 방법**:
+```bash
+# 1. 수동 삭제 후 --reset 없이 병렬 재빌드 (권장)
+docker.exe exec law-platform-db psql -U lawuser -d lawdb \
+  -c "DELETE FROM fts_index WHERE data_type = '위원회결정례';"
+
+for t in dec_privacy dec_employment dec_fair_trade dec_human_rights dec_civil_rights \
+         dec_financial dec_labor dec_industrial dec_environment dec_securities dec_media; do
+    uv run --no-sync python -m scripts.ingest.cli --type "$t" --step fts &
+done
+wait
+
+# 2. 개별 타입 --step fts (--reset 없이, UPSERT로 갱신)
+uv run --no-sync python -m scripts.ingest.cli --type dec_labor --step fts
+```
+
+### FTS 적재율 기준표 (2026-02-25)
+
+| 타입 | ORM | FTS | 적재율 | 비고 |
+|------|----:|----:|-------:|------|
+| 자치법규 | 154,289 | 154,289 | 100% | - |
+| 특별행정심판 | 137,288 | 137,288 | 100% | - |
+| 판례 | 92,055 | 92,055 | 100% | - |
+| 위원회결정례 | 57,613 | 57,613 | 100% | source_id 접두사로 충돌 해결 |
+| 부처유권해석 | 37,455 | 37,455 | 100% | - |
+| 행정심판례 | 34,254 | 34,254 | 100% | - |
+| 헌재결정례 | 31,718 | 31,718 | 100% | - |
+| 행정규칙 | 17,092 | 17,092 | 100% | - |
+| 법령해석례 | 8,597 | 8,597 | 100% | - |
+| 법령 | 5,548 | 5,548 | 100% | - |
+| 조약 | 3,589 | 3,589 | 100% | - |
+| **합계** | **579,498** | **579,498** | **100%** | composite PK (source_id, data_type) |
+
+---
+
 ## 7. interpretation_ministry (부처해석례) — PostgreSQL 11개 칼럼
 
 | 칼럼 | 원래 칼럼명(한글) | 첫 행 값 (경찰청) |

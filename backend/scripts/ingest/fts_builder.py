@@ -29,6 +29,7 @@ from scripts.ingest.shared import get_tokenizer, upsert_fts_batch
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 1000
+_MAX_FULLTEXT_CHARS = 300_000
 
 
 def run_fts_rebuild(
@@ -111,6 +112,9 @@ def run_fts_rebuild(
                     fulltext = config.orm_fulltext_fn(row)
                     if not fulltext.strip():
                         continue
+
+                    if len(fulltext) > _MAX_FULLTEXT_CHARS:
+                        fulltext = fulltext[:_MAX_FULLTEXT_CHARS]
 
                     tokens = tokenizer.morphs(fulltext)
                     tsvector_str = build_tsvector_string(tokens)

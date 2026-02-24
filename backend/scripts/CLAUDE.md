@@ -390,6 +390,7 @@ uv run --no-sync python scripts/build_optimized_onnx.py --verify
 |----------|------|------|
 | `kure-v1-ort-opt/` | 임베딩 FP32 최적화 | ~1.1GB |
 | `kure-v1-ort-opt-qdq/` | 임베딩 QDQ INT8 (16 FP32) | ~700MB |
+| `kure-v1-onnx-fp16/` | 임베딩 FP16 (cosine 1.0) | ~550MB |
 | `reranker-ort-opt/` | 리랭커 FP32 최적화 | ~1.1GB |
 | `reranker-ort-opt-qdq/` | 리랭커 QDQ INT8 | ~700MB |
 
@@ -833,7 +834,7 @@ uv run python -m scripts.ingest.cli --type <타입명|all> [옵션]
 | `--device` | `cuda`, `mps`, `cpu` | 자동 감지 | 임베딩 디바이스 (`vector` 단계용) |
 | `--profile` | `desktop`, `laptop`, `mac`, `cpu` | 자동 감지 | 하드웨어 프로필 (`vector` 단계용) |
 | `--no-cache` | - | `false` | 임베딩 캐시 비활성화 (`vector` 단계용) |
-| `--backend` | `onnx`, `onnx-int8` | `None` (PyTorch) | 임베딩 백엔드 (`vector` 단계용, ONNX 양자화 지원) |
+| `--backend` | `onnx`, `onnx-int8`, `onnx-fp16` | `None` (PyTorch) | 임베딩 백엔드 (`vector` 단계용, ONNX 양자화 지원) |
 
 ### 5. 단계별 실행 가이드
 

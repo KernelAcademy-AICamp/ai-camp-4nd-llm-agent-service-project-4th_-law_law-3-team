@@ -45,7 +45,7 @@ def upsert_fts_batch(session: Any, batch: list[dict[str, Any]]) -> int:
 
     stmt = insert(FtsIndex).values(batch)
     stmt = stmt.on_conflict_do_update(
-        index_elements=["source_id"],
+        index_elements=["source_id", "data_type"],
         set_={
             "data_type": stmt.excluded.data_type,
             "title": stmt.excluded.title,
