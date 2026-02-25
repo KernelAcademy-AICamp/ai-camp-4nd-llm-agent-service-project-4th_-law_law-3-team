@@ -342,7 +342,7 @@ legal_search_node(state, writer)
     │     focus = state.get("search_focus", "precedent")
     │
     ├─ 2. 쿼리 리라이팅 (에이전트 레벨 1회)
-    │     rewrite_conversational_query(message, history)
+    │     rewrite_query(message, use_llm=True)
     │
     ├─ 3. Focus + Supplementary 병렬 검색 (asyncio.gather)
     │     ├─ Focus: search_with_pipeline_async(query, focus_config)

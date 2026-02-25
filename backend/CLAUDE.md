@@ -180,6 +180,7 @@ app/
 │   │   ├── query_rewrite.py  # 쿼리 리라이팅
 │   │   ├── keyword_search.py  # FTS 키워드 검색
 │   │   ├── pipeline.py   # 검색 파이프라인 (동기 + async)
+│   │   ├── format_utils.py     # LLM 컨텍스트 + 프론트엔드 소스 포맷팅
 │   │   ├── onnx_session.py       # ONNX 세션 싱글턴 관리
 │   │   └── onnx_quality_gate.py  # ONNX 품질 게이트 (PyTorch 비교)
 │   └── service_function/ # 통합 서비스 함수
@@ -313,6 +314,9 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `UPSTAGE_MODEL` | Solar 모델명 | `solar-pro3-260126` |
 | `USE_DB_LAWYERS` | 변호사 데이터 소스 (true: PostgreSQL, false: JSON) | `false` |
 | `USE_LEGAL_TERM_DICT` | 법률 용어 사전 사용 (true: MeCab 토큰 보강) | `false` |
+| `LANGCHAIN_TRACING_V2` | LangSmith 트레이싱 활성화 | `false` |
+| `LANGCHAIN_PROJECT` | LangSmith 프로젝트명 | `law-platform` |
+| `LANGCHAIN_API_KEY` | LangSmith API 키 | `""` |
 | `USE_ONNX_EMBEDDING` | ONNX 임베딩 사용 (쿼리 + 인제스트 배치, CUDA 자동 감지) | `false` |
 | `ONNX_EMBEDDING_VARIANT` | ONNX 임베딩 variant (`ort-opt`, `ort-opt-qdq`, `onnx-fp16`) | `ort-opt` |
 | `USE_ONNX_RERANKER` | ONNX 리랭커 사용 | `false` |

@@ -214,7 +214,7 @@ def _build_context(self, documents):  # 금지
 
 | 검색 대상 | 컨텍스트 함수 | 소스 함수 |
 |----------|-------------|---------|
-| 판례 | `format_precedent_context(docs, details)` | `format_precedent_sources(docs, details)` |
+| 판례 | `format_precedent_context(docs)` | `format_precedent_sources(docs, details)` |
 | 법령 | `format_law_context(docs)` | `format_law_sources(docs)` |
 | 보충 자료 (다양한 타입) | `format_supplementary_context(docs)` | `format_supplementary_sources(docs)` |
 | 타입 구분 없이 전체 | `format_generic_context(docs)` | `format_supplementary_sources(docs)` |
@@ -222,24 +222,25 @@ def _build_context(self, documents):  # 금지
 ### 3.3 컨텍스트 함수 출력 형식
 
 ```python
-# format_precedent_context (details 포함)
-"## 관련 판례\n\n[판례 1] 사건명 (번호)\n본문\n[주문] ...\n[판결요지] ..."
+# format_precedent_context — content_fields 구조화 출력
+"## 관련 판례\n\n[판례 1] 사건명 (번호) (id: 12345)\n[ruling] 주문 내용\n[reasoning] 판결요지"
 
 # format_law_context
-"## 관련 법령\n\n[법령 1] 법령명\n본문"
+"## 관련 법령\n\n[법령 1] 법령명 (id: 000064)\n[content] 법령 본문"
 
 # format_supplementary_context
-"## 관련 법률 자료 (보충)\n\n[헌재결정례 1] 제목\n본문"
+"## 관련 법률 자료 (보충)\n\n[헌재결정례 1] 제목 (id: 135403)\n[ruling] ...\n[reasoning] ..."
 
 # format_generic_context
-"## 관련 자료\n\n[판례 1] 제목\n본문\n\n[법령 2] 제목\n본문"
+"## 관련 자료\n\n[판례 1] 제목 (id: 12345)\n[ruling] ...\n\n[법령 2] 제목 (id: 000064)\n[content] ..."
 ```
 
 모든 함수는 `documents`가 빈 리스트이면 빈 문자열 `""`을 반환한다.
+`content_fields` dict가 있으면 `[컬럼명] 값` 형태로 구조화 출력, 없으면 `content` 문자열로 fallback.
 
 ### 3.4 판례 상세(details) 연동
 
-`PrecedentService.get_details()`로 조회한 상세 정보를 context/sources에 전달:
+`PrecedentService.get_details()`로 조회한 상세 정보는 **프론트엔드 소스용**으로만 사용:
 
 ```python
 from app.services.service_function import PrecedentService, get_precedent_service
@@ -249,13 +250,15 @@ precedent_service = get_precedent_service()
 source_ids = [doc["metadata"]["doc_id"] for doc in docs if doc["metadata"].get("doc_id")]
 details = await precedent_service.get_details(source_ids)
 
-# context + sources에 details 전달
-context = format_precedent_context(docs, details)
+# LLM context: content_fields 기반 (details 불필요)
+context = format_precedent_context(docs)
+
+# 프론트엔드 sources: details 전달 (상세 정보 표시용)
 sources = format_precedent_sources(docs, details)
 ```
 
 `details`는 `{doc_id: {ruling, reasoning, case_name, ...}}` 딕셔너리.
-판례가 아닌 경우 `details` 파라미터 생략 가능 (기본값 None).
+LLM context는 `content_fields`(DOCUMENT_TABLE_REGISTRY 기반)로 구성되므로 details가 불필요.
 
 ### 3.5 컨텍스트 조합 패턴
 

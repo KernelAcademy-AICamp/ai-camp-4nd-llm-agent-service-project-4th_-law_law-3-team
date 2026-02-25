@@ -10,8 +10,9 @@
 - **Frontend**: Next.js 14 (React, TypeScript)
 - **Database**: PostgreSQL, Neo4j (Graph DB)
 - **Vector DB**: LanceDB (RAG, 1문서=1벡터)
-- **AI/ML**: Solar (Upstage), LangGraph
+- **AI/ML**: Solar (Upstage), LangGraph, LangSmith (트레이싱)
 - **Embedding**: KURE-v1 (로컬, 1024차원) / OpenAI (선택)
+- **Reranker**: bge-reranker-v2-m3-ko (Cross-encoder, 한국어 특화)
 
 ## 프로젝트 구조
 
@@ -603,6 +604,9 @@ npm run dev               # 개발 서버 (localhost:3000)
 | `LANCEDB_TABLE_NAME` | LanceDB 테이블명 | `legal_chunks` |
 | `USE_LOCAL_EMBEDDING` | 로컬 임베딩 사용 여부 (무료) | `true` |
 | `LOCAL_EMBEDDING_MODEL` | 로컬 임베딩 모델 | `nlpai-lab/KURE-v1` |
+| `LANGCHAIN_TRACING_V2` | LangSmith 트레이싱 활성화 | `false` |
+| `LANGCHAIN_PROJECT` | LangSmith 프로젝트명 | `law-platform` |
+| `LANGCHAIN_API_KEY` | LangSmith API 키 | - |
 
 ### .env 파일 예시
 
@@ -628,6 +632,11 @@ LANCEDB_TABLE_NAME=legal_chunks
 # 로컬 임베딩 (무료, 권장)
 USE_LOCAL_EMBEDDING=true
 LOCAL_EMBEDDING_MODEL=nlpai-lab/KURE-v1
+
+# LangSmith 트레이싱 (선택)
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT=law-platform
+LANGCHAIN_API_KEY=lsv2_pt_your-langsmith-api-key
 ```
 
 ## Docker 프로덕션 배포
