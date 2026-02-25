@@ -684,7 +684,7 @@ uv run python scripts/build_mecab_userdic.py --dry-run  # 통계만
 - `_FTS_POS_TAGS = frozenset({"NNG", "NNP"})` — 일반명사 + 고유명사만 허용 (내부 상수)
 - `_MIN_TOKEN_LENGTH = 2` — 1자 명사("시", "때" 등) 노이즈 제거
 - `morphs()` 호출 시 항상 명사 필터 + 2자 이상 필터 적용 (옵션 없음)
-- FTS 생성(`db_writer`, `fts_builder`, `build_fts_index`)과 검색(`keyword_search`) 양쪽에 적용
+- FTS 생성(`db_writer`, `fts_builder`)과 검색(`keyword_search`) 양쪽에 적용
 - MeCab 미설치 시 에러 발생 (silent fallback 없음)
 
 **수동 용어 추가 (`scripts/manual_terms.json`):**

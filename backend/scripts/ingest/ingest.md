@@ -380,7 +380,6 @@ source_id, data_type, title, date, source_name, case_number + content_tsvector
 **해결**: Migration 017에서 PK를 `(source_id, data_type)` 복합 PK로 변경.
 - `backend/app/models/fts_index.py`: `data_type`에 `primary_key=True` 추가
 - `backend/scripts/ingest/shared.py`: `index_elements=["source_id", "data_type"]`
-- `backend/scripts/build_fts_index.py`: 동일 변경
 - Migration 017은 TRUNCATE 포함 → 적용 후 전체 FTS 재빌드 필수
 
 ##### 2. dec_* 위원회결정례 source_id 충돌 (접두사로 해결)
