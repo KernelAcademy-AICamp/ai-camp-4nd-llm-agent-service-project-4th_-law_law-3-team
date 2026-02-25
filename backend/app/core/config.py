@@ -103,7 +103,7 @@ class Settings(BaseSettings):
 
     # ONNX 임베딩 최적화
     USE_ONNX_EMBEDDING: bool = False
-    ONNX_EMBEDDING_VARIANT: str = "ort-opt"  # ort-opt (FP32 무손실) | ort-opt-qdq (INT8, cosine 0.999)
+    ONNX_EMBEDDING_VARIANT: str = "ort-opt"  # ort-opt (FP32 무손실) | ort-opt-qdq (INT8, cosine 0.999) | onnx-fp16 (FP16, cosine 1.0)
     USE_ONNX_RERANKER: bool = False
     ONNX_RERANKER_VARIANT: str = "ort-opt"  # ort-opt | ort-opt-qdq
     ONNX_QUALITY_GATE_ENABLED: bool = True

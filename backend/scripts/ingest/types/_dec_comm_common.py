@@ -92,7 +92,7 @@ def register_dec_comm(
         elif case_number_field:
             title = item.get(case_number_field, "") or ""
         return {
-            "source_id": str(item.get("결정문일련번호", "")),
+            "source_id": f"{name}:{item.get('결정문일련번호', '')}",
             "data_type": "위원회결정례",
             "title": title,
             "date": date_str if date_str else None,
@@ -104,7 +104,7 @@ def register_dec_comm(
 
     def _orm_fts_metadata_fn(row: Any) -> dict[str, Any]:
         return {
-            "source_id": row.serial_number,
+            "source_id": f"{name}:{row.serial_number}",
             "data_type": "위원회결정례",
             "title": getattr(row, "case_name", None)
             or getattr(row, "case_label", None)

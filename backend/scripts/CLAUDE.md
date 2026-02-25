@@ -389,6 +389,7 @@ uv run --no-sync python scripts/build_optimized_onnx.py --verify
 |----------|------|------|
 | `kure-v1-ort-opt/` | 임베딩 FP32 최적화 | ~1.1GB |
 | `kure-v1-ort-opt-qdq/` | 임베딩 QDQ INT8 (16 FP32) | ~700MB |
+| `kure-v1-onnx-fp16/` | 임베딩 FP16 (cosine 1.0) | ~550MB |
 | `reranker-ort-opt/` | 리랭커 FP32 최적화 | ~1.1GB |
 | `reranker-ort-opt-qdq/` | 리랭커 QDQ INT8 | ~700MB |
 
@@ -459,8 +460,10 @@ uv run --no-sync python -m evaluation.run
 ```bash
 # .env 또는 환경변수로 설정
 USE_ONNX_RERANKER=true
-ONNX_RERANKER_VARIANT=ort-opt       # 또는 ort-opt-qdq
+ONNX_RERANKER_VARIANT=ort-opt       # 또는 ort-opt-qdq, ort-opt-qdq-6fp32
 ```
+
+> **리랭커 variant별 상세 테스트 가이드**: `docs/04-report/features/reranker-onnx-variant-test-guide.md` 참조 (다운로드, .env 전환, 수동 추론, PyTorch 비교).
 
 ### ONNX 환경 변수 요약
 
@@ -469,7 +472,7 @@ ONNX_RERANKER_VARIANT=ort-opt       # 또는 ort-opt-qdq
 | `USE_ONNX_EMBEDDING` | `false` | ONNX 임베딩 사용 여부 |
 | `ONNX_EMBEDDING_VARIANT` | `ort-opt` | `ort-opt` (FP32) 또는 `ort-opt-qdq` (INT8) |
 | `USE_ONNX_RERANKER` | `false` | ONNX 리랭커 사용 여부 |
-| `ONNX_RERANKER_VARIANT` | `ort-opt` | `ort-opt` (FP32) 또는 `ort-opt-qdq` (INT8) |
+| `ONNX_RERANKER_VARIANT` | `ort-opt` | `ort-opt` (FP32) 또는 `ort-opt-qdq` (INT8, 4 FP32) 또는 `ort-opt-qdq-6fp32` (INT8, 6 FP32) |
 | `ONNX_INTRA_OP_THREADS` | `0` | 0=자동, 4=Mac ARM P코어만 권장 |
 | `ONNX_ENABLE_IO_BINDING` | `false` | CUDA EP에서 유효 (CPU EP에서 무효) |
 | `ONNX_ENABLE_BF16_FASTMATH` | `false` | Graviton3+ 전용 (Mac ARM 미지원) |
@@ -483,13 +486,17 @@ ONNX_RERANKER_VARIANT=ort-opt       # 또는 ort-opt-qdq
 |----------|------|
 | `build_optimized_onnx.py` | ONNX 모델 빌드 (변환+최적화+양자화+검증) |
 | `benchmark_arm_optimization.py` | ARM 최적화 벤치마크 (latency, cosine) |
-| `sweep_sensitive_layers.py` | QDQ INT8 민감 레이어 탐색 (최적 FP32 레이어 결정) |
-| `benchmark_new_optimizations.py` | Session Config / CoreML / Dynamic INT8 벤치마크 |
+| `sweep_sensitive_layers.py` | 임베딩 QDQ INT8 민감 레이어 탐색 |
+| `benchmark_new_optimizations.py` | 임베딩 Session Config / CoreML / Dynamic INT8 벤치마크 |
+| `benchmark_reranker_optimizations.py` | 리랭커 Session Config / CoreML / IO Binding / 프로파일링 벤치마크 |
+| `sweep_reranker_sensitive_layers.py` | 리랭커 QDQ INT8 민감 레이어 탐색 |
 | `download_models.py` | HuggingFace 모델 다운로드 (PyTorch 원본) |
 
 ### 벤치마크 보고서
 
-- `docs/04-report/features/arm-onnx-optimization-benchmark.md` — 전체 최적화 벤치마크 결과
+- `docs/04-report/features/arm-onnx-optimization-benchmark.md` — 임베딩 최적화 벤치마크 결과
+- `docs/04-report/features/reranker-onnx-optimization-benchmark.md` — 리랭커 최적화 벤치마크 결과
+- `docs/04-report/features/reranker-onnx-variant-test-guide.md` — 리랭커 variant 테스트 가이드 (팀원용)
 
 ---
 
@@ -832,7 +839,7 @@ uv run python -m scripts.ingest.cli --type <타입명|all> [옵션]
 | `--device` | `cuda`, `mps`, `cpu` | 자동 감지 | 임베딩 디바이스 (`vector` 단계용) |
 | `--profile` | `desktop`, `laptop`, `mac`, `cpu` | 자동 감지 | 하드웨어 프로필 (`vector` 단계용) |
 | `--no-cache` | - | `false` | 임베딩 캐시 비활성화 (`vector` 단계용) |
-| `--backend` | `onnx`, `onnx-int8` | `None` (PyTorch) | 임베딩 백엔드 (`vector` 단계용, ONNX 양자화 지원) |
+| `--backend` | `onnx`, `onnx-int8`, `onnx-fp16` | `None` (PyTorch) | 임베딩 백엔드 (`vector` 단계용, ONNX 양자화 지원) |
 
 ### 5. 단계별 실행 가이드
 

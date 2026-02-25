@@ -28,6 +28,7 @@ _cached_backend: Optional[str] = None
 _ONNX_MODEL_DIRS: dict[str, str] = {
     "onnx": "models/kure-v1-onnx",
     "onnx-int8": "models/kure-v1-onnx-int8",
+    "onnx-fp16": "models/kure-v1-onnx-fp16",
 }
 
 

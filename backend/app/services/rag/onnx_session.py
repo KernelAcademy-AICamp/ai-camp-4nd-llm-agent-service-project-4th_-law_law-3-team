@@ -31,10 +31,12 @@ _MODELS_DIR = Path(__file__).parent.parent.parent.parent / "data" / "models"
 _EMB_VARIANT_MAP: dict[str, str] = {
     "ort-opt": "kure-v1-ort-opt",
     "ort-opt-qdq": "kure-v1-ort-opt-qdq",
+    "onnx-fp16": "kure-v1-onnx-fp16",
 }
 _RR_VARIANT_MAP: dict[str, str] = {
     "ort-opt": "reranker-ort-opt",
     "ort-opt-qdq": "reranker-ort-opt-qdq",
+    "ort-opt-qdq-6fp32": "reranker-ort-opt-qdq-6fp32",
 }
 
 # ONNX 모델 파일명 후보 (우선순위순)
@@ -311,8 +313,12 @@ def _verify_model_integrity(model_dir: Path, variant_key: str) -> bool:
         return False
 
     # 최소 파일 크기 검증 (1MB 미만이면 손상 가능성)
+    # 단, 외부 데이터 파일(.data)이 있으면 합산하여 검증
     min_size_bytes = 1_000_000
     file_size = model_file.stat().st_size
+    external_data_file = Path(str(model_file) + ".data")
+    if external_data_file.exists():
+        file_size += external_data_file.stat().st_size
     if file_size < min_size_bytes:
         logger.error(
             "ONNX 모델 파일이 너무 작음 (손상 가능): %s (%d bytes, 최소 %d bytes)",
