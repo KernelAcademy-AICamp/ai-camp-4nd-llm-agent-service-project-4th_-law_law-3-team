@@ -148,10 +148,10 @@ PRESETS: dict[str, PipelineConfig] = {
         enable_rerank=True,
         rerank_top_k=5,
         supplementary_config=PipelineConfig(
-            n_results=7,
+            n_results=2,
             exclude_doc_types=["판례"],
             enable_rerank=False,
-            rerank_top_k=3,
+            rerank_top_k=2,
         ),
     ),
     "legal_search_law": PipelineConfig(
@@ -162,10 +162,10 @@ PRESETS: dict[str, PipelineConfig] = {
         enable_rerank=True,
         rerank_top_k=5,
         supplementary_config=PipelineConfig(
-            n_results=7,
+            n_results=2,
             exclude_doc_types=["법령"],
             enable_rerank=False,
-            rerank_top_k=3,
+            rerank_top_k=2,
         ),
     ),
     # --- basic 모드: 단일 검색 ---
