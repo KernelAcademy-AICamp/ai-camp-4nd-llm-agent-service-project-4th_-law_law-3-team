@@ -361,6 +361,7 @@ def run_vector_ingest(
     device: str | None = None,
     profile: str | None = None,
     use_cache: bool = True,
+    backend: str | None = None,
 ) -> dict[str, int]:
     """
     JSON -> 요약문 임베딩 -> LanceDB 저장 (스트리밍 배치 처리)
@@ -397,8 +398,8 @@ def run_vector_ingest(
         logger.info("배치 크기 자동 설정: %d", batch_size)
 
     # 모델 로드
-    model = get_embedding_model(device=device)
-    logger.info("임베딩 모델 로드 완료")
+    model = get_embedding_model(device=device, backend=backend)
+    logger.info("임베딩 모델 로드 완료 (backend=%s)", backend or "pytorch")
 
     # #10 품질 검증
     _run_quality_check(model)

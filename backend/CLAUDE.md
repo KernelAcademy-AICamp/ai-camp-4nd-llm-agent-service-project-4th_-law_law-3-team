@@ -61,11 +61,12 @@ rclone copy --config rclone.conf gdrive:data/ data/ --progress
 ### 6. 데이터 로드 (PostgreSQL)
 
 ```bash
-# data/ 폴더에 법령/판례 JSON 파일 필요
-# - data/law_v3.json
-# - data/precedents_v2.json
+# data/ingest_source/ 폴더에 법령/판례 JSON 파일 필요
+# - data/ingest_source/law_v3.json
+# - data/ingest_source/precedents_v2.json
+# (sources.yaml에서 경로 관리)
 
-uv run python scripts/load_lancedb_data.py --type all
+uv run python -m scripts.ingest.cli --type all --step db
 ```
 
 ### 7. LanceDB 데이터
@@ -79,16 +80,20 @@ uv pip install torch --index-url https://download.pytorch.org/whl/cu128
 uv run --no-sync python scripts/runpod_lancedb_embeddings.py --type all
 ```
 
-### 8. 임베딩 모델 다운로드 ⚠️ 중요
+### 8. 임베딩/리랭커 모델 다운로드 ⚠️ 중요
 
-검색 API를 사용하려면 **반드시 임베딩 모델을 먼저 다운로드**해야 합니다.
+검색 API를 사용하려면 **임베딩 모델과 리랭커 모델을 먼저 다운로드**해야 합니다.
 
 ```bash
-# 모델 다운로드 (약 2.3GB, 네트워크 상태에 따라 시간 소요)
+# 전체 모델 다운로드 (임베딩 ~2.3GB + 리랭커 ~2.1GB)
 uv run python scripts/download_models.py
 
 # 캐시 상태만 확인
 uv run python scripts/download_models.py --check
+
+# 임베딩 또는 리랭커만 다운로드
+uv run python scripts/download_models.py --embedding-only
+uv run python scripts/download_models.py --reranker-only
 ```
 
 > **참고**: 서버 시작 시 모델이 없으면 경고만 표시하고 서버는 실행됩니다.
@@ -174,7 +179,9 @@ app/
 │   │   ├── rerank.py     # 리랭킹
 │   │   ├── query_rewrite.py  # 쿼리 리라이팅
 │   │   ├── keyword_search.py  # FTS 키워드 검색
-│   │   └── pipeline.py   # 검색 파이프라인 (동기 + async)
+│   │   ├── pipeline.py   # 검색 파이프라인 (동기 + async)
+│   │   ├── onnx_session.py       # ONNX 세션 싱글턴 관리
+│   │   └── onnx_quality_gate.py  # ONNX 품질 게이트 (PyTorch 비교)
 │   └── service_function/ # 통합 서비스 함수
 │       ├── lawyer_service.py       # 변호사 검색/클러스터링
 │       ├── lawyer_stats_service.py # 변호사 통계
@@ -208,7 +215,7 @@ app/
 │   ├── trial_statistics.py
 │   ├── fts_index.py           # FTS 전문 검색 인덱스
 │   ├── law.py
-│   └── ingest/                # 인제스트 원본 테이블 (20개)
+│   └── ingest/                # 인제스트 원본 테이블 (21개)
 │       ├── admin_rule_document.py
 │       ├── constitutional_document.py
 │       ├── administration_document.py
@@ -217,7 +224,7 @@ app/
 │       ├── interpretation_ministry_document.py
 │       ├── special_admin_appeal_document.py
 │       ├── local_ordinance_document.py  # 자치법규 (160,276건)
-│       └── dec_*_document.py  # 위원회 결정례 (9개)
+│       └── dec_*_document.py  # 위원회 결정례 (10개)
 └── common/              # (deprecated) 레거시 코드
     └── chat_service.py  # → services/rag/로 이전됨
 ```
@@ -306,6 +313,20 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `UPSTAGE_MODEL` | Solar 모델명 | `solar-pro3-260126` |
 | `USE_DB_LAWYERS` | 변호사 데이터 소스 (true: PostgreSQL, false: JSON) | `false` |
 | `USE_LEGAL_TERM_DICT` | 법률 용어 사전 사용 (true: MeCab 토큰 보강) | `false` |
+| `USE_ONNX_EMBEDDING` | ONNX 임베딩 사용 (쿼리 + 인제스트 배치, CUDA 자동 감지) | `false` |
+| `ONNX_EMBEDDING_VARIANT` | ONNX 임베딩 variant (`ort-opt`, `ort-opt-qdq`, `onnx-fp16`) | `ort-opt` |
+| `USE_ONNX_RERANKER` | ONNX 리랭커 사용 | `false` |
+| `ONNX_RERANKER_VARIANT` | ONNX 리랭커 variant | `ort-opt` |
+| `ONNX_INTRA_OP_THREADS` | ORT 스레드 수 (0=자동, 4=Mac ARM P코어) | `0` |
+| `ONNX_QUALITY_GATE_ENABLED` | ONNX 품질 게이트 활성화 (PyTorch 대비 cosine/pearson 검증) | `true` |
+| `ONNX_QUALITY_GATE_FALLBACK` | 품질 미달 시 자동 PyTorch 폴백 | `true` |
+| `ONNX_INFERENCE_TIMEOUT_SECONDS` | ONNX 추론 타임아웃 (초) | `30.0` |
+
+> **ONNX Variant (임베딩)**: `ort-opt` (FP32 무손실, cosine 1.0), `ort-opt-qdq` (INT8, cosine 0.999, 23% 빠름), `onnx-fp16` (FP16, cosine 1.0).
+> **ONNX Variant (리랭커)**: `ort-opt` (FP32 무손실) | `ort-opt-qdq` (INT8, 4 FP32, Pearson 0.9999, 3.52x) | `ort-opt-qdq-6fp32` (INT8, 6 FP32, Pearson 0.9994, Spearman 0.993).
+> **ONNX EP**: `onnxruntime-gpu` 설치 시 CUDA 자동 감지, 미설치 시 CPU fallback. 인제스트 배치 임베딩도 지원.
+> ONNX 모델 빌드 및 RAG 비교 테스트 가이드: `scripts/CLAUDE.md`의 "ONNX 최적화 모델 빌드 + RAG 테스트 환경 구축" 참조.
+> **리랭커 ONNX variant 테스트**: `docs/04-report/features/reranker-onnx-variant-test-guide.md` (다운로드, .env 설정, 수동 추론, 트러블슈팅).
 
 자세한 설정은 `.env.example` 참조.
 
@@ -540,16 +561,16 @@ uv run alembic downgrade -1
 
 ```bash
 # 법령 데이터 로드 (data/law_v3.json → PostgreSQL)
-uv run python scripts/load_lancedb_data.py --type law
+uv run python -m scripts.ingest.cli --type law --step db
 
 # 판례 데이터 로드 (data/precedents_v2.json → PostgreSQL)
-uv run python scripts/load_lancedb_data.py --type precedent
+uv run python -m scripts.ingest.cli --type precedent --step db
 
 # 전체 로드 (법령 + 판례)
-uv run python scripts/load_lancedb_data.py --type all
+uv run python -m scripts.ingest.cli --type all --step db
 
 # 기존 데이터 삭제 후 재로드
-uv run python scripts/load_lancedb_data.py --type all --reset
+uv run python -m scripts.ingest.cli --type all --step db --reset
 ```
 
 ### 모델 파일 위치
@@ -576,7 +597,7 @@ app/models/
 | `legal_terms` | 법률 용어 사전 (~72,700건) | term(UNIQUE), definition, source_code, source_count, term_length, is_korean_only |
 | `trial_statistics` | 재판 통계 | category, court_name, court_type, parent_court, year, case_count |
 | `local_ordinance_documents` | 자치법규 원본 (160,276건) | ordinance_id, ordinance_name, local_government, overall_summary, content |
-| `fts_index` | FTS 전문 검색 인덱스 | source_id, data_type, title, date, tsvector |
+| `fts_index` | FTS 전문 검색 인덱스 (579,498건) | **PK: (source_id, data_type)**, title, date, tsvector. dec_* source_id는 `{name}:{serial_number}` 형식 |
 
 ### 변호사 데이터 (lawyers 테이블)
 
@@ -712,6 +733,10 @@ uv run --no-sync python -m scripts.ingest.cli --type precedent --step vector
 uv run --no-sync python -m scripts.ingest.cli --type law --step vector
 uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
 
+# ONNX INT8 벡터 적재 (CPU 최적화, ONNX 모델 미존재 시 자동 변환)
+uv run --no-sync python -m scripts.ingest.cli --step onnx-export              # 명시적 ONNX 변환
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --backend onnx-int8  # INT8 적재
+
 # 통계 확인
 uv run --no-sync python -m scripts.ingest.cli --type all --stats
 ```
@@ -739,7 +764,7 @@ from scripts.runpod_lancedb_embeddings import (
 ```
 backend/
 ├── lancedb_data/           # LanceDB 데이터
-│   ├── legal_chunks.lance/              # 법령 + 판례 등 19개 타입 통합 테이블
+│   ├── legal_chunks.lance/              # 21개 타입 통합 테이블 (법령 포함, summary_type/article_number 컬럼)
 │   └── local_ordinance_chunks.lance/   # 자치법규 전용 테이블 (전체요약 + 조문요약)
 └── scripts/
     ├── ingest/                         # 메인 인제스트 파이프라인
@@ -779,25 +804,24 @@ results = table.search(query_vector).metric('cosine').limit(10).to_pandas()
 2. **--no-sync 필수** - `uv run --no-sync`로 실행
 3. **GPU 자동 감지** - VRAM에 따라 batch_size 자동 설정
 
-## Embedding Model (임베딩 모델)
+## Embedding / Reranker Model (임베딩 · 리랭커 모델)
 
-검색 API는 쿼리를 벡터로 변환하기 위해 **임베딩 모델**이 필요합니다.
+검색 API는 **임베딩 모델**(쿼리→벡터)과 **리랭커 모델**(문서 재정렬)이 필요합니다.
+두 모델 모두 `backend/data/models/`에 캐시됩니다.
 
 ### 모델 정보
 
-| 항목 | 값 |
-|------|-----|
-| 모델명 | `nlpai-lab/KURE-v1` |
-| 크기 | 약 2.3GB |
-| 차원 | 1024 |
-| 캐시 경로 | `backend/data/models/` |
+| 용도 | 모델명 | 크기 | 비고 |
+|------|--------|------|------|
+| 임베딩 | `nlpai-lab/KURE-v1` | ~2.3GB | 1024차원, SentenceTransformer |
+| 리랭커 | `dragonkue/bge-reranker-v2-m3-ko` | ~2.1GB | CrossEncoder, Sigmoid |
 
 ### 모델 다운로드
 
 ```bash
 cd backend
 
-# 모델 다운로드 (네트워크 상태에 따라 시간 소요)
+# 전체 모델 다운로드 (임베딩 + 리랭커)
 uv run python scripts/download_models.py
 
 # 캐시 상태만 확인
@@ -806,8 +830,12 @@ uv run python scripts/download_models.py --check
 # 재다운로드 (기존 캐시 무시)
 uv run python scripts/download_models.py --force
 
-# 다른 모델 다운로드
-uv run python scripts/download_models.py --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+# 임베딩 또는 리랭커만 다운로드
+uv run python scripts/download_models.py --embedding-only
+uv run python scripts/download_models.py --reranker-only
+
+# 특정 모델만 다운로드 (SentenceTransformer)
+uv run python scripts/download_models.py --model nlpai-lab/KURE-v1
 ```
 
 ### 서버 동작 방식
@@ -831,9 +859,10 @@ uv run python scripts/download_models.py --model sentence-transformers/paraphras
 
 | 파일 | 설명 |
 |------|------|
-| `app/services/rag/retrieval.py` | `check_embedding_model_availability()`, `get_local_model()`, `create_query_embedding()` |
+| `app/services/rag/embedding.py` | 임베딩 모델 로드 (`cache_folder` → `data/models/`) |
+| `app/services/rag/rerank.py` | 리랭커 모델 로드 (`cache_folder` → `data/models/`) |
 | `app/core/errors.py` | `EmbeddingModelNotFoundError` 예외 클래스 |
-| `scripts/download_models.py` | 모델 다운로드 CLI |
+| `scripts/download_models.py` | 모델 다운로드 CLI (임베딩 + 리랭커) |
 | `app/main.py` | lifespan에서 시작 시 체크 |
 
 ### 환경 변수

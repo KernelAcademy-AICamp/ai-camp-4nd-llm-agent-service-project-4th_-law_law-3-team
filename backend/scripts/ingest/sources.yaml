@@ -1,6 +1,6 @@
 # 인제스트 데이터 소스 경로 설정
 # 모든 경로는 DATA_DIR (프로젝트루트/data/) 기준 상대 경로
-# 버전 변경 시 이 파일만 수정하면 19개 타입에 자동 반영됩니다.
+# 버전 변경 시 이 파일만 수정하면 20개 타입에 자동 반영됩니다.
 
 # 단일 JSON
 law: ingest_source/law_v3.json
@@ -26,6 +26,7 @@ dec_labor: ingest_source/decisions_committee/dec_comm_노동위원회_v2.json
 dec_industrial: ingest_source/decisions_committee/dec_comm_산업재해보상위험재심사위원회_v2.json
 dec_environment: ingest_source/decisions_committee/dec_comm_중앙환경분쟁조정위원회_v2.json
 dec_securities: ingest_source/decisions_committee/dec_comm_증권선물위원회_v2.json
+dec_media: ingest_source/decisions_committee/dec_comm_방송미디어통신위원회_v1.json
 
 # 자치법규
-local_ordinance: local_rules_v1.json
+local_ordinance: ingest_source/local_rules_v1.json
