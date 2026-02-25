@@ -45,7 +45,7 @@ CSV_PATH = OUTPUT_DIR / "legal_terms.csv"
 DIC_PATH = OUTPUT_DIR / "legal_terms.dic"
 DECOMP_MAP_PATH = OUTPUT_DIR / "decomposition_map.json"
 PRIORITY_TERMS_PATH = OUTPUT_DIR / "priority_terms.json"
-MANUAL_TERMS_PATH = OUTPUT_DIR / "manual_terms.json"
+MANUAL_TERMS_PATH = SCRIPT_DIR / "manual_terms.json"
 
 # MeCab 시스템 경로
 MECAB_DICT_INDEX_CANDIDATES = [
