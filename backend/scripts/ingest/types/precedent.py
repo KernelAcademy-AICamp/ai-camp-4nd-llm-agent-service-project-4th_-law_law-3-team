@@ -35,27 +35,48 @@ _DEFAULT_SOURCE = get_source_path("precedent")
 # ---------------------------------------------------------------------------
 
 
+# 단기(檀紀) → 서기 변환 오프셋
+# 단기 4293년 = 서기 1960년 (1950~60년대 초기 판례 17건 해당)
+_DANGI_OFFSET = 2333
+
+
+def _normalize_year(year: int) -> int:
+    """단기(4xxx) 연도를 서기로 보정."""
+    if 3000 <= year <= 5000:
+        return year - _DANGI_OFFSET
+    return year
+
+
+def _normalize_date_str(date_str: str) -> str | None:
+    """날짜 문자열의 단기(4xxx) 연도를 서기로 변환."""
+    if not date_str:
+        return None
+    if len(date_str) >= 4 and date_str[:4].isdigit():
+        year = int(date_str[:4])
+        if 3000 <= year <= 5000:
+            return str(year - _DANGI_OFFSET).zfill(4) + date_str[4:]
+    return date_str
+
+
 def _parse_date(date_str: Optional[str]) -> Optional[date]:
-    """날짜 문자열 파싱 (YYYYMMDD 또는 YYYY-MM-DD)"""
+    """날짜 문자열 파싱 (YYYYMMDD 또는 YYYY-MM-DD), 단기 자동 변환"""
     if not date_str:
         return None
 
     date_str = str(date_str).strip()
 
-    # 숫자만 있는 경우 (20170731)
+    # 숫자만 있는 경우 (20170731, 42931228)
     if date_str.isdigit() and len(date_str) == 8:
         try:
-            return date(
-                int(date_str[:4]),
-                int(date_str[4:6]),
-                int(date_str[6:8]),
-            )
+            year = _normalize_year(int(date_str[:4]))
+            return date(year, int(date_str[4:6]), int(date_str[6:8]))
         except ValueError:
             return None
 
     # ISO 형식 (2017-07-31)
     try:
-        return date.fromisoformat(date_str[:10])
+        parsed = date.fromisoformat(date_str[:10])
+        return parsed.replace(year=_normalize_year(parsed.year))
     except (ValueError, IndexError):
         return None
 
@@ -94,7 +115,7 @@ def _vector_metadata_fn(
         content=item.get("판례요약", "") or "",
         vector=vector,
         source_name=item.get("법원명", "") or "",
-        date=str(item.get("선고일자", "") or "") or None,
+        date=_normalize_date_str(str(item.get("선고일자", "") or "")),
         chunk_index=0,
         total_chunks=1,
     )
@@ -130,7 +151,9 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
 
 def _fts_metadata_fn(item: dict[str, Any]) -> dict[str, Any]:
     """JSON item → fts_index 메타데이터 dict"""
-    decision_date = str(item.get("선고일자", "") or "")
+    decision_date = _normalize_date_str(
+        str(item.get("선고일자", "") or "")
+    )
 
     return {
         "source_id": str(item.get("판례정보일련번호", "")),
