@@ -1,8 +1,10 @@
 """
-법령 조문 전용 LanceDB 벡터 라이터
+법령 조문 LanceDB 벡터 라이터 — legal_chunks 통합 테이블
 
 1문서 → 다중 벡터 (법령요약 1 + 조문요약 N) 확장 로직.
 기존 local_ordinance_vector_writer.py의 15개 최적화를 모두 재사용합니다.
+
+v2: law_article_chunks → legal_chunks 통합. summary_type/article_number로 구분.
 """
 
 from __future__ import annotations
@@ -19,12 +21,10 @@ _backend_root = Path(__file__).parent.parent.parent
 if str(_backend_root) not in sys.path:
     sys.path.insert(0, str(_backend_root))
 
-from app.tools.vectorstore.law_article_schema import (  # noqa: I001
-    LAW_ARTICLE_SCHEMA,
-    TABLE_NAME as LAW_ARTICLE_TABLE,
+from app.tools.vectorstore.schema_v2 import (  # noqa: I001
+    TABLE_NAME,
     VECTOR_DIM,
-    create_article_summary_chunk,
-    create_overall_summary_chunk,
+    create_chunk,
 )
 from scripts.embedding_common.cache import EmbeddingCache
 from scripts.embedding_common.config import (
@@ -174,28 +174,27 @@ def _embed_and_store_batch(
         chunk_index = meta["chunk_index"]
         total_chunks = meta["total_chunks"]
 
+        # 법령 ID 체계: Basic → {id}_overall_0, Specific → {id}_art_{조문번호}_0
         if summary_type == "Basic":
-            record = create_overall_summary_chunk(
-                source_id=source_id,
-                title=title,
-                content=text,
-                vector=vector,
-                source_name=source_name,
-                total_chunks=total_chunks,
-                date=date,
-            )
+            chunk_id = f"{source_id}_overall_{chunk_index}"
         else:
-            record = create_article_summary_chunk(
-                source_id=source_id,
-                title=title,
-                content=text,
-                vector=vector,
-                source_name=source_name,
-                chunk_index=chunk_index,
-                total_chunks=total_chunks,
-                date=date,
-                article_number=article_number or "",
-            )
+            art_no = article_number or "unknown"
+            chunk_id = f"{source_id}_art_{art_no}_{chunk_index}"
+
+        record = create_chunk(
+            data_type="법령",
+            source_id=source_id,
+            title=title,
+            content=text,
+            vector=vector,
+            source_name=source_name,
+            date=date,
+            chunk_index=chunk_index,
+            total_chunks=total_chunks,
+            summary_type=summary_type,
+            article_number=article_number,
+            chunk_id=chunk_id,
+        )
         records.append(record)
 
     if records:
@@ -220,7 +219,7 @@ def _save_run_manifest(
     """임베딩 실행 메타데이터 저장"""
     manifest = {
         "data_type": config.data_type_label,
-        "table_name": LAW_ARTICLE_TABLE,
+        "table_name": TABLE_NAME,
         "model": str(DEFAULT_CONFIG["EMBEDDING_MODEL"]),
         "vector_dim": VECTOR_DIM,
         "device": str(device_info),
@@ -251,9 +250,10 @@ def run_law_article_vector_ingest(
     backend: str | None = None,
 ) -> dict[str, int]:
     """
-    법령 JSON → 다중 벡터 임베딩 → law_article_chunks 테이블 저장
+    법령 JSON → 다중 벡터 임베딩 → legal_chunks 통합 테이블 저장
 
     1문서 = 1(법령요약) + N(조문요약) 벡터를 생성합니다.
+    summary_type으로 Basic/Specific 구분.
 
     Args:
         config: 인제스트 설정
@@ -301,15 +301,26 @@ def run_law_article_vector_ingest(
         "errors": 0,
     }
 
-    # 별도 테이블 사용
-    store = EmbeddingStore(
-        table_name=LAW_ARTICLE_TABLE,
-        schema=LAW_ARTICLE_SCHEMA,
-    )
+    # legal_chunks 통합 테이블 사용
+    store = EmbeddingStore()
 
     if reset:
-        logger.info("기존 law_article_chunks 테이블 리셋")
-        store.reset()
+        logger.info("legal_chunks 테이블에서 법령 데이터 삭제 중...")
+        if store.table is not None:
+            # 스키마 호환성 확인: summary_type 컬럼 없으면 전체 리셋
+            try:
+                col_names = [f.name for f in store.table.schema]
+                if "summary_type" not in col_names:
+                    logger.warning(
+                        "기존 테이블에 summary_type 컬럼 없음 → 전체 리셋"
+                    )
+                    store.reset()
+                else:
+                    store.table.delete("data_type = '법령'")
+                    logger.info("법령 데이터 삭제 완료")
+            except Exception as e:
+                logger.warning("법령 데이터 삭제 실패 (전체 리셋): %s", e)
+                store.reset()
         existing_ids: set[str] = set()
     else:
         existing_ids = store.get_existing_source_ids("법령")
@@ -448,31 +459,5 @@ def run_law_article_vector_ingest(
     return stats
 
 
-def build_law_article_ann_index(
-    num_partitions: int = 256,
-) -> None:
-    """law_article_chunks 전용 ANN 인덱스 생성"""
-    store = EmbeddingStore(
-        table_name=LAW_ARTICLE_TABLE,
-        schema=LAW_ARTICLE_SCHEMA,
-    )
-    table = store.table
 
-    if table is None:
-        logger.warning("law_article_chunks 테이블이 없습니다.")
-        return
-
-    total = store.count()
-    logger.info(
-        "ANN 인덱스 생성 시작 (%s, 총 %d건, partitions=%d)",
-        LAW_ARTICLE_TABLE, total, num_partitions,
-    )
-
-    start_time = time.time()
-    table.create_index(
-        metric="cosine",
-        num_partitions=num_partitions,
-    )
-
-    elapsed = time.time() - start_time
-    logger.info("ANN 인덱스 생성 완료: %.1f초", elapsed)
+# build_law_article_ann_index 제거 — 법령은 legal_chunks ANN 인덱스에 포함

@@ -89,18 +89,6 @@ def _print_stats(config_name: str) -> None:
             lo_total = lo_store.count()
             print("\n  [LanceDB - local_ordinance_chunks]")
             print(f"    전체 레코드: {lo_total:,}건")
-        elif config.name == "law":
-            from app.tools.vectorstore.law_article_schema import (  # noqa: I001
-                LAW_ARTICLE_SCHEMA,
-                TABLE_NAME as LA_TABLE,
-            )
-
-            la_store = EmbeddingStore(
-                table_name=LA_TABLE, schema=LAW_ARTICLE_SCHEMA
-            )
-            la_total = la_store.count()
-            print(f"\n  [LanceDB - {LA_TABLE}]")
-            print(f"    전체 레코드: {la_total:,}건")
         else:
             store = EmbeddingStore()
             total = store.count()
@@ -409,17 +397,6 @@ def main() -> None:
                 build_local_ordinance_ann_index()
             except Exception as e:
                 logger.error("자치법규 ANN 인덱스 빌드 실패: %s", e)
-
-        # 법령 별도 테이블 ANN 인덱스
-        if "law" in succeeded:
-            try:
-                from scripts.ingest.law_article_vector_writer import (
-                    build_law_article_ann_index,
-                )
-
-                build_law_article_ann_index()
-            except Exception as e:
-                logger.error("법령 ANN 인덱스 빌드 실패: %s", e)
 
     # ===== 최종 요약 =====
     overall_elapsed = time.time() - overall_start

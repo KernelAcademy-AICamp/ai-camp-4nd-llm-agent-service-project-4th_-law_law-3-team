@@ -48,6 +48,8 @@ from scripts.ingest.vector_writer import _load_json_streaming
 logger = logging.getLogger(__name__)
 
 MAX_TEXT_LENGTH = 4000
+COMPACT_INTERVAL = 100  # N 배치마다 LanceDB compact 수행 (fragment 누적 방지)
+MODEL_RELOAD_INTERVAL = 25  # N GPU 배치마다 모델 리로드 (CUDA 누적 상태 초기화)
 
 
 # ---------------------------------------------------------------------------
@@ -109,9 +111,16 @@ def _embed_and_store_batch(
     stats: dict[str, int],
     batch_size: int,
     dim_verified: bool,
-) -> bool:
-    """배치 임베딩 생성 + LanceDB 저장"""
+) -> tuple[bool, bool]:
+    """배치 임베딩 생성 + LanceDB 저장
+
+    Returns:
+        (dim_verified, had_gpu_work) 튜플
+    """
+    import torch
+
     texts = [t[:MAX_TEXT_LENGTH] for t in batch_texts]
+    had_gpu_work = False
 
     # 캐시 조회 → 미스분만 임베딩
     if cache:
@@ -129,6 +138,7 @@ def _embed_and_store_batch(
                 uncached_indices.append(i)
 
         if uncached_texts:
+            had_gpu_work = True
             try:
                 new_vectors = create_embeddings(
                     uncached_texts, model=model, batch_size=batch_size
@@ -139,10 +149,11 @@ def _embed_and_store_batch(
             except Exception as e:
                 logger.error("임베딩 생성 실패: %s", e)
                 stats["errors"] += len(batch_texts)
-                return dim_verified
+                return dim_verified, had_gpu_work
 
         vectors = cast(list[list[float]], cached_vectors)
     else:
+        had_gpu_work = True
         try:
             vectors = create_embeddings(
                 texts, model=model, batch_size=batch_size
@@ -150,7 +161,7 @@ def _embed_and_store_batch(
         except Exception as e:
             logger.error("임베딩 생성 실패: %s", e)
             stats["errors"] += len(batch_texts)
-            return dim_verified
+            return dim_verified, had_gpu_work
 
     # 차원 검증 (첫 배치만)
     if not dim_verified and vectors:
@@ -199,7 +210,7 @@ def _embed_and_store_batch(
         store.add_batch(records)
         stats["embedded"] += len(records)
 
-    return dim_verified
+    return dim_verified, had_gpu_work
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +327,7 @@ def run_local_ordinance_vector_ingest(
     dim_verified = False
     current_batch_size = batch_size
     batch_count = 0
+    gpu_batch_count = 0  # GPU 실제 연산 배치 수 추적
 
     pbar = tqdm(
         desc=f"임베딩 ({config.data_type_label})",
@@ -362,7 +374,7 @@ def run_local_ordinance_vector_ingest(
                 continue
 
             # --- 배치 처리 ---
-            dim_verified = _embed_and_store_batch(
+            dim_verified, had_gpu_work = _embed_and_store_batch(
                 batch_texts, batch_meta, model, cache, store, stats,
                 batch_size, dim_verified,
             )
@@ -370,6 +382,8 @@ def run_local_ordinance_vector_ingest(
             batch_texts = []
             batch_meta = []
             batch_count += 1
+            if had_gpu_work:
+                gpu_batch_count += 1
 
             # 메모리 관리
             if batch_count % hw_config.gc_interval == 0:
@@ -383,6 +397,32 @@ def run_local_ordinance_vector_ingest(
                         cache.clear_memory_cache()
                         logger.info("캐시 메모리 정리: %d 엔트리 해제", cache_size)
 
+            # 주기적 모델 리로드 (CUDA 누적 상태 초기화)
+            if (
+                gpu_batch_count > 0
+                and gpu_batch_count % MODEL_RELOAD_INTERVAL == 0
+            ):
+                from scripts.embedding_common.model import clear_model_cache
+                logger.info(
+                    "모델 리로드 시작 (GPU 배치 %d회 도달)",
+                    gpu_batch_count,
+                )
+                clear_model_cache()
+                model = get_embedding_model(device=device, backend=backend)
+                logger.info("모델 리로드 완료")
+
+            # 주기적 LanceDB compact (fragment 누적 → 프리즈 방지)
+            if batch_count % COMPACT_INTERVAL == 0 and store.table is not None:
+                try:
+                    t_compact = time.time()
+                    store.table.compact_files()
+                    logger.info(
+                        "LanceDB compact 완료 (배치 %d, %.1fs)",
+                        batch_count, time.time() - t_compact,
+                    )
+                except Exception as e:
+                    logger.warning("compact 실패 (무시): %s", e)
+
             # GPU 온도 모니터링
             if thermal_monitor:
                 current_batch_size, should_stop = thermal_monitor.check_and_adjust(
@@ -395,7 +435,7 @@ def run_local_ordinance_vector_ingest(
 
     # 잔여 배치 처리
     if batch_texts:
-        dim_verified = _embed_and_store_batch(
+        dim_verified, _ = _embed_and_store_batch(
             batch_texts, batch_meta, model, cache, store, stats,
             batch_size, dim_verified,
         )

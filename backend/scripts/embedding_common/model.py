@@ -249,7 +249,12 @@ def create_embeddings(
             batch_size=batch_size,
             show_progress_bar=False,
             normalize_embeddings=normalize,
+            convert_to_numpy=True,
         )
+
+    # GPU 동기화: 비동기 CUDA 작업 완료 보장 (장시간 인제스트 프리즈 방지)
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
 
     return embeddings.tolist()
 

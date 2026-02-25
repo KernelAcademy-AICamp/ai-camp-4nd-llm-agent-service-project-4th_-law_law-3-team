@@ -743,8 +743,7 @@ from scripts.runpod_lancedb_embeddings import (
 ```
 backend/
 ├── lancedb_data/           # LanceDB 데이터
-│   ├── legal_chunks.lance/              # 판례 등 통합 테이블 (법령은 law_article_chunks로 이관)
-│   ├── law_article_chunks.lance/       # 법령 전용 테이블 (법령요약 + 조문요약 N개)
+│   ├── legal_chunks.lance/              # 21개 타입 통합 테이블 (법령 포함, summary_type/article_number 컬럼)
 │   └── local_ordinance_chunks.lance/   # 자치법규 전용 테이블 (전체요약 + 조문요약)
 └── scripts/
     ├── ingest/                         # 메인 인제스트 파이프라인
