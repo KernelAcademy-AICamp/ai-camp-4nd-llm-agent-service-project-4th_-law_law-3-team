@@ -57,14 +57,16 @@ def normalize_year(year: int) -> int:
 
 ### 적용 위치
 
-- [ ] PostgreSQL 적재 스크립트 (`scripts/load_lancedb_data.py` 등)
-- [ ] 인제스트 파이프라인 (`scripts/ingest/`, `scripts/runpod_lancedb_embeddings.py`)
+- [x] 인제스트 파이프라인 (`scripts/ingest/types/precedent.py`) — `_parse_date`, `_normalize_date_str`
+- [x] PostgreSQL 기존 데이터 현장 수정 (17건 UPDATE 완료)
+- [x] FTS 기존 데이터 현장 수정 (17건 UPDATE 완료)
 - [ ] Neo4j 그래프 구축 스크립트 (`scripts/build_graph.py`)
 
 ### 상태
 
-- **미적용** (2026-02-13 기준)
-- EDA 분석 시에만 변환 적용, 실제 적재 파이프라인에는 미반영
+- **적용 완료** (2026-02-25)
+- 인제스트 파이프라인: `_parse_date`(ORM), `_normalize_date_str`(FTS/벡터) 자동 변환
+- 기존 DB: ORM 17건 + FTS 17건 + FTS 0.0.0. 32건 수정 완료
 
 ---
 
