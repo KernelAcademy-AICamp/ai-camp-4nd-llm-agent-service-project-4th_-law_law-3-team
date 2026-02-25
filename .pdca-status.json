@@ -1,0 +1,21 @@
+{
+  "rag-performance-optimization": {
+    "phase": "archived",
+    "matchRate": 100,
+    "iterationCount": 0,
+    "archivedAt": "2026-02-24T00:00:00Z",
+    "archivedTo": "docs/archive/2026-02/rag-performance-optimization/"
+  },
+  "query-rewrite-fix": {
+    "phase": "plan",
+    "feature": "query-rewrite-fix",
+    "startedAt": "2026-02-24T00:00:00Z"
+  },
+  "rag-pipeline-normalization": {
+    "phase": "check",
+    "feature": "rag-pipeline-normalization",
+    "startedAt": "2026-02-24T00:00:00Z",
+    "matchRate": 89,
+    "iterationCount": 0
+  }
+}

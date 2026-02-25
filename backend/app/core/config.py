@@ -102,9 +102,10 @@ class Settings(BaseSettings):
     # MeCab 사용자 사전 경로 (법률 복합명사 인식)
     MECAB_USERDIC_PATH: str = "data/mecab_userdic/legal_terms.dic"
 
-    # LangSmith 트레이싱 (LANGCHAIN_API_KEY 환경변수 필요)
+    # LangSmith 트레이싱
     LANGCHAIN_TRACING_V2: bool = False
     LANGCHAIN_PROJECT: str = "law-platform"
+    LANGCHAIN_API_KEY: str = ""
 
     # ONNX 임베딩 최적화
     USE_ONNX_EMBEDDING: bool = False
@@ -137,7 +138,9 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# LangSmith/LangChain은 os.environ에서 직접 읽으므로 설정값을 내보냄
+# LangSmith/LangChain SDK는 os.environ에서 직접 읽으므로 설정값을 내보냄
 if settings.LANGCHAIN_TRACING_V2:
     os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
     os.environ.setdefault("LANGCHAIN_PROJECT", settings.LANGCHAIN_PROJECT)
+    if settings.LANGCHAIN_API_KEY:
+        os.environ.setdefault("LANGCHAIN_API_KEY", settings.LANGCHAIN_API_KEY)

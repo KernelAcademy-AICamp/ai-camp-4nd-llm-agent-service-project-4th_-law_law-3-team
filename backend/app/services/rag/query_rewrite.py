@@ -1,11 +1,10 @@
 """
 쿼리 리라이팅 서비스
 
-LLM 기반 쿼리 확장, 키워드 추출, 대화형 쿼리 리라이팅
+LLM 기반 쿼리 확장, 키워드 추출
 """
 
 import logging
-import re
 from typing import List
 
 from langsmith import traceable
@@ -13,16 +12,6 @@ from langsmith import traceable
 from app.tools.llm import get_chat_model
 
 logger = logging.getLogger(__name__)
-
-# follow-up 감지용 키워드
-_FOLLOWUP_KEYWORDS = frozenset([
-    "더", "자세히", "그거", "그것", "계속", "알려줘", "설명해",
-    "구체적", "예시", "어떻게", "왜", "뭐", "뭘", "이거",
-    "아까", "방금", "위에", "말한", "그래서", "추가로",
-])
-
-# 8자 이하 메시지에서 법률 키워드가 없으면 follow-up으로 간주
-_MIN_STANDALONE_LENGTH = 8
 
 # 법률 도메인 키워드 목록
 LEGAL_KEYWORDS = [
@@ -91,28 +80,6 @@ def rewrite_query(
     return [query]
 
 
-def _parse_rewritten_queries(content: str) -> List[str]:
-    """LLM 응답에서 쿼리 추출"""
-    queries = []
-    lines = content.strip().split("\n")
-
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-
-        # "1. 쿼리" 또는 "- 쿼리" 형식 처리
-        match = re.match(r"^[\d\-\.\)]+\s*(.+)$", line)
-        if match:
-            query = match.group(1).strip()
-            # 대괄호 제거
-            query = re.sub(r"^\[|\]$", "", query).strip()
-            if query:
-                queries.append(query)
-
-    return queries
-
-
 def extract_legal_keywords(query: str) -> List[str]:
     """
     쿼리에서 법률 관련 키워드 추출
@@ -151,107 +118,3 @@ def _expand_related_keywords(keywords: List[str]) -> List[str]:
             expanded.extend(related_map[keyword])
 
     return expanded
-
-
-def _is_followup_query(message: str) -> bool:
-    """키워드 기반 follow-up 질문 감지 (LLM 호출 없음).
-
-    Args:
-        message: 사용자 메시지
-
-    Returns:
-        follow-up 여부
-    """
-    stripped = message.strip()
-    # 짧은 메시지 + 법률 키워드 없음 → follow-up
-    if len(stripped) <= _MIN_STANDALONE_LENGTH:
-        has_legal = any(kw in stripped for kw in LEGAL_KEYWORDS)
-        if not has_legal:
-            return True
-
-    # follow-up 키워드 매칭 (2개 이상이면 확실)
-    matched = sum(1 for kw in _FOLLOWUP_KEYWORDS if kw in stripped)
-    if matched >= 2:
-        return True
-
-    # "더 자세히", "더 알려줘" 같은 패턴
-    followup_patterns = [
-        r"더\s*(자세히|알려|설명|구체적)",
-        r"(그거|그것|이거|아까|방금).*(알려|설명|뭐)",
-        r"(계속|추가로)\s*(알려|설명|해줘)",
-    ]
-    for pattern in followup_patterns:
-        if re.search(pattern, stripped):
-            return True
-
-    return False
-
-
-@traceable(name="conversational_rewrite")
-async def rewrite_conversational_query(
-    message: str,
-    history: list[dict[str, str]] | None = None,
-) -> str:
-    """대화 맥락을 반영하여 검색 쿼리를 리라이팅.
-
-    follow-up이 아니면 원본 그대로 반환 (LLM 호출 없음).
-    follow-up이면 최근 히스토리 + LLM으로 독립적 검색 쿼리 생성.
-
-    Args:
-        message: 현재 사용자 메시지
-        history: 대화 히스토리 ``[{"role": "user"|"assistant", "content": "..."}]``
-
-    Returns:
-        검색에 사용할 쿼리 문자열
-    """
-    if not _is_followup_query(message):
-        return message
-
-    # 히스토리 없으면 리라이팅 불가 → 원본 반환
-    if not history:
-        return message
-
-    # 최근 4개 메시지(약 2턴)만 사용
-    recent = history[-4:]
-
-    try:
-        model = get_chat_model(temperature=0.0)
-
-        conversation = "\n".join(
-            f"{'사용자' if h['role'] == 'user' else 'AI'}: {h['content'][:200]}"
-            for h in recent
-        )
-
-        prompt = f"""아래 대화 기록과 현재 질문을 보고, 벡터 검색에 적합한 독립적인 검색 쿼리 하나를 작성하세요.
-대화 맥락을 반영하되, 검색 쿼리만 출력하세요. 설명이나 번호 없이 쿼리만 작성하세요.
-
-대화 기록:
-{conversation}
-
-현재 질문: {message}
-
-검색 쿼리:"""
-
-        response = model.invoke([("user", prompt)])
-        content = response.content if hasattr(response, "content") else str(response)
-        rewritten = content.strip()
-
-        if rewritten:
-            logger.info(
-                "쿼리 리라이팅: '%s' → '%s'", message, rewritten
-            )
-            return rewritten
-
-    except Exception as e:
-        logger.warning("대화형 쿼리 리라이팅 실패: %s", e)
-
-    # 폴백: 히스토리에서 가장 최근 사용자 메시지 사용
-    for h in reversed(recent):
-        if h.get("role") == "user" and h.get("content", "").strip():
-            fallback = h["content"].strip()
-            logger.info(
-                "쿼리 리라이팅 폴백: '%s' → '%s'", message, fallback
-            )
-            return fallback
-
-    return message

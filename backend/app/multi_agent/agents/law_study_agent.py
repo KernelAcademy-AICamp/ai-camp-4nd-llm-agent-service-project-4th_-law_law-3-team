@@ -13,7 +13,6 @@ from typing import Any
 from app.multi_agent.agents.base_chat import BaseChatAgent
 from app.multi_agent.schemas.plan import AgentResult
 from app.services.rag import search_relevant_documents
-from app.services.rag.query_rewrite import rewrite_conversational_query
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +53,7 @@ class LawStudyAgent(BaseChatAgent):
         """학습 자료 생성"""
         from app.tools.llm import get_chat_model
 
-        # 대화형 쿼리 리라이팅: RAG 검색에만 적용
-        search_query = await rewrite_conversational_query(message, history)
+        search_query = message
 
         # RAG: 법령 중심 검색 (sync → async 래핑)
         law_results = await asyncio.to_thread(
@@ -98,8 +96,7 @@ class LawStudyAgent(BaseChatAgent):
         """스트리밍 학습 자료 생성"""
         from app.tools.llm import get_chat_model
 
-        # 대화형 쿼리 리라이팅: RAG 검색에만 적용
-        search_query = await rewrite_conversational_query(message, history)
+        search_query = message
 
         # RAG: 법령 중심 검색 (sync → async 래핑)
         law_results = await asyncio.to_thread(

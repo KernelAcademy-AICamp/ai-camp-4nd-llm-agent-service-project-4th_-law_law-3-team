@@ -186,6 +186,9 @@ def search_by_keyword(
     n_results: int = 50,
     doc_type: Optional[str] = None,
     exclude_doc_types: Optional[list[str]] = None,
+    *,
+    precomputed_concept_tsq: Optional[str] = None,
+    precomputed_or_tsq: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """
     PostgreSQL tsvector 기반 키워드 검색.
@@ -197,11 +200,13 @@ def search_by_keyword(
         n_results: 반환할 최대 결과 수
         doc_type: 문서 유형 필터 ("precedent", "law")
         exclude_doc_types: 제외할 data_type 목록 (한국어)
+        precomputed_concept_tsq: 사전 계산된 개념 AND tsquery (focus 모드 공유용)
+        precomputed_or_tsq: 사전 계산된 OR tsquery (focus 모드 공유용)
 
     Returns:
         [{"id": source_id, "content": "", "metadata": dict, "similarity": float}, ...]
     """
-    concept_tsq = _build_concept_and_tsquery(query)
+    concept_tsq = precomputed_concept_tsq or _build_concept_and_tsquery(query)
     if not concept_tsq:
         return []
 
@@ -221,7 +226,7 @@ def search_by_keyword(
                 len(results),
                 _CONCEPT_AND_MIN_RESULTS,
             )
-            or_tsq = _build_or_tsquery(query)
+            or_tsq = precomputed_or_tsq or _build_or_tsquery(query)
             if not or_tsq:
                 return results
 

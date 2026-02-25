@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
 from langsmith import traceable
-from openai import OpenAI
 
 from app.core.config import settings
 from app.core.errors import EmbeddingModelNotFoundError
@@ -106,10 +105,6 @@ def check_embedding_model_availability() -> bool:
 
     if _embedding_model_available is not None:
         return _embedding_model_available
-
-    if not settings.USE_LOCAL_EMBEDDING:
-        _embedding_model_available = True
-        return True
 
     _embedding_model_available = is_embedding_model_cached()
 

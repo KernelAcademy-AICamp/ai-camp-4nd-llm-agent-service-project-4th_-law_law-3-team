@@ -13,6 +13,17 @@ from app.services.rag.embedding import (
     is_embedding_model_cached,
 )
 
+# 포맷팅 유틸리티
+from app.services.rag.format_utils import (
+    format_generic_context,
+    format_law_context,
+    format_law_sources,
+    format_precedent_context,
+    format_precedent_sources,
+    format_supplementary_context,
+    format_supplementary_sources,
+)
+
 # 하이브리드 검색
 from app.services.rag.fusion import reciprocal_rank_fusion
 from app.services.rag.keyword_search import search_by_keyword
@@ -40,7 +51,6 @@ from app.services.rag.pipeline import (
 # 쿼리 리라이팅
 from app.services.rag.query_rewrite import (
     extract_legal_keywords,
-    rewrite_conversational_query,
     rewrite_query,
 )
 
@@ -86,8 +96,15 @@ __all__ = [
     "is_reranker_available",
     # 쿼리 리라이팅
     "rewrite_query",
-    "rewrite_conversational_query",
     "extract_legal_keywords",
+    # 포맷팅 유틸리티
+    "format_precedent_context",
+    "format_law_context",
+    "format_supplementary_context",
+    "format_generic_context",
+    "format_precedent_sources",
+    "format_law_sources",
+    "format_supplementary_sources",
     # 파이프라인
     "RAGPipeline",
     "PRESETS",

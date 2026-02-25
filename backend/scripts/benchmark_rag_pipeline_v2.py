@@ -57,17 +57,17 @@ def main() -> None:
     print("  warm-up 완료\n")
 
     # ── 반복 측정 ──────────────────────────────────
+    from app.services.rag.fusion import reciprocal_rank_fusion
+    from app.services.rag.keyword_search import is_fts_available, search_by_keyword
     from app.services.rag.retrieval import (
-        _search_vector_ids,
         _best_doc_per_source,
         _extract_id_data_type_map,
         _populate_content,
+        _search_vector_ids,
         _unique_source_ids,
+        fetch_ai_summaries,
         fetch_document_contents,
-        fetch_lancedb_summaries,
     )
-    from app.services.rag.keyword_search import is_fts_available, search_by_keyword
-    from app.services.rag.fusion import reciprocal_rank_fusion
     from app.services.service_function import get_precedent_service
 
     fts_ok = is_fts_available()
@@ -78,7 +78,7 @@ def main() -> None:
         "벡터 검색 (LanceDB)",
         "키워드 검색 (FTS)",
         "RRF 병합",
-        "요약문 조회 (LanceDB)",
+        "요약문 조회 (PostgreSQL)",
         "Cross-encoder 리랭킹",
         "원문 조회 (PostgreSQL)",
         "판례 상세 조회",
@@ -127,8 +127,8 @@ def main() -> None:
 
         # [4] 요약문 조회
         t0 = time.monotonic()
-        src_ids = [d.get("metadata", {}).get("doc_id", "") for d in merged]
-        summaries = fetch_lancedb_summaries(src_ids)
+        id_type_map_summary = _extract_id_data_type_map(merged)
+        summaries = fetch_ai_summaries(id_type_map_summary)
         _populate_content(merged, summaries)
         step_times[4].append(time.monotonic() - t0)
 
@@ -160,7 +160,7 @@ def main() -> None:
             f"{len(vector_results)}건",
             f"{len(keyword_results)}건",
             f"벡터 {len(v_ids)} + FTS {len(k_ids)} → {len(merged)}건 (중복 {overlap})",
-            f"{len(summaries)}/{len(src_ids)}건",
+            f"{len(summaries)}/{len(id_type_map_summary)}건",
             f"{len(merged)}건 → {len(reranked)}건",
             f"{len(contents)}/{len(reranked)}건",
             f"{len(details)}/{len(detail_ids)}건",
@@ -191,8 +191,8 @@ def main() -> None:
     print(f"  {'= 예상 총 응답 시간':<36} {fmt(total + 3.5):>8}")
 
     # 이전 대비 비교
-    print(f"\n  이전 벤치마크 (그래프 포함, warm-up 미제거): 24,400ms")
-    print(f"  보정 벤치마크 (그래프 포함, warm-up 제거):   ~9,300ms")
+    print("\n  이전 벤치마크 (그래프 포함, warm-up 미제거): 24,400ms")
+    print("  보정 벤치마크 (그래프 포함, warm-up 제거):   ~9,300ms")
     print(f"  현재 벤치마크 (그래프 제거, warm-up 제거):   {fmt(total)}")
 
 

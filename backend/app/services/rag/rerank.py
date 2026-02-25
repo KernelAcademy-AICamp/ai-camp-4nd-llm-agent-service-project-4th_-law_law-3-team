@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from langsmith import traceable
+from langsmith.run_helpers import get_current_run_tree
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,44 @@ def _adaptive_truncate(content: str) -> str:
     return content[:_HEAD_CHARS] + "\n...\n" + content[-_TAIL_CHARS:]
 
 
+def _record_rerank_scores(
+    scored_docs: list[tuple[dict[str, Any], float]],
+    top_k: int,
+    min_score: float,
+    total_candidates: int,
+) -> None:
+    """LangSmith에 cross-encoder 리랭킹 점수 기록."""
+    run_tree = get_current_run_tree()
+    if run_tree is None:
+        return
+
+    score_details: list[dict[str, Any]] = []
+    for doc, score in scored_docs:
+        if score < min_score:
+            continue
+        if len(score_details) >= top_k:
+            break
+        doc_id = doc.get("metadata", {}).get("doc_id", "")
+        case_name = doc.get("metadata", {}).get("case_name", "")
+        score_details.append({
+            "doc_id": doc_id,
+            "case_name": case_name,
+            "rerank_score": round(score, 4),
+            "original_similarity": round(doc.get("similarity", 0), 4),
+            "search_source": doc.get("search_source", "unknown"),
+        })
+
+    run_tree.extra = {
+        **(run_tree.extra or {}),
+        "metadata": {
+            **(run_tree.extra or {}).get("metadata", {}),
+            "rerank_results": score_details,
+            "total_candidates": total_candidates,
+            "min_score_threshold": min_score,
+        },
+    }
+
+
 @traceable(name="rerank")
 def rerank_documents(
     query: str,
@@ -114,7 +153,7 @@ def rerank_documents(
     try:
         # 쿼리-문서 쌍 생성 (적응형 truncation)
         pairs: list[tuple[str, str]] = [
-            (query, _adaptive_truncate(doc.get("content", "")))
+            (query, _adaptive_truncate(doc.get("rerank_text", "")))
             for doc in documents
         ]
 
@@ -132,13 +171,18 @@ def rerank_documents(
             reverse=True,
         )
 
+        # LangSmith에 cross-encoder 점수 기록
+        _record_rerank_scores(scored_docs, top_k, min_score, len(documents))
+
         # 최소 점수 필터링 + top_k
         reranked: list[dict[str, Any]] = []
         for doc, score in scored_docs:
             if score < min_score:
                 continue
             doc_copy = doc.copy()
-            doc_copy["rerank_score"] = score
+            doc_copy["original_similarity"] = doc_copy.get("similarity", 0)
+            doc_copy["similarity"] = round(score, 4)
+            doc_copy["rerank_score"] = round(score, 4)
             doc_copy["score_type"] = "rerank"
             reranked.append(doc_copy)
             if len(reranked) >= top_k:

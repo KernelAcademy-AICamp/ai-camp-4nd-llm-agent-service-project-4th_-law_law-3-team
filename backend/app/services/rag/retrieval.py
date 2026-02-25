@@ -91,7 +91,9 @@ DOCUMENT_TABLE_REGISTRY: dict[str, list[TableConfig]] = {
             ("judgment_summary", "judgment_result"),
         ),
         TableConfig(
-            "dec_human_rights_documents", "serial_number", ("ruling", "reason")
+            "dec_human_rights_documents",
+            "serial_number",
+            ("ruling", "judgment_summary"),
         ),
         TableConfig("dec_privacy_documents", "serial_number", ("reason",)),
         TableConfig(
@@ -106,7 +108,9 @@ DOCUMENT_TABLE_REGISTRY: dict[str, list[TableConfig]] = {
             "dec_industrial_documents", "serial_number", ("ruling", "reason")
         ),
         TableConfig(
-            "dec_environment_documents", "serial_number", ("ruling", "case_overview")
+            "dec_environment_documents",
+            "serial_number",
+            ("ruling", "evaluation_opinion"),
         ),
         TableConfig(
             "dec_securities_documents",
@@ -168,6 +172,47 @@ def _best_doc_per_source(docs: list[dict[str, Any]]) -> dict[str, dict[str, Any]
     return best
 
 
+def _merge_with_source_tag(
+    vector_results: list[dict[str, Any]],
+    keyword_results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """벡터 + 키워드 결과를 RRF 병합하고 search_source 태깅.
+
+    source_id별 첫 등장 문서를 유지하고 (벡터 우선),
+    각 문서에 "vector" | "keyword" | "both" 태그를 부여한다.
+    """
+    from app.services.rag.fusion import reciprocal_rank_fusion
+
+    fused_sids = reciprocal_rank_fusion(
+        _unique_source_ids(vector_results),
+        _unique_source_ids(keyword_results),
+    )
+
+    vector_sids = {d.get("metadata", {}).get("doc_id", "") for d in vector_results}
+    keyword_sids = {d.get("metadata", {}).get("doc_id", "") for d in keyword_results}
+
+    doc_map: dict[str, dict[str, Any]] = {}
+    for doc in [*vector_results, *keyword_results]:
+        sid = doc.get("metadata", {}).get("doc_id", "")
+        if sid and sid not in doc_map:
+            doc_map[sid] = doc
+
+    merged: list[dict[str, Any]] = []
+    for sid in fused_sids:
+        if sid not in doc_map:
+            continue
+        doc = doc_map[sid]
+        if sid in vector_sids and sid in keyword_sids:
+            doc["search_source"] = "both"
+        elif sid in keyword_sids:
+            doc["search_source"] = "keyword"
+        else:
+            doc["search_source"] = "vector"
+        merged.append(doc)
+
+    return merged
+
+
 # ---------------------------------------------------------------------------
 # 벡터 검색 (ID 기반)
 # ---------------------------------------------------------------------------
@@ -179,6 +224,8 @@ def _search_vector_ids(
     n_results: int,
     doc_type: Optional[str] = None,
     exclude_doc_types: Optional[list[str]] = None,
+    *,
+    query_embedding: list[float] | None = None,
 ) -> list[dict[str, Any]]:
     """벡터 검색 — source_id + metadata 반환 (content 미포함).
 
@@ -190,8 +237,11 @@ def _search_vector_ids(
         n_results: 반환할 결과 수
         doc_type: 포함할 문서 유형 필터
         exclude_doc_types: 제외할 data_type 목록 (한국어, doc_type 미지정 시만 적용)
+        query_embedding: 사전 계산된 임베딩 (None이면 내부 계산)
     """
-    query_embedding = create_query_embedding(query)
+    store = get_vector_store()
+    if query_embedding is None:
+        query_embedding = create_query_embedding(query)
 
     where: dict[str, Any] | None = None
     if doc_type:
@@ -240,6 +290,7 @@ def _search_vector_ids(
             },
             "similarity": similarity,
             "score_type": "cosine",
+            "search_source": "vector",
         }
 
     docs = list(best.values())
@@ -256,17 +307,17 @@ def _search_vector_ids(
 @traceable(name="fetch_contents")
 def fetch_document_contents(
     id_to_data_type: dict[str, str],
-) -> dict[str, str]:
-    """source_id별 원문 텍스트를 PostgreSQL에서 배치 조회.
+) -> dict[str, dict[str, str]]:
+    """source_id별 원문을 컬럼별 구조화 dict로 PostgreSQL에서 배치 조회.
 
-    테이블별 원문 컬럼을 결합하여 반환. ai_summary는 사용하지 않음.
+    DOCUMENT_TABLE_REGISTRY의 content_columns를 개별 키로 반환.
     위원회결정례(1:10 테이블)는 순차 조회로 처리.
 
     Args:
         id_to_data_type: {source_id: data_type(한국어)} 매핑
 
     Returns:
-        {source_id: "컬럼1 내용\\n\\n컬럼2 내용"} 매핑
+        {source_id: {column_name: value, ...}} 매핑
     """
     if not id_to_data_type:
         return {}
@@ -276,7 +327,7 @@ def fetch_document_contents(
     for source_id, data_type in id_to_data_type.items():
         type_groups.setdefault(data_type, []).append(source_id)
 
-    result: dict[str, str] = {}
+    result: dict[str, dict[str, str]] = {}
 
     with sync_session_factory() as session:
         for data_type, source_ids in type_groups.items():
@@ -311,12 +362,13 @@ def fetch_document_contents(
 
                 for row in rows:
                     sid = str(row[0])
-                    parts = [
-                        str(row[col_idx + 1])
-                        for col_idx in range(len(tc.content_columns))
-                        if row[col_idx + 1]
-                    ]
-                    result[sid] = "\n\n".join(parts)
+                    fields: dict[str, str] = {}
+                    for col_idx, col_name in enumerate(tc.content_columns):
+                        val = row[col_idx + 1]
+                        if val:
+                            fields[col_name] = str(val)
+                    if fields:
+                        result[sid] = fields
                     remaining_ids.discard(sid)
 
             if remaining_ids:
@@ -380,13 +432,29 @@ def _extract_id_data_type_map(docs: list[dict[str, Any]]) -> dict[str, str]:
 
 def _populate_content(
     docs: list[dict[str, Any]],
-    contents: dict[str, str],
+    contents: dict[str, dict[str, str]],
 ) -> None:
-    """검색 결과에 원문 content 주입 (in-place)."""
+    """검색 결과에 구조화 원문 주입 (in-place).
+
+    content_fields에 컬럼별 dict, content에 조인 문자열(하위 호환)을 세팅.
+    """
     for doc in docs:
         sid = doc.get("metadata", {}).get("doc_id", "")
         if sid and sid in contents:
-            doc["content"] = contents[sid]
+            fields = contents[sid]
+            doc["content_fields"] = fields
+            doc["content"] = "\n\n".join(fields.values())
+
+
+def _populate_rerank_text(
+    docs: list[dict[str, Any]],
+    summaries: dict[str, str],
+) -> None:
+    """검색 결과에 ai_summary를 rerank_text로 주입 (리랭킹용, in-place)."""
+    for doc in docs:
+        sid = doc.get("metadata", {}).get("doc_id", "")
+        if sid and sid in summaries:
+            doc["rerank_text"] = summaries[sid]
 
 
 @traceable(name="hybrid_search")
@@ -443,25 +511,8 @@ def search_without_content(
         if "data_type" not in meta:
             meta["data_type"] = _resolve_data_type(meta.get("doc_type", ""))
 
-    # RRF 병합 — 리랭킹을 위해 전체 반환 (잘라내지 않음)
-    from app.services.rag.fusion import reciprocal_rank_fusion
-
-    vector_source_ids = _unique_source_ids(vector_results)
-    keyword_source_ids = _unique_source_ids(keyword_results)
-    fused_source_ids = reciprocal_rank_fusion(vector_source_ids, keyword_source_ids)
-
-    # source_id별 최고 문서 선택 (벡터 결과 우선)
-    vector_best = _best_doc_per_source(vector_results)
-    keyword_best = _best_doc_per_source(keyword_results)
-
-    merged: list[dict[str, Any]] = []
-    for sid in fused_source_ids:
-        if sid in vector_best:
-            merged.append(vector_best[sid])
-        elif sid in keyword_best:
-            merged.append(keyword_best[sid])
-
-    return merged
+    # RRF 병합 + search_source 태깅
+    return _merge_with_source_tag(vector_results, keyword_results)
 
 
 def search_relevant_documents(
@@ -552,56 +603,6 @@ def fetch_ai_summaries(
     return result
 
 
-def fetch_lancedb_summaries(source_ids: list[str]) -> dict[str, str]:
-    """(deprecated) LanceDB에서 source_id별 청크 텍스트 조회.
-
-    리랭킹에는 fetch_ai_summaries()를 사용하세요.
-    """
-    if not source_ids:
-        return {}
-
-    # SQL injection 방어: source_id에서 영숫자+하이픈+언더스코어만 허용
-    safe_pattern = re.compile(r"^[\w\-]+$")
-    safe_ids = [sid for sid in source_ids if safe_pattern.match(sid)]
-    if not safe_ids:
-        return {}
-
-    result: dict[str, str] = {}
-
-    try:
-        import lancedb
-
-        db = lancedb.connect(settings.LANCEDB_URI)
-        table = db.open_table(settings.LANCEDB_TABLE_NAME)
-
-        safe_pattern = re.compile(r"^[\w\\-]+$")
-        safe_ids = [sid for sid in source_ids if safe_pattern.match(sid)]
-        if not safe_ids:
-            return {}
-
-        ids_str = ", ".join(
-            "'{}'".format(sid.replace("'", "''")) for sid in safe_ids
-        )
-
-        # legal_chunks 통합 테이블 — Basic 요약만 조회 (법령 Specific 제외)
-        if settings.LANCEDB_TABLE_NAME in db.table_names():
-            table = db.open_table(settings.LANCEDB_TABLE_NAME)
-            df = table.search().where(
-                f"source_id IN ({ids_str}) AND summary_type = 'Basic'",
-                prefilter=True,
-            ).select(["source_id", "content"]).limit(len(safe_ids) * 2).to_pandas()
-
-            for _, row in df.iterrows():
-                sid = row["source_id"]
-                if sid not in result:
-                    result[sid] = row["content"]
-
-        return result
-    except Exception as e:
-        logger.warning("LanceDB 요약문 조회 실패: %s", e)
-        return result
-
-
 async def search_relevant_documents_async(
     query: str,
     n_results: int = 5,
@@ -627,11 +628,24 @@ async def search_without_content_async(
     n_results: int = 5,
     doc_type: Optional[str] = None,
     exclude_doc_types: Optional[list[str]] = None,
+    *,
+    query_embedding: list[float] | None = None,
+    precomputed_concept_tsq: str | None = None,
+    precomputed_or_tsq: str | None = None,
 ) -> list[dict[str, Any]]:
     """벡터 + FTS 병렬 하이브리드 검색 (async, content 미포함).
 
     벡터 검색과 FTS 키워드 검색을 ``asyncio.gather``로 동시에 실행한 뒤
     RRF로 병합한다. 동기 ``search_without_content``의 병렬 버전.
+
+    Args:
+        query: 검색 쿼리
+        n_results: 반환할 결과 수
+        doc_type: 문서 유형 필터
+        exclude_doc_types: 제외할 data_type 목록
+        query_embedding: 사전 계산된 임베딩 (focus 모드 공유용)
+        precomputed_concept_tsq: 사전 계산된 개념 AND tsquery
+        precomputed_or_tsq: 사전 계산된 OR tsquery
     """
     from app.services.rag.keyword_search import (
         is_fts_available_sync,
@@ -642,6 +656,7 @@ async def search_without_content_async(
     if not settings.USE_HYBRID_SEARCH or not is_fts_available_sync():
         vector_results = await asyncio.to_thread(
             _search_vector_ids, query, n_results, doc_type, exclude_doc_types,
+            query_embedding=query_embedding,
         )
         return vector_results[:n_results]
 
@@ -649,6 +664,7 @@ async def search_without_content_async(
     vector_results, keyword_results = await asyncio.gather(
         asyncio.to_thread(
             _search_vector_ids, query, n_results, doc_type, exclude_doc_types,
+            query_embedding=query_embedding,
         ),
         asyncio.to_thread(
             search_by_keyword,
@@ -656,6 +672,8 @@ async def search_without_content_async(
             n_results=n_results,
             doc_type=doc_type,
             exclude_doc_types=exclude_doc_types,
+            precomputed_concept_tsq=precomputed_concept_tsq,
+            precomputed_or_tsq=precomputed_or_tsq,
         ),
     )
 
@@ -668,36 +686,21 @@ async def search_without_content_async(
         if "data_type" not in meta:
             meta["data_type"] = _resolve_data_type(meta.get("doc_type", ""))
 
-    from app.services.rag.fusion import reciprocal_rank_fusion
-
-    vector_source_ids = _unique_source_ids(vector_results)
-    keyword_source_ids = _unique_source_ids(keyword_results)
-    fused_source_ids = reciprocal_rank_fusion(vector_source_ids, keyword_source_ids)
-
-    vector_best = _best_doc_per_source(vector_results)
-    keyword_best = _best_doc_per_source(keyword_results)
-
-    merged: list[dict[str, Any]] = []
-    for sid in fused_source_ids:
-        if sid in vector_best:
-            merged.append(vector_best[sid])
-        elif sid in keyword_best:
-            merged.append(keyword_best[sid])
-
-    return merged
+    # RRF 병합 + search_source 태깅
+    return _merge_with_source_tag(vector_results, keyword_results)
 
 
 def _fetch_contents_for_type(
     data_type: str,
     source_ids: list[str],
-) -> dict[str, str]:
+) -> dict[str, dict[str, str]]:
     """단일 data_type에 대한 원문 조회 (스레드 풀 병렬화용)."""
     table_configs = DOCUMENT_TABLE_REGISTRY.get(data_type)
     if not table_configs:
         logger.warning("미등록 data_type: %s (%d건)", data_type, len(source_ids))
         return {}
 
-    result: dict[str, str] = {}
+    result: dict[str, dict[str, str]] = {}
     remaining_ids = set(source_ids)
 
     with sync_session_factory() as session:
@@ -718,12 +721,13 @@ def _fetch_contents_for_type(
 
             for row in rows:
                 sid = str(row[0])
-                parts = [
-                    str(row[col_idx + 1])
-                    for col_idx in range(len(tc.content_columns))
-                    if row[col_idx + 1]
-                ]
-                result[sid] = "\n\n".join(parts)
+                fields: dict[str, str] = {}
+                for col_idx, col_name in enumerate(tc.content_columns):
+                    val = row[col_idx + 1]
+                    if val:
+                        fields[col_name] = str(val)
+                if fields:
+                    result[sid] = fields
                 remaining_ids.discard(sid)
 
     return result
@@ -731,7 +735,7 @@ def _fetch_contents_for_type(
 
 async def fetch_document_contents_async(
     id_to_data_type: dict[str, str],
-) -> dict[str, str]:
+) -> dict[str, dict[str, str]]:
     """source_id별 원문을 data_type 그룹별로 병렬 조회 (async).
 
     동기 ``fetch_document_contents``의 병렬 버전.
@@ -749,7 +753,7 @@ async def fetch_document_contents_async(
     ]
     group_results = await asyncio.gather(*tasks)
 
-    merged: dict[str, str] = {}
+    merged: dict[str, dict[str, str]] = {}
     for partial in group_results:
         merged.update(partial)
     return merged
