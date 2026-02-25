@@ -37,17 +37,10 @@ _CONCEPT_AND_MIN_RESULTS = 5
 @traceable(name="mecab_tokenize")
 def _tokenize(text: str) -> list[str]:
     """텍스트를 MeCab 토큰으로 분해 (명사만, 2자 이상)."""
-    try:
-        from app.tools.vectorstore.lancedb import _get_thread_tokenizer
-        from app.tools.vectorstore.mecab_tokenizer import FTS_POS_TAGS
+    from app.tools.vectorstore.lancedb import _get_thread_tokenizer
 
-        tokenizer = _get_thread_tokenizer()
-        tokens = tokenizer.morphs(text, pos_filter=FTS_POS_TAGS)
-    except Exception:
-        logger.warning("MeCab 사용 불가, 공백 분리 fallback")
-        tokens = text.strip().split()
-
-    return [t for t in tokens if len(t) >= 2]
+    tokenizer = _get_thread_tokenizer()
+    return tokenizer.morphs(text)
 
 
 def _clean_token(token: str) -> str:

@@ -33,7 +33,6 @@ from app.models.fts_index import FtsIndex
 from app.models.law_document import LawDocument
 from app.models.precedent_document import PrecedentDocument
 from app.services.rag.tsvector_builder import build_tsvector_string
-from app.tools.vectorstore.mecab_tokenizer import FTS_POS_TAGS
 from scripts.common.logging_config import setup_logging
 
 logger = setup_logging(__name__)
@@ -162,7 +161,7 @@ def build_precedent_fts(tokenizer: Any) -> int:
                     else None
                 )
 
-                tokens = tokenizer.morphs(fulltext, pos_filter=FTS_POS_TAGS)
+                tokens = tokenizer.morphs(fulltext)
                 tsvector_str = build_tsvector_string(tokens)
 
                 batch.append({
@@ -229,7 +228,7 @@ def build_law_fts(tokenizer: Any) -> int:
                     else row.promulgation_date
                 )
 
-                tokens = tokenizer.morphs(fulltext, pos_filter=FTS_POS_TAGS)
+                tokens = tokenizer.morphs(fulltext)
                 tsvector_str = build_tsvector_string(tokens)
 
                 batch.append({

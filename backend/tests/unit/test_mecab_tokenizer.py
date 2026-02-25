@@ -41,15 +41,16 @@ class TestMeCabWithInstallation:
     def test_mecab_article_reference(
         self, mecab_tokenizer: MeCabTokenizer
     ) -> None:
-        """조문 참조 토크나이징"""
+        """조문 참조에서 명사만 추출"""
         result = mecab_tokenizer.morphs("민법 제750조")
         assert "민법" in result
-        assert len(result) > 1
+        assert len(result) >= 1
 
     def test_mecab_case_number(self, mecab_tokenizer: MeCabTokenizer) -> None:
         """사건번호 토크나이징 (에러 없이 처리)"""
         result = mecab_tokenizer.morphs("2023다12345")
-        assert len(result) > 0
+        # 사건번호는 숫자+한글 조합이라 명사 토큰이 없을 수 있음
+        assert isinstance(result, list)
 
     def test_pretokenize_content_for_fts(
         self, mecab_tokenizer: MeCabTokenizer
@@ -74,9 +75,11 @@ class TestMeCabWithInstallation:
     def test_mecab_mixed_korean_english(
         self, mecab_tokenizer: MeCabTokenizer
     ) -> None:
-        """한영 혼합 텍스트 처리"""
+        """한영 혼합 텍스트에서 명사만 추출"""
         result = mecab_tokenizer.tokenize("OWASP 보안 취약점")
-        assert "OWASP" in result
+        # OWASP은 SL(외국어) 품사 → 명사 필터에서 제외
+        assert "보안" in result
+        assert "취약점" in result or "취약" in result
 
     def test_mecab_empty_string(self, mecab_tokenizer: MeCabTokenizer) -> None:
         """빈 문자열 입력 시 에러 없이 처리"""

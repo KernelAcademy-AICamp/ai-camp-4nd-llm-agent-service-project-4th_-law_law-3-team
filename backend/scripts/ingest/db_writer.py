@@ -23,7 +23,6 @@ from sqlalchemy.dialects.postgresql import insert
 from app.core.database import sync_session_factory
 from app.models.fts_index import FtsIndex
 from app.services.rag.tsvector_builder import build_tsvector_string
-from app.tools.vectorstore.mecab_tokenizer import FTS_POS_TAGS
 from scripts.common.json_loader import (  # noqa: E402
     load_json_directory,
     load_json_file,
@@ -193,7 +192,7 @@ def run_db_ingest(
                     # PostgreSQL tsvector 1MB 제한 방지
                     if len(fulltext) > _MAX_FULLTEXT_CHARS:
                         fulltext = fulltext[:_MAX_FULLTEXT_CHARS]
-                    tokens = tokenizer.morphs(fulltext, pos_filter=FTS_POS_TAGS)
+                    tokens = tokenizer.morphs(fulltext)
                     tsvector_str = build_tsvector_string(tokens)
 
                     fts_meta = config.fts_metadata_fn(item)

@@ -23,7 +23,6 @@ from sqlalchemy import delete, func, select
 from app.core.database import sync_session_factory
 from app.models.fts_index import FtsIndex
 from app.services.rag.tsvector_builder import build_tsvector_string
-from app.tools.vectorstore.mecab_tokenizer import FTS_POS_TAGS
 from scripts.ingest.config import IngestConfig
 from scripts.ingest.shared import get_tokenizer, upsert_fts_batch
 
@@ -121,7 +120,7 @@ def run_fts_rebuild(
                     if len(fulltext) > _MAX_FULLTEXT_CHARS:
                         fulltext = fulltext[:_MAX_FULLTEXT_CHARS]
 
-                    tokens = tokenizer.morphs(fulltext, pos_filter=FTS_POS_TAGS)
+                    tokens = tokenizer.morphs(fulltext)
                     tsvector_str = build_tsvector_string(tokens)
 
                     fts_meta = config.orm_fts_metadata_fn(row)
