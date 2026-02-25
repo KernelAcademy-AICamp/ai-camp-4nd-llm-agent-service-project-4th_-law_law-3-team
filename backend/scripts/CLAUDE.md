@@ -845,9 +845,9 @@ uv run python -m scripts.ingest.cli --type <타입명|all> [옵션]
 
 | 단계 | 설명 | 의존성 | 사용 시점 |
 |------|------|--------|----------|
-| `db` | JSON → PostgreSQL ORM + FTS tsvector 동시 적재 | PostgreSQL, Alembic, (MeCab) | 최초 적재, 데이터 갱신 |
+| `db` | JSON → PostgreSQL ORM + FTS tsvector 동시 적재 (명사만: `FTS_POS_TAGS`) | PostgreSQL, Alembic, (MeCab) | 최초 적재, 데이터 갱신 |
 | `vector` | JSON → LanceDB 벡터 임베딩 (1문서=1벡터) | 임베딩 모델, PyTorch | 최초 적재, 데이터 갱신 |
-| `fts` | PostgreSQL ORM에서 읽어 tsvector만 재빌드 | PostgreSQL, (MeCab), `db` 완료 | 토크나이저/userdic 변경 후 |
+| `fts` | PostgreSQL ORM에서 읽어 tsvector만 재빌드 (명사만: `FTS_POS_TAGS`) | PostgreSQL, (MeCab), `db` 완료 | 토크나이저/userdic 변경 후 |
 | `index` | LanceDB ANN 인덱스 재빌드 (IVF_FLAT) | `vector` 완료 | 벡터 데이터 변경 후 |
 | `onnx-export` | PyTorch → ONNX FP32 변환 + INT8 양자화 | `optimum[onnxruntime]` | ONNX 백엔드 최초 사용 전 (자동 변환도 지원) |
 | `all` | `db` → `vector` → `index` 순차 실행 | 전체 | 최초 적재 |

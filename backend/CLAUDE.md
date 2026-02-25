@@ -601,7 +601,7 @@ app/models/
 | `legal_terms` | 법률 용어 사전 (~72,700건) | term(UNIQUE), definition, source_code, source_count, term_length, is_korean_only |
 | `trial_statistics` | 재판 통계 | category, court_name, court_type, parent_court, year, case_count |
 | `local_ordinance_documents` | 자치법규 원본 (160,276건) | ordinance_id, ordinance_name, local_government, overall_summary, content |
-| `fts_index` | FTS 전문 검색 인덱스 (579,498건) | **PK: (source_id, data_type)**, title, date, tsvector. dec_* source_id는 `{name}:{serial_number}` 형식 |
+| `fts_index` | FTS 전문 검색 인덱스 (579,498건) | **PK: (source_id, data_type)**, title, date, tsvector. dec_* source_id는 `{name}:{serial_number}` 형식. tsvector는 명사만 저장 (`FTS_POS_TAGS`: NNG+NNP) |
 
 ### 변호사 데이터 (lawyers 테이블)
 
@@ -679,6 +679,12 @@ uv run python scripts/build_mecab_userdic.py --dry-run  # 통계만
 - `data/mecab_userdic/legal_terms.csv` - userdic 소스 CSV
 - `data/mecab_userdic/legal_terms.dic` - 컴파일된 MeCab 바이너리 사전
 - `data/mecab_userdic/decomposition_map.json` - 복합어→서브 토큰 분해맵
+
+**FTS 명사 필터링:**
+- `FTS_POS_TAGS = frozenset({"NNG", "NNP"})` — 일반명사 + 고유명사만 tsvector에 저장
+- `morphs(text, pos_filter=FTS_POS_TAGS)` 호출 시 조사/어미/구두점/숫자 제외
+- FTS 생성(`db_writer`, `fts_builder`, `build_fts_index`)과 검색(`keyword_search`) 양쪽에 적용
+- `pos_filter=None` (기본값) 시 기존 동작 100% 유지 (하위 호환)
 
 **Fallback 체인:**
 1. MeCab + `USE_LEGAL_TERM_DICT=true` → 사후 복원 모드

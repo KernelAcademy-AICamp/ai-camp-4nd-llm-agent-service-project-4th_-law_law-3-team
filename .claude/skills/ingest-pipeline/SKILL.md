@@ -60,9 +60,9 @@ uv run python -m scripts.ingest.cli --type all --verify
 
 | 단계 | 설명 | 의존성 |
 |------|------|--------|
-| `db` | JSON → PostgreSQL ORM + FTS tsvector 동시 적재 | PostgreSQL, Alembic, MeCab |
+| `db` | JSON → PostgreSQL ORM + FTS tsvector 동시 적재 (명사만: `FTS_POS_TAGS`) | PostgreSQL, Alembic, MeCab |
 | `vector` | JSON → LanceDB 벡터 임베딩 (1문서=1벡터, 요약문 기반) | 임베딩 모델, PyTorch |
-| `fts` | PostgreSQL ORM에서 읽어 tsvector만 재빌드 | PostgreSQL, MeCab |
+| `fts` | PostgreSQL ORM에서 읽어 tsvector만 재빌드 (명사만: `FTS_POS_TAGS`) | PostgreSQL, MeCab |
 | `index` | LanceDB ANN 인덱스 재빌드 (IVF_FLAT) | `vector` 완료 |
 | `all` | `db` → `vector` → `index` 순차 실행 | 전체 |
 
