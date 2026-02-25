@@ -123,12 +123,53 @@ DOCUMENT_TABLE_REGISTRY: dict[str, list[TableConfig]] = {
         TableConfig(
             "dec_fair_trade_documents", "serial_number", ("ruling", "reason")
         ),
+        TableConfig("dec_media_documents", "serial_number", ("ruling",)),
+    ],
+    "자치법규": [
+        TableConfig(
+            "local_ordinance_documents", "ordinance_id", ("content", "overall_summary")
+        ),
     ],
 }
 
 # doc_type (API, 영어) ↔ data_type (DB, 한국어) 변환
 _DOC_TYPE_TO_DATA_TYPE: dict[str, str] = {"precedent": "판례", "law": "법령"}
 _DATA_TYPE_TO_DOC_TYPE: dict[str, str] = {"판례": "precedent", "법령": "law"}
+
+# 위원회결정례 접두사 → TableConfig 직접 라우팅 (11테이블 순차 스캔 회피)
+# FTS source_id "dec_labor:12345" → prefix "dec_labor" → dec_labor_documents 테이블
+_DEC_TABLE_BY_PREFIX: dict[str, TableConfig] = {
+    tc.table_name.removesuffix("_documents"): tc
+    for tc in DOCUMENT_TABLE_REGISTRY.get("위원회결정례", [])
+}
+
+
+def _group_dec_source_ids(
+    source_ids: list[str],
+) -> tuple[dict[TableConfig, dict[str, str]], list[str]]:
+    """위원회결정례 source_id를 접두사 기반으로 테이블별 그룹핑.
+
+    FTS source_id: "dec_labor:12345" → dec_labor_documents, serial "12345"
+    벡터 source_id: "12345" → 접두사 없음, 기존 순차 스캔 필요
+
+    Returns:
+        (routed: {TableConfig: {original_sid: serial_number}}, unrouted: [sid])
+    """
+    routed: dict[TableConfig, dict[str, str]] = {}
+    unrouted: list[str] = []
+
+    for sid in source_ids:
+        if ":" in sid:
+            prefix, serial = sid.split(":", 1)
+            tc = _DEC_TABLE_BY_PREFIX.get(prefix)
+            if tc:
+                routed.setdefault(tc, {})[sid] = serial
+            else:
+                unrouted.append(sid)
+        else:
+            unrouted.append(sid)
+
+    return routed, unrouted
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +352,7 @@ def fetch_document_contents(
     """source_id별 원문을 컬럼별 구조화 dict로 PostgreSQL에서 배치 조회.
 
     DOCUMENT_TABLE_REGISTRY의 content_columns를 개별 키로 반환.
-    위원회결정례(1:10 테이블)는 순차 조회로 처리.
+    위원회결정례는 접두사 기반 직접 라우팅으로 11테이블 순차 스캔을 회피.
 
     Args:
         id_to_data_type: {source_id: data_type(한국어)} 매핑
@@ -328,56 +369,9 @@ def fetch_document_contents(
         type_groups.setdefault(data_type, []).append(source_id)
 
     result: dict[str, dict[str, str]] = {}
-
-    with sync_session_factory() as session:
-        for data_type, source_ids in type_groups.items():
-            table_configs = DOCUMENT_TABLE_REGISTRY.get(data_type)
-            if not table_configs:
-                logger.warning(
-                    "미등록 data_type: %s (%d건)", data_type, len(source_ids)
-                )
-                continue
-
-            remaining_ids = set(source_ids)
-
-            for tc in table_configs:
-                if not remaining_ids:
-                    break
-
-                # 화이트리스트 검증: 테이블명/컬럼명이 안전한 식별자인지 확인
-                safe_table = _validate_identifier(tc.table_name)
-                safe_id_col = _validate_identifier(tc.id_column)
-                safe_content_cols = [
-                    _validate_identifier(c) for c in tc.content_columns
-                ]
-
-                cols = ", ".join([safe_id_col, *safe_content_cols])
-                sql = text(
-                    f"SELECT {cols} FROM {safe_table} "
-                    f"WHERE {safe_id_col} = ANY(:ids)"
-                )
-                rows = session.execute(
-                    sql, {"ids": list(remaining_ids)}
-                ).fetchall()
-
-                for row in rows:
-                    sid = str(row[0])
-                    fields: dict[str, str] = {}
-                    for col_idx, col_name in enumerate(tc.content_columns):
-                        val = row[col_idx + 1]
-                        if val:
-                            fields[col_name] = str(val)
-                    if fields:
-                        result[sid] = fields
-                    remaining_ids.discard(sid)
-
-            if remaining_ids:
-                logger.debug(
-                    "%s: %d건 원문 미발견 (예: %s)",
-                    data_type,
-                    len(remaining_ids),
-                    list(remaining_ids)[:3],
-                )
+    for data_type, source_ids in type_groups.items():
+        partial = _fetch_contents_for_type(data_type, source_ids)
+        result.update(partial)
 
     return result
 
@@ -547,10 +541,9 @@ def fetch_ai_summaries(
 ) -> dict[str, str]:
     """source_id별 ai_summary를 PostgreSQL에서 배치 조회.
 
-    리랭킹용 요약문으로 사용. 모든 인제스트 테이블에 ai_summary 컬럼이 존재.
-
-    legal_chunks 통합 테이블에서 조회합니다.
-    법령은 summary_type='Basic'(전체요약)만 반환합니다.
+    리랭킹용 요약문으로 사용. DOCUMENT_TABLE_REGISTRY 기반으로
+    각 data_type에 해당하는 원문 테이블에서 ai_summary 컬럼을 조회.
+    위원회결정례는 접두사 기반 직접 라우팅으로 11테이블 순차 스캔을 회피.
 
     Args:
         id_to_data_type: {source_id: data_type(한국어)} 매핑
@@ -567,38 +560,9 @@ def fetch_ai_summaries(
         type_groups.setdefault(data_type, []).append(source_id)
 
     result: dict[str, str] = {}
-
-    with sync_session_factory() as session:
-        for data_type, source_ids in type_groups.items():
-            table_configs = DOCUMENT_TABLE_REGISTRY.get(data_type)
-            if not table_configs:
-                continue
-
-            remaining_ids = set(source_ids)
-
-            for tc in table_configs:
-                if not remaining_ids:
-                    break
-
-                safe_table = _validate_identifier(tc.table_name)
-                safe_id_col = _validate_identifier(tc.id_column)
-
-                sql = text(
-                    f"SELECT {safe_id_col}, ai_summary "
-                    f"FROM {safe_table} "
-                    f"WHERE {safe_id_col} = ANY(:ids) "
-                    f"AND ai_summary IS NOT NULL"
-                )
-                rows = session.execute(
-                    sql, {"ids": list(remaining_ids)}
-                ).fetchall()
-
-                for row in rows:
-                    sid = str(row[0])
-                    summary = str(row[1]) if row[1] else ""
-                    if summary:
-                        result[sid] = summary
-                        remaining_ids.discard(sid)
+    for data_type, source_ids in type_groups.items():
+        partial = _fetch_summaries_for_type(data_type, source_ids)
+        result.update(partial)
 
     return result
 
@@ -701,36 +665,102 @@ def _fetch_contents_for_type(
         return {}
 
     result: dict[str, dict[str, str]] = {}
+
+    # 위원회결정례: 접두사 기반 직접 라우팅 (11테이블 순차 스캔 회피)
+    if data_type == "위원회결정례" and _DEC_TABLE_BY_PREFIX:
+        routed, unrouted = _group_dec_source_ids(source_ids)
+        remaining_ids = set(unrouted)
+
+        with sync_session_factory() as session:
+            # 접두사 있는 ID: 해당 테이블 1개만 조회
+            for tc, sid_serial_map in routed.items():
+                _query_content_rows(session, tc, sid_serial_map, result)
+
+            # 접두사 없는 ID (벡터 검색 결과): 기존 순차 스캔
+            for tc in table_configs:
+                if not remaining_ids:
+                    break
+                found = _query_content_rows(
+                    session, tc, {sid: sid for sid in remaining_ids}, result,
+                )
+                remaining_ids -= found
+
+        if remaining_ids:
+            logger.debug(
+                "%s: %d건 원문 미발견 (예: %s)",
+                data_type, len(remaining_ids), list(remaining_ids)[:3],
+            )
+
+        return result
+
+    # 기타 data_type: 기존 로직 (테이블 1개)
     remaining_ids = set(source_ids)
 
     with sync_session_factory() as session:
         for tc in table_configs:
             if not remaining_ids:
                 break
-
-            safe_table = _validate_identifier(tc.table_name)
-            safe_id_col = _validate_identifier(tc.id_column)
-            safe_content_cols = [_validate_identifier(c) for c in tc.content_columns]
-
-            cols = ", ".join([safe_id_col, *safe_content_cols])
-            sql = text(
-                f"SELECT {cols} FROM {safe_table} "
-                f"WHERE {safe_id_col} = ANY(:ids)"
+            found = _query_content_rows(
+                session, tc, {sid: sid for sid in remaining_ids}, result,
             )
-            rows = session.execute(sql, {"ids": list(remaining_ids)}).fetchall()
+            remaining_ids -= found
 
-            for row in rows:
-                sid = str(row[0])
-                fields: dict[str, str] = {}
-                for col_idx, col_name in enumerate(tc.content_columns):
-                    val = row[col_idx + 1]
-                    if val:
-                        fields[col_name] = str(val)
-                if fields:
-                    result[sid] = fields
-                remaining_ids.discard(sid)
+    if remaining_ids:
+        logger.debug(
+            "%s: %d건 원문 미발견 (예: %s)",
+            data_type, len(remaining_ids), list(remaining_ids)[:3],
+        )
 
     return result
+
+
+def _query_content_rows(
+    session: Any,
+    tc: TableConfig,
+    sid_serial_map: dict[str, str],
+    result: dict[str, dict[str, str]],
+) -> set[str]:
+    """단일 테이블에서 원문 컬럼 조회.
+
+    Args:
+        sid_serial_map: {original_source_id: query_serial_number}
+        result: 결과를 누적할 dict (in-place 수정)
+
+    Returns:
+        조회 성공한 original_source_id 집합
+    """
+    if not sid_serial_map:
+        return set()
+
+    safe_table = _validate_identifier(tc.table_name)
+    safe_id_col = _validate_identifier(tc.id_column)
+    safe_content_cols = [_validate_identifier(c) for c in tc.content_columns]
+
+    cols = ", ".join([safe_id_col, *safe_content_cols])
+    query_ids = list(sid_serial_map.values())
+    sql = text(
+        f"SELECT {cols} FROM {safe_table} "
+        f"WHERE {safe_id_col} = ANY(:ids)"
+    )
+    rows = session.execute(sql, {"ids": query_ids}).fetchall()
+
+    # serial → original_sid 역매핑
+    serial_to_sid = {v: k for k, v in sid_serial_map.items()}
+    found: set[str] = set()
+
+    for row in rows:
+        serial = str(row[0])
+        orig_sid = serial_to_sid.get(serial, serial)
+        fields: dict[str, str] = {}
+        for col_idx, col_name in enumerate(tc.content_columns):
+            val = row[col_idx + 1]
+            if val:
+                fields[col_name] = str(val)
+        if fields:
+            result[orig_sid] = fields
+            found.add(orig_sid)
+
+    return found
 
 
 async def fetch_document_contents_async(
@@ -769,32 +799,95 @@ def _fetch_summaries_for_type(
         return {}
 
     result: dict[str, str] = {}
+
+    # 위원회결정례: 접두사 기반 직접 라우팅 (11테이블 순차 스캔 회피)
+    if data_type == "위원회결정례" and _DEC_TABLE_BY_PREFIX:
+        routed, unrouted = _group_dec_source_ids(source_ids)
+        remaining_ids = set(unrouted)
+
+        with sync_session_factory() as session:
+            for tc, sid_serial_map in routed.items():
+                _query_summary_rows(session, tc, sid_serial_map, result)
+
+            for tc in table_configs:
+                if not remaining_ids:
+                    break
+                found = _query_summary_rows(
+                    session, tc, {sid: sid for sid in remaining_ids}, result,
+                )
+                remaining_ids -= found
+
+        if remaining_ids:
+            logger.debug(
+                "%s: %d건 요약문 미발견 (예: %s)",
+                data_type, len(remaining_ids), list(remaining_ids)[:3],
+            )
+
+        return result
+
+    # 기타 data_type: 기존 로직
     remaining_ids = set(source_ids)
 
     with sync_session_factory() as session:
         for tc in table_configs:
             if not remaining_ids:
                 break
-
-            safe_table = _validate_identifier(tc.table_name)
-            safe_id_col = _validate_identifier(tc.id_column)
-
-            sql = text(
-                f"SELECT {safe_id_col}, ai_summary "
-                f"FROM {safe_table} "
-                f"WHERE {safe_id_col} = ANY(:ids) "
-                f"AND ai_summary IS NOT NULL"
+            found = _query_summary_rows(
+                session, tc, {sid: sid for sid in remaining_ids}, result,
             )
-            rows = session.execute(sql, {"ids": list(remaining_ids)}).fetchall()
+            remaining_ids -= found
 
-            for row in rows:
-                sid = str(row[0])
-                summary = str(row[1]) if row[1] else ""
-                if summary:
-                    result[sid] = summary
-                    remaining_ids.discard(sid)
+    if remaining_ids:
+        logger.debug(
+            "%s: %d건 요약문 미발견 (예: %s)",
+            data_type, len(remaining_ids), list(remaining_ids)[:3],
+        )
 
     return result
+
+
+def _query_summary_rows(
+    session: Any,
+    tc: TableConfig,
+    sid_serial_map: dict[str, str],
+    result: dict[str, str],
+) -> set[str]:
+    """단일 테이블에서 ai_summary 조회.
+
+    Args:
+        sid_serial_map: {original_source_id: query_serial_number}
+        result: 결과를 누적할 dict (in-place 수정)
+
+    Returns:
+        조회 성공한 original_source_id 집합
+    """
+    if not sid_serial_map:
+        return set()
+
+    safe_table = _validate_identifier(tc.table_name)
+    safe_id_col = _validate_identifier(tc.id_column)
+
+    query_ids = list(sid_serial_map.values())
+    sql = text(
+        f"SELECT {safe_id_col}, ai_summary "
+        f"FROM {safe_table} "
+        f"WHERE {safe_id_col} = ANY(:ids) "
+        f"AND ai_summary IS NOT NULL"
+    )
+    rows = session.execute(sql, {"ids": query_ids}).fetchall()
+
+    serial_to_sid = {v: k for k, v in sid_serial_map.items()}
+    found: set[str] = set()
+
+    for row in rows:
+        serial = str(row[0])
+        orig_sid = serial_to_sid.get(serial, serial)
+        summary = str(row[1]) if row[1] else ""
+        if summary:
+            result[orig_sid] = summary
+            found.add(orig_sid)
+
+    return found
 
 
 async def fetch_ai_summaries_async(

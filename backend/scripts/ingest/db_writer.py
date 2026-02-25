@@ -293,4 +293,14 @@ def verify_db(config: IngestConfig) -> dict[str, Any]:
         else 0,
     )
 
+    # ORM↔FTS 건수 불일치 경고
+    if result["orm_count"] != result["fts_count"]:
+        diff = result["orm_count"] - result["fts_count"]
+        logger.warning(
+            "  ⚠️  ORM↔FTS 건수 불일치: ORM %d건, FTS %d건 (차이: %+d)",
+            result["orm_count"],
+            result["fts_count"],
+            diff,
+        )
+
     return result

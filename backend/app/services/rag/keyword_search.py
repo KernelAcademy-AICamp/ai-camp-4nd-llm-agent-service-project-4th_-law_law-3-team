@@ -33,6 +33,9 @@ _INVALID_TOKEN_RE = re.compile(r"['\\\x00]")
 # 개념 AND 결과가 이 수보다 적으면 OR fallback
 _CONCEPT_AND_MIN_RESULTS = 5
 
+# FTS 가용성 캐시 (서버 수명 동안 유효 — 인제스트 후 재시작 필요)
+_fts_available_cache: bool | None = None
+
 
 @traceable(name="mecab_tokenize")
 def _tokenize(text: str) -> list[str]:
@@ -234,26 +237,38 @@ def search_by_keyword(
 
 
 def is_fts_available_sync() -> bool:
-    """fts_index 테이블에 데이터가 있는지 확인 (동기 버전)."""
+    """fts_index 테이블에 데이터가 있는지 확인 (동기, 캐시).
+
+    서버 수명 동안 결과를 캐시합니다.
+    인제스트 후 서버 재시작 시 자동 갱신됩니다.
+    """
+    global _fts_available_cache  # noqa: PLW0603
+    if _fts_available_cache is not None:
+        return _fts_available_cache
     try:
         with sync_session_factory() as session:
             result = session.execute(
-                select(func.count()).select_from(FtsIndex)
+                select(func.count()).select_from(FtsIndex).limit(1)
             )
             count = result.scalar_one()
-            return count > 0
+            _fts_available_cache = count > 0
+            return _fts_available_cache
     except Exception:
         return False
 
 
 async def is_fts_available() -> bool:
-    """fts_index 테이블에 데이터가 있는지 확인 (비동기 버전)."""
+    """fts_index 테이블에 데이터가 있는지 확인 (비동기, 캐시)."""
+    global _fts_available_cache  # noqa: PLW0603
+    if _fts_available_cache is not None:
+        return _fts_available_cache
     try:
         async with async_session_factory() as session:
             result = await session.execute(
-                select(func.count()).select_from(FtsIndex)
+                select(func.count()).select_from(FtsIndex).limit(1)
             )
             count = result.scalar_one()
-            return count > 0
+            _fts_available_cache = count > 0
+            return _fts_available_cache
     except Exception:
         return False

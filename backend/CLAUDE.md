@@ -175,7 +175,7 @@ app/
 ├── services/            # 비즈니스 로직
 │   ├── rag/
 │   │   ├── embedding.py  # 임베딩 모델
-│   │   ├── retrieval.py  # 벡터 검색 + async 병렬 래퍼
+│   │   ├── retrieval.py  # 벡터 검색 + 원문/요약문 배치 조회
 │   │   ├── rerank.py     # 리랭킹
 │   │   ├── query_rewrite.py  # 쿼리 리라이팅
 │   │   ├── keyword_search.py  # FTS 키워드 검색
