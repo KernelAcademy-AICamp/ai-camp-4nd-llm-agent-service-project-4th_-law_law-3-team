@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import dynamic from 'next/dynamic'
-import Link from 'next/link'
+import { BackButton } from '@/components/ui/BackButton'
 import { useChat } from '@/context/ChatContext'
 import { useUI } from '@/context/UIContext'
 import { StickyTabNav, type TabType } from '@/features/lawyer-stats/components/StickyTabNav'
@@ -37,16 +37,11 @@ const CrossAnalysisHeatmap = dynamic(
   { loading: DynamicLoadingFallback }
 )
 
-const SpecialtyBarChart = dynamic(
-  () => import('@/features/lawyer-stats/components/SpecialtyBarChart').then(m => m.SpecialtyBarChart),
-  { loading: DynamicLoadingFallback }
-)
 import {
   fetchDemandStats,
   fetchDensityStats,
   fetchOverview,
   fetchRegionStats,
-  fetchSpecialtyStats,
 } from '@/features/lawyer-stats/services'
 import type { CourtDemandMarker, DemandStat, StatsFilter } from '@/features/lawyer-stats/types'
 
@@ -190,11 +185,6 @@ export default function LawyerStatPage() {
     placeholderData: keepPreviousData,
   })
 
-  const specialtyQuery = useQuery({
-    queryKey: ['lawyer-stats', 'specialty'],
-    queryFn: fetchSpecialtyStats,
-  })
-
   // === Demand query ===
   const demandQuery = useQuery({
     queryKey: ['lawyer-stats', 'demand', demandCategory, demandYear],
@@ -236,11 +226,11 @@ export default function LawyerStatPage() {
 
   const isLoading = isDemandMode
     ? demandQuery.isLoading
-    : (overviewQuery.isLoading || regionQuery.isLoading || densityQuery.isLoading || specialtyQuery.isLoading)
+    : (overviewQuery.isLoading || regionQuery.isLoading || densityQuery.isLoading)
 
   const hasError = isDemandMode
     ? demandQuery.isError
-    : (overviewQuery.isError || regionQuery.isError || densityQuery.isError || specialtyQuery.isError)
+    : (overviewQuery.isError || regionQuery.isError || densityQuery.isError)
 
   const filteredRegionData = useMemo(() => {
     if (isDemandMode && demandQuery.data) {
@@ -342,23 +332,13 @@ export default function LawyerStatPage() {
         isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-gray-200' : 'w-full'
       }`}
     >
-      <header className="border-b border-gray-200 bg-white shadow-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="flex items-center gap-1 text-gray-500 transition-colors hover:text-gray-700"
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              홈으로
-            </Link>
-            <div className="h-6 w-px bg-gray-200" />
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">변호사 시장 분석</h1>
-              <p className="text-sm text-gray-500 mt-1">지역·전문분야·인구 대비 변호사 분포를 분석합니다.</p>
-            </div>
+      <header className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <span className="text-2xl">📊</span>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">변호사 시장 분석</h1>
+            <p className="text-sm text-gray-500">지역·전문분야·인구 대비 변호사 분포를 분석합니다.</p>
           </div>
         </div>
       </header>
@@ -605,14 +585,6 @@ export default function LawyerStatPage() {
               <CrossAnalysisHeatmap />
             </section>
 
-            {/* Specialty Bottom Card (탭 네비게이션과 무관) */}
-            <section className="rounded-xl border border-gray-200 bg-gray-50 p-5 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-lg">📊</span>
-                <h2 className="text-base font-semibold text-gray-800">전문분야별 변호사 분포</h2>
-              </div>
-              {specialtyQuery.data && <SpecialtyBarChart data={specialtyQuery.data.data} />}
-            </section>
           </div>
         )}
       </main>
