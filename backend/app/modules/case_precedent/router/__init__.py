@@ -433,6 +433,8 @@ class StatuteNodeResponse(BaseModel):
     type: str
     abbreviation: Optional[str] = None
     citation_count: int = 0
+    content: Optional[str] = None
+    supplementary: Optional[str] = None
 
 
 class StatuteSearchResponse(BaseModel):
@@ -540,7 +542,7 @@ async def search_statutes(
             LIMIT $limit
             """
             result = session.run(cypher, search_term=query, limit=limit)
-            results = [
+            search_results: list[StatuteNodeResponse] = [
                 StatuteNodeResponse(
                     id=r["id"] or "",
                     name=r["name"] or "",
@@ -552,7 +554,7 @@ async def search_statutes(
             ]
 
             # 결과가 없으면 LIKE 검색 fallback (Alias 포함)
-            if not results:
+            if not search_results:
                 fallback_cypher = """
                 CALL {
                     MATCH (s:Statute)
@@ -573,7 +575,7 @@ async def search_statutes(
                 LIMIT $limit
                 """
                 result = session.run(fallback_cypher, search_term=query, limit=limit)
-                results = [
+                search_results = [
                     StatuteNodeResponse(
                         id=r["id"] or "",
                         name=r["name"] or "",
@@ -584,7 +586,7 @@ async def search_statutes(
                     for r in result
                 ]
 
-            return StatuteSearchResponse(query=query, results=results)
+            return StatuteSearchResponse(query=query, results=search_results)
     except Exception as e:
         logger.error(f"법령 검색 실패: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="법령 검색 중 오류가 발생했습니다")
@@ -611,6 +613,8 @@ async def get_statute_hierarchy(statute_id: str):
                     type=d["type"] or "",
                     abbreviation=d.get("abbreviation"),
                     citation_count=d.get("citation_count") or 0,
+                    content=d.get("content"),
+                    supplementary=d.get("supplementary"),
                 )
 
             return StatuteHierarchyResponse(
@@ -639,25 +643,33 @@ async def get_statute_hierarchy(statute_id: str):
             OPTIONAL MATCH (s)-[:HIERARCHY_OF]->(upper:Statute)
             OPTIONAL MATCH (lower:Statute)-[:HIERARCHY_OF]->(s)
             OPTIONAL MATCH (s)-[:RELATED_TO]-(related:Statute)
-            RETURN s.id as id, s.name as name, s.type as type,
-                   s.abbreviation as abbreviation,
-                   COALESCE(s.citation_count, 0) as citation_count,
-                   collect(DISTINCT {
-                       id: upper.id, name: upper.name, type: upper.type,
-                       abbreviation: upper.abbreviation,
-                       citation_count: COALESCE(upper.citation_count, 0)
-                   }) as upper_list,
-                   collect(DISTINCT {
-                       id: lower.id, name: lower.name, type: lower.type,
-                       abbreviation: lower.abbreviation,
-                       citation_count: COALESCE(lower.citation_count, 0)
-                   }) as lower_list,
-                   collect(DISTINCT {
-                       id: related.id, name: related.name, type: related.type,
-                       abbreviation: related.abbreviation,
-                       citation_count: COALESCE(related.citation_count, 0)
-                   }) as related_list
-            """
+                RETURN s.id as id, s.name as name, s.type as type,
+                       s.abbreviation as abbreviation,
+                       s.content as content,
+                       s.supplementary as supplementary,
+                       COALESCE(s.citation_count, 0) as citation_count,
+                       collect(DISTINCT {
+                           id: upper.id, name: upper.name, type: upper.type,
+                           abbreviation: upper.abbreviation,
+                           content: upper.content,
+                           supplementary: upper.supplementary,
+                           citation_count: COALESCE(upper.citation_count, 0)
+                       }) as upper_list,
+                       collect(DISTINCT {
+                           id: lower.id, name: lower.name, type: lower.type,
+                           abbreviation: lower.abbreviation,
+                           content: lower.content,
+                           supplementary: lower.supplementary,
+                           citation_count: COALESCE(lower.citation_count, 0)
+                       }) as lower_list,
+                       collect(DISTINCT {
+                           id: related.id, name: related.name, type: related.type,
+                           abbreviation: related.abbreviation,
+                           content: related.content,
+                           supplementary: related.supplementary,
+                           citation_count: COALESCE(related.citation_count, 0)
+                       }) as related_list
+                """
             result = session.run(cypher, statute_id=statute_id)
             record = result.single()
 
@@ -670,6 +682,8 @@ async def get_statute_hierarchy(statute_id: str):
                 type=record["type"] or "",
                 abbreviation=record["abbreviation"],
                 citation_count=record["citation_count"] or 0,
+                content=record["content"],
+                supplementary=record["supplementary"],
             )
 
             def filter_valid(items):
@@ -679,6 +693,8 @@ async def get_statute_hierarchy(statute_id: str):
                         name=item["name"] or "",
                         type=item["type"] or "",
                         abbreviation=item["abbreviation"],
+                        content=item.get("content"),
+                        supplementary=item.get("supplementary"),
                         citation_count=item["citation_count"] or 0,
                     )
                     for item in items
@@ -711,7 +727,7 @@ async def get_statute_children(
     if settings.USE_PG_GRAPH:
         try:
             pg = get_pg_graph_service()
-            children = await pg.get_statute_children(statute_id, limit)
+            pg_children = await pg.get_statute_children(statute_id, limit)
             return StatuteChildrenResponse(
                 statute_id=statute_id,
                 children=[
@@ -722,7 +738,7 @@ async def get_statute_children(
                         abbreviation=r.get("abbreviation"),
                         citation_count=r.get("citation_count") or 0,
                     )
-                    for r in children
+                    for r in pg_children
                 ],
             )
         except Exception as e:
@@ -746,7 +762,7 @@ async def get_statute_children(
             LIMIT $limit
             """
             result = session.run(cypher, statute_id=statute_id, limit=limit)
-            children = [
+            child_nodes = [
                 StatuteNodeResponse(
                     id=r["id"] or "",
                     name=r["name"] or "",
@@ -759,7 +775,7 @@ async def get_statute_children(
 
             return StatuteChildrenResponse(
                 statute_id=statute_id,
-                children=children,
+                children=child_nodes,
             )
     except Exception as e:
         logger.error(f"하위 법령 조회 실패: {e}", exc_info=True)

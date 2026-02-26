@@ -8,6 +8,8 @@ export interface StatuteNode {
   type: string
   citation_count: number
   abbreviation?: string
+  content?: string | null
+  supplementary?: string | null
 }
 
 export interface StatuteSearchResponse {

@@ -67,6 +67,76 @@ function StatuteList({
   )
 }
 
+function getStatuteDocumentText(root: StatuteNode | null): { title: string; content: string } | null {
+  if (!root) {
+    return null
+  }
+
+  const contents = [root.content, root.supplementary]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+
+  if (contents.length === 0) {
+    return null
+  }
+
+  const parts: string[] = []
+  if (contents[0]) {
+    parts.push(contents[0])
+  }
+  if (contents[1]) {
+    parts.push(contents[1])
+  }
+
+  return {
+    title: contents.length > 1 ? '법령 원문 + 부칙' : '법령 원문',
+    content: parts.join('\n\n---\n\n'),
+  }
+}
+
+function renderReadableText(content: string): JSX.Element[] {
+  const lines = content
+    .replace(/\r/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .split('\n')
+
+  return lines.map((line, index) => {
+    const trimmed = line.trim()
+    const isHeading =
+      /^제\s*\d+\s*조\b/.test(trimmed) ||
+      /^제\s*\d+\s*장\b/.test(trimmed) ||
+      /^부칙/.test(trimmed)
+
+    if (!trimmed) {
+      return <div key={`blank-${index}`} className="h-2" />
+    }
+
+    if (trimmed === '---') {
+      return <div key={`sep-${index}`} className="my-3 border-t border-slate-600/80" />
+    }
+
+    if (isHeading) {
+      return (
+        <h5
+          key={`heading-${index}`}
+          className="mt-3 mb-2 text-sm font-semibold text-white border-l-4 border-amber-400 pl-3"
+        >
+          {trimmed}
+        </h5>
+      )
+    }
+
+    return (
+      <p
+        key={`line-${index}`}
+        className="text-sm text-slate-200 leading-6 tracking-[0.01em] whitespace-pre-wrap break-keep"
+      >
+        {trimmed}
+      </p>
+    )
+  })
+}
+
 export function StatuteDetailPanel({
   data,
   loading,
@@ -74,6 +144,7 @@ export function StatuteDetailPanel({
   onNodeClick,
 }: StatuteDetailPanelProps) {
   const root = data.root
+  const statuteDocument = getStatuteDocumentText(root)
 
   return (
     <div className="w-80 border-l border-slate-700 bg-slate-800 flex flex-col shrink-0 overflow-hidden">
@@ -123,6 +194,20 @@ export function StatuteDetailPanel({
               <span className="text-slate-200">{root.citation_count.toLocaleString()}회</span>
             </div>
           </div>
+
+          <hr className="border-slate-700" />
+
+          {/* 원문 */}
+          {statuteDocument && (
+            <details className="border border-slate-700 rounded-lg p-3">
+              <summary className="text-sm font-semibold text-slate-200 cursor-pointer">
+                {statuteDocument.title}
+              </summary>
+              <div className="mt-3 border border-slate-700/70 rounded-md bg-slate-900/80 p-3 max-h-96 overflow-y-auto">
+                <div className="space-y-1">{renderReadableText(statuteDocument.content)}</div>
+              </div>
+            </details>
+          )}
 
           <hr className="border-slate-700" />
 

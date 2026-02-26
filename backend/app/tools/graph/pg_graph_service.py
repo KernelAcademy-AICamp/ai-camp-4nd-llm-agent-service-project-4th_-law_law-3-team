@@ -543,6 +543,8 @@ class PgGraphService:
                         "type": ld.law_type,
                         "abbreviation": ld.abbreviation,
                         "citation_count": ld.citation_count or 0,
+                        "content": ld.content,
+                        "supplementary": ld.supplementary,
                     }
 
                 # 상위 법령

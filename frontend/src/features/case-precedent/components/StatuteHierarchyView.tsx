@@ -13,6 +13,9 @@ export function StatuteHierarchyView() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { userRole } = useChat()
+  const statuteId = searchParams.get('id')
+  const statuteName = searchParams.get('name')
+  const statuteType = searchParams.get('type')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<StatuteNode[]>([])
   const [isSearching, setIsSearching] = useState(false)
@@ -23,23 +26,128 @@ export function StatuteHierarchyView() {
 
   // URL 파라미터에서 선택된 법령 복원
   useEffect(() => {
-    const statuteId = searchParams.get('id')
-    const statuteName = searchParams.get('name')
-    const statuteType = searchParams.get('type')
+    let isCancelled = false
+    const normalizeName = (value: string): string =>
+      value.trim().replace(/\s+/g, '').toLowerCase()
 
-    if (statuteId && statuteName) {
-      setSelectedStatute({
-        id: statuteId,
-        name: statuteName,
-        type: statuteType || '',
-        citation_count: 0,
-      })
+    const resolveStatute = async () => {
+      if (statuteId && statuteName) {
+        try {
+          const detail = await casePrecedentService.getStatuteHierarchy(statuteId)
+          const normalizedTargetName = normalizeName(statuteName)
+          const normalizeRootName = normalizeName(detail.root.name)
+          const normalizedAbbreviation = detail.root.abbreviation
+            ? normalizeName(detail.root.abbreviation)
+            : ''
+
+          if (
+            normalizeRootName === normalizedTargetName ||
+            (normalizedAbbreviation && normalizedAbbreviation === normalizedTargetName)
+          ) {
+            if (!isCancelled) {
+              setSelectedStatute({
+                id: detail.root.id || statuteId,
+                name: detail.root.name,
+                type: detail.root.type || statuteType || '',
+                abbreviation: detail.root.abbreviation,
+                citation_count: detail.root.citation_count,
+              })
+              setSearchQuery(detail.root.name)
+            }
+            return
+          }
+
+          console.info('법령 ID와 이름 불일치, 이름 기반으로 재검색:', {
+            id: statuteId,
+            name: statuteName,
+          })
+        } catch (error) {
+          console.error('법령 ID 유효성 검증 실패:', error)
+        }
+
+        const response = await casePrecedentService.searchStatutes(statuteName, 1)
+        const firstResult = response.results.find(
+          (statute) =>
+            statute.name === statuteName ||
+            (statute.abbreviation && statute.abbreviation === statuteName)
+        )
+        const targetResult = firstResult || response.results[0]
+
+        if (!targetResult || isCancelled) {
+          if (!isCancelled) {
+            setSelectedStatute({
+              id: statuteId,
+              name: statuteName,
+              type: statuteType || '',
+              citation_count: 0,
+            })
+            setSearchQuery(statuteName)
+          }
+          return
+        }
+
+        if (!isCancelled) {
+          setSelectedStatute({
+            id: targetResult.id,
+            name: targetResult.name,
+            type: targetResult.type,
+            abbreviation: targetResult.abbreviation,
+            citation_count: targetResult.citation_count,
+          })
+          setSearchQuery(targetResult.name)
+        }
+        return
+
+      }
+
+      if (!statuteName) {
+        if (!isCancelled) {
+          setSelectedStatute(null)
+          setSearchQuery('')
+        }
+        return
+      }
+
       setSearchQuery(statuteName)
-    } else {
-      setSelectedStatute(null)
-      setSearchQuery('')
+      try {
+        const response = await casePrecedentService.searchStatutes(statuteName, 1)
+        const matchedResult = response.results.find(
+          (statute) =>
+            statute.name === statuteName ||
+            (statute.abbreviation && statute.abbreviation === statuteName)
+        )
+        const targetResult = matchedResult || response.results[0]
+        if (!targetResult) {
+          if (!isCancelled) {
+            setSelectedStatute(null)
+          }
+          return
+        }
+
+        if (!isCancelled) {
+          setSelectedStatute({
+            id: targetResult.id,
+            name: targetResult.name,
+            type: targetResult.type,
+            abbreviation: targetResult.abbreviation,
+            citation_count: targetResult.citation_count,
+          })
+        }
+      } catch (error) {
+        console.error('법령 검색으로 중심 법령 복원 실패:', error)
+        if (isCancelled) return
+        if (!isCancelled) {
+          setSelectedStatute(null)
+        }
+      }
     }
-  }, [searchParams])
+
+    resolveStatute()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [statuteId, statuteName, statuteType])
 
   const handleBack = useCallback(() => {
     // 선택된 법령이 있으면 브라우저 히스토리로 뒤로가기
@@ -122,13 +230,12 @@ export function StatuteHierarchyView() {
 
   // URL 파라미터에서 선택된 법령의 상세 정보도 로드
   useEffect(() => {
-    const statuteId = searchParams.get('id')
-    if (statuteId) {
-      loadDetail(statuteId)
+    if (selectedStatute?.id) {
+      loadDetail(selectedStatute.id)
     } else {
       setDetailData(null)
     }
-  }, [searchParams, loadDetail])
+  }, [selectedStatute?.id, loadDetail])
 
   // 그래프에서 노드 클릭 (URL에 추가하여 뒤로가기 지원)
   const handleNodeClick = useCallback((node: GraphNode) => {
@@ -230,6 +337,7 @@ export function StatuteHierarchyView() {
           <div className="absolute inset-0">
             <StatuteForceGraph
               centerId={selectedStatute?.id}
+              centerName={selectedStatute?.name}
               onNodeClick={handleNodeClick}
             />
           </div>
