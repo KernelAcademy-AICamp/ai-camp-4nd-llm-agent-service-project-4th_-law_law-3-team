@@ -36,7 +36,7 @@ from scripts.common import load_items, setup_logging, create_sync_session_factor
 |------|------|
 | `device.py` | GPU/CPU/MPS 디바이스 감지, DeviceInfo |
 | `config.py` | 하드웨어 프로필, 배치 크기 최적 설정 |
-| `model.py` | 임베딩 모델 로딩 (KURE-v1) |
+| `model.py` | 임베딩 모델 로딩 (KURE-v1, ONNX/INT8 백엔드 지원) |
 | `store.py` | LanceDB 테이블 생성/연결 |
 | `chunking.py` | 텍스트 청킹 (법령/판례) |
 | `schema.py` | 스키마 v2 re-export + 검증 유틸 |
@@ -151,8 +151,7 @@ GC + 메모리 정리
 
 ```
 backend/lancedb_data/
-├── legal_chunks.lance/              # 판례 등 통합 테이블 (법령은 law_article_chunks로 이관)
-├── law_article_chunks.lance/       # 법령 전용 (법령요약 + 조문요약 N개)
+├── legal_chunks.lance/              # 21개 타입 통합 테이블 (법령 포함, summary_type/article_number 컬럼)
 └── local_ordinance_chunks.lance/   # 자치법규 전용 (전체요약 + 조문요약)
 ```
 
@@ -326,6 +325,178 @@ for _, row in results.iterrows():
 - `docs/devlog/EMBEDDING_DEV_LOG_20260129.md` - 개발 로그
 - `notebooks/runpod_lancedb_embeddings.ipynb` - RunPod 노트북
 - `notebooks/colab_lancedb_embeddings.ipynb` - Colab 노트북
+
+---
+
+## ONNX 최적화 모델 빌드 + RAG 테스트 환경 구축
+
+다른 컴퓨터에서 ONNX 최적화 모델을 빌드하고, 두 variant로 임베딩하여 RAG 검색 품질을 비교하는 가이드입니다.
+
+### 비교 대상 모델
+
+| Variant | 설명 | Latency | Cosine | 비고 |
+|---------|------|---------|--------|------|
+| `ort-opt` | ORT 그래프 최적화 FP32 | 218ms | 1.0000 | 무손실 |
+| `ort-opt-qdq` | QDQ INT8 (16 FP32 레이어) | 167ms | 0.9990 | 품질 우선 권장 |
+
+### Step 1: 환경 설정
+
+```bash
+# 1-1. 저장소 클론 + 브랜치 전환
+git clone <repo-url>
+cd law-3-team/backend
+git checkout feature/onnx-graph-optimization-benchmark
+
+# 1-2. Python 의존성 설치
+uv sync --dev
+
+# 1-3. PyTorch 설치 (환경에 맞게 선택)
+# CUDA (RunPod/서버)
+uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+# CPU/MPS (Mac)
+# uv pip install --reinstall torch torchvision torchaudio
+
+# 1-4. 추가 의존성 (ONNX 빌드용)
+uv pip install optimum onnxruntime onnx
+```
+
+### Step 2: ONNX 모델 빌드
+
+`build_optimized_onnx.py`가 HuggingFace에서 원본 모델을 다운로드하고, ONNX 변환 → 그래프 최적화 → 양자화를 순서대로 수행합니다.
+
+```bash
+cd backend
+
+# 2-1. 임베딩 모델 (KURE-v1) + 리랭커 모두 빌드 (모든 variant)
+uv run --no-sync python scripts/build_optimized_onnx.py
+
+# 2-2. 임베딩 모델만 빌드
+uv run --no-sync python scripts/build_optimized_onnx.py --embedding-only
+
+# 2-3. 리랭커만 빌드
+uv run --no-sync python scripts/build_optimized_onnx.py --reranker-only
+
+# 2-4. 기존 모델 덮어쓰기
+uv run --no-sync python scripts/build_optimized_onnx.py --overwrite
+
+# 2-5. 빌드 후 수치 검증만 실행
+uv run --no-sync python scripts/build_optimized_onnx.py --verify
+```
+
+**빌드 출력 디렉토리** (`data/models/`):
+
+| 디렉토리 | 설명 | 크기 |
+|----------|------|------|
+| `kure-v1-ort-opt/` | 임베딩 FP32 최적화 | ~1.1GB |
+| `kure-v1-ort-opt-qdq/` | 임베딩 QDQ INT8 (16 FP32) | ~700MB |
+| `kure-v1-onnx-fp16/` | 임베딩 FP16 (cosine 1.0) | ~550MB |
+| `reranker-ort-opt/` | 리랭커 FP32 최적화 | ~1.1GB |
+| `reranker-ort-opt-qdq/` | 리랭커 QDQ INT8 | ~700MB |
+
+> **디스크 요구량**: 빌드 중간 파일 포함 최소 **10GB** 여유 필요.
+> 빌드 중 임시 파일(onnx-export-tmp)은 자동 삭제됩니다.
+
+### Step 3: 임베딩 생성 (두 variant 비교)
+
+두 variant로 **각각 별도 LanceDB 테이블**에 임베딩하여 비교합니다.
+
+```bash
+cd backend
+
+# 3-1. data/ 폴더에 법령/판례 JSON 준비
+# data/law_v3.json, data/precedents_v2.json 필요
+# Google Drive에서 복원: rclone copy --config rclone.conf gdrive:data/ data/ --progress
+
+# 3-2. Variant A: ORT-opt FP32 (무손실)로 임베딩
+USE_ONNX_EMBEDDING=true \
+ONNX_EMBEDDING_VARIANT=ort-opt \
+LANCEDB_URI=./lancedb_data_ort_opt \
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
+
+# 3-3. Variant B: QDQ INT8 (cosine 0.999)로 임베딩
+USE_ONNX_EMBEDDING=true \
+ONNX_EMBEDDING_VARIANT=ort-opt-qdq \
+LANCEDB_URI=./lancedb_data_qdq \
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
+
+# 3-4. 기존 PyTorch FP32 임베딩도 비교하려면
+USE_ONNX_EMBEDDING=false \
+LANCEDB_URI=./lancedb_data_pytorch \
+uv run --no-sync python -m scripts.ingest.cli --type all --step vector --reset
+```
+
+> **주의**: `LANCEDB_URI`를 variant별로 다르게 설정하여 데이터가 섞이지 않도록 합니다.
+> **CUDA 자동 감지**: `onnxruntime-gpu` 설치 시 CUDA EP를 자동 사용합니다. GPU 서버에서 ONNX+CUDA로 인제스트하면 PyTorch CUDA 대비 그래프 최적화+fusion 효과를 볼 수 있습니다. CPU 전용 환경에서는 자동 fallback.
+
+### Step 4: RAG 검색 품질 비교
+
+```bash
+cd backend
+
+# 4-1. Variant A (ORT-opt FP32)로 RAG 평가
+USE_ONNX_EMBEDDING=true \
+ONNX_EMBEDDING_VARIANT=ort-opt \
+LANCEDB_URI=./lancedb_data_ort_opt \
+uv run --no-sync python -m evaluation.run
+
+# 4-2. Variant B (QDQ INT8)로 RAG 평가
+USE_ONNX_EMBEDDING=true \
+ONNX_EMBEDDING_VARIANT=ort-opt-qdq \
+LANCEDB_URI=./lancedb_data_qdq \
+uv run --no-sync python -m evaluation.run
+
+# 4-3. PyTorch 기준선
+USE_ONNX_EMBEDDING=false \
+LANCEDB_URI=./lancedb_data_pytorch \
+uv run --no-sync python -m evaluation.run
+```
+
+**평가 지표 목표**: Recall@10 ≥ 0.8, MRR ≥ 0.7, Hit Rate ≥ 0.9
+
+### Step 5: 리랭커 variant 비교 (선택)
+
+리랭커도 ONNX variant를 비교하려면:
+
+```bash
+# .env 또는 환경변수로 설정
+USE_ONNX_RERANKER=true
+ONNX_RERANKER_VARIANT=ort-opt       # 또는 ort-opt-qdq, ort-opt-qdq-6fp32
+```
+
+> **리랭커 variant별 상세 테스트 가이드**: `docs/04-report/features/reranker-onnx-variant-test-guide.md` 참조 (다운로드, .env 전환, 수동 추론, PyTorch 비교).
+
+### ONNX 환경 변수 요약
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `USE_ONNX_EMBEDDING` | `false` | ONNX 임베딩 사용 여부 |
+| `ONNX_EMBEDDING_VARIANT` | `ort-opt` | `ort-opt` (FP32) 또는 `ort-opt-qdq` (INT8) |
+| `USE_ONNX_RERANKER` | `false` | ONNX 리랭커 사용 여부 |
+| `ONNX_RERANKER_VARIANT` | `ort-opt` | `ort-opt` (FP32) 또는 `ort-opt-qdq` (INT8, 4 FP32) 또는 `ort-opt-qdq-6fp32` (INT8, 6 FP32) |
+| `ONNX_INTRA_OP_THREADS` | `0` | 0=자동, 4=Mac ARM P코어만 권장 |
+| `ONNX_ENABLE_IO_BINDING` | `false` | CUDA EP에서 유효 (CPU EP에서 무효) |
+| `ONNX_ENABLE_BF16_FASTMATH` | `false` | Graviton3+ 전용 (Mac ARM 미지원) |
+| `ONNX_QDQ_SENSITIVE_LAYERS` | `""` | 커스텀 민감 레이어 (빈 문자열=기본 16개) |
+| `ONNX_QUALITY_GATE_ENABLED` | `true` | 품질 게이트 활성화 |
+| `ONNX_QUALITY_GATE_FALLBACK` | `true` | 품질 미달 시 PyTorch 폴백 |
+
+### 관련 스크립트
+
+| 스크립트 | 용도 |
+|----------|------|
+| `build_optimized_onnx.py` | ONNX 모델 빌드 (변환+최적화+양자화+검증) |
+| `benchmark_arm_optimization.py` | ARM 최적화 벤치마크 (latency, cosine) |
+| `sweep_sensitive_layers.py` | 임베딩 QDQ INT8 민감 레이어 탐색 |
+| `benchmark_new_optimizations.py` | 임베딩 Session Config / CoreML / Dynamic INT8 벤치마크 |
+| `benchmark_reranker_optimizations.py` | 리랭커 Session Config / CoreML / IO Binding / 프로파일링 벤치마크 |
+| `sweep_reranker_sensitive_layers.py` | 리랭커 QDQ INT8 민감 레이어 탐색 |
+| `download_models.py` | HuggingFace 모델 다운로드 (PyTorch 원본) |
+
+### 벤치마크 보고서
+
+- `docs/04-report/features/arm-onnx-optimization-benchmark.md` — 임베딩 최적화 벤치마크 결과
+- `docs/04-report/features/reranker-onnx-optimization-benchmark.md` — 리랭커 최적화 벤치마크 결과
+- `docs/04-report/features/reranker-onnx-variant-test-guide.md` — 리랭커 variant 테스트 가이드 (팀원용)
 
 ---
 
@@ -564,39 +735,51 @@ config-driven 인제스트 파이프라인. 데이터 타입별 설정을 `types
 
 ### 1. DB 적재 데이터 소스 위치
 
-모든 소스는 프로젝트 루트 `data/` 하위에 위치합니다. (`config.py`의 `DATA_DIR`)
+모든 인제스트 소스는 `data/ingest_source/` 하위에 위치합니다. (`config.py`의 `DATA_DIR` + `sources.yaml` 상대경로)
 
 ```
 data/
-├── law_v3.json                    # 법령
-├── precedents_v2.json             # 판례
-├── admin_rule_v2.json             # 행정규칙
-├── constitutional_v2.json         # 헌재결정례
-├── administration_v2.json         # 행정심판례
-├── legislation_v2.json            # 법령해석례
-├── treaty_v2.json                 # 조약
-├── interpretation_ministry/       # 부처해석례 (28개 부처별 JSON)
-│   ├── intp_min_경찰청_v2.json
-│   ├── intp_min_고용노동부_v2.json
-│   └── ...
-├── special_admin_appeal/          # 특별행정심판례 (2개 기관별 JSON)
-│   ├── sadm_case_조세심판원_v2.json
-│   └── sadm_case_해양안전심판원_v2.json
-├── local_rules_v1.json            # 자치법규 (160,276건)
-└── decisions_committee/           # 위원회 결정문 (10개 위원회별 JSON)
-    ├── dec_comm_개인정보보호위원회_v2.json
-    ├── dec_comm_고용보험심사위원회_v2.json
-    ├── dec_comm_공정거래위원회_v3.json
-    ├── dec_comm_국가인권위원회_v2.json
-    ├── dec_comm_국민권익위원회_v2.json
-    ├── dec_comm_금융위원회_v2.json
-    ├── dec_comm_노동위원회_v2.json
-    ├── dec_comm_산업재해보상위험재심사위원회_v2.json
-    ├── dec_comm_중앙환경분쟁조정위원회_v2.json
-    └── dec_comm_증권선물위원회_v2.json
+├── ingest_source/                       # 인제스트 파이프라인 전용 데이터
+│   ├── law_v3.json                      # 법령
+│   ├── precedents_v2.json               # 판례
+│   ├── admin_rule_v3.json               # 행정규칙
+│   ├── constitutional_v2.json           # 헌재결정례
+│   ├── administration_v2.json           # 행정심판례
+│   ├── legislation_v2.json              # 법령해석례
+│   ├── treaty_v2.json                   # 조약
+│   ├── local_rules_v1.json              # 자치법규 (160,276건)
+│   ├── interpretation_ministry/         # 부처해석례 (33개 부처별 JSON)
+│   │   ├── intp_min_경찰청_v2.json
+│   │   ├── intp_min_고용노동부_v2.json
+│   │   └── ...
+│   ├── special_admin_appeal/            # 특별행정심판례 (4개 기관별 JSON)
+│   │   ├── sadm_case_조세심판원_v2.json
+│   │   ├── sadm_case_해양안전심판원_v2.json
+│   │   ├── sadm_case_국민권익위원회_v1.json
+│   │   └── sadm_case_인사혁신처_v1.json
+│   └── decisions_committee/             # 위원회 결정문 (11개 위원회별 JSON)
+│       ├── dec_comm_개인정보보호위원회_v2.json
+│       ├── dec_comm_고용보험심사위원회_v2.json
+│       ├── dec_comm_공정거래위원회_v3.json
+│       ├── dec_comm_국가인권위원회_v2.json
+│       ├── dec_comm_국민권익위원회_v2.json
+│       ├── dec_comm_금융위원회_v2.json
+│       ├── dec_comm_노동위원회_v2.json
+│       ├── dec_comm_방송미디어통신위원회_v1.json
+│       ├── dec_comm_산업재해보상위험재심사위원회_v2.json
+│       ├── dec_comm_중앙환경분쟁조정위원회_v2.json
+│       └── dec_comm_증권선물위원회_v2.json
+│
+├── lawyers.json                         # 변호사 데이터 (인제스트 외)
+├── lawterms_v1.json                     # 법률 용어 사전 (인제스트 외)
+├── population.json                      # 인구 데이터 (인제스트 외)
+├── law_abbreviations.json               # 법령 약칭 (인제스트 외)
+├── law_hierarchy.json                   # 법령 체계도 (인제스트 외)
+├── trial_statistics_data/               # 재판 통계 CSV (인제스트 외)
+└── incoming/                            # 외부 데이터 임시 저장
 ```
 
-### 2. 데이터 타입 구성 (20개)
+### 2. 데이터 타입 구성 (21개)
 
 | `--type` 타입명 | 데이터 | 건수 | 소스 형식 |
 |-----------------|--------|------|----------|
@@ -607,8 +790,8 @@ data/
 | `administration` | 행정심판례 | 34,254 | 단일 JSON |
 | `legislation` | 법령해석례 | 8,597 | 단일 JSON |
 | `treaty` | 조약 | 3,589 | 단일 JSON |
-| `interpretation_ministry` | 부처해석례 (28개 부처) | 37,325 | 디렉토리 |
-| `special_admin_appeal` | 특별행정심판례 (2개 기관) | 148,778 | 디렉토리 |
+| `interpretation_ministry` | 부처해석례 (33개 부처) | 37,455 | 디렉토리 |
+| `special_admin_appeal` | 특별행정심판례 (4개 기관) | 149,073 | 디렉토리 |
 | `dec_privacy` | 개인정보보호위원회 결정문 | 1,448 | 개별 JSON |
 | `dec_employment` | 고용보험심사위원회 결정문 | 118 | 개별 JSON |
 | `dec_fair_trade` | 공정거래위원회 결정문 | ~7,728 | 개별 JSON |
@@ -619,8 +802,9 @@ data/
 | `dec_industrial` | 산업재해보상보험재심사위원회 결정문 | 782 | 개별 JSON |
 | `dec_environment` | 중앙환경분쟁조정위원회 결정문 | 358 | 개별 JSON |
 | `dec_securities` | 증권선물위원회 결정문 | 636 | 개별 JSON |
+| `dec_media` | 방송미디어통신위원회 결정문 | 811 | 개별 JSON |
 | `local_ordinance` | 자치법규 | 160,276 | 단일 JSON |
-| **합계** | **20개 타입** | **~584,200** | |
+| **합계** | **21개 타입** | **~585,400** | |
 
 ### 3. 사전 조건
 
@@ -645,8 +829,8 @@ uv run python -m scripts.ingest.cli --type <타입명|all> [옵션]
 
 | 옵션 | 값 | 기본값 | 설명 |
 |------|-----|--------|------|
-| `--type` | `all` 또는 20개 타입명 | (필수) | 인제스트 대상 (`all`: 전체 20개, 또는 `precedent`, `dec_fair_trade` 등 개별 타입) |
-| `--step` | `all`, `db`, `vector`, `fts`, `index` | `all` | 실행 단계 |
+| `--type` | `all` 또는 21개 타입명 | `None` | 인제스트 대상 (`onnx-export` 제외 필수, `all`: 전체 21개) |
+| `--step` | `all`, `db`, `vector`, `fts`, `index`, `onnx-export` | `all` | 실행 단계 |
 | `--reset` | - | `false` | 기존 데이터 삭제 후 재실행 |
 | `--source` | 파일 경로 | 타입별 기본 경로 | 커스텀 JSON 소스 경로 (`--type all`과 함께 사용 불가) |
 | `--batch-size` | 정수 | DB: 1000, 벡터: 하드웨어 자동 | 배치 크기 |
@@ -655,6 +839,7 @@ uv run python -m scripts.ingest.cli --type <타입명|all> [옵션]
 | `--device` | `cuda`, `mps`, `cpu` | 자동 감지 | 임베딩 디바이스 (`vector` 단계용) |
 | `--profile` | `desktop`, `laptop`, `mac`, `cpu` | 자동 감지 | 하드웨어 프로필 (`vector` 단계용) |
 | `--no-cache` | - | `false` | 임베딩 캐시 비활성화 (`vector` 단계용) |
+| `--backend` | `onnx`, `onnx-int8`, `onnx-fp16` | `None` (PyTorch) | 임베딩 백엔드 (`vector` 단계용, ONNX 양자화 지원) |
 
 ### 5. 단계별 실행 가이드
 
@@ -664,6 +849,7 @@ uv run python -m scripts.ingest.cli --type <타입명|all> [옵션]
 | `vector` | JSON → LanceDB 벡터 임베딩 (1문서=1벡터) | 임베딩 모델, PyTorch | 최초 적재, 데이터 갱신 |
 | `fts` | PostgreSQL ORM에서 읽어 tsvector만 재빌드 | PostgreSQL, (MeCab), `db` 완료 | 토크나이저/userdic 변경 후 |
 | `index` | LanceDB ANN 인덱스 재빌드 (IVF_FLAT) | `vector` 완료 | 벡터 데이터 변경 후 |
+| `onnx-export` | PyTorch → ONNX FP32 변환 + INT8 양자화 | `optimum[onnxruntime]` | ONNX 백엔드 최초 사용 전 (자동 변환도 지원) |
 | `all` | `db` → `vector` → `index` 순차 실행 | 전체 | 최초 적재 |
 
 **ai_summary만 업데이트** (JSON 요약 필드 변경 후):
@@ -727,14 +913,14 @@ uv run python -m scripts.ingest.cli --type precedent --verify
 scripts/ingest/
 ├── cli.py              # CLI 진입점 (python -m scripts.ingest.cli)
 ├── config.py           # IngestConfig dataclass + 레지스트리 + get_source_path()
-├── sources.yaml        # 20개 타입 데이터 소스 경로 (YAML 중앙 관리)
+├── sources.yaml        # 21개 타입 데이터 소스 경로 (YAML 중앙 관리, data/ingest_source/ 기준)
 ├── db_writer.py        # PostgreSQL + FTS 적재
 ├── law_article_vector_writer.py      # 법령 전용 벡터 라이터 (1문서→법령요약+조문요약 N벡터)
 ├── local_ordinance_vector_writer.py  # 자치법규 전용 벡터 라이터 (1문서→다중벡터)
 ├── summary_updater.py  # ai_summary 컬럼만 일괄 업데이트 (FTS/MeCab 불필요)
 ├── shared.py           # 공유 유틸 (토크나이저, FTS 배치)
-├── ingest.md           # 20개 타입 저장 구조 상세 문서
-└── types/              # 데이터 타입별 설정 (20개 타입)
+├── ingest.md           # 21개 타입 저장 구조 상세 문서
+└── types/              # 데이터 타입별 설정 (21개 타입)
     ├── __init__.py     # 타입 자동 등록
     ├── _template.py    # 신규 타입 템플릿
     ├── _dec_comm_common.py  # 위원회 결정례 공통 (벡터/FTS 메타)
@@ -757,6 +943,7 @@ scripts/ingest/
     ├── dec_industrial.py    # 산업재해보상보험재심사위원회 결정문
     ├── dec_environment.py   # 중앙환경분쟁조정위원회 결정문
     ├── dec_securities.py    # 증권선물위원회 결정문
+    ├── dec_media.py         # 방송미디어통신위원회 결정문
     └── local_ordinance.py   # 자치법규 (별도 벡터 테이블: local_ordinance_chunks)
 ```
 

@@ -112,11 +112,9 @@ def _update_summaries_for_type(
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%H:%M:%S",
-    )
+    from scripts.common.logging_config import setup_logging
+
+    setup_logging("__main__")
 
     # types/ 임포트 → 전체 config 자동 등록
     import scripts.ingest.types  # noqa: F401

@@ -89,7 +89,7 @@ uv run python scripts/audit_summary_quality.py \
     --compare-field 재결요지
 ```
 
-### 등록된 19개 타입 및 주요 필드 매핑
+### 등록된 20개 타입 및 주요 필드 매핑
 
 | 타입 | summary_field | id_field | 주요 compare_field |
 |------|---------------|----------|--------------------|
@@ -176,4 +176,4 @@ uv run python scripts/audit_summary_quality.py \
 | `backend/scripts/validate_summaries.py` | 규칙 기반 검증 |
 | `backend/scripts/clean_summaries.py` | 규칙 기반 클리닝 |
 | `backend/scripts/ingest/config.py` | IngestConfig 정의 |
-| `backend/scripts/ingest/types/` | 19개 타입별 설정 |
+| `backend/scripts/ingest/types/` | 20개 타입별 설정 |

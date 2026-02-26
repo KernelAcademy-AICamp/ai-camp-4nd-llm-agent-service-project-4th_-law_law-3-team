@@ -1,9 +1,10 @@
 """
-LanceDB 스키마 v2 - 단일 테이블, 10컬럼 (단순화)
+LanceDB 스키마 v2 - 단일 테이블, 12컬럼
 
 설계 원칙:
-- 공통 9개 + 개별 1개(date) = 총 10개 컬럼
+- 공통 9개 + 개별 3개(date, summary_type, article_number) = 총 12개 컬럼
 - data_type으로 문서 유형 구분
+- summary_type으로 법령 전체요약(Basic) / 조문요약(Specific) 구분
 - 상세 필드(ruling, claim, case_number 등)는 PostgreSQL에 저장
 - date는 판례/법령만 채움, 나머지 타입은 NULL
 
@@ -44,8 +45,10 @@ LEGAL_CHUNKS_SCHEMA = pa.schema([
     pa.field("chunk_index", pa.int32()),    # 청크 인덱스
     pa.field("total_chunks", pa.int32()),   # 해당 문서의 총 청크 수
 
-    # ========== 개별 필드 (1개) ==========
+    # ========== 개별 필드 (3개) ==========
     pa.field("date", pa.utf8()),            # 날짜 (법령: 시행일, 판례: 선고일)
+    pa.field("summary_type", pa.utf8()),    # "Basic" (기본값) | "Specific" (조문요약)
+    pa.field("article_number", pa.utf8()),  # 조문번호 (Specific만, Basic은 None)
 ])
 
 
@@ -58,7 +61,7 @@ COMMON_COLUMNS = [
     "vector", "source_name", "chunk_index", "total_chunks",
 ]
 
-ALL_COLUMNS = COMMON_COLUMNS + ["date"]
+ALL_COLUMNS = COMMON_COLUMNS + ["date", "summary_type", "article_number"]
 
 
 # =============================================================================
@@ -81,6 +84,8 @@ class LegalChunk(BaseModel):
 
     # === 개별 필드 ===
     date: Optional[str] = None              # 날짜 (판례/법령만)
+    summary_type: str = "Basic"             # "Basic" | "Specific" (법령 조문요약)
+    article_number: Optional[str] = None    # 조문번호 (Specific만)
 
     def to_dict(self) -> dict[str, object]:
         """LanceDB 삽입용 딕셔너리 변환"""
@@ -101,6 +106,9 @@ def create_chunk(
     date: Optional[str] = None,
     chunk_index: int = 0,
     total_chunks: int = 1,
+    summary_type: str = "Basic",
+    article_number: Optional[str] = None,
+    chunk_id: Optional[str] = None,
 ) -> dict[str, object]:
     """
     범용 청크 생성
@@ -115,12 +123,15 @@ def create_chunk(
         date: 날짜 (판례/법령만, 나머지 None)
         chunk_index: 청크 인덱스 (0부터)
         total_chunks: 해당 문서의 총 청크 수
+        summary_type: "Basic" (기본값) | "Specific" (법령 조문요약)
+        article_number: 조문번호 (Specific만, 나머지 None)
+        chunk_id: 커스텀 청크 ID (미지정 시 {source_id}_{chunk_index})
 
     Returns:
         LanceDB 삽입용 딕셔너리
     """
     return {
-        "id": f"{source_id}_{chunk_index}",
+        "id": chunk_id or f"{source_id}_{chunk_index}",
         "source_id": source_id,
         "data_type": data_type,
         "title": title,
@@ -130,6 +141,8 @@ def create_chunk(
         "chunk_index": chunk_index,
         "total_chunks": total_chunks,
         "date": date,
+        "summary_type": summary_type,
+        "article_number": article_number,
     }
 
 
@@ -142,9 +155,18 @@ def create_law_chunk(
     enforcement_date: str = "",
     department: str = "",
     total_chunks: int = 1,
+    summary_type: str = "Basic",
+    article_number: Optional[str] = None,
     **_kwargs: object,
 ) -> dict[str, object]:
     """법령 청크 생성 (하위 호환 래퍼)"""
+    # 법령 ID 체계: Basic → {id}_overall_0, Specific → {id}_art_{조문번호}_0
+    if summary_type == "Basic":
+        chunk_id = f"{source_id}_overall_{chunk_index}"
+    else:
+        art_no = article_number or "unknown"
+        chunk_id = f"{source_id}_art_{art_no}_{chunk_index}"
+
     return create_chunk(
         data_type="법령",
         source_id=source_id,
@@ -155,6 +177,9 @@ def create_law_chunk(
         date=enforcement_date or None,
         chunk_index=chunk_index,
         total_chunks=total_chunks,
+        summary_type=summary_type,
+        article_number=article_number,
+        chunk_id=chunk_id,
     )
 
 

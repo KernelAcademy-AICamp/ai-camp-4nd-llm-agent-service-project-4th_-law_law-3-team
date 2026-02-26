@@ -90,3 +90,81 @@ rclone ls --config rclone.conf gdrive:data/
 >
 > **참고**: `data/`는 `.gitignore`에 포함되어 있어 git clone만으로는 받을 수 없습니다.
 > 새 환경 세팅 시 DB 복원(`restore_from_gdrive.sh`)과 함께 이 단계를 수행하세요.
+
+## ONNX 모델 백업 / 복원
+
+ONNX 최적화 모델(리랭커/임베딩, FP32 및 QDQ INT8)을 Google Drive에 백업/복원합니다.
+DB 백업과 별도 스크립트로 관리합니다 (Docker 불필요, 빈도가 다름).
+
+### Google Drive 구조
+
+```
+gdrive:onnx-models/
+  reranker-ort-opt/           # 리랭커 FP32 Fusion
+  reranker-ort-opt-qdq/       # 리랭커 QDQ INT8 (주 사용 대상)
+  kure-v1-ort-opt/            # 임베딩 FP32
+  kure-v1-ort-opt-qdq/        # 임베딩 QDQ INT8
+  model_versions.json         # 빌드 메타데이터 (검증 결과 포함)
+```
+
+### 빌드 + 백업 (WSL2/Linux)
+
+```bash
+# 리랭커만 빌드 → 검증 → Google Drive 업로드
+./scripts/onnx_model_gdrive.sh build-and-backup --reranker-only
+
+# 전체 모델 빌드 + 백업 (기존 모델 덮어쓰기)
+./scripts/onnx_model_gdrive.sh build-and-backup --overwrite
+
+# 빌드 없이 기존 모델만 백업
+./scripts/onnx_model_gdrive.sh backup --reranker-only
+
+# 미리보기
+./scripts/onnx_model_gdrive.sh backup --dry-run
+```
+
+### 복원 (Mac ARM 등 다른 환경)
+
+```bash
+# 리랭커 모델만 복원
+./scripts/onnx_model_gdrive.sh restore --reranker-only
+
+# 전체 모델 복원
+./scripts/onnx_model_gdrive.sh restore
+
+# 원격 모델 목록 확인
+./scripts/onnx_model_gdrive.sh list
+```
+
+### .env 설정 (복원 후)
+
+```bash
+# 리랭커 ONNX 사용
+USE_ONNX_RERANKER=true
+ONNX_RERANKER_VARIANT=ort-opt-qdq
+
+# 임베딩 ONNX 사용
+USE_ONNX_EMBEDDING=true
+ONNX_EMBEDDING_VARIANT=ort-opt-qdq
+```
+
+### 워크플로우
+
+```
+[WSL2/Linux]                              [Mac ARM]
+1. ./scripts/onnx_model_gdrive.sh \
+     build-and-backup --reranker-only
+   (빌드 → 검증 → gdrive 업로드)
+                                          2. ./scripts/onnx_model_gdrive.sh restore --reranker-only
+                                          3. .env 설정 (위 참조)
+                                          4. cd backend && uv run uvicorn app.main:app --reload
+```
+
+### 관련 파일
+
+| 파일 | 설명 |
+|------|------|
+| `scripts/onnx_model_gdrive.sh` | ONNX 모델 백업/복원/빌드 |
+| `backend/scripts/build_optimized_onnx.py` | ONNX 모델 빌드 (--reranker-only) |
+| `backend/app/services/rag/onnx_session.py` | 런타임 모델 로딩, 파일 검증 |
+| `backend/data/models/model_versions.json` | 빌드 메타데이터 |

@@ -17,6 +17,13 @@ from app.services.rag.embedding import (
 from app.services.rag.fusion import reciprocal_rank_fusion
 from app.services.rag.keyword_search import search_by_keyword
 
+# ONNX 세션 관리
+from app.services.rag.onnx_session import (
+    get_platform_info,
+    is_embedding_onnx_loaded,
+    is_reranker_onnx_loaded,
+)
+
 # 파이프라인
 from app.services.rag.pipeline import (
     PRESETS,
@@ -69,6 +76,10 @@ __all__ = [
     # 하이브리드 검색
     "search_by_keyword",
     "reciprocal_rank_fusion",
+    # ONNX
+    "is_embedding_onnx_loaded",
+    "is_reranker_onnx_loaded",
+    "get_platform_info",
     # 리랭킹
     "rerank_documents",
     "rerank_documents_async",

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import re
 import sys
 from dataclasses import dataclass
@@ -43,12 +42,9 @@ _RE_KEYWORD_SECTION = re.compile(
 _PROJECT_ROOT = _BACKEND_ROOT.parent
 _DEFAULT_INPUT = _PROJECT_ROOT / "data" / "admin_rule_v3.json"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+from scripts.common.logging_config import setup_logging
+
+logger = setup_logging(__name__)
 
 
 @dataclass

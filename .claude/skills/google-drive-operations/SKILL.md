@@ -16,12 +16,19 @@ Google Drive (gdrive:)
 │   ├── neo4j.dump (또는 neo4j_data.tar.gz)
 │   └── lancedb_data.tar.gz
 │
-└── data/                     ← 원본 JSON 데이터 (~3.5GB, 63개 파일)
-    ├── law_v3.json
-    ├── precedents_v2.json
-    ├── decisions_committee/
-    ├── interpretation_ministry/
-    └── special_admin_appeal/
+└── data/                     ← 원본 데이터 (~7GB)
+    ├── ingest_source/        ← 인제스트 파이프라인 전용 데이터
+    │   ├── law_v3.json
+    │   ├── precedents_v2.json
+    │   ├── local_rules_v1.json
+    │   ├── decisions_committee/
+    │   ├── interpretation_ministry/
+    │   └── special_admin_appeal/
+    ├── lawyers.json           ← 인제스트 외 데이터
+    ├── lawterms_v1.json
+    ├── population.json
+    ├── trial_statistics_data/
+    └── incoming/
 ```
 
 ## 사전 준비 (1회)
@@ -236,4 +243,4 @@ rclone about --config rclone.conf gdrive:
 | `ingest-pipeline` | data/ 복원 후 → DB/벡터 적재 |
 | `korean-legal-domain` | 데이터 타입별 JSON 필드 구조 참조 |
 
-**데이터 라이프사이클**: 외부 수신 → `data-file-rename` → data/ 배치 → `rclone sync` (Drive 동기화) → `ingest-pipeline` (DB 적재) → 서비스 운영 → `backup_to_gdrive.sh` (DB 백업)
+**데이터 라이프사이클**: 외부 수신 → `data-file-rename` → data/ingest_source/ 배치 → `rclone sync` (Drive 동기화) → `ingest-pipeline` (DB 적재) → 서비스 운영 → `backup_to_gdrive.sh` (DB 백업)

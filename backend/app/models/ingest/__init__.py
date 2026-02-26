@@ -16,6 +16,7 @@ from app.models.ingest.dec_financial_document import DecFinancialDocument
 from app.models.ingest.dec_human_rights_document import DecHumanRightsDocument
 from app.models.ingest.dec_industrial_document import DecIndustrialDocument
 from app.models.ingest.dec_labor_document import DecLaborDocument
+from app.models.ingest.dec_media_document import DecMediaDocument
 from app.models.ingest.dec_privacy_document import DecPrivacyDocument
 from app.models.ingest.dec_securities_document import DecSecuritiesDocument
 from app.models.ingest.interpretation_ministry_document import (
@@ -42,6 +43,7 @@ __all__ = [
     "DecHumanRightsDocument",
     "DecIndustrialDocument",
     "DecLaborDocument",
+    "DecMediaDocument",
     "InterpretationMinistryDocument",
     "LegislationDocument",
     "LocalOrdinanceDocument",

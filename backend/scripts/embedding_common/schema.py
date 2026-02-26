@@ -47,15 +47,17 @@ except ImportError:
         pa.field("source_name", pa.utf8()),
         pa.field("chunk_index", pa.int32()),
         pa.field("total_chunks", pa.int32()),
-        # ========== 개별 필드 (1개) ==========
+        # ========== 개별 필드 (3개) ==========
         pa.field("date", pa.utf8()),
+        pa.field("summary_type", pa.utf8()),
+        pa.field("article_number", pa.utf8()),
     ])
 
     COMMON_COLUMNS = [
         "id", "source_id", "data_type", "title", "content",
         "vector", "source_name", "chunk_index", "total_chunks",
     ]
-    ALL_COLUMNS = COMMON_COLUMNS + ["date"]
+    ALL_COLUMNS = COMMON_COLUMNS + ["date", "summary_type", "article_number"]
 
     LegalChunk = dict  # type: ignore[assignment,misc]
 
@@ -69,9 +71,12 @@ except ImportError:
         date: Optional[str] = None,
         chunk_index: int = 0,
         total_chunks: int = 1,
+        summary_type: str = "Basic",
+        article_number: Optional[str] = None,
+        chunk_id: Optional[str] = None,
     ) -> dict[str, Any]:
         return {
-            "id": f"{source_id}_{chunk_index}",
+            "id": chunk_id or f"{source_id}_{chunk_index}",
             "source_id": source_id,
             "data_type": data_type,
             "title": title,
@@ -81,6 +86,8 @@ except ImportError:
             "chunk_index": chunk_index,
             "total_chunks": total_chunks,
             "date": date,
+            "summary_type": summary_type,
+            "article_number": article_number,
         }
 
     def create_law_chunk(
@@ -92,8 +99,16 @@ except ImportError:
         enforcement_date: str = "",
         department: str = "",
         total_chunks: int = 1,
+        summary_type: str = "Basic",
+        article_number: Optional[str] = None,
         **_kwargs: object,
     ) -> dict[str, Any]:
+        if summary_type == "Basic":
+            chunk_id = f"{source_id}_overall_{chunk_index}"
+        else:
+            art_no = article_number or "unknown"
+            chunk_id = f"{source_id}_art_{art_no}_{chunk_index}"
+
         return create_chunk(
             data_type="법령",
             source_id=source_id,
@@ -104,6 +119,9 @@ except ImportError:
             date=enforcement_date or None,
             chunk_index=chunk_index,
             total_chunks=total_chunks,
+            summary_type=summary_type,
+            article_number=article_number,
+            chunk_id=chunk_id,
         )
 
     def create_precedent_chunk(
