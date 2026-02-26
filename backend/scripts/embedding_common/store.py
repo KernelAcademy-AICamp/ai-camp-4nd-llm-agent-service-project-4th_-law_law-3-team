@@ -155,6 +155,27 @@ class EmbeddingStore:
         except Exception:
             return set()
 
+    def get_existing_ids(
+        self,
+        column: str,
+        where_expr: str | None = None,
+        limit: int = 2_000_000,
+    ) -> set[str]:
+        """지정된 컬럼 값의 기존 레코드 값 집합 조회"""
+        if self._table is None:
+            return set()
+
+        try:
+            query = self._table.search()
+            if where_expr:
+                query = query.where(where_expr)
+            result = query.select([column]).limit(limit).to_pandas()
+            if column not in result.columns:
+                return set()
+            return set(result[column].dropna().astype(str).unique())
+        except Exception:
+            return set()
+
     def add_batch(self, data: list[dict[str, Any]]) -> None:
         """배치 데이터 추가"""
         if not data:

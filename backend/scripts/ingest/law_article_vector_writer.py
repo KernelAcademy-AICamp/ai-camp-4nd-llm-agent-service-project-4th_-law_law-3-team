@@ -205,6 +205,24 @@ def _embed_and_store_batch(
 
 
 # ---------------------------------------------------------------------------
+# 청크 ID 유틸
+# ---------------------------------------------------------------------------
+
+
+def _get_chunk_id(meta: dict[str, Any], source_id: str) -> str:
+    """메타데이터로 법령 청크 ID 재생성"""
+    summary_type = meta["summary_type"]
+    chunk_index = meta["chunk_index"]
+    article_number = meta.get("article_number") or ""
+
+    if summary_type == "Basic":
+        return f"{source_id}_overall_{chunk_index}"
+
+    art_no = str(article_number) if article_number else "unknown"
+    return f"{source_id}_art_{art_no}_{chunk_index}"
+
+
+# ---------------------------------------------------------------------------
 # 매니페스트 저장
 # ---------------------------------------------------------------------------
 
@@ -248,6 +266,7 @@ def run_law_article_vector_ingest(
     profile: str | None = None,
     use_cache: bool = True,
     backend: str | None = None,
+    max_vectors: int | None = None,
 ) -> dict[str, int]:
     """
     법령 JSON → 다중 벡터 임베딩 → legal_chunks 통합 테이블 저장
@@ -260,6 +279,7 @@ def run_law_article_vector_ingest(
         source_path: JSON 소스 경로
         reset: 기존 데이터 삭제 후 재실행
         batch_size: 임베딩 배치 크기
+        max_vectors: 최대 벡터 수 (도달 시 조기 종료, 프로세스 재시작으로 이어쓰기)
         device: 임베딩 디바이스
         profile: 하드웨어 프로필
         use_cache: 임베딩 캐시 사용 여부
@@ -321,10 +341,26 @@ def run_law_article_vector_ingest(
             except Exception as e:
                 logger.warning("법령 데이터 삭제 실패 (전체 리셋): %s", e)
                 store.reset()
-        existing_ids: set[str] = set()
+        existing_source_ids: set[str] = set()
+        existing_chunk_ids: set[str] = set()
+        resume_by_chunk = False
     else:
-        existing_ids = store.get_existing_source_ids("법령")
-        logger.info("기존 법령 문서: %d건 (자동 스킵)", len(existing_ids))
+        if max_vectors is not None:
+            resume_by_chunk = True
+            existing_chunk_ids = store.get_existing_ids(
+                column="id",
+                where_expr="data_type = '법령'",
+            )
+            existing_source_ids = set()
+            logger.info(
+                "분할 재개 모드: 기존 chunk %d건 (chunk 단위 스킵)",
+                len(existing_chunk_ids),
+            )
+        else:
+            resume_by_chunk = False
+            existing_source_ids = store.get_existing_source_ids("법령")
+            existing_chunk_ids = set()
+            logger.info("기존 법령 문서: %d건 (자동 스킵)", len(existing_source_ids))
 
     start_time = time.time()
     dim_verified = False
@@ -349,9 +385,10 @@ def run_law_article_vector_ingest(
             stats["errors"] += 1
             continue
 
-        if source_id in existing_ids:
-            stats["skipped_existing"] += 1
-            continue
+        if not resume_by_chunk:
+            if source_id in existing_source_ids:
+                stats["skipped_existing"] += 1
+                continue
 
         title = str(item.get("법령명_한글", "") or item.get("law_name", "") or "")
         source_name = str(item.get("소관부처명", "") or item.get("ministry", "") or "")
@@ -364,14 +401,30 @@ def run_law_article_vector_ingest(
             stats["skipped_no_summary"] += 1
             continue
 
-        stats["total_vectors"] += len(expanded)
+        candidate_texts: list[str] = []
+        candidate_meta: list[dict[str, Any]] = []
 
         for text, partial_meta in expanded:
+            if resume_by_chunk:
+                chunk_id = _get_chunk_id(partial_meta, source_id)
+                if chunk_id in existing_chunk_ids:
+                    continue
+
             partial_meta["source_id"] = source_id
             partial_meta["title"] = title
             partial_meta["source_name"] = source_name
             partial_meta["date"] = date_str
 
+            candidate_texts.append(text)
+            candidate_meta.append(partial_meta)
+
+        if not candidate_texts:
+            stats["skipped_existing"] += 1
+            continue
+
+        stats["total_vectors"] += len(candidate_texts)
+
+        for text, partial_meta in zip(candidate_texts, candidate_meta):
             batch_texts.append(text)
             batch_meta.append(partial_meta)
 
@@ -410,6 +463,20 @@ def run_law_article_vector_ingest(
                     pbar.close()
                     return stats
 
+            # max_vectors 도달 시 조기 종료
+            if max_vectors and stats["embedded"] >= max_vectors:
+                logger.info(
+                    "max_vectors 도달 (%d/%d) — 조기 종료 (재실행 시 자동 재개)",
+                    stats["embedded"], max_vectors,
+                )
+                pbar.close()
+                if store.table is not None:
+                    try:
+                        store.table.compact_files()
+                    except Exception:
+                        pass
+                return stats
+
     # 잔여 배치 처리
     if batch_texts:
         dim_verified = _embed_and_store_batch(
@@ -417,6 +484,20 @@ def run_law_article_vector_ingest(
             batch_size, dim_verified,
         )
         pbar.update(len(batch_texts))
+
+        # 마지막 배치에서도 max_vectors 도달 시 즉시 종료
+        if max_vectors and stats["embedded"] >= max_vectors:
+            logger.info(
+                "max_vectors 도달 (%d/%d) — 조기 종료 (재실행 시 자동 재개)",
+                stats["embedded"], max_vectors,
+            )
+            pbar.close()
+            if store.table is not None:
+                try:
+                    store.table.compact_files()
+                except Exception:
+                    pass
+            return stats
 
     pbar.close()
 

@@ -42,6 +42,11 @@ from scripts.common.logging_config import setup_logging
 from scripts.ingest.config import IngestConfig, get_config, list_configs
 from scripts.ingest.db_writer import run_db_ingest, verify_db
 from scripts.ingest.fts_builder import run_fts_rebuild
+from scripts.ingest.validation import (
+    SourceValidationSummary,
+    format_validation_summary,
+    validate_source,
+)
 from scripts.ingest.vector_writer import build_ann_index, run_vector_ingest
 
 logger = setup_logging(__name__)
@@ -112,6 +117,7 @@ def _run_single_type(
     profile: str | None,
     no_cache: bool,
     backend: str | None = None,
+    max_vectors: int | None = None,
 ) -> dict[str, dict[str, int]]:
     """단일 타입 인제스트 실행. 결과 dict 반환."""
     results: dict[str, dict[str, int]] = {}
@@ -148,6 +154,7 @@ def _run_single_type(
                 profile=profile,
                 use_cache=not no_cache,
                 backend=backend,
+                max_vectors=max_vectors,
             )
         elif config.name == "law":
             # 법령: 전용 라이터 (1문서 → 법령요약 + 조문요약 N개)
@@ -164,6 +171,7 @@ def _run_single_type(
                 profile=profile,
                 use_cache=not no_cache,
                 backend=backend,
+                max_vectors=max_vectors,
             )
         else:
             results["vector"] = run_vector_ingest(
@@ -186,6 +194,46 @@ def _run_single_type(
         )
 
     return results
+
+
+def _validate_source_type(
+    config: IngestConfig,
+    source_path: Path | None,
+) -> SourceValidationSummary:
+    """단일 타입 소스 데이터 구조 검증."""
+    path = source_path or config.source_path
+
+    return validate_source(
+        config_name=config.name,
+        source_path=path,
+        id_field=config.id_field,
+        summary_fields=[config.summary_field],
+    )
+
+
+def _actual_vector_count(config: IngestConfig) -> int:
+    """현재 LanceDB에서 타입별 실제 벡터 수 조회"""
+    from scripts.embedding_common.store import EmbeddingStore
+
+    if config.name == "local_ordinance":
+        from app.tools.vectorstore.local_ordinance_schema import (
+            LOCAL_ORDINANCE_SCHEMA,
+        )
+        from app.tools.vectorstore.local_ordinance_schema import (
+            TABLE_NAME as LOCAL_ORDINANCE_TABLE,
+        )
+
+        store = EmbeddingStore(
+            table_name=LOCAL_ORDINANCE_TABLE,
+            schema=LOCAL_ORDINANCE_SCHEMA,
+        )
+    else:
+        store = EmbeddingStore()
+
+    if store.table is None:
+        return 0
+
+    return store.count_by_type(config.data_type_label)
 
 
 def main() -> None:
@@ -278,6 +326,17 @@ def main() -> None:
         default=None,
         help="임베딩 백엔드 (onnx, onnx-int8, 기본: PyTorch)",
     )
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="소스 구조 미리 검증(예상 벡터 수, 건수, 샘플 오류 ID)",
+    )
+    parser.add_argument(
+        "--max-vectors",
+        type=int,
+        default=None,
+        help="최대 벡터 수 (도달 시 조기 종료, 법령/자치법규 분할 실행용)",
+    )
 
     args = parser.parse_args()
 
@@ -318,6 +377,26 @@ def main() -> None:
     if args.stats:
         for type_name in target_types:
             _print_stats(type_name)
+        return
+
+    # 입력 검증 모드
+    if args.validate:
+        for type_name in target_types:
+            config = get_config(type_name)
+            summary = _validate_source_type(
+                config=config,
+                source_path=source_path,
+            )
+            print(format_validation_summary(summary))
+            actual_vectors = _actual_vector_count(config)
+            diff = actual_vectors - summary.expected_vectors
+            print(
+                f"실제 적재 벡터: {actual_vectors:,}, "
+                f"예상 대비: {diff:+,}"
+            )
+            if diff < 0:
+                print("  경고: 실제 적재 수가 예상보다 적습니다. 중단 후 재개 구간을 점검하세요.")
+            print("-" * 60)
         return
 
     # 검증 모드
@@ -363,6 +442,7 @@ def main() -> None:
                 profile=args.profile,
                 no_cache=args.no_cache,
                 backend=args.backend,
+                max_vectors=args.max_vectors,
             )
 
             # 타입별 결과 출력

@@ -456,7 +456,7 @@ def simplify_onnx_model(
 
     except ImportError:
         print(f"    [{label}] onnx-simplifier 미설치 (건너뜀)")
-        print("    설치: uv add --dev onnx-simplifier")
+        print("    설치: uv sync --group onnx-optimization")
         return None
     except Exception as e:
         print(f"    [{label}] simplify 실패: {e!s:.200s}")

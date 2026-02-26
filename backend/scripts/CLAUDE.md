@@ -347,8 +347,10 @@ git clone <repo-url>
 cd law-3-team/backend
 git checkout feature/onnx-graph-optimization-benchmark
 
-# 1-2. Python 의존성 설치
+# 1-2. Python 의존성 설치 (기본)
 uv sync --dev
+# ONNX 최적화에 필요한 추가 의존성
+uv sync --group onnx-optimization
 
 # 1-3. PyTorch 설치 (환경에 맞게 선택)
 # CUDA (RunPod/서버)
@@ -356,8 +358,8 @@ uv pip install --reinstall torch torchvision torchaudio --index-url https://down
 # CPU/MPS (Mac)
 # uv pip install --reinstall torch torchvision torchaudio
 
-# 1-4. 추가 의존성 (ONNX 빌드용)
-uv pip install optimum onnxruntime onnx
+# 1-4. ONNX 빌드 전, 최적화 그룹 동기화 확인
+uv sync --group onnx-optimization
 ```
 
 ### Step 2: ONNX 모델 빌드
