@@ -182,8 +182,9 @@ def _search_vector_ids(
     동일 source_id 청크 중 최고 유사도만 유지하고
     유사도 내림차순으로 정렬하여 반환.
     """
-    store = get_vector_store()
     query_embedding = create_query_embedding(query)
+
+    store = get_vector_store()
 
     where: dict[str, str] | None = None
     if doc_type:
@@ -231,9 +232,9 @@ def _search_vector_ids(
             "similarity": similarity,
         }
 
-    # 유사도 내림차순 정렬 (RRF 랭킹용)
     docs = list(best.values())
     docs.sort(key=lambda d: d.get("similarity", 0), reverse=True)
+
     return docs
 
 
@@ -475,6 +476,9 @@ def search_relevant_documents(
 def fetch_lancedb_summaries(source_ids: list[str]) -> dict[str, str]:
     """LanceDB에서 source_id별 요약문(청크 텍스트) 조회.
 
+    legal_chunks 통합 테이블에서 조회합니다.
+    법령은 summary_type='Basic'(전체요약)만 반환합니다.
+
     Args:
         source_ids: 조회할 source_id 목록
 
@@ -484,34 +488,40 @@ def fetch_lancedb_summaries(source_ids: list[str]) -> dict[str, str]:
     if not source_ids:
         return {}
 
+    # SQL injection 방어: source_id에서 영숫자+하이픈+언더스코어만 허용
+    safe_pattern = re.compile(r"^[\w\-]+$")
+    safe_ids = [sid for sid in source_ids if safe_pattern.match(sid)]
+    if not safe_ids:
+        return {}
+
+    result: dict[str, str] = {}
+
     try:
         import lancedb
 
         db = lancedb.connect(settings.LANCEDB_URI)
-        table = db.open_table(settings.LANCEDB_TABLE_NAME)
-
-        # SQL injection 방어: source_id에서 영숫자+하이픈+언더스코어만 허용
-        safe_pattern = re.compile(r"^[\w\-]+$")
-        safe_ids = [sid for sid in source_ids if safe_pattern.match(sid)]
-        if not safe_ids:
-            return {}
 
         ids_str = ", ".join(
             "'{}'".format(sid.replace("'", "''")) for sid in safe_ids
         )
-        df = table.search().where(
-            f"source_id IN ({ids_str})", prefilter=True
-        ).select(["source_id", "content"]).limit(len(safe_ids) * 2).to_pandas()
 
-        result: dict[str, str] = {}
-        for _, row in df.iterrows():
-            sid = row["source_id"]
-            if sid not in result:
-                result[sid] = row["content"]
+        # legal_chunks 통합 테이블 — Basic 요약만 조회 (법령 Specific 제외)
+        if settings.LANCEDB_TABLE_NAME in db.table_names():
+            table = db.open_table(settings.LANCEDB_TABLE_NAME)
+            df = table.search().where(
+                f"source_id IN ({ids_str}) AND summary_type = 'Basic'",
+                prefilter=True,
+            ).select(["source_id", "content"]).limit(len(safe_ids) * 2).to_pandas()
+
+            for _, row in df.iterrows():
+                sid = row["source_id"]
+                if sid not in result:
+                    result[sid] = row["content"]
+
         return result
     except Exception as e:
         logger.warning("LanceDB 요약문 조회 실패: %s", e)
-        return {}
+        return result
 
 
 async def search_relevant_documents_async(

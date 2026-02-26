@@ -15,16 +15,66 @@ from scripts.embedding_common.config import DEFAULT_CONFIG
 from scripts.embedding_common.device import get_device, get_optimal_cuda_device
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from sentence_transformers import SentenceTransformer
 
 _cached_model: Optional[object] = None
 _cached_device: Optional[str] = None
 _cached_model_name: Optional[str] = None
+_cached_backend: Optional[str] = None
+
+# ONNX 모델 경로 (DATA_DIR 기준)
+_ONNX_MODEL_DIRS: dict[str, str] = {
+    "onnx": "models/kure-v1-onnx",
+    "onnx-int8": "models/kure-v1-onnx-int8",
+    "onnx-fp16": "models/kure-v1-onnx-fp16",
+}
+
+
+def _auto_convert_onnx(backend: str, data_dir: Path) -> None:
+    """ONNX 모델이 없을 때 자동 변환 (FP32 export + INT8 양자화)"""
+    fp32_path = data_dir / _ONNX_MODEL_DIRS["onnx"]
+
+    # FP32 ONNX가 없으면 먼저 변환
+    if not fp32_path.exists():
+        print("[INFO] ONNX FP32 모델이 없습니다. 자동 변환 중...")
+        try:
+            from scripts.benchmark_embedding_quantize import export_onnx
+
+            if not export_onnx():
+                raise RuntimeError("ONNX FP32 변환 실패")
+        except ImportError:
+            raise FileNotFoundError(
+                f"ONNX 모델을 찾을 수 없고 자동 변환도 실패했습니다: {fp32_path}\n"
+                "optimum 설치 확인: uv sync --dev"
+            )
+
+    # INT8 요청인데 INT8 디렉토리가 없으면 양자화
+    if backend == "onnx-int8":
+        int8_path = data_dir / _ONNX_MODEL_DIRS["onnx-int8"]
+        if not int8_path.exists():
+            print("[INFO] ONNX INT8 모델이 없습니다. 자동 양자화 중...")
+            try:
+                from scripts.benchmark_embedding_quantize import quantize_int8
+
+                if not quantize_int8():
+                    raise RuntimeError("INT8 양자화 실패")
+            except ImportError:
+                raise FileNotFoundError(
+                    f"INT8 모델을 찾을 수 없고 자동 양자화도 실패했습니다: {int8_path}\n"
+                    "optimum 설치 확인: uv sync --dev"
+                )
+
+# ONNX 배치 임베딩 1회 확인 플래그
+_onnx_embedding_checked: bool = False
+_onnx_embedding_available: bool = False
 
 
 def get_embedding_model(
     device: Optional[str] = None,
     model_name: Optional[str] = None,
+    backend: Optional[str] = None,
 ) -> SentenceTransformer:
     """
     임베딩 모델 로드 (캐싱)
@@ -32,11 +82,12 @@ def get_embedding_model(
     Args:
         device: 디바이스 ("cuda", "mps", "cpu", None=자동)
         model_name: 모델명 (기본: KURE-v1)
+        backend: ONNX 백엔드 ("onnx", "onnx-int8", None=PyTorch)
 
     Returns:
         SentenceTransformer 모델
     """
-    global _cached_model, _cached_device, _cached_model_name
+    global _cached_model, _cached_device, _cached_model_name, _cached_backend
     from sentence_transformers import SentenceTransformer
 
     model_name = model_name or str(DEFAULT_CONFIG["EMBEDDING_MODEL"])
@@ -47,23 +98,118 @@ def get_embedding_model(
             device_id = get_optimal_cuda_device()
             device = f"cuda:{device_id}"
 
-    # 캐시된 모델이 같은 디바이스 + 같은 모델이면 반환
+    # 캐시된 모델이 같은 디바이스 + 같은 모델 + 같은 백엔드이면 반환
     if (
         _cached_model is not None
         and _cached_device == device
         and _cached_model_name == model_name
+        and _cached_backend == backend
     ):
         return _cached_model  # type: ignore[return-value]
 
-    print(f"[INFO] Loading embedding model: {model_name} on {device}")
-    model = SentenceTransformer(model_name, device=device, trust_remote_code=True)
+    if backend in _ONNX_MODEL_DIRS:
+        # ONNX 백엔드: 로컬 변환된 모델 경로 사용
+        from pathlib import Path
+
+        data_dir = Path(__file__).parent.parent.parent / "data"
+        onnx_path = data_dir / _ONNX_MODEL_DIRS[backend]
+
+        if not onnx_path.exists():
+            # ONNX 모델 자동 변환
+            _auto_convert_onnx(backend, data_dir)
+
+        # INT8: model_quantized.onnx → model.onnx 자동 리네임
+        quantized = onnx_path / "model_quantized.onnx"
+        model_onnx = onnx_path / "model.onnx"
+        if quantized.exists() and not model_onnx.exists():
+            quantized.rename(model_onnx)
+            print("[INFO] Renamed model_quantized.onnx → model.onnx")
+
+        # INT8: config/tokenizer 파일 누락 시 FP32 ONNX에서 복사
+        if not (onnx_path / "config.json").exists():
+            fp32_path = data_dir / _ONNX_MODEL_DIRS["onnx"]
+            if fp32_path.exists():
+                import shutil
+
+                for f in fp32_path.iterdir():
+                    if f.is_file() and f.suffix in (".json", ".txt"):
+                        dst = onnx_path / f.name
+                        if not dst.exists():
+                            shutil.copy2(f, dst)
+                print(f"[INFO] Copied config/tokenizer from {fp32_path}")
+
+        print(f"[INFO] Loading ONNX model: {onnx_path} (backend={backend})")
+        model = SentenceTransformer(
+            str(onnx_path),
+            backend="onnx",
+            trust_remote_code=True,
+        )
+    else:
+        # 기존 PyTorch 모델
+        print(f"[INFO] Loading embedding model: {model_name} on {device}")
+        model = SentenceTransformer(
+            model_name, device=device, trust_remote_code=True
+        )
+
     model.eval()
 
     _cached_model = model
     _cached_device = device
     _cached_model_name = model_name
+    _cached_backend = backend
 
     return model
+
+
+def _should_use_onnx_embedding() -> bool:
+    """ONNX 배치 임베딩 사용 가능 여부를 확인한다.
+
+    settings.USE_ONNX_EMBEDDING 확인 + 세션 로드를 1회만 시도.
+    """
+    global _onnx_embedding_checked, _onnx_embedding_available
+
+    if _onnx_embedding_checked:
+        return _onnx_embedding_available
+
+    _onnx_embedding_checked = True
+
+    try:
+        from app.core.config import settings
+
+        if not settings.USE_ONNX_EMBEDDING:
+            _onnx_embedding_available = False
+            return False
+
+        from app.services.rag.onnx_session import (
+            is_embedding_onnx_loaded,
+            load_embedding_session,
+        )
+
+        if not is_embedding_onnx_loaded():
+            loaded = load_embedding_session()
+            if not loaded:
+                print("[WARN] ONNX 임베딩 세션 로드 실패 → PyTorch fallback")
+                _onnx_embedding_available = False
+                return False
+
+        _onnx_embedding_available = True
+        print("[INFO] ONNX 배치 임베딩 활성화")
+        return True
+    except Exception as e:
+        print(f"[WARN] ONNX 확인 중 오류 → PyTorch fallback: {e}")
+        _onnx_embedding_available = False
+        return False
+
+
+def _create_embeddings_onnx(
+    texts: list[str],
+    batch_size: int = 32,
+    normalize: bool = True,
+) -> list[list[float]]:
+    """ONNX 세션으로 배치 임베딩을 생성한다."""
+    from app.services.rag.onnx_session import encode_embedding_onnx_batch
+
+    return encode_embedding_onnx_batch(texts, batch_size=batch_size, normalize=normalize)
 
 
 def create_embeddings(
@@ -75,15 +221,26 @@ def create_embeddings(
     """
     텍스트 목록을 임베딩 벡터로 변환
 
+    ONNX 모드 활성화 시 ONNX 배치 임베딩을 우선 사용하고,
+    실패 시 PyTorch로 자동 fallback한다.
+
     Args:
         texts: 텍스트 목록
-        model: 임베딩 모델 (None이면 자동 로드)
+        model: 임베딩 모델 (None이면 자동 로드, ONNX 모드에서는 무시)
         batch_size: 배치 크기
         normalize: L2 정규화 적용
 
     Returns:
         임베딩 벡터 목록
     """
+    # ONNX 경로: model=None (인제스트에서 ONNX 모드일 때) 또는 ONNX 활성화 상태
+    if _should_use_onnx_embedding():
+        try:
+            return _create_embeddings_onnx(texts, batch_size, normalize)
+        except Exception as e:
+            print(f"[WARN] ONNX 배치 임베딩 실패 → PyTorch fallback: {e}")
+
+    # PyTorch 경로
     if model is None:
         model = get_embedding_model()
 
@@ -93,7 +250,12 @@ def create_embeddings(
             batch_size=batch_size,
             show_progress_bar=False,
             normalize_embeddings=normalize,
+            convert_to_numpy=True,
         )
+
+    # GPU 동기화: 비동기 CUDA 작업 완료 보장 (장시간 인제스트 프리즈 방지)
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
 
     return embeddings.tolist()
 

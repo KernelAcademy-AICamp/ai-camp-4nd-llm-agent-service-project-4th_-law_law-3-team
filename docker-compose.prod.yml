@@ -1,5 +1,13 @@
-# Production Docker Compose - All services
-# Usage: docker-compose -f docker-compose.prod.yml up -d
+# Production Docker Compose - MVP backend stack (Vercel frontend + server backend)
+# Usage:
+#   cp .env.prod.example .env.prod
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+#
+# Notes:
+# - Frontend is deployed on Vercel (not included in this compose file)
+# - Default stack: postgres + backend + nginx
+# - Optional LanceDB service is disabled by default via profile `lancedb`
+# - Neo4j is intentionally excluded in this MVP baseline (some graph features may be limited)
 
 services:
   postgres:
@@ -7,11 +15,12 @@ services:
     container_name: law-platform-db-prod
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-lawuser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB:-lawdb}
     volumes:
+      # PostgreSQL data (persistent)
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lawuser} -d ${POSTGRES_DB:-lawdb}"]
       interval: 10s
@@ -29,14 +38,33 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-lawuser}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lawdb}
       ENVIRONMENT: production
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      KAKAO_MAP_API_KEY: ${KAKAO_MAP_API_KEY}
-      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
+
+      # AI / external APIs
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      KAKAO_MAP_API_KEY: ${KAKAO_MAP_API_KEY:-}
+      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
+
+      # Optional API authentication (X-API-Key)
+      API_KEY: ${API_KEY:-}
+
+      # Rate limit storage (MVP single instance default)
+      # Use redis://... for multi-instance deployment
+      RATE_LIMIT_STORAGE_URI: ${RATE_LIMIT_STORAGE_URI:-memory://}
+
+      # Vector DB options (LanceDB local/remote)
+      VECTOR_DB: ${VECTOR_DB:-lancedb}
+      LANCEDB_MODE: ${LANCEDB_MODE:-local}
+      LANCEDB_SERVICE_URL: ${LANCEDB_SERVICE_URL:-http://lancedb:8100}
+      LANCEDB_URI: ${LANCEDB_URI:-/app/lancedb_data}
       CHROMA_PERSIST_DIR: /app/data/chroma
     volumes:
       - chroma_data:/app/data/chroma
+      # App data (readonly)
       - ./data:/app/data:ro
+      # LanceDB local mode data (persistent)
+      - lancedb_data:/app/lancedb_data
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,37 +72,50 @@ services:
     networks:
       - law-network
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: ../docker/frontend/Dockerfile.prod
-    container_name: law-platform-frontend
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: law-platform-nginx
     ports:
-      - "3000:3000"
+      # Public API entrypoint (HTTPS should be enabled before connecting Vercel production frontend)
+      - "80:80"
+      # - "443:443"
     environment:
-      NODE_ENV: production
+      API_DOMAIN: ${API_DOMAIN:-api.example.com}
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d/api.conf.template:/etc/nginx/templates/api.conf.template:ro
+      # Uncomment after issuing certificates for your free/custom domain
+      # - ./docker/nginx/certs:/etc/nginx/certs:ro
     depends_on:
-      - backend
+      backend:
+        condition: service_started
     restart: unless-stopped
     networks:
       - law-network
 
-  # Nginx reverse proxy (optional - uncomment if needed)
-  # nginx:
-  #   image: nginx:alpine
-  #   container_name: law-platform-nginx
-  #   ports:
-  #     - "80:80"
-  #     - "443:443"
-  #   volumes:
-  #     - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-  #     - ./docker/nginx/ssl:/etc/nginx/ssl:ro
-  #   depends_on:
-  #     - frontend
-  #     - backend
-  #   restart: unless-stopped
-  #   networks:
-  #     - law-network
+  # Optional LanceDB microservice (disabled by default)
+  # Enable with: docker compose --profile lancedb --env-file .env.prod -f docker-compose.prod.yml up -d --build
+  lancedb:
+    profiles: ["lancedb"]
+    build:
+      context: ./services/lancedb
+      dockerfile: Dockerfile
+    container_name: lancedb-service-prod
+    environment:
+      LANCEDB_URI: /app/lancedb_data
+      LANCEDB_TABLE_NAME: ${LANCEDB_TABLE_NAME:-legal_chunks}
+      USE_LEGAL_TERM_DICT: ${USE_LEGAL_TERM_DICT:-false}
+    volumes:
+      - lancedb_data:/app/lancedb_data
+      - ./backend/data/mecab_userdic:/app/mecab_userdic:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8100/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - law-network
 
 networks:
   law-network:
@@ -83,3 +124,4 @@ networks:
 volumes:
   postgres_data:
   chroma_data:
+  lancedb_data:

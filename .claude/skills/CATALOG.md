@@ -1,8 +1,8 @@
 # Skills & Agents Catalog
 
-스킬 30개, 에이전트 5개, 규칙 6개의 분류 및 의존관계 인덱스.
+스킬 36개, 에이전트 5개, 규칙 7개의 분류 및 의존관계 인덱스.
 
-> 최종 업데이트: 2026-02-20
+> 최종 업데이트: 2026-02-24
 
 ---
 
@@ -13,12 +13,13 @@
 | [워크플로우](#1-워크플로우) | 4 | - | 커밋, 리뷰, 문서 동기화, 플랜 검토 |
 | [코드 품질](#2-코드-품질) | 5 | 1 | 검증, 코딩 표준, TDD, 에러 처리 |
 | [프론트엔드](#3-프론트엔드) | 6 | - | React/Next.js, 성능, UI/UX, 모의 법정 |
-| [RAG/검색](#4-rag검색) | 4 | 1 | RAG 패턴, 평가, 실험 추적, 인제스트 |
+| [RAG/검색](#4-rag검색) | 5 | 1 | 파일 리네임, RAG 패턴, 평가, 실험 추적, 인제스트 |
 | [데이터/DB](#5-데이터db) | 4 | - | PostgreSQL, Alembic, 위치검색, 요약감사 |
 | [도메인 지식](#6-도메인-지식) | 2 | - | 한국 법률, Neo4j 그래프 |
-| [멀티에이전트](#7-멀티에이전트) | 2 | - | LangGraph 패턴, 디버깅 |
+| [멀티에이전트](#7-멀티에이전트) | 3 | - | LangGraph 패턴, 디버깅, 프롬프트 엔지니어링 |
 | [외부 CLI](#8-외부-cli) | 3 | 1 | Gemini, Codex, CLI 조합 |
-| [운영](#9-운영) | - | 2 | 의존성 감사, E2E 테스트 |
+| [보안/성능](#9-보안성능) | 2 | - | 인증/보안, 캐싱 전략 |
+| [운영](#10-운영) | 2 | 2 | Docker, Google Drive, 의존성 감사, E2E 테스트 |
 
 ---
 
@@ -84,16 +85,18 @@ RAG 파이프라인 구현, 평가, 데이터 적재.
 
 | 스킬 | 줄 수 | 적용 시점 | 설명 |
 |------|------|----------|------|
+| `data-file-rename` | 105 | 외부 데이터 수신 시 | incoming 파일 → 프로젝트 네이밍 변환 (63개 매핑) |
 | `langchain-rag-patterns` | 601 | RAG 구현 시 | LangChain/LangGraph RAG 패턴 |
 | `rag-evaluation-workflow` | 182 | RAG 변경 후 | Recall/MRR/NDCG 자동 평가 |
 | `legal-rag-experiment-tracking` | 219 | 실험 기록 시 | 실험 메타데이터 템플릿 |
-| `ingest-pipeline` | 135 | 데이터 적재 시 | 19개 타입 벡터 임베딩/FTS |
+| `ingest-pipeline` | 135 | 데이터 적재 시 | 20개 타입 벡터 임베딩/FTS |
 
 | 에이전트 | 설명 |
 |---------|------|
 | `rag-quality-monitor` | query_rewrite → retrieval → rerank 품질 측정 |
 
-**흐름**: `ingest-pipeline` → `langchain-rag-patterns` → `rag-evaluation-workflow` → `legal-rag-experiment-tracking`
+**흐름**: `data-file-rename` → `ingest-pipeline` → `langchain-rag-patterns` → `rag-evaluation-workflow` → `legal-rag-experiment-tracking`
+**연계**: `data-file-rename`은 `korean-legal-domain` (도메인 지식 섹션)의 데이터 구조를 참조
 
 ---
 
@@ -134,8 +137,9 @@ LangGraph 기반 멀티 에이전트 시스템.
 |------|------|----------|------|
 | `multi-agent-patterns` | 797 | 에이전트 추가/수정 시 | BaseChatAgent, StateGraph, Command |
 | `langgraph-debugging` | 225 | 에이전트 디버깅 시 | 라우팅/상태 전파 디버깅 |
+| `prompt-engineering` | 280 | 프롬프트 작성/최적화 시 | 시스템 프롬프트, 역할 기반, 온도 설계, 쿼리 리라이팅 |
 
-**관계**: `multi-agent-patterns` (구현) → `langgraph-debugging` (디버깅)
+**관계**: `multi-agent-patterns` (구현) → `prompt-engineering` (프롬프트 최적화) → `langgraph-debugging` (디버깅)
 
 ---
 
@@ -158,14 +162,36 @@ LangGraph 기반 멀티 에이전트 시스템.
 
 ---
 
-## 9. 운영
+## 9. 보안/성능
 
-배포 전 검증, 의존성 관리.
+인증, 보안 강화, 캐싱 최적화.
+
+| 스킬 | 줄 수 | 적용 시점 | 설명 |
+|------|------|----------|------|
+| `security-authentication` | 310 | 인증/보안 구현 시 | API Key, JWT, Rate Limiting, Prompt Injection 방어 |
+| `caching-strategy` | 340 | 성능 최적화 시 | 인메모리, Redis, HTTP 캐싱, 벡터 검색 캐시, SWR |
+
+**관계**: `security-authentication` (보안 기반) + `caching-strategy` (성능 최적화)
+**연계**: `security-authentication` → `docker-containerization` (프로덕션 보안 설정)
+
+---
+
+## 10. 운영
+
+Docker 컨테이너, 배포, 의존성 관리, Google Drive 백업/복원.
+
+| 스킬 | 줄 수 | 적용 시점 | 설명 |
+|------|------|----------|------|
+| `docker-containerization` | 360 | Docker 설정/배포 시 | Compose, 멀티스테이지, Nginx, 헬스체크 |
+| `google-drive-operations` | 239 | 백업/복원/데이터 동기화 시 | rclone 기반 DB 백업, 복원, data/ 동기화, 새 환경 세팅 |
 
 | 에이전트 | 설명 |
 |---------|------|
 | `dependency-auditor` | CVE 스캔, 라이선스/버전 호환성 |
 | `e2e-scenario-tester` | 판례검색→변호사찾기→소액소송 E2E 시나리오 |
+
+**규칙 연동**: `rules/google-drive-operations.md`, `rules/wsl2-docker.md`
+**연계**: `data-file-rename` (리네임) → `google-drive-operations` (Drive 동기화) → `ingest-pipeline` (DB 적재)
 
 ---
 
@@ -178,6 +204,7 @@ LangGraph 기반 멀티 에이전트 시스템.
 | `database-operations.md` | DB 작업 시 | 마이그레이션 절차, Feature Flag |
 | `git-convention.md` | 커밋/PR 시 | Conventional Commits, 브랜치 전략 |
 | `cli-tool-routing.md` | CLI 사용 시 | 도구 선택 매트릭스, Fallback |
+| `google-drive-operations.md` | 백업/복원/동기화 시 | rclone 사전 검증, copy vs sync, 민감 파일 보호 |
 | `wsl2-docker.md` | Docker 실행 시 | WSL2 환경 docker.exe 규칙 |
 
 ---
@@ -189,14 +216,19 @@ LangGraph 기반 멀티 에이전트 시스템.
 600+ 줄 : court-eventbus-patterns (665), error-handling-patterns (626)
            langchain-rag-patterns (601), phaser-nextjs-integration (598)
 400+ 줄 : multi-cli-integration (496), code-verification (463), korean-legal-domain (443)
-300+ 줄 : codex-cli-delegation (381), ui-ux-pro-max (377), neo4j-graph-construction (357)
-200+ 줄 : python-coding-standards (298), update-docs (292), gemini-cli-delegation (249)
-           langgraph-debugging (225), legal-rag-experiment-tracking (219), plan-review (203)
-           api-contract-sync (199), rag-evaluation-workflow (182), react-nextjs-frontend (180)
+300+ 줄 : codex-cli-delegation (381), ui-ux-pro-max (377)
+           docker-containerization (360), neo4j-graph-construction (357)
+           caching-strategy (340), security-authentication (310)
+           python-coding-standards (298), update-docs (292), prompt-engineering (280)
+200+ 줄 : gemini-cli-delegation (249), google-drive-operations (239)
+           langgraph-debugging (225), legal-rag-experiment-tracking (219)
+           plan-review (203), api-contract-sync (199)
+           rag-evaluation-workflow (182), react-nextjs-frontend (180)
            summary-quality-audit (179), alembic-migration-safety (166), project-commit (151)
 100+ 줄 : tdd-methodology (145), postgresql-migration (138), ingest-pipeline (135)
            spatial-query-patterns (133), vercel-react-best-practices (120)
+           data-file-rename (105)
  ~64 줄 : project-review (64)
 ```
 
-**총 줄 수**: ~9,836줄 (평균 328줄/스킬, 30개)
+**총 줄 수**: ~11,470줄 (평균 319줄/스킬, 36개)

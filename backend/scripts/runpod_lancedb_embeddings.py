@@ -499,12 +499,10 @@ def is_notebook() -> bool:
 def main() -> None:
     """CLI 메인 함수"""
     import argparse
-    import logging
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-    )
+    from scripts.common.logging_config import setup_logging
+
+    setup_logging("__main__")
 
     parser = argparse.ArgumentParser(description="LanceDB 임베딩 생성 (RunPod)")
     parser.add_argument(

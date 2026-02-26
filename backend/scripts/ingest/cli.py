@@ -46,7 +46,7 @@ from scripts.ingest.vector_writer import build_ann_index, run_vector_ingest
 
 logger = setup_logging(__name__)
 
-VALID_STEPS = ("all", "db", "vector", "fts", "index")
+VALID_STEPS = ("all", "db", "vector", "fts", "index", "onnx-export")
 BATCH_SIZE_DB = 1000
 
 
@@ -111,6 +111,7 @@ def _run_single_type(
     device: str | None,
     profile: str | None,
     no_cache: bool,
+    backend: str | None = None,
 ) -> dict[str, dict[str, int]]:
     """단일 타입 인제스트 실행. 결과 dict 반환."""
     results: dict[str, dict[str, int]] = {}
@@ -146,6 +147,23 @@ def _run_single_type(
                 device=device,
                 profile=profile,
                 use_cache=not no_cache,
+                backend=backend,
+            )
+        elif config.name == "law":
+            # 법령: 전용 라이터 (1문서 → 법령요약 + 조문요약 N개)
+            from scripts.ingest.law_article_vector_writer import (
+                run_law_article_vector_ingest,
+            )
+
+            results["vector"] = run_law_article_vector_ingest(
+                config=config,
+                source_path=source_path,
+                reset=reset,
+                batch_size=vector_batch,
+                device=device,
+                profile=profile,
+                use_cache=not no_cache,
+                backend=backend,
             )
         else:
             results["vector"] = run_vector_ingest(
@@ -156,6 +174,7 @@ def _run_single_type(
                 device=device,
                 profile=profile,
                 use_cache=not no_cache,
+                backend=backend,
             )
 
     # Step: FTS 재빌드
@@ -200,7 +219,7 @@ def main() -> None:
     parser.add_argument(
         "--type",
         choices=type_choices,
-        required=True,
+        default=None,
         help=f"인제스트 대상 타입 (all: 전체, {', '.join(available_types)})",
     )
     parser.add_argument(
@@ -253,8 +272,39 @@ def main() -> None:
         action="store_true",
         help="임베딩 캐시 비활성화",
     )
+    parser.add_argument(
+        "--backend",
+        choices=["onnx", "onnx-int8"],
+        default=None,
+        help="임베딩 백엔드 (onnx, onnx-int8, 기본: PyTorch)",
+    )
 
     args = parser.parse_args()
+
+    # ONNX 모델 변환 (--type 불필요)
+    if args.step == "onnx-export":
+        from scripts.benchmark_embedding_quantize import export_onnx, quantize_int8
+
+        print(f"\n{'=' * 60}")
+        print("  ONNX 모델 변환")
+        print(f"{'=' * 60}")
+
+        start = time.time()
+        print("\n  [1/2] ONNX FP32 변환")
+        onnx_ok = export_onnx()
+
+        if onnx_ok:
+            print("\n  [2/2] ONNX INT8 양자화")
+            quantize_int8()
+
+        elapsed = time.time() - start
+        print(f"\n  완료: {elapsed:.1f}초")
+        print(f"{'=' * 60}")
+        return
+
+    # --type 필수 검증 (onnx-export 외)
+    if args.type is None:
+        parser.error("--type은 필수입니다 (onnx-export 제외)")
 
     # --type all + --source 조합 차단
     if args.type == "all" and args.source:
@@ -290,6 +340,7 @@ def main() -> None:
     print(f"  리셋: {args.reset}")
     print(f"  프로필: {args.profile or '자동'}")
     print(f"  캐시: {'비활성' if args.no_cache else '활성'}")
+    print(f"  백엔드: {args.backend or 'PyTorch'}")
     print(f"{'=' * 60}\n")
 
     for i, type_name in enumerate(target_types, 1):
@@ -311,6 +362,7 @@ def main() -> None:
                 device=args.device,
                 profile=args.profile,
                 no_cache=args.no_cache,
+                backend=args.backend,
             )
 
             # 타입별 결과 출력

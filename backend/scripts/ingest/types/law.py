@@ -201,7 +201,13 @@ def _vector_metadata_fn(
     item: dict[str, Any],
     vector: list[float],
 ) -> dict[str, Any]:
-    """JSON item + embedding vector → LanceDB record dict"""
+    """JSON item + embedding vector → LanceDB record dict
+
+    .. deprecated::
+        CLI가 law_article_vector_writer.py 전용 라이터로 분기하므로
+        이 함수는 더 이상 벡터 인제스트에서 호출되지 않습니다.
+        IngestConfig 등록용으로만 유지됩니다.
+    """
     enforcement = item.get("시행일자") or item.get("enforcement_date")
     ministry = item.get("소관부처명") or item.get("ministry")
 

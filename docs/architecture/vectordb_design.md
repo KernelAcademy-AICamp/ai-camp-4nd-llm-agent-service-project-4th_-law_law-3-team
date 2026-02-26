@@ -219,6 +219,7 @@ backend/
 │           ├── __init__.py          # 팩토리 및 export (LANCEDB_MODE 분기)
 │           ├── base.py              # VectorStoreBase 인터페이스
 │           ├── schema_v2.py         # LanceDB 스키마 v2 (단일 테이블 + NULL)
+│           ├── law_article_schema.py      # 법령 조문 전용 스키마 (12컬럼, 별도 테이블)
 │           ├── local_ordinance_schema.py  # 자치법규 전용 스키마 (12컬럼, 별도 테이블)
 │           ├── lancedb.py           # LanceDBStore 구현체 (로컬 임베디드)
 │           ├── remote_lancedb.py    # RemoteLanceDBStore (HTTP 클라이언트, remote 모드)
@@ -230,7 +231,8 @@ backend/
 │   ├── runpod_lancedb_embeddings.py # RunPod thin wrapper (ingest 호출)
 │   └── colab_lancedb_embeddings.py  # Colab thin wrapper (runpod re-export)
 └── lancedb_data/                    # LanceDB 데이터 저장소
-    ├── legal_chunks.lance/          # 19개 타입 통합 테이블
+    ├── legal_chunks.lance/          # 판례 등 통합 테이블 (법령은 law_article_chunks로 이관)
+    ├── law_article_chunks.lance/    # 법령 전용 (법령요약+조문요약 N개)
     └── local_ordinance_chunks.lance/ # 자치법규 전용 (전체요약+조문요약)
 
 services/
@@ -268,6 +270,7 @@ services/
 - [x] **법령 데이터 전체 임베딩** (5,841건 → 118,922 청크)
 - [x] **인제스트 파이프라인 단일화** (config-driven, 20개 타입 지원)
 - [x] **자치법규 별도 테이블** (`local_ordinance_chunks`, 12컬럼, 1문서→다중벡터)
+- [x] **법령 조문 별도 테이블** (`law_article_chunks`, 12컬럼, 1문서→법령요약+조문요약 N벡터)
 - [x] **청킹 무한루프 버그 수정** (2026-01-29)
 
 ### 진행 예정
@@ -717,6 +720,7 @@ print_memory_status()
 | 임베딩 캐싱 | ✅ 완료 | EmbeddingCache |
 | 품질 검증 | ✅ 완료 | EmbeddingQualityChecker |
 | PyTorch 최적화 | ✅ 완료 | clear_memory, set_seed 등 |
+| 법령 조문 별도 테이블 | ✅ 완료 | law_article_chunks (12컬럼, 법령요약+조문요약) |
 | 검색 API 통합 | 🔄 진행중 | VectorStoreBase 인터페이스 |
 
 ---

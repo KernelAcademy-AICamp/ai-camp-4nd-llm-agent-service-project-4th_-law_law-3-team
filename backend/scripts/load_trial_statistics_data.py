@@ -30,7 +30,7 @@ from scripts.common.logging_config import setup_logging
 
 logger = setup_logging(__name__)
 
-DATA_DIR = PROJECT_ROOT.parent / "data" / "case_intake_stats"
+DATA_DIR = PROJECT_ROOT.parent / "data" / "trial_statistics_data"
 
 BATCH_SIZE = 1000
 

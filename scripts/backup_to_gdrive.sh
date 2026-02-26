@@ -68,10 +68,13 @@ log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
 # Docker 명령어 자동 감지 (WSL2 호환)
 detect_docker_cmd() {
-    if command -v docker &>/dev/null; then
+    # docker가 있더라도 소켓 권한 없으면 docker.exe로 fallback
+    if command -v docker &>/dev/null && docker info &>/dev/null; then
         echo "docker"
     elif command -v docker.exe &>/dev/null; then
         echo "docker.exe"
+    elif command -v docker &>/dev/null; then
+        echo "docker"
     else
         echo ""
     fi
