@@ -93,11 +93,12 @@ def create_local_ordinance_chunk(
     article_number: Optional[str] = None,
 ) -> dict[str, object]:
     """범용 자치법규 청크 생성"""
-    if summary_type == "Basic":
-        chunk_id = f"{source_id}_overall_{chunk_index}"
-    else:
-        art_no = article_number or "unknown"
-        chunk_id = f"{source_id}_art_{art_no}_{chunk_index}"
+    chunk_id = build_local_ordinance_chunk_id(
+        source_id=source_id,
+        summary_type=summary_type,
+        chunk_index=chunk_index,
+        article_number=article_number or "",
+    )
 
     return {
         "id": chunk_id,
@@ -113,6 +114,19 @@ def create_local_ordinance_chunk(
         "summary_type": summary_type,
         "article_number": article_number,
     }
+
+
+def build_local_ordinance_chunk_id(
+    source_id: str,
+    summary_type: str,
+    chunk_index: int,
+    article_number: str = "",
+) -> str:
+    """자치법규 청크 ID 생성"""
+    if summary_type == "Basic":
+        return f"{source_id}_overall_{chunk_index}"
+    art_no = article_number or "unknown"
+    return f"{source_id}_art_{art_no}_{chunk_index}"
 
 
 def create_overall_summary_chunk(

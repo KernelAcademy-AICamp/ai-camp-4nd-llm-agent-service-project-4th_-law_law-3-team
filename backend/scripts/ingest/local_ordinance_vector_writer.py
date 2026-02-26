@@ -23,6 +23,7 @@ from app.tools.vectorstore.local_ordinance_schema import (  # noqa: I001
     LOCAL_ORDINANCE_SCHEMA,
     TABLE_NAME as LOCAL_ORDINANCE_TABLE,
     VECTOR_DIM,
+    build_local_ordinance_chunk_id,
     create_article_summary_chunk,
     create_overall_summary_chunk,
 )
@@ -38,6 +39,7 @@ from scripts.embedding_common.model import (
     clear_memory,
     create_embeddings,
     get_embedding_model,
+    clear_model_cache,
     set_seed,
 )
 from scripts.embedding_common.store import EmbeddingStore
@@ -97,6 +99,16 @@ def _expand_item_to_texts(
     return results
 
 
+def _get_chunk_id(meta: dict[str, Any], source_id: str) -> str:
+    """메타데이터로 청크 ID 재생성"""
+    return build_local_ordinance_chunk_id(
+        source_id=source_id,
+        summary_type=meta["summary_type"],
+        chunk_index=meta["chunk_index"],
+        article_number=meta.get("article_number", "") or "",
+    )
+
+
 # ---------------------------------------------------------------------------
 # 배치 임베딩 + 저장
 # ---------------------------------------------------------------------------
@@ -117,8 +129,6 @@ def _embed_and_store_batch(
     Returns:
         (dim_verified, had_gpu_work) 튜플
     """
-    import torch
-
     texts = [t[:MAX_TEXT_LENGTH] for t in batch_texts]
     had_gpu_work = False
 
@@ -153,8 +163,8 @@ def _embed_and_store_batch(
 
         vectors = cast(list[list[float]], cached_vectors)
     else:
-        had_gpu_work = True
         try:
+            had_gpu_work = True
             vectors = create_embeddings(
                 texts, model=model, batch_size=batch_size
             )
@@ -209,7 +219,6 @@ def _embed_and_store_batch(
     if records:
         store.add_batch(records)
         stats["embedded"] += len(records)
-
     return dim_verified, had_gpu_work
 
 
@@ -257,6 +266,7 @@ def run_local_ordinance_vector_ingest(
     profile: str | None = None,
     use_cache: bool = True,
     backend: str | None = None,
+    max_vectors: int | None = None,
 ) -> dict[str, int]:
     """
     자치법규 JSON → 다중 벡터 임베딩 → local_ordinance_chunks 테이블 저장
@@ -271,6 +281,7 @@ def run_local_ordinance_vector_ingest(
         device: 임베딩 디바이스
         profile: 하드웨어 프로필
         use_cache: 임베딩 캐시 사용 여부
+        max_vectors: 최대 벡터 수 (도달 시 조기 종료, 프로세스 재시작으로 이어쓰기)
 
     Returns:
         통계 dict
@@ -315,13 +326,29 @@ def run_local_ordinance_vector_ingest(
         schema=LOCAL_ORDINANCE_SCHEMA,
     )
 
+    # 분할 실행(`--max-vectors`)에서는 문서 단위 스킵이 아니라 chunk 단위 idempotency로 재개
     if reset:
         logger.info("기존 local_ordinance_chunks 테이블 리셋")
         store.reset()
-        existing_ids: set[str] = set()
+
+    if max_vectors is not None:
+        resume_by_chunk = True
+        existing_chunk_ids: set[str] = set()
+        if not reset:
+            existing_chunk_ids = store.get_existing_ids(
+                column="id",
+                where_expr="data_type = '자치법규'",
+            )
+        logger.info(
+            "분할 재개 모드: 기존 chunk %d건 (chunk 단위 스킵)",
+            len(existing_chunk_ids),
+        )
+        existing_source_ids: set[str] = set()
     else:
-        existing_ids = store.get_existing_source_ids("자치법규")
-        logger.info("기존 자치법규 문서: %d건 (자동 스킵)", len(existing_ids))
+        resume_by_chunk = False
+        existing_chunk_ids = set()
+        existing_source_ids = store.get_existing_source_ids("자치법규")
+        logger.info("기존 자치법규 문서: %d건 (자동 스킵)", len(existing_source_ids))
 
     start_time = time.time()
     dim_verified = False
@@ -347,9 +374,10 @@ def run_local_ordinance_vector_ingest(
             stats["errors"] += 1
             continue
 
-        if source_id in existing_ids:
-            stats["skipped_existing"] += 1
-            continue
+        if not resume_by_chunk:
+            if source_id in existing_source_ids:
+                stats["skipped_existing"] += 1
+                continue
 
         title = str(item.get("자치법규명", "") or "")
         source_name = str(item.get("지자체기관명", "") or "")
@@ -360,9 +388,29 @@ def run_local_ordinance_vector_ingest(
             stats["skipped_no_summary"] += 1
             continue
 
-        stats["total_vectors"] += len(expanded)
+        # 분할 모드에서는 chunk 존재 여부 기준으로 중복 임베딩 방지
+        candidate_texts: list[str] = []
+        candidate_meta: list[dict[str, Any]] = []
 
         for text, partial_meta in expanded:
+            chunk_id = _get_chunk_id(partial_meta, source_id)
+            if resume_by_chunk and chunk_id in existing_chunk_ids:
+                continue
+
+            partial_meta["source_id"] = source_id
+            partial_meta["title"] = title
+            partial_meta["source_name"] = source_name
+
+            candidate_texts.append(text)
+            candidate_meta.append(partial_meta)
+
+        if not candidate_texts:
+            stats["skipped_existing"] += 1
+            continue
+
+        stats["total_vectors"] += len(candidate_texts)
+
+        for text, partial_meta in zip(candidate_texts, candidate_meta):
             partial_meta["source_id"] = source_id
             partial_meta["title"] = title
             partial_meta["source_name"] = source_name
@@ -402,7 +450,6 @@ def run_local_ordinance_vector_ingest(
                 gpu_batch_count > 0
                 and gpu_batch_count % MODEL_RELOAD_INTERVAL == 0
             ):
-                from scripts.embedding_common.model import clear_model_cache
                 logger.info(
                     "모델 리로드 시작 (GPU 배치 %d회 도달)",
                     gpu_batch_count,
@@ -411,7 +458,7 @@ def run_local_ordinance_vector_ingest(
                 model = get_embedding_model(device=device, backend=backend)
                 logger.info("모델 리로드 완료")
 
-            # 주기적 LanceDB compact (fragment 누적 → 프리즈 방지)
+            # 주기적 LanceDB compact (WSL2 fragment 누적 방지)
             if batch_count % COMPACT_INTERVAL == 0 and store.table is not None:
                 try:
                     t_compact = time.time()
@@ -422,6 +469,21 @@ def run_local_ordinance_vector_ingest(
                     )
                 except Exception as e:
                     logger.warning("compact 실패 (무시): %s", e)
+
+            # max_vectors 도달 시 조기 종료
+            if max_vectors and stats["embedded"] >= max_vectors:
+                logger.info(
+                    "max_vectors 도달 (%d/%d) — 조기 종료 (재실행 시 자동 재개)",
+                    stats["embedded"], max_vectors,
+                )
+                pbar.close()
+                # compact 후 종료
+                if store.table is not None:
+                    try:
+                        store.table.compact_files()
+                    except Exception:
+                        pass
+                return stats
 
             # GPU 온도 모니터링
             if thermal_monitor:
@@ -435,11 +497,28 @@ def run_local_ordinance_vector_ingest(
 
     # 잔여 배치 처리
     if batch_texts:
-        dim_verified, _ = _embed_and_store_batch(
+        dim_verified, had_gpu_work = _embed_and_store_batch(
             batch_texts, batch_meta, model, cache, store, stats,
             batch_size, dim_verified,
         )
         pbar.update(len(batch_texts))
+        batch_count += 1
+        if had_gpu_work:
+            gpu_batch_count += 1
+
+        # 마지막 배치에서도 max_vectors 도달 시 즉시 종료
+        if max_vectors and stats["embedded"] >= max_vectors:
+            logger.info(
+                "max_vectors 도달 (%d/%d) — 조기 종료 (재실행 시 자동 재개)",
+                stats["embedded"], max_vectors,
+            )
+            pbar.close()
+            if store.table is not None:
+                try:
+                    store.table.compact_files()
+                except Exception:
+                    pass
+            return stats
 
     pbar.close()
 

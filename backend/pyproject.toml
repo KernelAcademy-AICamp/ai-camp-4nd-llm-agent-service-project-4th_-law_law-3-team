@@ -43,6 +43,7 @@ dependencies = [
     "langchain-neo4j>=0.1.0",
     "typer>=0.9.0",
     "mecab-python3>=1.0.12",
+    "onnxruntime>=1.17.0",
     "reportlab>=4.4.9",
     "jinja2>=3.1.6",
     "python-hwpx>=1.9",
@@ -65,10 +66,13 @@ dev = [
     "kaleido>=0.2.1",
     "jupyterlab>=4.0.0",
     "matplotlib>=3.10.8",
+]
+
+onnx-optimization = [
     "optimum[onnxruntime]>=1.17.0",
-    "onnxruntime>=1.17.0",
     "scipy>=1.11.0",
-    "onnx-simplifier>=0.4.36",
+    "onnx-simplifier==0.4.36",
+    "onnxsim==0.4.36",
     "onnxruntime-extensions>=0.10.0",
 ]
 
@@ -123,9 +127,12 @@ dev = [
     "kaleido>=0.2.1",
     "jupyterlab>=4.0.0",
     "matplotlib>=3.10.8",
+]
+
+onnx-optimization = [
     "optimum[onnxruntime]>=1.17.0",
-    "onnxruntime>=1.17.0",
     "scipy>=1.11.0",
-    "onnx-simplifier>=0.4.36",
+    "onnx-simplifier==0.4.36",
+    "onnxsim==0.4.36",
     "onnxruntime-extensions>=0.10.0",
 ]

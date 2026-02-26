@@ -47,7 +47,7 @@ def _auto_convert_onnx(backend: str, data_dir: Path) -> None:
         except ImportError:
             raise FileNotFoundError(
                 f"ONNX 모델을 찾을 수 없고 자동 변환도 실패했습니다: {fp32_path}\n"
-                "optimum 설치 확인: uv sync --dev"
+                "optimum 설치 확인: uv sync --group onnx-optimization"
             )
 
     # INT8 요청인데 INT8 디렉토리가 없으면 양자화
@@ -63,7 +63,7 @@ def _auto_convert_onnx(backend: str, data_dir: Path) -> None:
             except ImportError:
                 raise FileNotFoundError(
                     f"INT8 모델을 찾을 수 없고 자동 양자화도 실패했습니다: {int8_path}\n"
-                    "optimum 설치 확인: uv sync --dev"
+                    "optimum 설치 확인: uv sync --group onnx-optimization"
                 )
 
 # ONNX 배치 임베딩 1회 확인 플래그

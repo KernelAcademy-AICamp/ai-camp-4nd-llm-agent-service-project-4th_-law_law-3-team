@@ -2582,6 +2582,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "langgraph-checkpoint-postgres" },
     { name = "mecab-python3" },
+    { name = "onnxruntime" },
     { name = "moviepy" },
     { name = "neo4j" },
     { name = "numpy" },
@@ -2617,16 +2618,19 @@ dev = [
     { name = "matplotlib" },
     { name = "mypy" },
     { name = "nbformat" },
-    { name = "onnx-simplifier" },
-    { name = "onnxruntime" },
-    { name = "onnxruntime-extensions" },
-    { name = "optimum", extra = ["onnxruntime"] },
     { name = "plotly" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
-    { name = "scipy" },
     { name = "tqdm" },
+]
+
+onnx-optimization = [
+    { name = "onnx-simplifier" },
+    { name = "onnxsim" },
+    { name = "onnxruntime-extensions" },
+    { name = "optimum", extra = ["onnxruntime"] },
+    { name = "scipy" },
 ]
 
 [package.dev-dependencies]
@@ -2637,16 +2641,19 @@ dev = [
     { name = "matplotlib" },
     { name = "mypy" },
     { name = "nbformat" },
-    { name = "onnx-simplifier" },
-    { name = "onnxruntime" },
-    { name = "onnxruntime-extensions" },
-    { name = "optimum", extra = ["onnxruntime"] },
     { name = "plotly" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
-    { name = "scipy" },
     { name = "tqdm" },
+]
+
+onnx-optimization = [
+    { name = "onnx-simplifier" },
+    { name = "onnxsim" },
+    { name = "onnxruntime-extensions" },
+    { name = "optimum", extra = ["onnxruntime"] },
+    { name = "scipy" },
 ]
 
 [package.metadata]
@@ -2681,11 +2688,12 @@ requires-dist = [
     { name = "nbformat", marker = "extra == 'dev'", specifier = ">=5.9.0" },
     { name = "neo4j", specifier = ">=5.15.0" },
     { name = "numpy", specifier = ">=1.24.0" },
-    { name = "onnx-simplifier", marker = "extra == 'dev'", specifier = ">=0.4.36" },
-    { name = "onnxruntime", marker = "extra == 'dev'", specifier = ">=1.17.0" },
-    { name = "onnxruntime-extensions", marker = "extra == 'dev'", specifier = ">=0.10.0" },
     { name = "openai", specifier = ">=1.12.0" },
-    { name = "optimum", extras = ["onnxruntime"], marker = "extra == 'dev'", specifier = ">=1.17.0" },
+    { name = "onnx-simplifier", marker = "extra == 'onnx-optimization'", specifier = "==0.4.36" },
+    { name = "onnxsim", marker = "extra == 'onnx-optimization'", specifier = "==0.4.36" },
+    { name = "onnxruntime", specifier = ">=1.17.0" },
+    { name = "onnxruntime-extensions", marker = "extra == 'onnx-optimization'", specifier = ">=0.10.0" },
+    { name = "optimum", extras = ["onnxruntime"], marker = "extra == 'onnx-optimization'", specifier = ">=1.17.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "passlib", extras = ["bcrypt"], specifier = ">=1.7.4" },
     { name = "pillow", specifier = ">=10.0.0" },
@@ -2703,7 +2711,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "reportlab", specifier = ">=4.4.9" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.14" },
-    { name = "scipy", marker = "extra == 'dev'", specifier = ">=1.11.0" },
+    { name = "scipy", marker = "extra == 'onnx-optimization'", specifier = ">=1.11.0" },
     { name = "sentence-transformers", specifier = ">=5.2.0" },
     { name = "slowapi", specifier = ">=0.1.9" },
     { name = "sqlalchemy", specifier = ">=2.0.25" },
@@ -2714,7 +2722,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.9.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "onnx-optimization"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2724,16 +2732,19 @@ dev = [
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "mypy", specifier = ">=1.8.0" },
     { name = "nbformat", specifier = ">=5.9.0" },
-    { name = "onnx-simplifier", specifier = ">=0.4.36" },
-    { name = "onnxruntime", specifier = ">=1.17.0" },
-    { name = "onnxruntime-extensions", specifier = ">=0.10.0" },
-    { name = "optimum", extras = ["onnxruntime"], specifier = ">=1.17.0" },
     { name = "plotly", specifier = ">=5.18.0" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "ruff", specifier = ">=0.14.14" },
-    { name = "scipy", specifier = ">=1.11.0" },
     { name = "tqdm", specifier = ">=4.66.0" },
+]
+
+onnx-optimization = [
+    { name = "onnx-simplifier", specifier = "==0.4.36" },
+    { name = "onnxsim", specifier = "==0.4.36" },
+    { name = "onnxruntime-extensions", specifier = ">=0.10.0" },
+    { name = "optimum", extras = ["onnxruntime"], specifier = ">=1.17.0" },
+    { name = "scipy", specifier = ">=1.11.0" },
 ]
 
 [[package]]
@@ -3702,12 +3713,12 @@ wheels = [
 
 [[package]]
 name = "onnx-simplifier"
-version = "0.5.0"
+version = "0.4.36"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "onnxsim" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/93/37/229570fd8ca86aca41ec893525950de95a33891521d63da3517162545dc8/onnx_simplifier-0.5.0.tar.gz", hash = "sha256:6f15c75a68161a618d5e2ef9fd5e9417fe296b13dd71560406b510fbf027825f", size = 728, upload-time = "2026-02-21T10:35:22Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/95/9d93b8cfdd9f57abe7000cd6b9e56e2c518ce0e6bf6b312b1cf37b4e68a8/onnx-simplifier-0.4.36.tar.gz", hash = "sha256:661b7383d0a6182b96489b60b36b30852fd4f6066cfbb298b20b2f5455167ff6", size = 22000000, upload-time = "2024-03-04T00:00:00Z" }
 
 [[package]]
 name = "onnxruntime"
@@ -3765,18 +3776,16 @@ wheels = [
 
 [[package]]
 name = "onnxsim"
-version = "0.5.0"
+version = "0.4.36"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "onnx" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/26/5b/054c0f307e342fa2c8de26385d830c5a1fa57f44302b5bc121a90ee6fb71/onnxsim-0.5.0.tar.gz", hash = "sha256:0469dcd54185baa2e14d55460559602905c6fa43d458bcffa8ce4b08f5f4e8e8", size = 20995842, upload-time = "2026-02-20T11:26:25.659Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4f/45/5fc03a25c25d1c88e38440fea6dc3e6f36c6799d6da7e292efe032b76b10/onnxsim-0.5.0-cp312-cp312-macosx_10_15_universal2.whl", hash = "sha256:74eb19b73b543d8870f376560e4f989b570e536914d32b8024f03fbbfa89ca6f", size = 3309838, upload-time = "2026-02-20T11:26:12.137Z" },
-    { url = "https://files.pythonhosted.org/packages/b6/51/6b96f3716f7d6e033eb8b26e96ab12287c111f6b66dbc576c2d2c6b050b8/onnxsim-0.5.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:bf333017201440da27057bb10aca007696905570870c6340036fe7ff75edd26a", size = 2210054, upload-time = "2026-02-20T11:26:14.163Z" },
-    { url = "https://files.pythonhosted.org/packages/f8/3b/26f9161a9024949e7eb6770fa97df0aa3720f3e2c89e6484411698129a6f/onnxsim-0.5.0-cp312-cp312-win_amd64.whl", hash = "sha256:44afe46a5b3cc4d264892efd884f990366f716092a9ebc3b30d6bc31fd57f06c", size = 1316720, upload-time = "2026-02-20T11:26:16.242Z" },
+    { url = "https://files.pythonhosted.org/packages/db/94/22aab761b3d416bce02020d9ca98dc692427c2717b0325952e30ce41f83b/onnxsim-0.4.36-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:fa7596e6b806ed19077f7652788a50ee576c172b4d16d421f0593aef1a6fa4c4", size = 2300000, upload-time = "2024-03-04T00:00:00Z" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/ce/9e/f34238413ebeda9a3a8802feeaa5013934455466b9ab390b48ad9c7e184f/onnxsim-0.4.36.tar.gz", hash = "sha256:6e0ee9d6d4a83042bdef7319fbe58352d9fda5f253386be2b267c7c27f0638ee", size = 20995842, upload-time = "2024-03-04T00:00:00Z" }
 
 [[package]]
 name = "openai"
