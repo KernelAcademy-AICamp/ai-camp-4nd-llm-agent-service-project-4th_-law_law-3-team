@@ -2,13 +2,6 @@
 통합 서비스 함수 모듈
 """
 
-from app.services.service_function.law_service import (
-    LawService,
-    extract_law_names,
-    fetch_laws_by_names,
-    fetch_reference_articles_from_docs,
-    get_law_service,
-)
 from app.services.service_function.lawyer_db_service import (
     find_nearby_lawyers_db,
     get_clusters_db,
@@ -87,12 +80,6 @@ __all__ = [
     "fetch_precedent_details",
     "PrecedentService",
     "get_precedent_service",
-    # 법령
-    "extract_law_names",
-    "fetch_laws_by_names",
-    "fetch_reference_articles_from_docs",
-    "LawService",
-    "get_law_service",
     # 변호사 - 에이전트용 메시지 파싱
     "SPECIALTY_KEYWORDS",
     "REGION_PATTERNS",

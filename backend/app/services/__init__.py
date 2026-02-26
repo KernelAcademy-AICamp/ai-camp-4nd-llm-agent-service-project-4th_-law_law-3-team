@@ -19,7 +19,7 @@ from app.services.rag import (
 )
 
 # Cases 서비스
-from app.services.service_function import LawService, PrecedentService
+from app.services.service_function import PrecedentService
 
 __all__ = [
     # RAG
@@ -35,5 +35,4 @@ __all__ = [
     "PipelineResult",
     # Cases
     "PrecedentService",
-    "LawService",
 ]

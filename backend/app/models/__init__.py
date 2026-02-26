@@ -24,29 +24,20 @@ from app.models.ingest import (
     SpecialAdminAppealDocument,
     TreatyDocument,
 )
-from app.models.law import Law
 from app.models.law_document import LawDocument
 from app.models.lawyer import Lawyer
 from app.models.lawyer_persona import (
     LawyerPersonaFeedbackModel,
     LawyerPersonaModel,
 )
-from app.models.legal_document import COMMITTEE_SOURCES, DocType, LegalDocument
-from app.models.legal_reference import LegalReference, RefType
 from app.models.legal_term import LegalTerm
 from app.models.precedent_document import PrecedentDocument
 from app.models.trial_statistics import TrialStatistics
 
 __all__ = [
     "FtsIndex",
-    "LegalDocument",
-    "DocType",
-    "COMMITTEE_SOURCES",
-    "Law",
     "Lawyer",
-    "LegalReference",
     "LegalTerm",
-    "RefType",
     "LawDocument",
     "PrecedentDocument",
     "TrialStatistics",

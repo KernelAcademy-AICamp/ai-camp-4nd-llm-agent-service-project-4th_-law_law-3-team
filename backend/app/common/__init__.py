@@ -7,7 +7,7 @@
 - vectorstore → app.tools.vectorstore
 - graph_service → app.tools.graph
 - agent_router → app.multi_agent.routing
-- chat_service.generate_chat_response → 향후 app.services로 이전 예정
+- chat_service → 삭제됨 (law_service.py로 이관 후 삭제)
 """
 
 import warnings
