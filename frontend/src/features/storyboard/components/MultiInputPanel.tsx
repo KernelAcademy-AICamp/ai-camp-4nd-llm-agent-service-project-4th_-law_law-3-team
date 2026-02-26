@@ -147,16 +147,16 @@ export function MultiInputPanel({
   ]
 
   return (
-    <div className="w-96 h-full border-r border-white/10 bg-slate-900/50 backdrop-blur-md p-6 flex flex-col relative z-10">
+    <div className="w-96 h-full border-r border-black/[0.06] bg-white backdrop-blur-md p-6 flex flex-col relative z-10">
       <div className="mb-6">
-        <h2 className="text-xl font-bold text-white mb-2">사건 내용</h2>
-        <p className="text-sm text-slate-400">
+        <h2 className="text-xl font-bold text-[#1D1D1F] mb-2">사건 내용</h2>
+        <p className="text-sm text-[#86868B]">
           텍스트, 음성, 이미지로 사건 내용을 입력하면 AI가 타임라인을 생성합니다.
         </p>
       </div>
 
       {/* 탭 */}
-      <div className="flex gap-1 mb-4 p-1 bg-slate-800/50 rounded-xl">
+      <div className="flex gap-1 mb-4 p-1 bg-[#F5F5F7] rounded-xl">
         {tabs.map((tab) => (
           <button
             key={tab.mode}
@@ -166,8 +166,8 @@ export function MultiInputPanel({
             className={`
               flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all
               ${inputMode === tab.mode
-                ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                ? 'bg-[#007AFF] text-white shadow-lg'
+                : 'text-[#86868B] hover:text-[#1D1D1F] hover:bg-gray-200/50'
               }
               disabled:opacity-50 disabled:cursor-not-allowed
             `}
@@ -181,12 +181,12 @@ export function MultiInputPanel({
       {/* 텍스트 입력 */}
       {inputMode === 'text' && (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 bg-slate-800/50 rounded-2xl border border-white/5 p-1 mb-4">
+          <div className="flex-1 bg-[#F5F5F7] rounded-2xl border border-black/[0.06] p-1 mb-4">
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="여기에 사건 내용을 자세히 서술해주세요.&#10;&#10;예시:&#10;2024년 1월 15일 A와 B는 강남구 소재의 건물을 50억원에 매매하기로 계약했다..."
-              className="flex-1 w-full h-full p-4 bg-transparent resize-none text-slate-300 placeholder-slate-600 focus:outline-none text-base leading-relaxed custom-scrollbar"
+              className="flex-1 w-full h-full p-4 bg-transparent resize-none text-[#1D1D1F] placeholder-gray-400 focus:outline-none text-base leading-relaxed custom-scrollbar"
               disabled={isExtracting}
             />
           </div>
@@ -195,7 +195,7 @@ export function MultiInputPanel({
             type="button"
             onClick={handleExtractText}
             disabled={isExtracting || text.trim().length < 10}
-            className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold text-lg hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-700 disabled:to-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-900/20 flex items-center justify-center gap-3"
+            className="w-full py-4 bg-[#007AFF] text-white rounded-xl font-bold text-lg hover:bg-[#0056CC] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all shadow-apple flex items-center justify-center gap-3"
           >
             {isExtracting ? (
               <>
@@ -220,7 +220,7 @@ export function MultiInputPanel({
       {/* 음성 입력 */}
       {inputMode === 'voice' && (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 bg-slate-800/50 rounded-2xl border border-white/5 p-6 mb-4 flex flex-col items-center justify-center">
+          <div className="flex-1 bg-[#F5F5F7] rounded-2xl border border-black/[0.06] p-6 mb-4 flex flex-col items-center justify-center">
             {/* 녹음 버튼 */}
             <button
               type="button"
@@ -230,7 +230,7 @@ export function MultiInputPanel({
                 w-24 h-24 rounded-full flex items-center justify-center transition-all mb-6
                 ${isRecording
                   ? 'bg-red-500 animate-pulse shadow-lg shadow-red-500/50'
-                  : 'bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/30'
+                  : 'bg-[#007AFF] hover:bg-[#0056CC] shadow-apple'
                 }
                 disabled:opacity-50 disabled:cursor-not-allowed
               `}
@@ -246,22 +246,22 @@ export function MultiInputPanel({
               )}
             </button>
 
-            <p className="text-slate-400 text-sm mb-4">
+            <p className="text-[#86868B] text-sm mb-4">
               {isRecording ? '녹음 중... 클릭하여 중지' : '클릭하여 녹음 시작'}
             </p>
 
             {audioBlob && !isRecording && (
-              <div className="flex items-center gap-2 p-3 bg-slate-700/50 rounded-xl">
-                <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-2 p-3 bg-green-50 rounded-xl border border-green-200">
+                <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                <span className="text-slate-300 text-sm">녹음 완료</span>
+                <span className="text-green-700 text-sm">녹음 완료</span>
               </div>
             )}
 
-            <div className="w-full border-t border-slate-700 my-6" />
+            <div className="w-full border-t border-gray-200 my-6" />
 
-            <p className="text-slate-500 text-xs mb-3">또는 파일 업로드</p>
+            <p className="text-[#86868B] text-xs mb-3">또는 파일 업로드</p>
             <input
               ref={audioInputRef}
               type="file"
@@ -273,7 +273,7 @@ export function MultiInputPanel({
               type="button"
               onClick={() => audioInputRef.current?.click()}
               disabled={isExtracting}
-              className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm hover:bg-slate-600 transition-colors disabled:opacity-50"
+              className="px-4 py-2 bg-[#F5F5F7] text-[#3C3C43] rounded-lg text-sm hover:bg-gray-200 transition-colors disabled:opacity-50 border border-black/[0.06]"
             >
               음성 파일 선택
             </button>
@@ -283,7 +283,7 @@ export function MultiInputPanel({
             type="button"
             onClick={handleExtractVoice}
             disabled={isExtracting || !audioBlob}
-            className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold text-lg hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-700 disabled:to-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-900/20 flex items-center justify-center gap-3"
+            className="w-full py-4 bg-[#007AFF] text-white rounded-xl font-bold text-lg hover:bg-[#0056CC] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all shadow-apple flex items-center justify-center gap-3"
           >
             {isExtracting ? (
               <>
@@ -308,7 +308,7 @@ export function MultiInputPanel({
       {/* 이미지 입력 */}
       {inputMode === 'image' && (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 bg-slate-800/50 rounded-2xl border border-white/5 p-4 mb-4 flex flex-col">
+          <div className="flex-1 bg-[#F5F5F7] rounded-2xl border border-black/[0.06] p-4 mb-4 flex flex-col">
             <input
               ref={imageInputRef}
               type="file"
@@ -330,9 +330,9 @@ export function MultiInputPanel({
                     setSelectedImage(null)
                     setImagePreview(null)
                   }}
-                  className="absolute top-2 right-2 p-2 bg-slate-900/80 rounded-full hover:bg-slate-800 transition-colors"
+                  className="absolute top-2 right-2 p-2 bg-white/80 rounded-full hover:bg-white transition-colors shadow-apple-sm"
                 >
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-[#1D1D1F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -342,13 +342,13 @@ export function MultiInputPanel({
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
                 disabled={isExtracting}
-                className="flex-1 border-2 border-dashed border-slate-600 rounded-xl flex flex-col items-center justify-center hover:border-blue-500 hover:bg-blue-500/5 transition-all mb-4 disabled:opacity-50"
+                className="flex-1 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center hover:border-[#007AFF] hover:bg-[#007AFF]/5 transition-all mb-4 disabled:opacity-50"
               >
-                <svg className="w-12 h-12 text-slate-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-12 h-12 text-[#86868B] mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <span className="text-slate-400 text-sm">이미지를 선택하세요</span>
-                <span className="text-slate-500 text-xs mt-1">문서, 스크린샷, 사진 등</span>
+                <span className="text-[#3C3C43] text-sm">이미지를 선택하세요</span>
+                <span className="text-[#86868B] text-xs mt-1">문서, 스크린샷, 사진 등</span>
               </button>
             )}
 
@@ -356,7 +356,7 @@ export function MultiInputPanel({
               value={imageContext}
               onChange={(e) => setImageContext(e.target.value)}
               placeholder="추가 설명 (선택사항)&#10;예: 이 문서는 계약서입니다..."
-              className="w-full p-3 bg-slate-700/50 rounded-xl resize-none text-slate-300 placeholder-slate-500 focus:outline-none text-sm h-20"
+              className="w-full p-3 bg-white rounded-xl resize-none text-[#1D1D1F] placeholder-gray-400 focus:outline-none text-sm h-20 border border-black/[0.06]"
               disabled={isExtracting}
             />
           </div>
@@ -365,7 +365,7 @@ export function MultiInputPanel({
             type="button"
             onClick={handleExtractImage}
             disabled={isExtracting || !selectedImage}
-            className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold text-lg hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-700 disabled:to-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-900/20 flex items-center justify-center gap-3"
+            className="w-full py-4 bg-[#007AFF] text-white rounded-xl font-bold text-lg hover:bg-[#0056CC] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all shadow-apple flex items-center justify-center gap-3"
           >
             {isExtracting ? (
               <>
@@ -399,7 +399,7 @@ export function MultiInputPanel({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="text-xs text-slate-600 hover:text-slate-400 underline decoration-slate-700 underline-offset-4 transition-colors"
+          className="text-xs text-[#86868B] hover:text-[#007AFF] underline decoration-gray-300 underline-offset-4 transition-colors"
           title="기존 데이터 불러오기"
         >
           백업 파일(.json) 가져오기
@@ -408,12 +408,12 @@ export function MultiInputPanel({
 
       {/* 에러 표시 */}
       {error && (
-        <div className="absolute bottom-20 left-6 right-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl backdrop-blur-md">
+        <div className="absolute bottom-20 left-6 right-6 p-4 bg-red-50 border border-red-200 rounded-xl backdrop-blur-md">
           <div className="flex items-start gap-3">
-            <svg className="w-5 h-5 text-red-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p className="text-sm text-red-200">{error}</p>
+            <p className="text-sm text-red-700">{error}</p>
           </div>
         </div>
       )}

@@ -39,8 +39,8 @@ export function TimelineToolbar({
         className={`
           px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 border
           ${editMode === 'edit'
-            ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20'
-            : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white hover:border-slate-600'}
+            ? 'bg-[#007AFF] border-[#007AFF] text-white shadow-apple'
+            : 'bg-white border-black/[0.06] text-[#3C3C43] hover:bg-[#F5F5F7] hover:text-[#1D1D1F] hover:border-gray-300'}
         `}
       >
         <svg
@@ -65,7 +65,7 @@ export function TimelineToolbar({
         <button
           type="button"
           onClick={onAddItem}
-          className="px-4 py-2 bg-emerald-600 border border-emerald-500 text-white rounded-xl text-sm font-bold hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+          className="px-4 py-2 bg-emerald-500 border border-emerald-500 text-white rounded-xl text-sm font-bold hover:bg-emerald-600 transition-all shadow-apple flex items-center gap-2"
         >
           <svg
             className="w-4 h-4"
@@ -87,7 +87,7 @@ export function TimelineToolbar({
 
       {hasItems && (
         <>
-          <div className="w-px h-6 bg-slate-700 mx-1" />
+          <div className="w-px h-6 bg-gray-200 mx-1" />
 
           {/* 전체 스토리보드 이미지 생성 */}
           <button
@@ -97,8 +97,8 @@ export function TimelineToolbar({
             className={`
               px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 border
               ${isGeneratingBatch
-                ? 'bg-purple-600 border-purple-500 text-white'
-                : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-purple-600 hover:border-purple-500 hover:text-white'}
+                ? 'bg-purple-600 border-purple-600 text-white'
+                : 'bg-white border-black/[0.06] text-[#3C3C43] hover:bg-purple-600 hover:border-purple-600 hover:text-white'}
               disabled:opacity-70
             `}
           >
@@ -140,7 +140,7 @@ export function TimelineToolbar({
             <button
               type="button"
               onClick={onGenerateVideo}
-              className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-300 rounded-xl text-sm font-medium hover:bg-indigo-600 hover:border-indigo-500 hover:text-white transition-all flex items-center gap-2"
+              className="px-4 py-2 bg-white border border-black/[0.06] text-[#3C3C43] rounded-xl text-sm font-medium hover:bg-indigo-600 hover:border-indigo-600 hover:text-white transition-all flex items-center gap-2"
             >
               <svg
                 className="w-4 h-4"
@@ -160,13 +160,13 @@ export function TimelineToolbar({
             </button>
           )}
 
-          <div className="w-px h-6 bg-slate-700 mx-1" />
+          <div className="w-px h-6 bg-gray-200 mx-1" />
 
           {/* 내보내기 */}
           <button
             type="button"
             onClick={onExport}
-            className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-300 rounded-xl text-sm font-medium hover:bg-slate-700 hover:text-white hover:border-slate-600 transition-all flex items-center gap-2"
+            className="px-4 py-2 bg-white border border-black/[0.06] text-[#3C3C43] rounded-xl text-sm font-medium hover:bg-[#F5F5F7] hover:text-[#1D1D1F] hover:border-gray-300 transition-all flex items-center gap-2"
           >
             <svg
               className="w-4 h-4"
@@ -189,7 +189,7 @@ export function TimelineToolbar({
           <button
             type="button"
             onClick={onReset}
-            className="px-4 py-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 rounded-xl text-sm font-medium transition-all flex items-center gap-2"
+            className="px-4 py-2 text-[#86868B] hover:text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200 rounded-xl text-sm font-medium transition-all flex items-center gap-2"
           >
             <svg
               className="w-4 h-4"

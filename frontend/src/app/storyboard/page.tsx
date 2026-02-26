@@ -139,34 +139,29 @@ export default function StoryboardPage() {
 
   return (
     <div
-      className={`h-screen flex flex-col bg-slate-950 overflow-hidden relative transition-all duration-500 ease-in-out ${
-        isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-slate-800' : 'w-full'
+      className={`h-screen flex flex-col bg-[#F5F5F7] overflow-hidden relative transition-all duration-500 ease-in-out ${
+        isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-black/[0.06]' : 'w-full'
       }`}
     >
-      {/* Background Gradients (Global Effect) */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-600/10 rounded-full blur-[120px] pointer-events-none" />
-
       {/* 헤더 */}
-      <header className="flex-shrink-0 bg-slate-900/50 backdrop-blur-xl border-b border-white/5 px-8 py-4 relative z-20">
+      <header className="flex-shrink-0 bg-white/80 backdrop-blur-xl border-b border-black/[0.06] px-8 py-4 relative z-20">
         <div className="flex items-center justify-between max-w-[1920px] mx-auto">
           <div className="flex items-center gap-4">
             <BackButton />
             <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-                <span className="text-3xl">🎞️</span>
+              <h1 className="text-2xl font-bold text-[#1D1D1F] tracking-tight flex items-center gap-2">
                 스토리보드
-                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 font-medium border border-blue-500/20">BETA</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-[#007AFF]/10 text-[#007AFF] font-medium border border-[#007AFF]/20">BETA</span>
               </h1>
-              <p className="text-sm text-slate-400 mt-1 font-light">
+              <p className="text-sm text-[#86868B] mt-1 font-light">
                 사건의 흐름을 시각화하고 AI로 이미지와 영상을 생성합니다
               </p>
             </div>
           </div>
           {summary && (
             <div className="text-right hidden md:block">
-              <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">Case Summary</span>
-              <p className="text-sm font-medium text-slate-300 max-w-xl truncate">{summary}</p>
+              <span className="text-xs font-bold text-[#007AFF] uppercase tracking-wider">Case Summary</span>
+              <p className="text-sm font-medium text-[#3C3C43] max-w-xl truncate">{summary}</p>
             </div>
           )}
         </div>
@@ -203,13 +198,13 @@ export default function StoryboardPage() {
           onClick={() => setIsInputPanelOpen(!isInputPanelOpen)}
           className={`
             flex-shrink-0 w-6 flex items-center justify-center
-            bg-slate-800/50 hover:bg-slate-700/50 border-r border-white/5
+            bg-[#F5F5F7] hover:bg-gray-200 border-r border-black/[0.06]
             transition-colors group
           `}
           title={isInputPanelOpen ? '입력 패널 접기' : '입력 패널 펼치기'}
         >
           <svg
-            className={`w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-all duration-300 ${isInputPanelOpen ? '' : 'rotate-180'}`}
+            className={`w-4 h-4 text-[#86868B] group-hover:text-[#3C3C43] transition-all duration-300 ${isInputPanelOpen ? '' : 'rotate-180'}`}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -230,11 +225,11 @@ export default function StoryboardPage() {
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full text-3xl font-bold bg-transparent border-none text-white focus:ring-0 placeholder-slate-700"
+                    className="w-full text-3xl font-bold bg-transparent border-none text-[#1D1D1F] focus:ring-0 placeholder-gray-300"
                     placeholder="무제 타임라인"
                   />
                 ) : (
-                  <h2 className="text-3xl font-bold text-slate-700">새 타임라인</h2>
+                  <h2 className="text-3xl font-bold text-gray-300">새 타임라인</h2>
                 )}
               </div>
 

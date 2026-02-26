@@ -57,10 +57,10 @@ export function TimelineItemEditor({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm">
-      <div className="bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md mx-4 border border-slate-700">
-        <div className="p-6 border-b border-slate-700">
-          <h3 className="text-xl font-bold text-white">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-apple-hover w-full max-w-md mx-4 border border-black/[0.06]">
+        <div className="p-6 border-b border-black/[0.06]">
+          <h3 className="text-xl font-bold text-[#1D1D1F]">
             {isNew ? '새 항목 추가' : '항목 편집'}
           </h3>
         </div>
@@ -68,7 +68,7 @@ export function TimelineItemEditor({
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           <div className="space-y-4">
             <div>
-              <label htmlFor="date" className="block text-sm font-medium text-slate-400 mb-1.5">
+              <label htmlFor="date" className="block text-sm font-medium text-[#86868B] mb-1.5">
                 날짜
               </label>
               <input
@@ -77,13 +77,13 @@ export function TimelineItemEditor({
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 placeholder="예: 2024-01-15 또는 2024년 1월 초"
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-black/[0.06] rounded-xl text-[#1D1D1F] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:border-transparent transition-all"
                 required
               />
             </div>
 
             <div>
-              <label htmlFor="title" className="block text-sm font-medium text-slate-400 mb-1.5">
+              <label htmlFor="title" className="block text-sm font-medium text-[#86868B] mb-1.5">
                 제목
               </label>
               <input
@@ -92,13 +92,13 @@ export function TimelineItemEditor({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="이벤트 제목"
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-black/[0.06] rounded-xl text-[#1D1D1F] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:border-transparent transition-all"
                 required
               />
             </div>
 
             <div>
-              <label htmlFor="description" className="block text-sm font-medium text-slate-400 mb-1.5">
+              <label htmlFor="description" className="block text-sm font-medium text-[#86868B] mb-1.5">
                 설명
               </label>
               <textarea
@@ -112,7 +112,7 @@ export function TimelineItemEditor({
             </div>
 
             <div>
-              <label htmlFor="imageUrl" className="block text-sm font-medium text-slate-400 mb-1.5">
+              <label htmlFor="imageUrl" className="block text-sm font-medium text-[#86868B] mb-1.5">
                 이미지 URL (선택)
               </label>
               <input
@@ -121,12 +121,12 @@ export function TimelineItemEditor({
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
                 placeholder="https://example.com/image.jpg"
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-black/[0.06] rounded-xl text-[#1D1D1F] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:border-transparent transition-all"
               />
             </div>
 
             <div>
-              <label htmlFor="participants" className="block text-sm font-medium text-slate-400 mb-1.5">
+              <label htmlFor="participants" className="block text-sm font-medium text-[#86868B] mb-1.5">
                 관련자 (쉼표로 구분)
               </label>
               <input
@@ -135,7 +135,7 @@ export function TimelineItemEditor({
                 value={participantsText}
                 onChange={(e) => setParticipantsText(e.target.value)}
                 placeholder="예: 홍길동, 김철수, A회사"
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-black/[0.06] rounded-xl text-[#1D1D1F] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:border-transparent transition-all"
               />
             </div>
           </div>
@@ -144,14 +144,14 @@ export function TimelineItemEditor({
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 py-3 border border-slate-600 rounded-xl text-slate-300 font-medium hover:bg-slate-800 transition-colors"
+              className="flex-1 py-3 border border-black/[0.06] rounded-xl text-[#3C3C43] font-medium hover:bg-[#F5F5F7] transition-colors"
             >
               취소
             </button>
             <button
               type="submit"
               disabled={!date.trim() || !title.trim()}
-              className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-900/30"
+              className="flex-1 py-3 bg-[#007AFF] text-white rounded-xl font-bold hover:bg-[#0056CC] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all shadow-apple"
             >
               {isNew ? '추가' : '저장'}
             </button>
