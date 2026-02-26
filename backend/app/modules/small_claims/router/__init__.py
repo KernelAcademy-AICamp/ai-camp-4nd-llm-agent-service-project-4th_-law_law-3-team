@@ -251,11 +251,24 @@ class RelatedCaseItem(BaseModel):
     summary: str
     similarity: float
     relevance: str
+    ruling: Optional[str] = None
+    reasoning: Optional[str] = None
 
 
 class RelatedCasesResponse(BaseModel):
     dispute_type: str
     cases: List[RelatedCaseItem]
+
+
+class EvidenceUploadFile(BaseModel):
+    file_id: str
+    original_name: str
+    file_type: str
+    file_size: int
+
+
+class EvidenceUploadResponse(BaseModel):
+    uploaded_files: List[EvidenceUploadFile]
 
 
 # 미구현 엔드포인트 — 추후 구현 예정
@@ -280,14 +293,71 @@ async def generate_documents(
     raise HTTPException(status_code=501, detail="서류 자동 생성 기능은 현재 준비 중입니다")
 
 
-@router.post("/evidence/upload")
+ALLOWED_EXTENSIONS = {
+    ".pdf", ".hwp", ".hwpx", ".doc", ".docx",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp",
+    ".xls", ".xlsx", ".txt",
+}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+@router.post("/evidence/upload", response_model=EvidenceUploadResponse)
 async def upload_evidence(
-    session_id: str,
+    evidence_item_id: str = "general",
+    session_id: str = "default",
     files: List[UploadFile] = File(...),
-    evidence_type: str = "chat_log",
-) -> dict[str, Any]:
-    """증거 자료 업로드 (미구현)"""
-    raise HTTPException(status_code=501, detail="증거 업로드 기능은 현재 준비 중입니다")
+) -> EvidenceUploadResponse:
+    """
+    증거 자료 업로드
+
+    파일을 서버에 저장하고 메타데이터를 반환합니다.
+    지원 형식: PDF, HWP, DOC, 이미지, XLS, TXT (최대 10MB)
+    """
+    upload_dir = Path("data/uploads/small_claims") / session_id / evidence_item_id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    uploaded: list[EvidenceUploadFile] = []
+
+    for file in files:
+        if not file.filename:
+            continue
+
+        # 확장자 검증
+        ext = Path(file.filename).suffix.lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"지원하지 않는 파일 형식입니다: {ext}. "
+                       f"지원 형식: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+            )
+
+        # 파일 크기 검증
+        content = await file.read()
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"파일 크기가 10MB를 초과합니다: {file.filename} ({len(content) / 1024 / 1024:.1f}MB)",
+            )
+
+        file_id = str(uuid.uuid4())
+        saved_name = f"{file_id}{ext}"
+        file_path = upload_dir / saved_name
+
+        file_path.write_bytes(content)
+
+        uploaded.append(
+            EvidenceUploadFile(
+                file_id=file_id,
+                original_name=file.filename,
+                file_type=ext.lstrip("."),
+                file_size=len(content),
+            )
+        )
+
+    if not uploaded:
+        raise HTTPException(status_code=400, detail="업로드할 파일이 없습니다")
+
+    return EvidenceUploadResponse(uploaded_files=uploaded)
 
 
 @router.post("/evidence/{session_id}/organize")
@@ -501,17 +571,35 @@ async def get_related_cases(dispute_type: str) -> RelatedCasesResponse:
             "wage": "임금 체불 및 급여 청구와 관련된 판례입니다.",
         }
 
+        # RAG 결과에서 source_id 추출 후 PostgreSQL에서 판결/판결요지 조회
+        source_ids = [doc["id"] for doc in results if doc.get("id")]
+        precedent_details: dict[str, dict[str, str]] = {}
+        if source_ids:
+            try:
+                from app.services.service_function.precedent_service import (
+                    get_precedent_service,
+                )
+
+                service = get_precedent_service()
+                precedent_details = await service.get_details(source_ids)
+            except Exception as e:
+                logger.warning(f"판례 상세 조회 실패 (계속 진행): {e}")
+
         cases = []
         for doc in results:
             metadata = doc.get("metadata", {})
+            doc_id = doc["id"]
+            detail = precedent_details.get(doc_id, {})
             cases.append(
                 RelatedCaseItem(
-                    id=doc["id"],
-                    case_name=metadata.get("case_name", ""),
-                    case_number=metadata.get("case_number", ""),
+                    id=doc_id,
+                    case_name=metadata.get("case_name", "") or detail.get("case_name", ""),
+                    case_number=metadata.get("case_number", "") or detail.get("case_number", ""),
                     summary=doc["content"][:200] + "..." if len(doc["content"]) > 200 else doc["content"],
                     similarity=round(doc.get("similarity", 0), 3),
                     relevance=relevance_descriptions.get(dispute_type, ""),
+                    ruling=detail.get("ruling"),
+                    reasoning=detail.get("reasoning"),
                 )
             )
 
