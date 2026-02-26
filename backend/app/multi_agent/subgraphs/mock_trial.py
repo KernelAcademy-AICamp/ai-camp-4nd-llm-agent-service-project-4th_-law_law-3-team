@@ -30,7 +30,14 @@ from app.multi_agent.subgraphs.mock_trial_prompts import (
     build_system_prompt,
     sanitize_user_input,
 )
-from app.services.service_function.mock_trial_service import get_evidence_searcher
+from app.services.service_function.mock_trial_service import (
+    build_rag_context,
+    build_user_hints,
+    get_evidence_searcher,
+    search_for_role,
+    search_for_verdict,
+    search_rebuttal,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +73,11 @@ class MockTrialState(TypedDict, total=False):
     current_round: int
     max_rounds: int
     court_record: list[dict[str, Any]]
+
+    # RAG 컨텍스트 (캐시)
+    rag_prosecutor_context: str
+    rag_attorney_context: str
+    rag_user_hints: list[dict[str, Any]]
 
     # Rate limiting
     llm_call_count: int
@@ -168,6 +180,36 @@ def _get_opponent_role(state: MockTrialState) -> str:
     if user_role == "prosecutor":
         return "attorney"
     return "prosecutor"
+
+
+async def _build_stage_rag_context(
+    state: MockTrialState, role: str
+) -> str:
+    """캐시 확인 → 없으면 search_for_role 호출 → 컨텍스트 문자열 반환"""
+    cache_key = f"rag_{role}_context"
+    cached = str(state.get(cache_key, "") or "")
+    if cached:
+        return cached
+
+    query = state.get("case_summary", "")
+    case_type = state.get("case_type", "criminal")
+    cases, articles = await search_for_role(role, query, case_type)
+    return build_rag_context(role, cases, articles)
+
+
+async def _build_rebuttal_context(
+    court_record: list[dict[str, Any]],
+    case_summary: str,
+) -> str:
+    """상대방 최근 발언 기반 반박 검색 → 컨텍스트 문자열 반환"""
+    if not court_record:
+        return ""
+    last_entry = court_record[-1]
+    opponent_stmt = last_entry.get("content", "")
+    if not opponent_stmt:
+        return ""
+    cases, articles = await search_rebuttal(opponent_stmt, case_summary)
+    return build_rag_context("rebuttal", cases, articles)
 
 
 MAX_LLM_CALLS_PER_SESSION = 50
@@ -295,11 +337,34 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
     llm_call_count = state.get("llm_call_count", 0)
     court_record = list(state.get("court_record", []))
 
-    # RAG 검색: 사건 개요로 판례/법령 검색
+    # RAG 검색: 사건 개요로 판례/법령 검색 (UI 표시용)
     searcher = get_evidence_searcher()
     query = state.get("case_summary", "")
     evidence_cases = await searcher.search_cases(query, limit=5)
     evidence_articles = await searcher.search_articles(query, limit=5)
+
+    # 역할별 RAG 컨텍스트 생성 → state에 캐시
+    case_type = state.get("case_type", "criminal")
+    pros_cases, pros_articles = await search_for_role(
+        "prosecutor", query, case_type
+    )
+    atty_cases, atty_articles = await search_for_role(
+        "attorney", query, case_type
+    )
+    rag_prosecutor_context = build_rag_context(
+        "prosecutor", pros_cases, pros_articles
+    )
+    rag_attorney_context = build_rag_context(
+        "attorney", atty_cases, atty_articles
+    )
+
+    # 사용자 힌트 생성 (사용자 역할 기준)
+    user_role = state.get("user_role", "prosecutor")
+    if user_role == "prosecutor":
+        hint_cases, hint_articles = pros_cases, pros_articles
+    else:
+        hint_cases, hint_articles = atty_cases, atty_articles
+    rag_user_hints = build_user_hints(hint_cases, hint_articles)
 
     # 판사 발언: 증거조사 시작 안내
     judge = _get_agent(state, "judge")
@@ -321,6 +386,7 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
             "cases": evidence_cases,
             "articles": evidence_articles,
         },
+        "user_hints": rag_user_hints,
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -362,6 +428,9 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
             "evidence_articles": evidence_articles,
             "selected_evidence": selected_ids,
             "excluded_evidence": excluded_ids,
+            "rag_prosecutor_context": rag_prosecutor_context,
+            "rag_attorney_context": rag_attorney_context,
+            "rag_user_hints": rag_user_hints,
             "agents": _update_agent_in_state(state.get("agents", {}), judge),
             "response": judge_response,
             "speaking_agent": "judge",
@@ -388,6 +457,13 @@ async def verdict_node(state: MockTrialState) -> Command[str]:
         else BURDEN_OF_PROOF_CIVIL
     )
     estimated = STAGE_ESTIMATED_MINUTES.get("verdict", 5)
+
+    # 양형 참조용 유사 판례 검색
+    verdict_cases = await search_for_verdict(
+        state.get("case_summary", ""), case_type
+    )
+    verdict_rag_context = build_rag_context("judge", verdict_cases, [])
+
     verdict_context = (
         f"{state.get('case_summary', '')}\n\n"
         f"사건 유형: {case_type}\n"
@@ -396,7 +472,10 @@ async def verdict_node(state: MockTrialState) -> Command[str]:
         f"예상 소요시간: 약 {estimated}분\n"
         "위 법정 기록과 형식에 따라 판결문을 작성하세요."
     )
-    judgment, verdict_emotion = await judge.generate("verdict", verdict_context, court_record)
+    judgment, verdict_emotion = await judge.generate(
+        "verdict", verdict_context, court_record,
+        rag_context=verdict_rag_context,
+    )
     court_record = _record(court_record, "verdict", "judge", judgment)
     feedback = _generate_feedback(state)
 
@@ -481,22 +560,29 @@ async def opening_node(state: MockTrialState) -> Command[str]:
     court_record = list(state.get("court_record", []))
     user_role = state.get("user_role", "prosecutor")
 
+    # RAG 컨텍스트 (evidence_node에서 캐시)
+    rag_pros_ctx = state.get("rag_prosecutor_context", "")
+    rag_atty_ctx = state.get("rag_attorney_context", "")
+    rag_hints = state.get("rag_user_hints", [])
+
     # 검사 측 모두진술 (사용자가 검사면 입력 대기, 아니면 AI 생성)
     if user_role == "prosecutor":
         interrupt_value = interrupt({
             "response": "검사 측 모두진술을 해주세요. 공소사실의 요지를 진술하세요.",
             "speaking_agent": "judge",
             "stage": "opening",
+            "user_hints": rag_hints,
             "actions": [],
         })
         pros_stmt = str(interrupt_value)
         court_record = _record(court_record, "opening", "prosecutor", pros_stmt)
 
-        # AI 변호인 반응
+        # AI 변호인 반응 (RAG 컨텍스트 전달)
         attorney = _get_agent(state, "attorney")
         attorney.update_strategy("검사 주장에 대한 반박 준비")
         attorney_response, opening_emotion = await attorney.generate(
-            "opening", state.get("case_summary", ""), court_record
+            "opening", state.get("case_summary", ""), court_record,
+            rag_context=rag_atty_ctx,
         )
         llm_call_count += 1
         court_record = _record(
@@ -505,11 +591,12 @@ async def opening_node(state: MockTrialState) -> Command[str]:
         agents = _update_agent_in_state(state.get("agents", {}), attorney)
         final_response = f"[변호인] {attorney_response}"
     else:
-        # AI 검사 발언
+        # AI 검사 발언 (RAG 컨텍스트 전달)
         prosecutor = _get_agent(state, "prosecutor")
         prosecutor.update_strategy("공소사실 입증을 위한 모두진술")
         pros_stmt, opening_emotion = await prosecutor.generate(
-            "opening", state.get("case_summary", ""), court_record
+            "opening", state.get("case_summary", ""), court_record,
+            rag_context=rag_pros_ctx,
         )
         llm_call_count += 1
         court_record = _record(court_record, "opening", "prosecutor", pros_stmt)
@@ -524,6 +611,7 @@ async def opening_node(state: MockTrialState) -> Command[str]:
             "speaking_agent": "prosecutor",
             "emotion": opening_emotion,
             "stage": "opening",
+            "user_hints": rag_hints,
             "actions": [
                 ChatAction(
                     type=ActionType.BUTTON,
@@ -567,11 +655,15 @@ async def examination_node(state: MockTrialState) -> Command[str]:
     court_record = list(state.get("court_record", []))
     user_role = state.get("user_role", "prosecutor")
 
-    # 피고인 AI 발언
+    # 피고인도 자기 상황 관련 법령 참조
+    rag_defendant_ctx = await _build_stage_rag_context(state, "defendant")
+
+    # 피고인 AI 발언 (RAG 컨텍스트 전달)
     defendant = _get_agent(state, "defendant")
     defendant.update_strategy("성실하게 답변, 유리한 사정 강조")
     defendant_stmt, exam_emotion = await defendant.generate(
-        "examination", state.get("case_summary", ""), court_record
+        "examination", state.get("case_summary", ""), court_record,
+        rag_context=rag_defendant_ctx,
     )
     llm_call_count += 1
     court_record = _record(
@@ -579,6 +671,7 @@ async def examination_node(state: MockTrialState) -> Command[str]:
     )
 
     # 사용자 질문 입력
+    rag_hints = state.get("rag_user_hints", [])
     interrupt_value = interrupt({
         "response": (
             f"[피고인] {defendant_stmt}\n\n"
@@ -587,6 +680,7 @@ async def examination_node(state: MockTrialState) -> Command[str]:
         "speaking_agent": "defendant",
         "emotion": exam_emotion,
         "stage": "examination",
+        "user_hints": rag_hints,
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -603,7 +697,8 @@ async def examination_node(state: MockTrialState) -> Command[str]:
         )
         # 피고인 추가 답변
         defendant_answer, exam_emotion = await defendant.generate(
-            "examination", f"질문: {user_input}", court_record
+            "examination", f"질문: {user_input}", court_record,
+            rag_context=rag_defendant_ctx,
         )
         llm_call_count += 1
         court_record = _record(
@@ -639,22 +734,33 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
     user_role = state.get("user_role", "prosecutor")
     agents_state = dict(state.get("agents", {}))
 
+    # RAG 컨텍스트 (evidence_node 캐시) + 반박 컨텍스트
+    rag_pros_ctx = state.get("rag_prosecutor_context", "")
+    rag_atty_ctx = state.get("rag_attorney_context", "")
+    rag_hints = state.get("rag_user_hints", [])
+    rebuttal_ctx = await _build_rebuttal_context(
+        court_record, state.get("case_summary", "")
+    )
+
     if user_role == "prosecutor":
         # 사용자(검사) 구형
         interrupt_value = interrupt({
             "response": "최종변론을 해주세요. 구형을 포함하여 의견을 진술하세요.",
             "speaking_agent": "judge",
             "stage": "closing",
+            "user_hints": rag_hints,
             "actions": [],
         })
         user_stmt = str(interrupt_value)
         court_record = _record(court_record, "closing", "prosecutor", user_stmt)
 
-        # AI 변호인 최후변론
+        # AI 변호인 최후변론 (캐시 RAG + 반박 결합)
+        combined_ctx = f"{rag_atty_ctx}\n\n{rebuttal_ctx}".strip()
         attorney = _get_agent(state, "attorney")
         attorney.update_strategy("피고인의 정상참작 사유 강조")
         attorney_response, closing_emotion = await attorney.generate(
-            "closing", state.get("case_summary", ""), court_record
+            "closing", state.get("case_summary", ""), court_record,
+            rag_context=combined_ctx,
         )
         llm_call_count += 1
         court_record = _record(
@@ -662,11 +768,13 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
         )
         agents_state = _update_agent_in_state(agents_state, attorney)
     else:
-        # AI 검사 구형
+        # AI 검사 구형 (캐시 RAG + 반박 결합)
+        combined_ctx = f"{rag_pros_ctx}\n\n{rebuttal_ctx}".strip()
         prosecutor = _get_agent(state, "prosecutor")
         prosecutor.update_strategy("양형 기준에 따른 구형")
         pros_closing, closing_emotion = await prosecutor.generate(
-            "closing", state.get("case_summary", ""), court_record
+            "closing", state.get("case_summary", ""), court_record,
+            rag_context=combined_ctx,
         )
         llm_call_count += 1
         court_record = _record(
@@ -683,6 +791,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
             "speaking_agent": "prosecutor",
             "emotion": closing_emotion,
             "stage": "closing",
+            "user_hints": rag_hints,
             "actions": [],
         })
         user_stmt = str(interrupt_value)
@@ -779,22 +888,29 @@ async def claims_node(state: MockTrialState) -> Command[str]:
     user_role = state.get("user_role", "prosecutor")
     agents_state = dict(state.get("agents", {}))
 
+    # RAG 컨텍스트 (evidence_node 캐시)
+    rag_pros_ctx = state.get("rag_prosecutor_context", "")
+    rag_atty_ctx = state.get("rag_attorney_context", "")
+    rag_hints = state.get("rag_user_hints", [])
+
     if user_role == "prosecutor":
         # 사용자가 원고측 → 청구원인 입력
         interrupt_value = interrupt({
             "response": "원고 측 청구원인을 진술해주세요.",
             "speaking_agent": "judge",
             "stage": "claims",
+            "user_hints": rag_hints,
             "actions": [],
         })
         user_input = str(interrupt_value)
         court_record = _record(court_record, "claims", "prosecutor", user_input)
 
-        # AI 피고측 답변
+        # AI 피고측 답변 (RAG 컨텍스트 전달)
         attorney = _get_agent(state, "attorney")
         attorney.update_strategy("원고 청구에 대한 항변 제시")
         opponent_response, claims_emotion = await attorney.generate(
-            "claims", state.get("case_summary", ""), court_record
+            "claims", state.get("case_summary", ""), court_record,
+            rag_context=rag_atty_ctx,
         )
         llm_call_count += 1
         court_record = _record(
@@ -803,11 +919,12 @@ async def claims_node(state: MockTrialState) -> Command[str]:
         agents_state = _update_agent_in_state(agents_state, attorney)
         final_response = f"[피고측] {opponent_response}"
     else:
-        # AI 원고측 발언
+        # AI 원고측 발언 (RAG 컨텍스트 전달)
         prosecutor = _get_agent(state, "prosecutor")
         prosecutor.update_strategy("청구원인 구체적 입증")
         pros_claim, claims_emotion = await prosecutor.generate(
-            "claims", state.get("case_summary", ""), court_record
+            "claims", state.get("case_summary", ""), court_record,
+            rag_context=rag_pros_ctx,
         )
         llm_call_count += 1
         court_record = _record(
@@ -824,6 +941,7 @@ async def claims_node(state: MockTrialState) -> Command[str]:
             "speaking_agent": "prosecutor",
             "emotion": claims_emotion,
             "stage": "claims",
+            "user_hints": rag_hints,
             "actions": [],
         })
         user_input = str(interrupt_value)
@@ -855,12 +973,14 @@ async def argument_node(state: MockTrialState) -> Command[str]:
     max_rounds = state.get("max_rounds", 3)
     agents_state = dict(state.get("agents", {}))
 
+    rag_hints = state.get("rag_user_hints", [])
     interrupt_value = interrupt({
         "response": (
             f"[변론 라운드 {current_round}/{max_rounds}] "
             "주장을 입력하세요."
         ),
         "stage": "argument",
+        "user_hints": rag_hints,
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -889,12 +1009,21 @@ async def argument_node(state: MockTrialState) -> Command[str]:
     user_role = state.get("user_role", "prosecutor")
     court_record = _record(court_record, "argument", user_role, user_input)
 
-    # AI 반론 생성
+    # 매 라운드 반박용 경량 RAG 검색
+    rebuttal_ctx = await _build_rebuttal_context(
+        court_record, state.get("case_summary", "")
+    )
+    # 캐시된 역할별 RAG + 반박 RAG 결합
     opponent_role = _get_opponent_role(state)
+    cached_ctx = state.get(f"rag_{opponent_role}_context", "")
+    combined_ctx = f"{cached_ctx}\n\n{rebuttal_ctx}".strip()
+
+    # AI 반론 생성 (RAG 컨텍스트 전달)
     opponent = _get_agent(state, opponent_role)
     opponent.update_strategy(f"라운드 {current_round} 반론")
     rebuttal, argument_emotion = await opponent.generate(
-        "argument", state.get("case_summary", ""), court_record
+        "argument", state.get("case_summary", ""), court_record,
+        rag_context=combined_ctx,
     )
     llm_call_count += 1
     court_record = _record(court_record, "argument", opponent_role, rebuttal)
@@ -928,22 +1057,32 @@ async def civil_closing_node(state: MockTrialState) -> Command[str]:
     user_role = state.get("user_role", "prosecutor")
     agents_state = dict(state.get("agents", {}))
 
+    # RAG 컨텍스트 + 반박
+    rag_hints = state.get("rag_user_hints", [])
+    rebuttal_ctx = await _build_rebuttal_context(
+        court_record, state.get("case_summary", "")
+    )
+
     # 사용자 최종 주장
     interrupt_value = interrupt({
         "response": "최종 주장을 정리하여 진술해주세요.",
         "speaking_agent": "judge",
         "stage": "closing",
+        "user_hints": rag_hints,
         "actions": [],
     })
     user_stmt = str(interrupt_value)
     court_record = _record(court_record, "closing", user_role, user_stmt)
 
-    # AI 상대측 최종 주장
+    # AI 상대측 최종 주장 (캐시 RAG + 반박 결합)
     opponent_role = _get_opponent_role(state)
+    cached_ctx = state.get(f"rag_{opponent_role}_context", "")
+    combined_ctx = f"{cached_ctx}\n\n{rebuttal_ctx}".strip()
     opponent = _get_agent(state, opponent_role)
     opponent.update_strategy("최종 주장 정리")
     opponent_closing, civil_closing_emotion = await opponent.generate(
-        "closing", state.get("case_summary", ""), court_record
+        "closing", state.get("case_summary", ""), court_record,
+        rag_context=combined_ctx,
     )
     llm_call_count += 1
     court_record = _record(

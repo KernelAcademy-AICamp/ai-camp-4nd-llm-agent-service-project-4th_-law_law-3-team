@@ -51,6 +51,7 @@ class CourtAgent:
         stage: str,
         context: str,
         court_record: list[dict[str, Any]],
+        rag_context: str = "",
     ) -> tuple[str, str]:
         """에이전트 발언 생성
 
@@ -58,6 +59,7 @@ class CourtAgent:
             stage: 현재 재판 단계
             context: 사건 맥락 (case_summary + 현재 상황)
             court_record: 서기 기록 (이전 발언 내역)
+            rag_context: RAG 검색 결과 컨텍스트 (판례/법령)
 
         Returns:
             (생성된 발언 텍스트, 감정 태그) 튜플
@@ -70,6 +72,12 @@ class CourtAgent:
         prompt += f"[기억] {memory_context}\n\n"
         prompt += f"[현재 단계] {stage}\n\n"
         prompt += f"[사건 맥락] {context}\n\n"
+        if rag_context:
+            prompt += (
+                f"[참고 판례/법령]\n{rag_context}\n\n"
+                "위 판례와 법령을 근거로 주장을 펼치세요. "
+                "판례 번호와 법령 조문을 정확히 인용하세요.\n\n"
+            )
         prompt += f"[법정 기록]\n{self._format_record(court_record)}\n\n"
         prompt += "위 맥락을 바탕으로 발언하세요."
 

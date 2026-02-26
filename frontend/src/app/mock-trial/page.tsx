@@ -21,6 +21,7 @@ import type {
   CourtEvent,
   ReferenceItem,
   EvidenceItem,
+  UserHint,
   EmotionType,
   DialogueSpeed,
 } from '@/features/mock-trial/types'
@@ -67,6 +68,9 @@ export default function MockTrialPage() {
   const [evidenceArticles, setEvidenceArticles] = useState<EvidenceItem[]>([])
   const [selectedEvidenceIds, setSelectedEvidenceIds] = useState<Set<string>>(new Set())
   const [isEvidenceLoading, setIsEvidenceLoading] = useState(false)
+
+  // RAG 사용자 힌트
+  const [userHints, setUserHints] = useState<UserHint[]>([])
 
   // H5: 단계 가이드 표시
   const [showStageGuide, setShowStageGuide] = useState(true)
@@ -487,6 +491,7 @@ export default function MockTrialPage() {
                     onToggle={handleEvidenceToggle}
                     onSubmit={handleEvidenceSubmit}
                     isLoading={isEvidenceLoading}
+                    userHints={userHints}
                   />
                 ) : (
                   <ReferencePanel references={references} />

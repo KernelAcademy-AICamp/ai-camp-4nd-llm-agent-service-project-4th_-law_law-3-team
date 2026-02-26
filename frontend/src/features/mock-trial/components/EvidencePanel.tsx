@@ -1,6 +1,6 @@
 'use client'
 
-import type { EvidenceItem } from '../types'
+import type { EvidenceItem, UserHint } from '../types'
 
 interface EvidencePanelProps {
   cases: EvidenceItem[]
@@ -9,6 +9,7 @@ interface EvidencePanelProps {
   onToggle: (id: string) => void
   onSubmit: () => void
   isLoading: boolean
+  userHints?: UserHint[]
 }
 
 function EvidenceCard({
@@ -44,6 +45,32 @@ function EvidenceCard({
   )
 }
 
+function HintCard({ hint }: { hint: UserHint }) {
+  const scorePercent = Math.round(hint.relevance_score * 100)
+  const typeLabel = hint.type === 'case' ? '판례' : '법령'
+  const typeBg = hint.type === 'case' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+
+  return (
+    <div className="p-3 rounded-lg border border-amber-200 bg-amber-50">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-1.5">
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${typeBg}`}>
+            {typeLabel}
+          </span>
+          <h4 className="text-sm font-medium text-gray-800 line-clamp-1">
+            {hint.title}
+          </h4>
+        </div>
+        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 whitespace-nowrap">
+          {scorePercent}%
+        </span>
+      </div>
+      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{hint.summary}</p>
+      <p className="text-xs text-amber-600 mt-1.5 font-medium">{hint.suggestion}</p>
+    </div>
+  )
+}
+
 export function EvidencePanel({
   cases,
   articles,
@@ -51,6 +78,7 @@ export function EvidencePanel({
   onToggle,
   onSubmit,
   isLoading,
+  userHints = [],
 }: EvidencePanelProps) {
   if (isLoading) {
     return (
@@ -62,6 +90,20 @@ export function EvidencePanel({
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
+      {/* 사용자 힌트 */}
+      {userHints.length > 0 && (
+        <div className="p-3">
+          <h3 className="text-xs font-semibold text-amber-600 uppercase mb-2">
+            참고 자료 ({userHints.length}건)
+          </h3>
+          <div className="space-y-2">
+            {userHints.map((hint, index) => (
+              <HintCard key={`hint-${index}`} hint={hint} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 판례 */}
       {cases.length > 0 && (
         <div className="p-3">
@@ -100,7 +142,7 @@ export function EvidencePanel({
         </div>
       )}
 
-      {cases.length === 0 && articles.length === 0 && (
+      {cases.length === 0 && articles.length === 0 && userHints.length === 0 && (
         <div className="p-4 text-center text-sm text-gray-400">
           아직 검색된 증거가 없습니다
         </div>

@@ -85,6 +85,14 @@ export const DEFAULT_ROLE_EMOTION: Record<string, EmotionType> = {
 
 // ── 인터페이스 ──
 
+export interface UserHint {
+  type: 'case' | 'law'
+  title: string
+  summary: string
+  relevance_score: number
+  suggestion: string
+}
+
 export interface EvidenceItem {
   id: string
   title: string
