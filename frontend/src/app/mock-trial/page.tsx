@@ -11,6 +11,7 @@ import { ChatPanel } from '@/features/mock-trial/components/ChatPanel'
 import { ChatBottomBar } from '@/features/mock-trial/components/ChatBottomBar'
 import { ReferencePanel } from '@/features/mock-trial/components/ReferencePanel'
 import { EvidencePanel } from '@/features/mock-trial/components/EvidencePanel'
+import { ScenarioBriefing } from '@/features/mock-trial/components/ScenarioBriefing'
 import { eventBus } from '@/features/mock-trial/game/EventBus'
 import { ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import { DialogueControls } from '@/features/mock-trial/components/DialogueControls'
@@ -24,6 +25,7 @@ import type {
   UserHint,
   EmotionType,
   DialogueSpeed,
+  PhysicalEvidence,
 } from '@/features/mock-trial/types'
 import { CRIMINAL_STAGES, CIVIL_STAGES, DEFAULT_ROLE_EMOTION } from '@/features/mock-trial/types'
 import type { DemoScenario } from '@/features/mock-trial/demo/demo-scenarios'
@@ -36,7 +38,7 @@ const MockTrialGame = dynamic(
   { ssr: false }
 )
 
-type TrialPhase = 'setup' | 'trial' | 'verdict'
+type TrialPhase = 'setup' | 'briefing' | 'trial' | 'verdict'
 
 /** 데모 모드에서 mock AI 응답 간 딜레이 (ms) */
 const DEMO_RESPONSE_DELAY = 1200
@@ -68,6 +70,9 @@ export default function MockTrialPage() {
   const [evidenceArticles, setEvidenceArticles] = useState<EvidenceItem[]>([])
   const [selectedEvidenceIds, setSelectedEvidenceIds] = useState<Set<string>>(new Set())
   const [isEvidenceLoading, setIsEvidenceLoading] = useState(false)
+
+  // 물적 증거 (시나리오 기반)
+  const [physicalEvidence, setPhysicalEvidence] = useState<PhysicalEvidence[]>([])
 
   // RAG 사용자 힌트
   const [userHints, setUserHints] = useState<UserHint[]>([])
@@ -205,32 +210,37 @@ export default function MockTrialPage() {
     (scenario: DemoScenario) => {
       setIsDemoMode(true)
       setDemoScenario(scenario)
+      setPhysicalEvidence(scenario.evidence ?? [])
       demoInputIndexRef.current = {}
-
-      // setup 데이터로 바로 시작
-      const { setup } = scenario
-      handleSetupComplete({
-        caseType: setup.caseType,
-        caseCategory: setup.caseCategory,
-        userRole: setup.userRole,
-        caseSummary: setup.caseSummary,
-      })
-
-      // 첫 단계가 자동 진행 단계(userInputs 없음)이면 법정 입장 완료 후 재생
-      const firstStageId =
-        setup.caseType === 'criminal' ? 'identity' : 'pretrial'
-      const firstStage = scenario.stages.find(
-        (s) => s.stageId === firstStageId
-      )
-      if (firstStage && firstStage.userInputs.length === 0) {
-        const unsub = eventBus.on('court:entrance:complete', () => {
-          unsub()
-          playMockResponses(firstStage.mockResponses, firstStageId)
-        })
-      }
+      setPhase('briefing')
     },
-    [handleSetupComplete, playMockResponses]
+    []
   )
+
+  /** 브리핑 완료 → 재판 시작 */
+  const handleBriefingComplete = useCallback(() => {
+    if (!demoScenario) return
+    const { setup } = demoScenario
+    handleSetupComplete({
+      caseType: setup.caseType,
+      caseCategory: setup.caseCategory,
+      userRole: setup.userRole,
+      caseSummary: setup.caseSummary,
+    })
+
+    // 첫 단계가 자동 진행 단계(userInputs 없음)이면 법정 입장 완료 후 재생
+    const firstStageId =
+      setup.caseType === 'criminal' ? 'identity' : 'pretrial'
+    const firstStage = demoScenario.stages.find(
+      (s) => s.stageId === firstStageId
+    )
+    if (firstStage && firstStage.userInputs.length === 0) {
+      const unsub = eventBus.on('court:entrance:complete', () => {
+        unsub()
+        playMockResponses(firstStage.mockResponses, firstStageId)
+      })
+    }
+  }, [demoScenario, handleSetupComplete, playMockResponses])
 
   /** 데모 자동 입력 버튼 클릭 */
   const handleDemoInput = useCallback(() => {
@@ -492,6 +502,7 @@ export default function MockTrialPage() {
                     onSubmit={handleEvidenceSubmit}
                     isLoading={isEvidenceLoading}
                     userHints={userHints}
+                    physicalEvidence={physicalEvidence}
                   />
                 ) : (
                   <ReferencePanel references={references} />
@@ -576,6 +587,13 @@ export default function MockTrialPage() {
             <MockTrialSetup
               onComplete={handleSetupComplete}
               onDemoStart={handleDemoStart}
+            />
+          </div>
+        ) : phase === 'briefing' && demoScenario ? (
+          <div className="w-96 border-l border-gray-200 bg-white overflow-y-auto p-6">
+            <ScenarioBriefing
+              scenario={demoScenario}
+              onStart={handleBriefingComplete}
             />
           </div>
         ) : chatDisplayMode === 'panel' ? (

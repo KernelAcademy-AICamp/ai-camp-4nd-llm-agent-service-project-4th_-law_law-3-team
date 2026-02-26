@@ -1,6 +1,7 @@
 'use client'
 
-import type { EvidenceItem, UserHint } from '../types'
+import type { EvidenceItem, UserHint, PhysicalEvidence } from '../types'
+import { PHYSICAL_EVIDENCE_TYPE_LABEL } from '../types'
 
 interface EvidencePanelProps {
   cases: EvidenceItem[]
@@ -10,6 +11,7 @@ interface EvidencePanelProps {
   onSubmit: () => void
   isLoading: boolean
   userHints?: UserHint[]
+  physicalEvidence?: PhysicalEvidence[]
 }
 
 function EvidenceCard({
@@ -41,6 +43,41 @@ function EvidenceCard({
         </span>
       </div>
       <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.summary}</p>
+    </button>
+  )
+}
+
+function PhysicalEvidenceCard({
+  item,
+  isSelected,
+  onToggle,
+}: {
+  item: PhysicalEvidence
+  isSelected: boolean
+  onToggle: () => void
+}) {
+  const typeInfo = PHYSICAL_EVIDENCE_TYPE_LABEL[item.type]
+
+  return (
+    <button
+      onClick={onToggle}
+      className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+        isSelected
+          ? 'border-indigo-500 bg-indigo-50'
+          : 'border-gray-200 hover:border-gray-300'
+      }`}
+    >
+      <div className="flex items-center gap-1.5">
+        <span className="text-sm">{typeInfo.icon}</span>
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">
+          {typeInfo.label}
+        </span>
+        <h4 className="text-sm font-medium text-gray-800 flex-1 truncate">
+          {item.title}
+        </h4>
+      </div>
+      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.description}</p>
+      <p className="text-xs text-gray-400 mt-1 line-clamp-2">{item.detail}</p>
     </button>
   )
 }
@@ -79,6 +116,7 @@ export function EvidencePanel({
   onSubmit,
   isLoading,
   userHints = [],
+  physicalEvidence = [],
 }: EvidencePanelProps) {
   if (isLoading) {
     return (
@@ -90,6 +128,25 @@ export function EvidencePanel({
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
+      {/* 물적 증거 */}
+      {physicalEvidence.length > 0 && (
+        <div className="p-3">
+          <h3 className="text-xs font-semibold text-indigo-600 uppercase mb-2">
+            물적 증거 ({physicalEvidence.length}건)
+          </h3>
+          <div className="space-y-2">
+            {physicalEvidence.map((item) => (
+              <PhysicalEvidenceCard
+                key={item.id}
+                item={item}
+                isSelected={selectedIds.has(item.id)}
+                onToggle={() => onToggle(item.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 사용자 힌트 */}
       {userHints.length > 0 && (
         <div className="p-3">
@@ -142,14 +199,14 @@ export function EvidencePanel({
         </div>
       )}
 
-      {cases.length === 0 && articles.length === 0 && userHints.length === 0 && (
+      {cases.length === 0 && articles.length === 0 && userHints.length === 0 && physicalEvidence.length === 0 && (
         <div className="p-4 text-center text-sm text-gray-400">
           아직 검색된 증거가 없습니다
         </div>
       )}
 
       {/* 제출 버튼 */}
-      {(cases.length > 0 || articles.length > 0) && (
+      {(cases.length > 0 || articles.length > 0 || physicalEvidence.length > 0) && (
         <div className="p-3 border-t border-gray-100">
           <button
             onClick={onSubmit}

@@ -2,7 +2,7 @@
  * 모의 법정 데모 시나리오 데이터
  * 법률 도메인 지식 없이도 테스트할 수 있도록 사전 작성된 시나리오
  */
-import type { CaseType, CaseCategory, UserRole } from '../types'
+import type { CaseType, CaseCategory, UserRole, PhysicalEvidence } from '../types'
 
 interface DemoStage {
   stageId: string
@@ -10,6 +10,12 @@ interface DemoStage {
   userInputs: string[]
   /** AI 응답 시뮬레이션 (백엔드 미연결 시 사용) */
   mockResponses: { speaker: string; content: string }[]
+}
+
+export interface DemoCharacter {
+  role: string
+  name: string
+  description: string
 }
 
 export interface DemoScenario {
@@ -22,6 +28,12 @@ export interface DemoScenario {
     userRole: UserRole
     caseSummary: string
   }
+  /** 등장인물 정보 */
+  characters?: DemoCharacter[]
+  /** 사용자의 목표/미션 */
+  objectives?: string[]
+  /** 시나리오에 포함된 물적 증거물 */
+  evidence?: PhysicalEvidence[]
   stages: DemoStage[]
 }
 
@@ -38,6 +50,44 @@ const CRIMINAL_FRAUD_PROSECUTOR: DemoScenario = {
     caseSummary:
       '피고인 김모씨는 2025년 3월부터 6월까지 피해자 이모씨에게 "해외 부동산 투자로 월 10% 수익을 보장한다"고 허위 사실을 고지하여 총 5천만원을 편취하였습니다. 실제로는 투자 실체가 없었으며, 편취한 금원을 개인 채무 변제에 사용하였습니다.',
   },
+  characters: [
+    { role: 'judge', name: '재판장', description: '본 사건 담당 판사' },
+    { role: 'prosecutor', name: '검사 김민준', description: '공소 유지 담당 (사용자 역할)' },
+    { role: 'attorney', name: '변호인 박준호', description: '피고인 측 변호' },
+    { role: 'defendant', name: '피고인 김영수', description: '사기 혐의로 기소' },
+    { role: 'clerk', name: '서기', description: '재판 진행 보조' },
+  ],
+  objectives: [
+    '피고인의 사기 고의(편취 의도)를 입증하세요',
+    '허위 투자 설명서와 계좌 내역을 증거로 활용하세요',
+    '피고인 신문에서 진술의 허점을 찾아내세요',
+  ],
+  evidence: [
+    {
+      id: 'phys-fraud-1',
+      type: 'document',
+      title: '허위 투자 설명서',
+      description: '피고인이 피해자에게 제시한 해외 부동산 투자 설명서',
+      detail: '동남아시아 소재 부동산 프로젝트로 기재되어 있으나, 해당 프로젝트는 실존하지 않는 것으로 수사기관에 의해 확인됨.',
+      favorable_to: 'prosecutor',
+    },
+    {
+      id: 'phys-fraud-2',
+      type: 'financial',
+      title: '피고인 계좌 거래 내역',
+      description: '피해자로부터 입금된 5천만원의 사용처를 보여주는 계좌 이체 내역',
+      detail: '5천만원 전액이 입금 당일~3일 이내 개인 대출금 상환에 사용. 해외 투자 관련 출금 내역 없음.',
+      favorable_to: 'prosecutor',
+    },
+    {
+      id: 'phys-fraud-3',
+      type: 'document',
+      title: '가짜 수익 보고서',
+      description: '피고인이 피해자에게 보낸 월간 수익 보고서',
+      detail: '3개월간 월 8~12% 수익률을 기재했으나, 실제 투자 계좌가 존재하지 않음.',
+      favorable_to: 'prosecutor',
+    },
+  ],
   stages: [
     {
       stageId: 'identity',
@@ -164,6 +214,43 @@ const CIVIL_DAMAGES_PLAINTIFF: DemoScenario = {
     caseSummary:
       '2025년 4월 15일 서울 강남구 역삼동 교차로에서 피고 차량이 신호위반으로 원고 차량을 추돌하여 원고가 경추 염좌 및 요추 추간판 탈출증 진단을 받았습니다. 원고는 치료비 1,200만원, 휴업손해 800만원, 위자료 500만원 등 총 2,500만원의 손해배상을 청구합니다.',
   },
+  characters: [
+    { role: 'judge', name: '재판장', description: '본 사건 담당 판사' },
+    { role: 'prosecutor', name: '원고 대리인', description: '원고측 손해배상 청구 (사용자 역할)' },
+    { role: 'defendant', name: '피고 대리인', description: '피고측 과실 비율 다툼' },
+    { role: 'clerk', name: '서기', description: '재판 진행 보조' },
+  ],
+  objectives: [
+    '피고의 신호위반 과실을 입증하세요',
+    'CCTV 영상과 진단서를 증거로 활용하세요',
+    '원고의 과실 상계 비율을 최소화하는 논증을 펼치세요',
+  ],
+  evidence: [
+    {
+      id: 'phys-civil-1',
+      type: 'video',
+      title: '사고 현장 CCTV 영상',
+      description: '역삼동 교차로 CCTV에 기록된 사고 장면',
+      detail: '피고 차량이 적색 신호에 교차로에 진입하여 원고 차량 좌측면을 추돌하는 장면이 녹화됨.',
+      favorable_to: 'prosecutor',
+    },
+    {
+      id: 'phys-civil-2',
+      type: 'document',
+      title: '진단서 및 의료비 영수증',
+      description: '원고의 경추 염좌 및 요추 추간판 탈출증 진단서',
+      detail: '담당 전문의: "외부 충격에 의한 급성 발생으로 교통사고와의 인과관계 인정". 치료비 총 1,200만원.',
+      favorable_to: 'prosecutor',
+    },
+    {
+      id: 'phys-civil-3',
+      type: 'video',
+      title: '원고 차량 블랙박스 영상',
+      description: '사고 당시 원고 차량의 블랙박스에 기록된 속도계',
+      detail: '속도계가 약 75km/h를 표시. 해당 구간 제한속도 60km/h.',
+      favorable_to: 'attorney',
+    },
+  ],
   stages: [
     {
       stageId: 'pretrial',

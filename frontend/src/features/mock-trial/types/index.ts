@@ -83,6 +83,30 @@ export const DEFAULT_ROLE_EMOTION: Record<string, EmotionType> = {
   clerk: 'recording',
 }
 
+// ── 물적 증거 ──
+
+export type PhysicalEvidenceType = 'document' | 'video' | 'financial' | 'photo' | 'testimony' | 'other'
+
+export interface PhysicalEvidence {
+  id: string
+  type: PhysicalEvidenceType
+  title: string
+  description: string
+  /** 증거의 핵심 내용 요약 */
+  detail: string
+  /** 어느 편에 유리한 증거인지 */
+  favorable_to: 'prosecutor' | 'attorney' | 'neutral'
+}
+
+export const PHYSICAL_EVIDENCE_TYPE_LABEL: Record<PhysicalEvidenceType, { icon: string; label: string }> = {
+  document: { icon: '📄', label: '문서' },
+  video: { icon: '📹', label: '영상' },
+  financial: { icon: '🏦', label: '금융자료' },
+  photo: { icon: '📷', label: '사진' },
+  testimony: { icon: '🗣️', label: '진술' },
+  other: { icon: '📎', label: '기타' },
+}
+
 // ── 인터페이스 ──
 
 export interface UserHint {
