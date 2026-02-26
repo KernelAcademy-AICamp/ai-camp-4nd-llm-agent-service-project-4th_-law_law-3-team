@@ -97,6 +97,8 @@ bash "$CLAUDE_PROJECT_DIR/.claude/hooks/review-plan.sh" /tmp/plan_review_context
 
 ### 방법 B: 수동 실행 (스크립트 실패 시 Fallback)
 
+> **인증**: Gemini CLI는 `gemini auth` 기반 인증 사용 (API 키 아님)
+
 **Gemini CLI** (구조/아키텍처 관점):
 ```bash
 gemini "당신은 소프트웨어 아키텍트입니다. 다음 구현 플랜을 검토해주세요.

@@ -132,124 +132,131 @@ Codex CLI는 3단계 승인 정책을 제공합니다:
 
 > **주의**: `--full-auto`는 신뢰할 수 있는 작업에만 사용합니다.
 
-### 기본 사용법
+### ⚠ 대화형 vs 비대화형 모드 (Claude Code 필수 지식)
+
+Codex CLI는 두 가지 실행 모드가 있습니다:
+
+| 모드 | 명령어 | TTY 필요 | Claude Code Bash |
+|------|--------|---------|-----------------|
+| **대화형 (Interactive)** | `codex "prompt"` | **필수** (TUI 렌더링) | **실행 불가** ❌ |
+| **비대화형 (Non-interactive)** | `codex exec "prompt"` | 불필요 | **실행 가능** ✅ |
+| **비대화형 리뷰** | `codex review --uncommitted` | 불필요 | **실행 가능** ✅ |
+
+> **핵심**: Claude Code의 Bash 도구는 TTY(터미널)를 제공하지 않습니다.
+> 따라서 `codex "prompt"`, `codex -a on-failure "prompt"`, `codex /review` 등
+> **대화형 명령은 모두 `Error: stdin is not a terminal` 로 실패합니다.**
+> 반드시 `codex exec` 또는 `codex review` **서브커맨드**를 사용하세요.
+
+### 비대화형 기본 사용법 (Claude Code 환경)
 
 ```bash
-# 대화형 모드 (기본)
-codex
+# 비대화형 실행 (기본 — Claude Code에서 사용)
+codex exec "프롬프트 내용"
 
-# 비대화형 모드 (프롬프트 직접 전달)
-codex "프롬프트 내용"
+# 읽기 전용 샌드박스 (분석만, 수정 안 함)
+codex exec "프롬프트 내용" --ephemeral -s read-only
 
-# 출력만 (quiet 모드)
-codex -q "프롬프트 내용"
+# 자동 실행 (파일 수정 허용)
+codex exec --full-auto "프롬프트 내용"
+
+# 결과를 파일로 저장
+codex exec "프롬프트 내용" -o /tmp/codex-result.txt
 
 # 모델 지정
-codex --model o4-mini "프롬프트 내용"
-
-# 웹 검색 활성화
-codex --search "프롬프트 내용"
+codex exec -m o4-mini "프롬프트 내용"
 ```
 
-### 전용 /review 명령어 (GPT 5.2 강화)
+### 대화형 기본 사용법 (사용자 터미널에서만)
 
 ```bash
-# 기본 리뷰 (staged + unstaged + untracked)
-codex /review
+# ⚠ 아래 명령들은 사용자가 직접 터미널에서 실행할 때만 동작
+# Claude Code Bash 도구에서는 사용 금지
+
+codex                    # 대화형 TUI 시작
+codex "프롬프트 내용"     # 대화형 + 초기 프롬프트
+codex -q "프롬프트 내용"  # 대화형 quiet 모드
+codex /review            # 대화형 내장 /review 명령
+```
+
+### 코드 리뷰 패턴 (비대화형)
+
+```bash
+# 기본 리뷰 (uncommitted 변경 전체)
+codex review --uncommitted
 
 # 특정 베이스 브랜치 기준 리뷰
-codex /review --base main
-
-# 보안 중심 리뷰
-codex /review --instructions "보안 취약점에 집중해서 리뷰해줘. SQL 인젝션, XSS, 인증 우회를 중점 확인"
-
-# 성능 중심 리뷰
-codex /review --instructions "성능 이슈에 집중해줘. N+1 쿼리, 불필요한 루프, 메모리 누수를 확인"
-
-# 프로젝트 규칙 준수 리뷰
-codex /review --instructions "프로젝트 코딩 규칙(타입 힌트 필수, 함수 30줄 이하, snake_case) 준수 여부를 확인"
-```
-
-> **핵심**: `/review`는 단순 diff 분석이 아니라, **PR의 의도(intent)와 실제 변경(diff)이 일치하는지** 전체 코드베이스를 참조하여 추론합니다. 일반 프롬프트 리뷰보다 정밀합니다.
-
-### 코드 리뷰 패턴 (프롬프트 방식)
-
-```bash
-# 최근 커밋 리뷰
-codex "최근 커밋의 코드 변경사항을 리뷰해줘. 버그, 보안 취약점, 코드 품질 문제를 지적해줘."
+codex review --base main
 
 # 특정 커밋 리뷰
-codex "다음 커밋을 리뷰해줘: $(git log --oneline -1 HEAD). 변경된 코드의 품질, 보안, 성능 이슈를 분석해줘."
+codex review --commit HEAD
 
-# PR 리뷰 (GitHub CLI 연동)
-codex "$(gh pr diff 123) 이 PR의 변경사항을 리뷰해줘. 주요 변경점과 개선 제안을 정리해줘."
+# 커스텀 리뷰 지침 (codex exec 사용)
+codex exec "보안 취약점에 집중해서 리뷰해줘. SQL 인젝션, XSS, 인증 우회를 중점 확인.
+대상: $(git diff --name-only HEAD~1..HEAD | tr '\n' ' ')" --ephemeral -s read-only
 
-# staged 변경 리뷰
-codex "$(git diff --cached) 이 변경사항을 리뷰해줘. 커밋 전 검토 항목을 알려줘."
+# 성능 중심 리뷰 (codex exec 사용)
+codex exec "성능 이슈에 집중해줘. N+1 쿼리, 불필요한 루프, 메모리 누수를 확인.
+대상: $(git diff --name-only HEAD~1..HEAD | tr '\n' ' ')" --ephemeral -s read-only
 ```
 
-### 샌드박스 실행 패턴
+> **핵심**: `codex review`는 단순 diff 분석이 아니라, **PR의 의도(intent)와 실제 변경(diff)이 일치하는지** 전체 코드베이스를 참조하여 추론합니다.
+
+### 샌드박스 실행 패턴 (비대화형)
 
 ```bash
-# 읽기 전용 샌드박스 (네트워크 비활성) — Landlock 커널 레벨 격리
-codex --full-auto --sandbox read-only "tests/ 디렉토리의 테스트를 실행하고 결과를 알려줘"
+# 읽기 전용 샌드박스 — 분석/테스트 확인용
+codex exec --full-auto -s read-only "tests/ 디렉토리의 테스트를 실행하고 결과를 알려줘"
 
-# 쓰기 허용 샌드박스 (작업 디렉토리만)
-codex --full-auto --sandbox workspace-write "이 스크립트를 실행하고 출력 파일을 확인해줘"
+# 쓰기 허용 샌드박스 — 코드 수정 허용
+codex exec --full-auto -s workspace-write "이 스크립트를 실행하고 출력 파일을 확인해줘"
 
-# 네트워크 허용 샌드박스
-codex --full-auto --sandbox network "이 API 엔드포인트를 호출하고 응답을 확인해줘"
+# 전체 접근 (위험) — 네트워크 포함 허용
+codex exec --full-auto -s danger-full-access "이 API 엔드포인트를 호출하고 응답을 확인해줘"
 ```
 
-### 웹 검색 연동 패턴
+### 웹 검색 연동 패턴 (비대화형)
 
 ```bash
-# 최신 문서 기반 코딩 (--search 플래그)
-codex --search "Next.js 15의 최신 Server Actions 패턴을 검색하고, 우리 프로젝트에 적용할 수 있는 코드를 작성해줘"
-
-# 라이브러리 마이그레이션
-codex --search "Pydantic v2 마이그레이션 가이드를 검색하고, backend/app/modules/ 에 적용할 변경점을 정리해줘"
+# 최신 문서 기반 코딩
+codex exec "Next.js 15의 최신 Server Actions 패턴을 검색하고, 우리 프로젝트에 적용할 수 있는 코드를 작성해줘" --ephemeral
 
 # 보안 취약점 검색
-codex --search "최신 FastAPI 보안 취약점 CVE를 검색하고, 우리 프로젝트에 해당하는 항목을 확인해줘"
+codex exec "최신 FastAPI 보안 취약점 CVE를 검색하고, 우리 프로젝트에 해당하는 항목을 확인해줘" --ephemeral -s read-only
 ```
 
-### 수학/논리 추론 패턴 (GPT 5.2 신규)
+### 수학/논리 추론 패턴 (비대화형)
 
 ```bash
 # 통계 수식 검증
-codex "이 변호사 밀도 계산 함수의 수학적 정확성을 검증해줘. 공식: (변호사수 / 인구) * 100000"
+codex exec "이 변호사 밀도 계산 함수의 수학적 정확성을 검증해줘. 공식: (변호사수 / 인구) * 100000" --ephemeral -s read-only
 
 # 조건 분기 완전성 검증
-codex "이 라우팅 규칙(backend/app/multi_agent/routing/)의 모든 조건 분기가 빈틈없이 커버되는지 검증해줘"
-
-# 비즈니스 규칙 논리 검증
-codex "이 소액소송 가이드의 단계별 조건 분기에 논리적 모순이 없는지 확인해줘"
+codex exec "이 라우팅 규칙(backend/app/multi_agent/routing/)의 모든 조건 분기가 빈틈없이 커버되는지 검증해줘" --ephemeral -s read-only
 ```
 
-### 비대화형 자동화 패턴 (GPT 5.2 신규)
+### 비대화형 자동화 패턴
 
 ```bash
-# codex exec — CI/CD 파이프라인용 비대화형 실행
-codex exec "린트 결과를 분석하고 자동 수정 가능한 항목을 수정해줘"
+# codex exec — CI/CD 파이프라인 또는 Claude Code에서 사용
+codex exec "린트 결과를 분석하고 자동 수정 가능한 항목을 수정해줘" --full-auto
 
 # 배치 리뷰 (여러 커밋)
 for commit in $(git log --oneline -5 --format=%H); do
-  codex exec "커밋 $commit 을 리뷰하고 결과를 출력해줘"
+  codex exec "커밋 $commit 을 리뷰하고 결과를 출력해줘" --ephemeral -s read-only
 done
 
-# GitHub Actions 연동 예시
-# codex exec "$(gh pr diff $PR_NUMBER) 이 PR을 리뷰하고 결과를 JSON으로 출력해줘"
+# 결과를 파일로 저장
+codex exec "이 PR을 리뷰하고 결과를 JSON으로 출력해줘" -o /tmp/review-result.txt --ephemeral
 ```
 
-### stdin 파이핑 패턴
+### stdin 파이핑 패턴 (비대화형)
 
 ```bash
-# diff를 파이프로 전달
-git diff HEAD~3..HEAD | codex "이 변경사항들의 코드 리뷰를 수행해줘"
+# diff를 stdin으로 전달 (프롬프트에 - 사용)
+git diff HEAD~3..HEAD | codex exec -
 
 # 테스트 결과 전달
-uv run pytest --tb=short 2>&1 | codex "실패한 테스트의 원인을 분석하고 수정 방법을 제안해줘"
+uv run pytest --tb=short 2>&1 | codex exec - -s read-only
 ```
 
 ---

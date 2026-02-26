@@ -41,6 +41,22 @@ which gemini 2>/dev/null && echo "AVAILABLE" || echo "NOT_AVAILABLE"
 where gemini 2>nul && echo "AVAILABLE" || echo "NOT_AVAILABLE"
 ```
 
+### 인증 (Google Auth 사용)
+
+Gemini CLI는 **API 키가 아닌 Google Auth (OAuth)** 로 인증합니다.
+
+```bash
+# 인증 상태 확인
+gemini auth status
+
+# 인증 안 되어 있으면 로그인
+gemini auth login
+```
+
+- `GEMINI_API_KEY` 환경변수 사용 금지
+- 인증 실패 시 `gemini auth login` 안내 후 Fallback 전환
+- 세션 첫 Gemini 호출 전 인증 상태 확인 필수
+
 ### 모델 선택
 ```bash
 # 기본: 자동 라우팅 (작업 복잡도에 따라 Flash/Pro 자동 선택)
