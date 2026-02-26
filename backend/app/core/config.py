@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     NEO4J_PASSWORD: str = ""
 
     # PostgreSQL 그래프 서비스 사용 (True: PostgreSQL, False: Neo4j)
-    USE_PG_GRAPH: bool = False
+    USE_PG_GRAPH: bool = True
 
     # 변호사 데이터 소스 (True: PostgreSQL, False: JSON 파일)
     USE_DB_LAWYERS: bool = False

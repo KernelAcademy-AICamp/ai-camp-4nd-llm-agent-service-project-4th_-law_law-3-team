@@ -40,6 +40,8 @@ from app.models.statute_relation import StatuteRelation  # noqa: E402
 
 # 데이터 파일 경로
 DATA_DIR = PROJECT_ROOT.parent / "data"
+if not DATA_DIR.exists():
+    DATA_DIR = PROJECT_ROOT / "data"  # fallback: backend/data → project_root/data
 HIERARCHY_FILE = DATA_DIR / "law_hierarchy.json"
 ABBREVIATION_FILE = DATA_DIR / "law_abbreviations.json"
 CASE_FILE = DATA_DIR / "ingest_source" / "precedents_v2.json"

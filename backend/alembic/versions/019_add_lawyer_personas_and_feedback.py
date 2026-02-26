@@ -1,7 +1,7 @@
 """lawyer_personas + lawyer_persona_feedback 테이블 추가
 
-Revision ID: 016
-Revises: 015
+Revision ID: 019
+Revises: 018
 Create Date: 2026-02-22
 
 수정 내용:
@@ -15,8 +15,8 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers
-revision = "016"
-down_revision = "015"
+revision = "019"
+down_revision = "018"
 branch_labels = None
 depends_on = None
 
