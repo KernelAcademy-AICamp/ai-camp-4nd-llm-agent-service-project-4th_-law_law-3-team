@@ -71,11 +71,18 @@ def _get_openai_model(
     from langchain_openai import ChatOpenAI
 
     model_name = str(model or getattr(settings, "OPENAI_MODEL", "gpt-4o-mini"))
+    api_key = str(getattr(settings, "OPENAI_API_KEY", ""))
+
+    if not api_key:
+        raise ValueError(
+            "OPENAI_API_KEY가 설정되지 않았습니다. "
+            ".env 파일에 OPENAI_API_KEY를 설정해주세요."
+        )
 
     return ChatOpenAI(
         model=model_name,
         temperature=temperature,
-        api_key=str(settings.OPENAI_API_KEY),  # type: ignore[arg-type]
+        api_key=api_key,  # type: ignore[arg-type]
         request_timeout=settings.LLM_TIMEOUT_SECONDS,
         **kwargs,
     )

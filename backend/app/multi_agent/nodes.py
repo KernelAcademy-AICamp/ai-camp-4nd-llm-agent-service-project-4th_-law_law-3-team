@@ -247,7 +247,10 @@ def router_node(state: ChatState) -> Command[str]:
                 )
                 agent_override = None
         except ValueError:
-            pass  # 하위호환 키(legal_answer 등) → 검증 스킵
+            logger.warning(
+                "유효하지 않은 agent_override 값: %s — 검증 스킵",
+                agent_override,
+            )
 
     # 규칙 기반 라우팅 (1회만 호출)
     plan: AgentPlan | None = None

@@ -803,9 +803,7 @@ async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest) ->
     그래프 컨텍스트로 인용 법령 및 유사 판례 정보를 추가합니다.
     """
     try:
-        from openai import OpenAI
-
-        from app.core.config import settings
+        from app.tools.llm import get_chat_model
 
         # 판례 내용 조회
         store = get_vector_store()
@@ -841,9 +839,7 @@ async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest) ->
             except Exception as e:
                 logger.debug(f"그래프 컨텍스트 조회 실패: {e}")
 
-        # AI 응답 생성
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
-
+        # AI 응답 생성 (LLM 추상화 레이어 사용)
         system_prompt = """당신은 한국 법률 전문 AI 어시스턴트입니다.
 제공된 판례 내용을 바탕으로 사용자의 질문에 정확하고 도움이 되는 답변을 제공합니다.
 답변 시 판례의 핵심 내용을 인용하고, 쉬운 언어로 설명해주세요."""
@@ -864,19 +860,15 @@ async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest) ->
 
 위 판례 내용을 바탕으로 질문에 답변해주세요."""
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.7,
-            max_tokens=1000,
-        )
+        llm = get_chat_model(temperature=0.7)
+        ai_response = await llm.ainvoke([
+            ("system", system_prompt),
+            ("user", user_prompt),
+        ])
 
-        if not response.choices:
+        answer = str(ai_response.content) if ai_response.content else None
+        if not answer:
             raise HTTPException(status_code=503, detail="AI 응답이 없습니다")
-        answer = response.choices[0].message.content
 
         return AIQuestionResponse(
             answer=answer or "",

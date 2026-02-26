@@ -67,8 +67,7 @@ class CourtAgent:
         from app.tools.llm import get_chat_model
 
         memory_context = self._build_memory_context()
-        prompt = f"{self.system_prompt}\n\n"
-        prompt += f"[전략] {self.strategy}\n\n" if self.strategy else ""
+        prompt = f"[전략] {self.strategy}\n\n" if self.strategy else ""
         prompt += f"[기억] {memory_context}\n\n"
         prompt += f"[현재 단계] {stage}\n\n"
         prompt += f"[사건 맥락] {context}\n\n"

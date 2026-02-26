@@ -4,17 +4,16 @@
 """
 
 import logging
+import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from app.core.config import settings
-from app.services.rag import search_relevant_documents_async
 from app.services.document_service import DocumentService
-import uuid
-from pathlib import Path
+from app.services.rag import search_relevant_documents_async
 
 logger = logging.getLogger(__name__)
 
@@ -259,26 +258,17 @@ class RelatedCasesResponse(BaseModel):
     cases: List[RelatedCaseItem]
 
 
-# 기존 엔드포인트
+# 미구현 엔드포인트 — 추후 구현 예정
 @router.post("/interview/start")
 async def start_interview(case_type: str) -> dict[str, Any]:
-    """자연어 인터뷰 시작"""
-    return {
-        "session_id": "interview_session_id",
-        "case_type": case_type,
-        "next_question": "어떤 상황인지 자세히 말씀해 주세요.",
-    }
+    """자연어 인터뷰 시작 (미구현)"""
+    raise HTTPException(status_code=501, detail="인터뷰 기능은 현재 준비 중입니다")
 
 
 @router.post("/interview/{session_id}/answer")
 async def submit_answer(session_id: str, answer: str) -> dict[str, Any]:
-    """인터뷰 답변 제출"""
-    return {
-        "session_id": session_id,
-        "next_question": "상대방의 연락처나 계좌 정보를 알고 계신가요?",
-        "collected_info": {},
-        "is_complete": False,
-    }
+    """인터뷰 답변 제출 (미구현)"""
+    raise HTTPException(status_code=501, detail="인터뷰 기능은 현재 준비 중입니다")
 
 
 @router.post("/documents/generate")
@@ -286,11 +276,8 @@ async def generate_documents(
     session_id: str,
     document_types: List[str],
 ) -> dict[str, Any]:
-    """법률 서류 자동 생성 (내용증명, 지급명령신청서, 소액심판청구서)"""
-    return {
-        "session_id": session_id,
-        "documents": [],
-    }
+    """법률 서류 자동 생성 (미구현)"""
+    raise HTTPException(status_code=501, detail="서류 자동 생성 기능은 현재 준비 중입니다")
 
 
 @router.post("/evidence/upload")
@@ -299,21 +286,14 @@ async def upload_evidence(
     files: List[UploadFile] = File(...),
     evidence_type: str = "chat_log",
 ) -> dict[str, Any]:
-    """증거 자료 업로드"""
-    return {
-        "session_id": session_id,
-        "uploaded_files": [],
-    }
+    """증거 자료 업로드 (미구현)"""
+    raise HTTPException(status_code=501, detail="증거 업로드 기능은 현재 준비 중입니다")
 
 
 @router.post("/evidence/{session_id}/organize")
 async def organize_evidence(session_id: str) -> dict[str, Any]:
-    """증거 자료 타임라인 정리 및 PDF 변환"""
-    return {
-        "session_id": session_id,
-        "organized_pdf_url": "",
-        "timeline": [],
-    }
+    """증거 자료 타임라인 정리 및 PDF 변환 (미구현)"""
+    raise HTTPException(status_code=501, detail="증거 정리 기능은 현재 준비 중입니다")
 
 
 @router.get("/guide/{case_type}")
@@ -374,7 +354,7 @@ async def generate_document(request: DocumentGenerateRequest) -> DocumentRespons
     - complaint: 소액심판청구서
     """
     try:
-        from openai import OpenAI
+        from app.tools.llm import get_chat_model
 
         case_info = request.case_info
         document_type = request.document_type
@@ -389,25 +369,16 @@ async def generate_document(request: DocumentGenerateRequest) -> DocumentRespons
 
         template = render_template_for_case(case_info, today, document_type)
 
-        # AI로 본문 생성
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        # AI로 본문 생성 (LLM 추상화 레이어 사용)
+        llm = get_chat_model(temperature=0.5)
+        ai_response = await llm.ainvoke([
+            ("system", "당신은 한국 법률 문서 작성 전문가입니다. 사용자가 제공한 정보를 바탕으로 법적 효력이 있는 문서를 작성합니다."),
+            ("user", template["ai_prompt"]),
+        ])
 
-        response = client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "당신은 한국 법률 문서 작성 전문가입니다. 사용자가 제공한 정보를 바탕으로 법적 효력이 있는 문서를 작성합니다.",
-                },
-                {"role": "user", "content": template["ai_prompt"]},
-            ],
-            temperature=0.5,
-            max_tokens=800,
-        )
-
-        if not response.choices:
+        generated_body = str(ai_response.content) if ai_response.content else None
+        if not generated_body:
             raise HTTPException(status_code=503, detail="AI 응답이 없습니다")
-        generated_body = response.choices[0].message.content
 
         # 템플릿 섹션에 생성된 본문 추가
         template_sections = template["template_sections"].copy()
@@ -449,19 +420,19 @@ async def generate_document(request: DocumentGenerateRequest) -> DocumentRespons
         # PDF 생성
         try:
             doc_service = DocumentService()
-            
+
             # Save path: data/media/documents
             base_dir = Path("data/media/documents")
             base_dir.mkdir(parents=True, exist_ok=True)
-            
+
             filename = f"{document_type}_{uuid.uuid4()}.pdf"
             output_path = base_dir / filename
-            
+
             doc_service.generate_pdf_from_text(full_content, str(output_path))
-            
+
             # URL (mounted at /media)
             pdf_url = f"/media/documents/{filename}"
-            
+
         except Exception as e:
             logger.error(f"PDF 생성 실패: {e}")
             pdf_url = None
@@ -470,11 +441,11 @@ async def generate_document(request: DocumentGenerateRequest) -> DocumentRespons
         try:
             docx_filename = f"{document_type}_{uuid.uuid4()}.docx"
             docx_output_path = base_dir / docx_filename
-            
+
             doc_service.generate_docx_from_text(full_content, str(docx_output_path))
-            
+
             docx_url = f"/media/documents/{docx_filename}"
-            
+
         except Exception as e:
             logger.error(f"DOCX 생성 실패: {e}")
             docx_url = None

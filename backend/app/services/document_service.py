@@ -41,18 +41,21 @@ class DocumentService:
             from reportlab.pdfbase.ttfonts import TTFont
             from reportlab.pdfgen import canvas
 
-            # 한글 폰트 설정 (맑은 고딕 등 시스템 폰트 활용)
-            # 여기서는 편의상 기본 폰트나 시스템 폰트 경로를 지정해야 함
-            # 윈도우 환경이므로 Malgun Gothic 시도
+            # 한글 폰트 설정 (크로스 플랫폼)
+            font_name = "Helvetica"
             try:
-                font_path = Path("C:/Windows/Fonts/malgun.ttf")
-                if font_path.exists():
-                    pdfmetrics.registerFont(TTFont("Malgun", str(font_path)))
-                    font_name = "Malgun"
-                else:
-                    font_name = "Helvetica" # 한글 깨짐 주의 (폴백)
-            except Exception:
-                font_name = "Helvetica"
+                font_paths = [
+                    Path("C:/Windows/Fonts/malgun.ttf"),  # Windows
+                    Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),  # Linux
+                    Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),  # Mac
+                ]
+                for path in font_paths:
+                    if path.exists():
+                        pdfmetrics.registerFont(TTFont("KoreanFont", str(path)))
+                        font_name = "KoreanFont"
+                        break
+            except Exception as e:
+                logger.warning("폰트 로드 실패: %s", e)
 
             c = canvas.Canvas(output_path, pagesize=A4)
             c.setFont(font_name, 12)

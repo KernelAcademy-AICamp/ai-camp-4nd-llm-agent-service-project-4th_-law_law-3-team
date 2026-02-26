@@ -4,10 +4,13 @@
 규칙 기반 키워드 라우터 (RulesRouter)
 """
 
+import logging
 from enum import Enum
 from typing import Any
 
 from app.multi_agent.schemas.plan import AgentPlan
+
+logger = logging.getLogger(__name__)
 
 
 class AgentType(str, Enum):
@@ -292,7 +295,10 @@ class RulesRouter:
                         reason="세션 유지",
                     )
             except ValueError:
-                pass
+                logger.warning(
+                    "유효하지 않은 active_agent 값: %s — 세션 유지 무시",
+                    active_agent,
+                )
 
         # 2. 키워드 기반 Intent 감지 (신뢰도 점수 포함)
         if best_match:

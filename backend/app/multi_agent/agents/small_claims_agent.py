@@ -12,7 +12,6 @@ from app.multi_agent.agents.base_chat import ActionType, BaseChatAgent, ChatActi
 from app.multi_agent.schemas.plan import AgentResult
 from app.services.rag import search_relevant_documents_async
 from app.services.service_function import get_precedent_service
-from app.services.document_service import DocumentService
 
 logger = logging.getLogger(__name__)
 
@@ -324,55 +323,13 @@ class SmallClaimsAgent(BaseChatAgent):
             ]
 
         elif current_step == SmallClaimsStep.GATHER_DOC_INFO:
-            # Simple check for address info (naive implementation for Green phase)
-            response = "정보를 확인 중입니다..."
-            
-            # Update session with potentially new info from message
-            # In a real app, we would parse the message more carefully
-            if "주소" in message:
-                new_session["recipient_address"] = message # just dummy storage
-            
-            # Check if we have enough info to generate
-            # For this test, we assume if we are in this step and user sent a message, we try to generate
-            # if session has required fields.
-            
-            required = ["recipient", "sender", "content"]
-            if all(k in new_session for k in required):
-                try:
-                    service = DocumentService()
-                    # Prepare data for template
-                    doc_data = {
-                        "recipient": new_session.get("recipient"),
-                        "sender": new_session.get("sender"),
-                        "content": new_session.get("content"),
-                        # Add date etc.
-                    }
-                    
-                    # Generate PDF
-                    # In real app, save to a static/download folder
-                    output_path = f"data/demand_letter_{new_session.get('active_agent', 'temp')}.pdf"
-                    # Ensure directory exists
-                    import os
-                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    
-                    file_path = service.generate_demand_letter(doc_data, format="pdf", output_path=output_path)
-                    
-                    response = "내용증명 PDF가 생성되었습니다. 아래 버튼을 눌러 확인하세요."
-                    actions = [
-                        ChatAction(
-                            type=ActionType.LINK, 
-                            label="내용증명 다운로드",
-                            url=file_path, 
-                            action="download_file"
-                        ).model_dump()
-                    ]
-                    new_session["step"] = SmallClaimsStep.COMPLETE
-                except Exception as e:
-                    response = f"문서 생성 중 오류가 발생했습니다: {e}"
-                    actions = []
-            else:
-                 response = "필수 정보가 부족합니다. (수신인, 발신인, 내용)"
-                 actions = []
+            # 문서 정보 수집 단계 — 미구현 (추후 파싱 로직 구현 필요)
+            response = (
+                "죄송합니다. 문서 자동 생성 기능은 현재 준비 중입니다. "
+                "소장 양식은 대한법률구조공단(https://www.klac.or.kr)에서 "
+                "다운로드하실 수 있습니다."
+            )
+            actions = []
 
         else:
             response = STEP_MESSAGES[SmallClaimsStep.COURT]
