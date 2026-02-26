@@ -13,7 +13,7 @@ export class JurorSprite extends Phaser.GameObjects.Container {
   private sprite: Phaser.GameObjects.Sprite
   private reactionTween: Phaser.Tweens.Tween | null = null
 
-  constructor(scene: Phaser.Scene, x: number, y: number, index: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, index: number, facing: 'down' | 'left' | 'right' = 'down') {
     super(scene, x, y)
 
     const spriteKey = CHARACTER_SPRITE_KEYS.juror
@@ -22,8 +22,9 @@ export class JurorSprite extends Phaser.GameObjects.Container {
     this.sprite.setScale(JUROR_SCALE)
     this.sprite.setTint(JUROR_TINT_COLORS[index % JUROR_TINT_COLORS.length])
 
-    // idle 첫 프레임
-    const idleKey = animKey('juror', 'idle')
+    // idle 첫 프레임 (방향 적용)
+    const idleState = facing === 'down' ? 'idle' : `idle_${facing}`
+    const idleKey = animKey('juror', idleState)
     if (scene.anims.exists(idleKey)) {
       this.sprite.play(idleKey)
     }

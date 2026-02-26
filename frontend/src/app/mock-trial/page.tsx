@@ -216,16 +216,17 @@ export default function MockTrialPage() {
         caseSummary: setup.caseSummary,
       })
 
-      // 첫 단계가 자동 진행 단계(userInputs 없음)이면 mock 응답 자동 재생
+      // 첫 단계가 자동 진행 단계(userInputs 없음)이면 법정 입장 완료 후 재생
       const firstStageId =
         setup.caseType === 'criminal' ? 'identity' : 'pretrial'
       const firstStage = scenario.stages.find(
         (s) => s.stageId === firstStageId
       )
       if (firstStage && firstStage.userInputs.length === 0) {
-        setTimeout(() => {
+        const unsub = eventBus.on('court:entrance:complete', () => {
+          unsub()
           playMockResponses(firstStage.mockResponses, firstStageId)
-        }, 500)
+        })
       }
     },
     [handleSetupComplete, playMockResponses]

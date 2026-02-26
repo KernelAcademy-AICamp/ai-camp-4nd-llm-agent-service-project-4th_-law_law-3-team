@@ -7,6 +7,7 @@ import {
   COURT_BACKGROUND_COLOR,
   CHARACTER_POSITIONS,
   CHARACTER_NAMES,
+  CHARACTER_FACING,
   BUBBLE_OFFSETS,
 } from './config'
 import { CharacterBase } from './sprites/CharacterBase'
@@ -50,10 +51,12 @@ export class CourtScene extends Phaser.Scene {
     this.createSpeechBubbles()
     this.createStageIndicator()
     this.juryPanel = new JuryPanel(this)
-    this.setupEventListeners()
 
     // Phase 4: BGM
     this.audioManager.playBGM(ASSET_KEYS.BGM_COURT)
+
+    // 판사 입장 연출 (완료 후 이벤트 리스너 등록)
+    this.playJudgeEntrance()
   }
 
   private drawCourtBackground(): void {
@@ -187,8 +190,16 @@ export class CourtScene extends Phaser.Scene {
     const roles = ['judge', 'prosecutor', 'attorney', 'defendant', 'clerk']
     roles.forEach((role) => {
       const position = CHARACTER_POSITIONS[role]
-      const character = new CharacterBase(this, position.x, position.y, role)
+      const facing = CHARACTER_FACING[role] ?? 'down'
+      const character = new CharacterBase(this, position.x, position.y, role, facing)
       character.setDepth(10)
+
+      // 판사는 입장 시퀀스를 위해 화면 밖에서 대기
+      if (role === 'judge') {
+        character.setPosition(GAME_WIDTH + 60, position.y)
+        character.setAlpha(0)
+      }
+
       this.characters.set(role, character)
     })
   }
@@ -216,6 +227,56 @@ export class CourtScene extends Phaser.Scene {
       GAME_WIDTH - 100,
       stageNames
     )
+  }
+
+  /** 판사 입장 연출: 서기 안내 → 판사 걸어서 입장 → 개정 선언 */
+  private playJudgeEntrance(): void {
+    const clerk = this.characters.get('clerk')
+    const judge = this.characters.get('judge')
+    const clerkBubble = this.speechBubbles.get('clerk')
+
+    if (!clerk || !judge || !clerkBubble) return
+
+    // Step 1: 서기가 판사 입장을 안내
+    clerk.setSpeaking(true)
+    clerkBubble.show('서기', '전원 기립! 판사님 입장하십니다.', 'stern', true)
+
+    // Step 2: 판사가 오른쪽에서 걸어 들어옴
+    this.time.delayedCall(2500, () => {
+      clerkBubble.hide()
+      clerk.setSpeaking(false)
+
+      judge.setAlpha(1)
+      judge.playWalkAnimation('left')
+
+      const targetPos = CHARACTER_POSITIONS.judge
+      this.tweens.add({
+        targets: judge,
+        x: targetPos.x,
+        y: targetPos.y,
+        duration: 1500,
+        ease: 'Power2',
+        onComplete: () => {
+          judge.setPosition(targetPos.x, targetPos.y)
+          judge.stopWalkAnimation()
+
+          // Step 3: 서기가 개정을 선언
+          this.time.delayedCall(500, () => {
+            clerk.setSpeaking(true)
+            clerkBubble.show('서기', '지금부터 재판을 시작하겠습니다.', 'recording', true)
+
+            this.time.delayedCall(2500, () => {
+              clerkBubble.hide()
+              clerk.setSpeaking(false)
+
+              // 입장 연출 완료 후 이벤트 리스너 등록 + React에 알림
+              this.setupEventListeners()
+              eventBus.emit('court:entrance:complete', {} as Record<string, never>)
+            })
+          })
+        },
+      })
+    })
   }
 
   private setupEventListeners(): void {

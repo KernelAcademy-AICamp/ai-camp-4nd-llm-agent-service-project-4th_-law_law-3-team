@@ -8,6 +8,9 @@ import {
   LOBBY_ENTRANCE_SEQUENCE,
   ENTRANCE_WALK_DURATION,
   LOBBY_FLAGS,
+  LOBBY_DOOR_POSITION,
+  EXIT_WALK_DURATION,
+  EXIT_STAGGER_DELAY,
 } from './config'
 import { CharacterBase } from './sprites/CharacterBase'
 import { eventBus } from './EventBus'
@@ -110,9 +113,9 @@ export class LobbyScene extends Phaser.Scene {
     // Phase 4: BGM
     this.audioManager.playBGM(ASSET_KEYS.BGM_LOBBY)
 
-    // EventBus: setup:complete 수신 시 CourtScene 전환
+    // EventBus: setup:complete 수신 시 퇴장 → CourtScene 전환
     this.unsubscribe = eventBus.on('setup:complete', (data) => {
-      this.scene.start('CourtScene', {
+      this.playExitSequence({
         caseType: data.caseType,
         userRole: data.userRole,
         caseSummary: data.caseSummary,
@@ -137,11 +140,21 @@ export class LobbyScene extends Phaser.Scene {
       const assetKey = this.FLAG_ASSET_MAP[flag.id]
       if (!assetKey || !hasTexture(this, assetKey)) continue
 
-      const sprite = this.add.sprite(flag.x, flag.y, assetKey)
+      const sprite = this.add.sprite(flag.x, flag.y, assetKey, 0)
       sprite.setOrigin(0.15, 0)
       sprite.setScale(flag.scale)
       sprite.setDepth(flag.depth)
-      sprite.play(`${assetKey}-wave`)
+
+      // 깃대 고정, 깃발만 흔들리는 tween 효과
+      this.tweens.add({
+        targets: sprite,
+        scaleX: { from: flag.scale, to: flag.scale * 0.92 },
+        angle: { from: -1.5, to: 1.5 },
+        duration: 800 + Math.random() * 400,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      })
     }
   }
 
@@ -287,6 +300,42 @@ export class LobbyScene extends Phaser.Scene {
     g.fillEllipse(x, y - 8, 45, 35)
     g.fillStyle(0x388e3c, 1)
     g.fillEllipse(x + 3, y - 3, 35, 28)
+  }
+
+  // ── 캐릭터 퇴장 (법원 문으로 걸어 들어감) ──
+
+  private playExitSequence(sceneData: { caseType: string; userRole: string; caseSummary: string }): void {
+    this.lobbyCharacters.forEach((char, index) => {
+      const delay = index * EXIT_STAGGER_DELAY
+
+      const timerEvent = this.time.delayedCall(delay, () => {
+        char.playWalkAnimation('up')
+
+        const moveTween = this.tweens.add({
+          targets: char,
+          x: LOBBY_DOOR_POSITION.x,
+          y: LOBBY_DOOR_POSITION.y,
+          scaleX: 0.3,
+          scaleY: 0.3,
+          alpha: 0,
+          duration: EXIT_WALK_DURATION,
+          ease: 'Power2',
+        })
+        this.entranceTweens.push(moveTween)
+      })
+      this.delayedCalls.push(timerEvent)
+    })
+
+    const totalDelay =
+      this.lobbyCharacters.length * EXIT_STAGGER_DELAY + EXIT_WALK_DURATION + 300
+
+    const fadeTimer = this.time.delayedCall(totalDelay, () => {
+      this.cameras.main.fadeOut(500, 0, 0, 0)
+      this.cameras.main.once('camerafadeoutcomplete', () => {
+        this.scene.start('CourtScene', sceneData)
+      })
+    })
+    this.delayedCalls.push(fadeTimer)
   }
 
   // ── 캐릭터 입장 ──

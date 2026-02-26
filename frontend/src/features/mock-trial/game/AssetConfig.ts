@@ -71,11 +71,9 @@ export const EMOTION_FRAME_INDEX: Record<string, number> = {
 /** 감정 아이콘 프레임 크기 (px) */
 export const EMOTION_ICON_FRAME_SIZE = 24
 
-/** 국기 스프라이트시트 프레임 크기 (리사이즈 후: 704×384, 4프레임) */
-export const FLAG_FRAME_WIDTH = 176
-export const FLAG_FRAME_HEIGHT = 384
-export const FLAG_ANIM_FRAMES = 4
-export const FLAG_FRAME_RATE = 5
+/** 국기 스프라이트시트 프레임 크기 (2816×1536, 4프레임 → 첫 프레임만 표시 + tween) */
+export const FLAG_FRAME_WIDTH = 704
+export const FLAG_FRAME_HEIGHT = 1536
 
 /** NineSlice 슬라이스 크기 (px) */
 export const SPEECH_BUBBLE_SLICE = 8

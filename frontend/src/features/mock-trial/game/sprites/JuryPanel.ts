@@ -1,7 +1,7 @@
 /** 배심원단 관리 + 발언 반응 로직 */
 
 import Phaser from 'phaser'
-import { JURY_POSITIONS } from '../config'
+import { JURY_POSITIONS, JUROR_FACING } from '../config'
 import { JurorSprite } from './JurorSprite'
 import type { JurorReaction } from './JurorSprite'
 
@@ -39,7 +39,7 @@ export class JuryPanel {
     this.scene = scene
 
     JURY_POSITIONS.forEach((pos, index) => {
-      const juror = new JurorSprite(scene, pos.x, pos.y, index)
+      const juror = new JurorSprite(scene, pos.x, pos.y, index, JUROR_FACING)
       this.jurors.push(juror)
     })
   }

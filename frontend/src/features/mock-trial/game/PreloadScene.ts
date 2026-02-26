@@ -15,8 +15,6 @@ import {
   EMOTION_ICON_FRAME_SIZE,
   FLAG_FRAME_WIDTH,
   FLAG_FRAME_HEIGHT,
-  FLAG_ANIM_FRAMES,
-  FLAG_FRAME_RATE,
 } from './AssetConfig'
 
 export class PreloadScene extends Phaser.Scene {
@@ -137,7 +135,7 @@ export class PreloadScene extends Phaser.Scene {
     )
   }
 
-  /** Phase 5: 국기 스프라이트시트 */
+  /** Phase 5: 국기 스프라이트시트 (첫 프레임만 표시 + tween 흔들림) */
   private loadFlags(): void {
     this.load.spritesheet(ASSET_KEYS.FLAG_KOREA, ASSET_PATHS[ASSET_KEYS.FLAG_KOREA], {
       frameWidth: FLAG_FRAME_WIDTH,
@@ -205,21 +203,6 @@ export class PreloadScene extends Phaser.Scene {
       }
     }
 
-    // 국기 펄럭임 애니메이션
-    const flagKeys = [ASSET_KEYS.FLAG_KOREA, ASSET_KEYS.FLAG_COURT]
-    for (const flagKey of flagKeys) {
-      const key = `${flagKey}-wave`
-      if (this.anims.exists(key)) continue
-      this.anims.create({
-        key,
-        frames: this.anims.generateFrameNumbers(flagKey, {
-          start: 0,
-          end: FLAG_ANIM_FRAMES - 1,
-        }),
-        frameRate: FLAG_FRAME_RATE,
-        repeat: -1,
-        yoyo: true,
-      })
-    }
+    // 국기: tween 기반 흔들림 (PreloadScene에서 애니메이션 등록 불필요)
   }
 }

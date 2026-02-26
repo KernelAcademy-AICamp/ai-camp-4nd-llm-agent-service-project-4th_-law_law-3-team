@@ -23,10 +23,12 @@ export class CharacterBase extends Phaser.GameObjects.Container {
   private breathTween: Phaser.Tweens.Tween | null = null
   private emotionFloatTween: Phaser.Tweens.Tween | null = null
   private useEmotionSprite: boolean
+  private facing: 'down' | 'left' | 'right'
 
-  constructor(scene: Phaser.Scene, x: number, y: number, role: string) {
+  constructor(scene: Phaser.Scene, x: number, y: number, role: string, facing: 'down' | 'left' | 'right' = 'down') {
     super(scene, x, y)
     this.role = role
+    this.facing = facing
     this.useEmotionSprite = hasTexture(scene, ASSET_KEYS.EMOTION_ICONS)
 
     const name = CHARACTER_NAMES[role] ?? role
@@ -36,7 +38,7 @@ export class CharacterBase extends Phaser.GameObjects.Container {
     this.characterSprite = scene.add.sprite(0, 0, spriteKey)
     this.characterSprite.setOrigin(0.5, 1.0)
 
-    const idleAnimKey = animKey(role, 'idle')
+    const idleAnimKey = animKey(role, this.facingState('idle'))
     if (scene.anims.exists(idleAnimKey)) {
       this.characterSprite.play(idleAnimKey)
     }
@@ -117,7 +119,7 @@ export class CharacterBase extends Phaser.GameObjects.Container {
   }
 
   stopWalkAnimation(): void {
-    const idleKey = animKey(this.role, 'idle')
+    const idleKey = animKey(this.role, this.facingState('idle'))
     if (this.scene.anims.exists(idleKey)) {
       this.characterSprite.play(idleKey)
     } else {
@@ -125,10 +127,16 @@ export class CharacterBase extends Phaser.GameObjects.Container {
     }
   }
 
+  /** 방향 접미사를 붙인 상태 키 반환 (down이면 접미사 없음) */
+  private facingState(state: string): string {
+    if (this.facing === 'down') return state
+    return `${state}_${this.facing}`
+  }
+
   private renderState(state: CharacterState): void {
     if (this.currentState === state) return
     this.currentState = state
-    const key = animKey(this.role, state)
+    const key = animKey(this.role, this.facingState(state))
     if (this.scene.anims.exists(key)) {
       this.characterSprite.play(key)
     }

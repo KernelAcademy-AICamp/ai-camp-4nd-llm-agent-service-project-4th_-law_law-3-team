@@ -10,6 +10,9 @@ export interface EventMap {
   'trial:complete': { judgment: string; feedback: string }
   'game:ready': Record<string, never>
 
+  // Phaser -> React (법정 준비 완료)
+  'court:entrance:complete': Record<string, never>
+
   // React -> Phaser
   'user:input': { text: string }
   'user:select_evidence': { evidenceIds: string[] }

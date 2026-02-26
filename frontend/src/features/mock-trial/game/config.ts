@@ -8,7 +8,7 @@ export const PIXEL_SIZE = 4
 
 /** LPC 스프라이트 스케일 */
 export const CHARACTER_SCALE = 1.0
-export const JUROR_SCALE = 0.55
+export const JUROR_SCALE = 1.0
 
 /** 캐릭터 색상 (Graphics API 플레이스홀더) */
 export const CHARACTER_COLORS: Record<string, number> = {
@@ -33,11 +33,11 @@ export const COURT_BACKGROUND_COLOR = 0xf5f0e8
 
 /** 법정 내 캐릭터 배치 좌표 (LPC 스프라이트 발 앵커 기준, 타일맵 오버라이드 가능) */
 export const CHARACTER_POSITIONS: Record<string, { x: number; y: number }> = {
-  judge: { x: 400, y: 172 },
-  prosecutor: { x: 200, y: 292 },
-  attorney: { x: 560, y: 292 },
-  defendant: { x: 400, y: 372 },
-  clerk: { x: 120, y: 172 },
+  judge: { x: 400, y: 130 },
+  prosecutor: { x: 200, y: 320 },
+  attorney: { x: 600, y: 320 },
+  defendant: { x: 400, y: 390 },
+  clerk: { x: 210, y: 160 },
 }
 
 /** 캐릭터별 말풍선 앵커 오프셋 (LPC 스프라이트 발 앵커 기준, 머리 위) */
@@ -49,13 +49,29 @@ export const BUBBLE_OFFSETS: Record<string, { x: number; y: number }> = {
   clerk: { x: 0, y: -75 },
 }
 
-/** 배심원 4명 좌표 (우측 배치) */
+/** 배심원 8명 좌표 (우측 배심원석 2열 배치) */
 export const JURY_POSITIONS: { x: number; y: number }[] = [
-  { x: 710, y: 150 },
-  { x: 760, y: 150 },
-  { x: 710, y: 200 },
-  { x: 760, y: 200 },
+  { x: 680, y: 180 },
+  { x: 750, y: 180 },
+  { x: 680, y: 210 },
+  { x: 750, y: 210 },
+  { x: 680, y: 260 },
+  { x: 750, y: 260 },
+  { x: 680, y: 290 },
+  { x: 750, y: 290 },
 ]
+
+/** 법정 내 캐릭터 바라보는 방향 */
+export const CHARACTER_FACING: Record<string, 'down' | 'left' | 'right'> = {
+  judge: 'down',
+  prosecutor: 'right',
+  attorney: 'left',
+  defendant: 'down',
+  clerk: 'down',
+}
+
+/** 배심원 바라보는 방향 */
+export const JUROR_FACING: 'down' | 'left' | 'right' = 'left'
 
 /** 로비 캐릭터 최종 도착 위치 (건물 앞 하단, LPC 발 앵커 기준) */
 export const LOBBY_CHARACTER_POSITIONS: Record<string, { x: number; y: number }> = {
@@ -88,8 +104,17 @@ export const ENTRANCE_WALK_DURATION = 1200
 /** squash&stretch 주기 (ms) */
 export const ENTRANCE_BOUNCE_PERIOD = 150
 
+/** 로비 법원 문 위치 (캐릭터 퇴장 목표) */
+export const LOBBY_DOOR_POSITION = { x: 400, y: 280 }
+
+/** 퇴장 이동 시간 (ms) */
+export const EXIT_WALK_DURATION = 1000
+
+/** 퇴장 캐릭터 간 지연 (ms) */
+export const EXIT_STAGGER_DELAY = 300
+
 /** 로비 국기 애니메이션 배치 (배경 위 오버레이, 브라우저에서 미세 조정) */
 export const LOBBY_FLAGS: { id: string; x: number; y: number; scale: number; depth: number }[] = [
-  { id: 'korea', x: 274, y: 108, scale: 0.44, depth: 3 },
-  { id: 'court', x: 274, y: 132, scale: 0.40, depth: 2 },
+  { id: 'korea', x: 175, y: 108, scale: 0.11, depth: 3 },
+  { id: 'court', x: 274, y: 132, scale: 0.10, depth: 2 },
 ]
