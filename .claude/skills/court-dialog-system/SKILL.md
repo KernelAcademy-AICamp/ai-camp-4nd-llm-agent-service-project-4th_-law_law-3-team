@@ -29,9 +29,29 @@ export class SpeechBubble extends Phaser.GameObjects.Container {
 const BUBBLE_PADDING = 12    // 내부 여백 (px)
 const BUBBLE_RADIUS = 8      // 모서리 라운드 (px)
 const MAX_WIDTH = 260         // 최대 너비 (px) → 자동 줄바꿈
-const TYPING_SPEED = 30       // 타이핑 속도 (ms/글자)
 const FONT_SIZE = 13          // 글자 크기 (px)
+
+// config.ts
+const MAX_BUBBLE_HEIGHT = 120 // 말풍선 최대 높이 (px)
+const MAX_TEXT_HEIGHT = 80    // 텍스트 영역 최대 높이 (~4-5줄)
+const BASE_TYPING_SPEED = 30  // 타이핑 기본 속도 (ms/글자)
 ```
+
+### 1.2a 페이지 분할 + 대화 진행
+
+SpeechBubble은 긴 텍스트를 `MAX_TEXT_HEIGHT` 기준으로 페이지로 분할합니다.
+
+```typescript
+// 핵심 API
+show(name, text, emotion?, immediate?)  // 페이지 분할 후 첫 페이지 표시
+advance(): boolean  // 타이핑 완료 → 다음 페이지 → true(모든 페이지 완료)
+completeTyping()    // 현재 페이지 타이핑 즉시 완료
+setTypingSpeed(ms)  // 속도 동적 변경 (0=instant)
+hasNextPage()       // 다음 페이지 존재 여부
+isComplete()        // 타이핑 완료 여부
+```
+
+다음 페이지가 있을 때 ▼ 인디케이터가 깜빡입니다.
 
 ### 1.3 showText 메서드
 
@@ -575,8 +595,11 @@ interface DemoStage {
 1. 데모 모드 선택 → DemoScenario 로드
 2. setup 데이터 → eventBus.emit('setup:complete', setup)
 3. 각 stage 순회:
-   a. mockResponses → eventBus.emit('agent:speak', { speaker, content })
+   a. mockResponses → eventBus.emit('dialogue:enqueue', { agent, text, emotion })
+      → DialogueController가 큐 관리 + SpeechBubble 페이지 분할
+      → 내부에서 agent:speak emit (ChatPanel 호환)
    b. userInputs → 자동 입력 시뮬레이션
+   c. dialogue:queue:empty → setIsWaiting(false)
 4. verdict 단계 → 판결 표시 + trial:complete
 ```
 
@@ -740,14 +763,16 @@ const clampedY = Math.max(0, bubbleY)
 
 ## 12. 파일 참조 인덱스
 
-| 파일 | 줄 수 | 핵심 역할 |
-|------|------|----------|
-| `game/ui/SpeechBubble.ts` | 100 | 말풍선 UI (타이핑 효과, 배경 그리기) |
-| `game/sprites/CharacterBase.ts` | 92 | 캐릭터 Container (상태 머신, Tween) |
-| `game/sprites/PixelCharacterRenderer.ts` | 271 | 5개 역할 x 2상태 PixelGrid + 렌더링 함수 |
-| `game/sprites/JuryPanel.ts` | 109 | 배심원단 관리 (반응 규칙, 키워드 트리거) |
-| `game/sprites/JurorSprite.ts` | 131 | 개별 배심원 (8x10 그리드, 6종 반응 Tween) |
-| `game/ui/StageIndicator.ts` | 89 | 단계 표시 바 (진행 점, 색상 분기) |
-| `game/config.ts` | 45 | 상수 (크기, 색상, 좌표) |
-| `demo/demo-scenarios.ts` | 265 | 데모 시나리오 2개 (형사/민사) |
-| `types/index.ts` | 237 | 타입 정의 + 단계 상수 (법적 근거 포함) |
+| 파일 | 핵심 역할 |
+|------|----------|
+| `game/ui/SpeechBubble.ts` | 말풍선 UI (페이지 분할, advance, setTypingSpeed, ▼ 인디케이터) |
+| `game/DialogueController.ts` | 대화 큐 관리, 속도 제어 (normal/fast/faster/instant), 스킵, Space 키 |
+| `game/sprites/CharacterBase.ts` | 캐릭터 Container (상태 머신, Tween) |
+| `game/sprites/PixelCharacterRenderer.ts` | 5개 역할 x 2상태 PixelGrid + 렌더링 함수 |
+| `game/sprites/JuryPanel.ts` | 배심원단 관리 (반응 규칙, 키워드 트리거) |
+| `game/sprites/JurorSprite.ts` | 개별 배심원 (8x10 그리드, 6종 반응 Tween) |
+| `game/ui/StageIndicator.ts` | 단계 표시 바 (진행 점, 색상 분기) |
+| `game/config.ts` | 상수 (크기, 색상, 좌표, 말풍선 높이 제한, 타이핑 속도) |
+| `components/DialogueControls.tsx` | 대화 속도(1x/2x/4x/즉시) + 스킵 버튼 React UI |
+| `demo/demo-scenarios.ts` | 데모 시나리오 2개 (형사/민사) |
+| `types/index.ts` | 타입 정의 (DialogueSpeed 포함) + 단계 상수 (법적 근거 포함) |

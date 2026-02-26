@@ -1,6 +1,6 @@
 /** Phaser <-> React 이벤트 통신 버스 */
 
-import type { EvidenceItem, EmotionType } from '../types'
+import type { EvidenceItem, EmotionType, DialogueSpeed } from '../types'
 
 export interface EventMap {
   // Phaser -> React
@@ -12,6 +12,15 @@ export interface EventMap {
 
   // Phaser -> React (법정 준비 완료)
   'court:entrance:complete': Record<string, never>
+
+  // Phaser -> React (대화 큐 비었음)
+  'dialogue:queue:empty': Record<string, never>
+
+  // React -> Phaser (대화 컨트롤)
+  'dialogue:enqueue': { agent: string; text: string; emotion?: EmotionType }
+  'dialogue:set_speed': { speed: DialogueSpeed }
+  'dialogue:advance': Record<string, never>
+  'dialogue:skip': Record<string, never>
 
   // React -> Phaser
   'user:input': { text: string }

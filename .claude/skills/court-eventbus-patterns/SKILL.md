@@ -53,19 +53,25 @@ export const eventBus = new CourtEventBus()
 
 ## 2. EventMap 타입 시스템
 
-### 2.1 현재 이벤트 정의 (10개)
+### 2.1 현재 이벤트 정의 (16개)
 
 ```typescript
-// 참조: EventBus.ts:5-19
+// 참조: EventBus.ts
 export interface EventMap {
-  // Phaser → React (5개)
-  'agent:speak': { agent: string; text: string; streaming: boolean }
+  // Phaser → React (6개)
+  'agent:speak': { agent: string; text: string; streaming: boolean; emotion?: EmotionType }
   'stage:change': { from: string; to: string; stageNumber: number; totalStages: number }
   'evidence:presented': { cases: EvidenceItem[]; articles: EvidenceItem[] }
   'trial:complete': { judgment: string; feedback: string }
   'game:ready': Record<string, never>
+  'court:entrance:complete': Record<string, never>
+  'dialogue:queue:empty': Record<string, never>
 
-  // React → Phaser (5개)
+  // React → Phaser (9개)
+  'dialogue:enqueue': { agent: string; text: string; emotion?: EmotionType }
+  'dialogue:set_speed': { speed: DialogueSpeed }
+  'dialogue:advance': Record<string, never>
+  'dialogue:skip': Record<string, never>
   'user:input': { text: string }
   'user:select_evidence': { evidenceIds: string[] }
   'game:advance_stage': Record<string, never>
@@ -79,9 +85,11 @@ export interface EventMap {
 | 접두사 | 방향 | 예시 |
 |--------|------|------|
 | `agent:` | 양방향 | `agent:speak` (P→R), `agent:animate` (R→P) |
+| `dialogue:` | 양방향 | `dialogue:enqueue` (R→P), `dialogue:queue:empty` (P→R) |
 | `stage:` | P→R | `stage:change` |
 | `evidence:` | P→R | `evidence:presented` |
 | `trial:` | P→R | `trial:complete` |
+| `court:` | P→R | `court:entrance:complete` |
 | `game:` | 양방향 | `game:ready` (P→R), `game:advance_stage` (R→P) |
 | `user:` | R→P | `user:input`, `user:select_evidence` |
 | `setup:` | R→P | `setup:complete` |
@@ -123,28 +131,23 @@ eventBus.emit('agent:speak', {
 })
 ```
 
-**CourtScene 내부 처리** (참조: CourtScene.ts:137-153):
+**CourtScene 내부 처리** (DialogueController 경유):
 ```typescript
-eventBus.on('agent:speak', (data) => {
-  // 1. 이전 말풍선 숨기기
-  this.speechBubbles.forEach((bubble) => bubble.hide())
-  this.characters.forEach((char) => char.setSpeaking(false))
-
-  // 2. 해당 캐릭터 말풍선 표시
-  const bubble = this.speechBubbles.get(data.agent)
-  if (bubble) {
-    bubble.showText(data.text, !data.streaming)
-  }
-
-  // 3. 캐릭터 애니메이션
-  const character = this.characters.get(data.agent)
-  if (character) {
-    character.setSpeaking(true)
-  }
-
-  // 4. 배심원 반응
-  this.juryPanel?.reactToSpeech(data.agent, data.text)
+// React → dialogue:enqueue → DialogueController.enqueue()
+eventBus.on('dialogue:enqueue', (data) => {
+  this.dialogueController?.enqueue({
+    agent: data.agent,
+    text: data.text,
+    emotion: data.emotion,
+  })
 })
+
+// DialogueController.processNext() 내부에서:
+// 1. 이전 말풍선 숨기기 + 캐릭터 초기화
+// 2. SpeechBubble.show() (페이지 분할 + 타이핑)
+// 3. 캐릭터 애니메이션 + 감정 아이콘
+// 4. 배심원 반응
+// 5. eventBus.emit('agent:speak') → ChatPanel 호환
 ```
 
 ### 3.2 stage:change
@@ -539,10 +542,23 @@ class CourtEventBus {
   → scene.start('CourtScene', data)
   → [game:ready 아님 - CourtScene에서는 별도 emit 없음]
 
-[agent:speak] 백엔드응답 → CourtScene
-  → speechBubble.showText()
-  → character.setSpeaking(true)
+[dialogue:enqueue] React → DialogueController.enqueue()
+  → processNext() → SpeechBubble.show() (페이지 분할)
+  → character.setSpeaking(true) + setEmotion()
   → juryPanel.reactToSpeech()
+  → eventBus.emit('agent:speak') (ChatPanel 호환)
+
+[dialogue:advance] React(Space키) → DialogueController.handleAdvance()
+  → bubble.advance() → 타이핑 완료 / 다음 페이지 / 다음 대화
+
+[dialogue:set_speed] React → DialogueController.setSpeed()
+  → bubble.setTypingSpeed() (현재 말풍선에도 즉시 적용)
+
+[dialogue:skip] React → DialogueController.skipAll()
+  → 큐 전체 스킵, agent:speak emit (ChatPanel 기록 유지)
+
+[dialogue:queue:empty] DialogueController → React
+  → setIsWaiting(false)
 
 [stage:change] 백엔드/로직 → CourtScene
   → stageIndicator.setCurrentStage()

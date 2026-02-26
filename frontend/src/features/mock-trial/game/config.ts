@@ -42,11 +42,11 @@ export const CHARACTER_POSITIONS: Record<string, { x: number; y: number }> = {
 
 /** 캐릭터별 말풍선 앵커 오프셋 (LPC 스프라이트 발 앵커 기준, 머리 위) */
 export const BUBBLE_OFFSETS: Record<string, { x: number; y: number }> = {
-  judge: { x: 0, y: -80 },
-  prosecutor: { x: 0, y: -75 },
-  attorney: { x: 0, y: -75 },
-  defendant: { x: 0, y: -75 },
-  clerk: { x: 0, y: -75 },
+  judge: { x: 30, y: -120 },
+  prosecutor: { x: 30, y: -120 },
+  attorney: { x: 30, y: -120 },
+  defendant: { x: 30, y: -120 },
+  clerk: { x: 30, y: -120 },
 }
 
 /** 배심원 8명 좌표 (우측 배심원석 2열 배치) */
@@ -112,6 +112,15 @@ export const EXIT_WALK_DURATION = 1000
 
 /** 퇴장 캐릭터 간 지연 (ms) */
 export const EXIT_STAGGER_DELAY = 300
+
+/** 말풍선 최대 높이 (px) */
+export const MAX_BUBBLE_HEIGHT = 120
+
+/** 말풍선 내 텍스트 영역 최대 높이 (~4-5줄) */
+export const MAX_TEXT_HEIGHT = 80
+
+/** 타이핑 기본 속도 (ms/글자) */
+export const BASE_TYPING_SPEED = 30
 
 /** 로비 국기 애니메이션 배치 (배경 위 오버레이, 브라우저에서 미세 조정) */
 export const LOBBY_FLAGS: { id: string; x: number; y: number; scale: number; depth: number }[] = [

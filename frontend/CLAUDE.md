@@ -91,6 +91,7 @@ src/features/<module-name>/
 - `MockTrialSetup` - 사건 입력 및 게임 설정
 - `ChatPanel` - AI 에이전트 채팅 (검사/변호사/판사), 감정 이모지 표시
 - `ChatBottomBar` - 하단 입력바, 최근 AI 발언 + 감정 이모지
+- `DialogueControls` - 대화 속도(1x/2x/4x/즉시) + 스킵 버튼 + Space 안내
 - `ReferencePanel` - 법률 참조 패널
 - `EvidencePanel` - 증거 표시
 - `JudgmentDisplay` - 판결 결과
@@ -102,16 +103,17 @@ src/features/<module-name>/
 씬 체인: `PreloadScene` → `LobbyScene` → `CourtScene`
 
 - `PreloadScene` - 에셋 로딩 (스프라이트시트, 배경, 오디오, 타일맵) + 애니메이션 등록
-- `CourtScene` - 법정 씬 (타일맵 → 배경이미지 → Graphics 3단계 fallback)
+- `CourtScene` - 법정 씬 (타일맵 → 배경이미지 → Graphics 3단계 fallback), DialogueController 통합
 - `LobbyScene` - 로비 씬 (대법원 배경 + 국기 펄럭임 오버레이 + 캐릭터 입장 시퀀스)
-- `EventBus` - 이벤트 시스템 (`agent:speak`에 `emotion` 필드 포함)
+- `DialogueController` - 대화 큐 관리, 속도 제어(normal/fast/faster/instant), 스킵, Space 키 바인딩
+- `EventBus` - 이벤트 시스템 (`agent:speak` + `dialogue:enqueue/set_speed/advance/skip/queue:empty`)
 - `AssetConfig` - 에셋 키/경로/프레임 크기 중앙 관리, `hasTexture()` fallback 헬퍼
 - `AudioManager` - BGM/SFX 관리 (에셋 없으면 무음 fallback)
-- `config` - 게임 레이아웃 상수 (캐릭터 위치, 국기 위치/스케일, 입장 시퀀스)
+- `config` - 게임 레이아웃 상수 (캐릭터 위치, 국기 위치/스케일, 입장 시퀀스, 말풍선 높이 제한)
 - `sprites/LpcSpriteConfig` - LPC 스프라이트시트 설정 (832x1344, 13열x21행, 64px 프레임)
 - `sprites/CharacterBase` - LPC 스프라이트 캐릭터 (walk/speak/react/idle + 감정 아이콘)
 - `sprites/EmotionIconRenderer` - 8x8 도트 스프라이트 감정 아이콘 (PIXEL_SIZE=3, 24x24px)
-- `ui/SpeechBubble` - 말풍선 (NineSlice 이미지 또는 Graphics fallback + 타이핑 효과)
+- `ui/SpeechBubble` - 말풍선 (NineSlice/Graphics fallback + 타이핑 + 페이지 분할 + ▼ 인디케이터)
 - `ui/StageIndicator` - 재판 단계 진행 표시
 
 **에셋 파이프라인:** `public/assets/mock-trial/`

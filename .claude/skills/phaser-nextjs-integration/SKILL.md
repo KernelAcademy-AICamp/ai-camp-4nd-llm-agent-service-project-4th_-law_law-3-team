@@ -558,9 +558,10 @@ frontend/src/features/mock-trial/
 ├── components/
 │   └── MockTrialGame.tsx          # Game 초기화, React 래퍼
 ├── game/
-│   ├── config.ts                  # 상수 (크기, 색상, 좌표)
-│   ├── EventBus.ts                # Phaser ↔ React 통신
-│   ├── CourtScene.ts              # 메인 법정 씬
+│   ├── config.ts                  # 상수 (크기, 색상, 좌표, 말풍선 높이 제한)
+│   ├── EventBus.ts                # Phaser ↔ React 통신 (dialogue 이벤트 포함)
+│   ├── DialogueController.ts      # 대화 큐/속도 제어/스킵 컨트롤러
+│   ├── CourtScene.ts              # 메인 법정 씬 (DialogueController 통합)
 │   ├── LobbyScene.ts              # 로비/설정 씬
 │   ├── sprites/
 │   │   ├── CharacterBase.ts       # 캐릭터 Container
@@ -568,7 +569,7 @@ frontend/src/features/mock-trial/
 │   │   ├── JuryPanel.ts           # 배심원단 관리
 │   │   └── JurorSprite.ts         # 개별 배심원
 │   └── ui/
-│       ├── SpeechBubble.ts        # 말풍선
+│       ├── SpeechBubble.ts        # 말풍선 (페이지 분할 + advance/setTypingSpeed)
 │       └── StageIndicator.ts      # 단계 표시 바
 ├── demo/
 │   └── demo-scenarios.ts          # 데모 시나리오 데이터

@@ -13,6 +13,7 @@ import { ReferencePanel } from '@/features/mock-trial/components/ReferencePanel'
 import { EvidencePanel } from '@/features/mock-trial/components/EvidencePanel'
 import { eventBus } from '@/features/mock-trial/game/EventBus'
 import { ChevronLeft, ChevronRight, Info } from 'lucide-react'
+import { DialogueControls } from '@/features/mock-trial/components/DialogueControls'
 import type {
   CaseType,
   CaseCategory,
@@ -21,6 +22,7 @@ import type {
   ReferenceItem,
   EvidenceItem,
   EmotionType,
+  DialogueSpeed,
 } from '@/features/mock-trial/types'
 import { CRIMINAL_STAGES, CIVIL_STAGES, DEFAULT_ROLE_EMOTION } from '@/features/mock-trial/types'
 import type { DemoScenario } from '@/features/mock-trial/demo/demo-scenarios'
@@ -69,6 +71,9 @@ export default function MockTrialPage() {
   // H5: 단계 가이드 표시
   const [showStageGuide, setShowStageGuide] = useState(true)
 
+  // 대화 속도
+  const [dialogueSpeed, setDialogueSpeed] = useState<DialogueSpeed>('normal')
+
   // 데모 모드 상태
   const [isDemoMode, setIsDemoMode] = useState(false)
   const [demoScenario, setDemoScenario] = useState<DemoScenario | null>(null)
@@ -103,7 +108,7 @@ export default function MockTrialPage() {
     return stages[currentIndex + 1].id
   }, [stages, currentStageId])
 
-  /** 데모 mock AI 응답을 순차적으로 재생 */
+  /** 데모 mock AI 응답을 대화 큐에 일괄 추가 */
   const playMockResponses = useCallback(
     (
       responses: { speaker: string; content: string; emotion?: EmotionType }[],
@@ -114,13 +119,10 @@ export default function MockTrialPage() {
         return
       }
 
-      let index = 0
-      const playNext = (): void => {
-        if (index >= responses.length) {
-          setIsWaiting(false)
-          return
-        }
-        const response = responses[index]
+      setIsWaiting(true)
+
+      // 모든 응답을 ChatPanel 메시지에 추가 + dialogue:enqueue로 큐에 추가
+      for (const response of responses) {
         const emotion: EmotionType =
           response.emotion ?? DEFAULT_ROLE_EMOTION[response.speaker] ?? 'neutral'
         const event: CourtEvent = {
@@ -131,18 +133,12 @@ export default function MockTrialPage() {
           emotion,
         }
         setMessages((prev) => [...prev, event])
-        eventBus.emit('agent:speak', {
+        eventBus.emit('dialogue:enqueue', {
           agent: response.speaker,
           text: response.content,
-          streaming: false,
           emotion,
         })
-        index++
-        setTimeout(playNext, DEMO_RESPONSE_DELAY)
       }
-
-      setIsWaiting(true)
-      setTimeout(playNext, DEMO_RESPONSE_DELAY)
     },
     []
   )
@@ -272,6 +268,31 @@ export default function MockTrialPage() {
       }
     }
   }, [getNextStageId, isDemoMode, demoScenario, playMockResponses])
+
+  // ── dialogue:queue:empty → isWaiting 해제 ──
+  useEffect(() => {
+    const unsub = eventBus.on('dialogue:queue:empty', () => {
+      setIsWaiting(false)
+    })
+    return unsub
+  }, [])
+
+  // ── Space 키보드 리스너 (dialogue:advance) ──
+  useEffect(() => {
+    if (phase !== 'trial') return
+
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.code !== 'Space') return
+      // input/textarea에 포커스 중이면 무시
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      e.preventDefault()
+      eventBus.emit('dialogue:advance', {} as Record<string, never>)
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [phase])
 
   // ── 참조 추출 ──
 
@@ -506,6 +527,14 @@ export default function MockTrialPage() {
           <div className="flex-1 flex items-center justify-center p-2">
             <MockTrialGame />
           </div>
+
+          {/* 대화 컨트롤 (trial phase에서만) */}
+          {phase === 'trial' && (
+            <DialogueControls
+              currentSpeed={dialogueSpeed}
+              onSpeedChange={setDialogueSpeed}
+            />
+          )}
 
           {/* 다음 단계 버튼 (데모 모드, trial phase) */}
           {showNextStageButton && (

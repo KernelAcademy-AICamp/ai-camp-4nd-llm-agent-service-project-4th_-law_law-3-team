@@ -48,6 +48,10 @@ export type CivilStage =
 
 export type TrialStage = CriminalStage | CivilStage
 
+// ── 대화 속도 ──
+
+export type DialogueSpeed = 'normal' | 'fast' | 'faster' | 'instant'
+
 // ── 감정 이모지 (FR-51) ──
 
 export type EmotionType =

@@ -6,7 +6,6 @@ import {
   GAME_HEIGHT,
   COURT_BACKGROUND_COLOR,
   CHARACTER_POSITIONS,
-  CHARACTER_NAMES,
   CHARACTER_FACING,
   BUBBLE_OFFSETS,
 } from './config'
@@ -14,8 +13,9 @@ import { CharacterBase } from './sprites/CharacterBase'
 import { JuryPanel } from './sprites/JuryPanel'
 import { SpeechBubble } from './ui/SpeechBubble'
 import { StageIndicator } from './ui/StageIndicator'
+import { DialogueController } from './DialogueController'
 import { eventBus } from './EventBus'
-import { CRIMINAL_STAGES, CIVIL_STAGES, DEFAULT_ROLE_EMOTION } from '../types'
+import { CRIMINAL_STAGES, CIVIL_STAGES } from '../types'
 import { ASSET_KEYS, hasTexture, TILEMAP_TILE_SIZE } from './AssetConfig'
 import { AudioManager } from './AudioManager'
 
@@ -33,6 +33,7 @@ export class CourtScene extends Phaser.Scene {
   private caseType = 'criminal'
   private unsubscribers: (() => void)[] = []
   private audioManager: AudioManager | null = null
+  private dialogueController: DialogueController | null = null
 
   constructor() {
     super({ key: 'CourtScene' })
@@ -280,30 +281,43 @@ export class CourtScene extends Phaser.Scene {
   }
 
   private setupEventListeners(): void {
-    // agent:speak -> 말풍선 표시 + 캐릭터 애니메이션 + 배심원 반응
+    // DialogueController 생성
+    this.dialogueController = new DialogueController(
+      this,
+      this.speechBubbles,
+      this.characters,
+      this.juryPanel
+    )
+
+    // dialogue:enqueue -> DialogueController에 대화 추가
     this.unsubscribers.push(
-      eventBus.on('agent:speak', (data) => {
-        this.speechBubbles.forEach((bubble) => bubble.hide())
-        this.characters.forEach((char) => {
-          char.setSpeaking(false)
-          char.clearEmotion()
+      eventBus.on('dialogue:enqueue', (data) => {
+        this.dialogueController?.enqueue({
+          agent: data.agent,
+          text: data.text,
+          emotion: data.emotion,
         })
+      })
+    )
 
-        const bubble = this.speechBubbles.get(data.agent)
-        const character = this.characters.get(data.agent)
-        const emotion = data.emotion ?? DEFAULT_ROLE_EMOTION[data.agent]
-        if (bubble) {
-          const agentName = CHARACTER_NAMES[data.agent] ?? data.agent
-          bubble.show(agentName, data.text, emotion, !data.streaming)
-        }
-        if (character) {
-          character.setSpeaking(true)
-          if (data.text.length <= 80) {
-            character.setEmotion(emotion)
-          }
-        }
+    // dialogue:set_speed -> 속도 변경
+    this.unsubscribers.push(
+      eventBus.on('dialogue:set_speed', (data) => {
+        this.dialogueController?.setSpeed(data.speed)
+      })
+    )
 
-        this.juryPanel?.reactToSpeech(data.agent, data.text)
+    // dialogue:advance -> 스페이스바와 동일
+    this.unsubscribers.push(
+      eventBus.on('dialogue:advance', () => {
+        this.dialogueController?.handleAdvance()
+      })
+    )
+
+    // dialogue:skip -> 큐 전체 스킵
+    this.unsubscribers.push(
+      eventBus.on('dialogue:skip', () => {
+        this.dialogueController?.skipAll()
       })
     )
 
@@ -330,6 +344,8 @@ export class CourtScene extends Phaser.Scene {
   shutdown(): void {
     this.unsubscribers.forEach((unsub) => unsub())
     this.unsubscribers = []
+    this.dialogueController?.destroy()
+    this.dialogueController = null
     this.audioManager?.destroy()
     this.audioManager = null
     this.juryPanel?.destroy()
