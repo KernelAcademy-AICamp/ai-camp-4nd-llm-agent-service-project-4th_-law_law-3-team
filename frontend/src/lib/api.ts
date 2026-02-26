@@ -19,4 +19,5 @@ export const endpoints = {
   smallClaims: '/small-claims',
   multiAgent: '/multi-agent',
   mockTrial: '/mock-trial',
+  contentMarketing: '/content-marketing',
 }

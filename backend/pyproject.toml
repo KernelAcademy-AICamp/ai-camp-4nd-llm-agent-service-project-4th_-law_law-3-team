@@ -50,6 +50,7 @@ dependencies = [
     "tqdm>=4.66.0",
     "ijson>=3.2.0",
     "slowapi>=0.1.9",
+    "tavily-python>=0.7.21",
 ]
 
 [project.optional-dependencies]

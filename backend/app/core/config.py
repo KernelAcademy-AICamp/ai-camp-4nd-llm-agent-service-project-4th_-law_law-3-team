@@ -101,6 +101,49 @@ class Settings(BaseSettings):
     # MeCab 사용자 사전 경로 (법률 복합명사 인식)
     MECAB_USERDIC_PATH: str = "data/mecab_userdic/legal_terms.dic"
 
+    # Upstage (Solar)
+    UPSTAGE_API_KEY: str = ""
+    UPSTAGE_MODEL: str = "solar-pro"
+
+    # Content Marketing (콘텐츠 마케팅 자동화)
+    TAVILY_API_KEY: str = ""
+    NAVER_CLIENT_ID: str = ""
+    NAVER_CLIENT_SECRET: str = ""
+    PERPLEXITY_API_KEY: str = ""  # Phase 2
+    YOUTUBE_API_KEY: str = ""  # Phase 2
+    GOOGLE_CSE_API_KEY: str = ""  # Google Custom Search JSON API 키
+    GOOGLE_CSE_ID: str = ""  # Programmable Search Engine ID
+    NEWSDATA_API_KEY: str = ""  # NewsData.io API 키
+    NEWSAPI_API_KEY: str = ""  # NewsAPI.org API 키
+    CONTENT_MARKETING_CACHE_TTL: int = 86400  # 24시간
+
+    # Content Marketing v2.1 — Keyword Flow
+    KEYWORD_COLLECT_CACHE_TTL: int = 3600  # 1시간
+    KEYWORD_NEWS_CACHE_TTL: int = 1800  # 30분
+    KEYWORD_MAX_RESULTS: int = 10
+    KEYWORD_NEWS_MAX_RESULTS: int = 10
+    KEYWORD_COMMUNITY_DOMAINS: List[str] = [
+        "dcinside.com",
+        "fmkorea.com",
+        "theqoo.net",
+        "bobaedream.co.kr",
+        "inven.co.kr",
+    ]
+    KEYWORD_COLLECT_RATE_LIMIT: int = 5  # 시간당
+    KEYWORD_NEWS_RATE_LIMIT: int = 30  # 시간당
+
+    # Content Marketing v2.1 — Legal Gate + 5차원 가중합 스코어링
+    TREND_LEGAL_THRESHOLD: float = 0.3  # Legal Gate 임계값 (설계 기준 복원)
+    TREND_MENTION_WEIGHT: float = 0.25  # 언급 빈도
+    TREND_LEGAL_WEIGHT: float = 0.6  # v1.0 하위호환 유지 (v2에서는 _LEGAL_ADDITIVE_WEIGHT 사용)
+    TREND_CONTROVERSY_WEIGHT: float = 0.20  # 논란/찬반 대립
+    TREND_SPREAD_WEIGHT: float = 0.10  # 확산도 (소스 다양성)
+    TREND_FITNESS_WEIGHT: float = 0.25  # 채널 적합도
+
+    # Content Marketing v2.0 — 페르소나
+    PERSONA_MIN_HISTORY: int = 30
+    PERSONA_CONFIDENCE_THRESHOLD: float = 0.6
+
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []
 
