@@ -146,7 +146,7 @@ gemini "backend/app/ 전체의 보안 취약점을 분석해줘. OWASP Top 10 �
 # (Claude가 직접 Edit 도구로 수정)
 
 # Phase 3: Codex CLI로 수정 사항 리뷰
-codex "$(git diff --cached) 이 보안 수정사항을 리뷰해줘. 수정이 적절한지, 새로운 취약점이 없는지 확인해줘."
+codex exec "$(git diff --cached) 이 보안 수정사항을 리뷰해줘. 수정이 적절한지, 새로운 취약점이 없는지 확인해줘." --ephemeral -s read-only
 ```
 
 **Fallback (Gemini Only)**:
@@ -163,7 +163,7 @@ gemini "..." -y -o text
 # Phase 1: Claude가 Task(Explore)로 분석 (Gemini 대체)
 # Phase 2: Claude가 수정
 # Phase 3: Codex CLI로 리뷰
-codex "$(git diff --cached) ..."
+codex exec "$(git diff --cached) ..." --ephemeral -s read-only
 ```
 
 **Fallback (Claude Solo)**:
@@ -195,7 +195,7 @@ codex "$(git diff --cached) ..."
 codex /review --base main --instructions "버그, 성능, 보안, 코드 품질 관점에서 분석해줘"
 
 # 또는 프롬프트 방식
-codex "$(git diff dev..HEAD) 이 브랜치의 모든 변경사항을 리뷰해줘. 버그, 성능, 보안, 코드 품질 관점에서 분석해줘."
+codex exec "$(git diff dev..HEAD) 이 브랜치의 모든 변경사항을 리뷰해줘. 버그, 성능, 보안, 코드 품질 관점에서 분석해줘." --ephemeral -s read-only
 
 # Phase 2: Claude가 리뷰 결과 기반 수정 (Edit 도구)
 
@@ -235,7 +235,7 @@ codex "$(git diff dev..HEAD) 이 브랜치의 모든 변경사항을 리뷰해�
 gemini "프로젝트 전체 아키텍처를 분석해줘. 계층 위반, 순환 의존성, 코드 중복을 찾아줘." -y -o text > /tmp/gemini_result.txt &
 
 # Codex: 외부 취약점/최신 정보 검색 + 수학/논리 검증
-codex --search -q "이 프로젝트에서 사용하는 주요 패키지의 알려진 보안 취약점을 검색하고 보고해줘" > /tmp/codex_result.txt &
+codex exec "이 프로젝트에서 사용하는 주요 패키지의 알려진 보안 취약점을 검색하고 보고해줘" -o /tmp/codex_result.txt --ephemeral -s read-only &
 
 wait  # 병렬 실행 완료 대기
 
@@ -271,12 +271,12 @@ wait  # 병렬 실행 완료 대기
 gemini "Pydantic v1 패턴을 사용하는 모든 파일과 사용 패턴을 분석해줘." -y -o text
 
 # Phase 2: Codex CLI로 마이그레이션 가이드 검색
-codex "Pydantic v2 마이그레이션 가이드에서 주요 변경점과 자동 변환 도구를 찾아줘"
+codex exec "Pydantic v2 마이그레이션 가이드에서 주요 변경점과 자동 변환 도구를 찾아줘" --ephemeral -s read-only
 
 # Phase 3: Claude가 마이그레이션 수행 (Edit 도구)
 
 # Phase 4: Codex CLI로 변경사항 검증
-codex --full-auto --sandbox read-only "마이그레이션 후 테스트를 실행하고 결과를 보고해줘"
+codex exec "마이그레이션 후 테스트를 실행하고 결과를 보고해줘" --ephemeral -s read-only
 ```
 
 ---
@@ -459,7 +459,7 @@ CLI 실행 실패
 ```bash
 # 병렬 실행 예시 (결과를 파일로 저장)
 gemini "아키텍처 분석..." -y -o text > /tmp/gemini_result.txt &
-codex -q "CVE 검색..." > /tmp/codex_result.txt &
+codex exec "CVE 검색..." -o /tmp/codex_result.txt --ephemeral -s read-only &
 wait
 ```
 
