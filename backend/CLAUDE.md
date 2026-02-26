@@ -277,7 +277,7 @@ START → router_node ──(Command)──→ legal_search_node ───→ EN
 | 에이전트 | 역할 | 노드 | RAG | LLM |
 |---------|------|------|-----|-----|
 | `LegalSearchAgent` | 판례/법령 RAG 검색 (Focus+Supplementary 병렬) | `legal_search_node` | ✅ | ✅ |
-| `LawyerFinderAgent` | 위치 기반 변호사 추천 | `lawyer_finder_node` | ❌ | ❌ |
+| `LawyerFinderAgent` | 위치 기반 변호사 추천 (동 단위 지원) | `lawyer_finder_node` | ❌ | ❌ |
 | `SmallClaimsAgent` | 소액소송 단계별 가이드 | `small_claims_subgraph` | ✅ | ❌ |
 | `StoryboardAgent` | 사건 타임라인 생성 | `storyboard_node` | ❌ | ✅ |
 | `LawyerStatsAgent` | 변호사 통계 안내 | `lawyer_stats_node` | ❌ | ❌ |
@@ -428,6 +428,7 @@ from app.services.service_function.lawyer_stats_service import (
 - `search_lawyers()` - 조건 기반 검색
 - `get_clusters()` - 지도 클러스터링
 - `get_categories()` / `get_specialties_by_category()` - 전문분야 분류
+- `build_dong_coords_cache()` - 동 이름별 중심점 좌표 캐시 (`@lru_cache`, 변호사 주소에서 동 추출, 최소 3명 이상)
 
 **API 엔드포인트:**
 - `GET /nearby` - 반경 내 변호사 검색

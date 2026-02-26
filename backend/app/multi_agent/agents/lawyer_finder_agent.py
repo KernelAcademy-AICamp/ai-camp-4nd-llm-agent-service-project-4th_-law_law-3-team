@@ -4,18 +4,21 @@
 위치 기반 변호사 추천 기능 - 변호사 찾기 페이지로 네비게이션
 """
 
+import re
 from typing import Any
 
 from app.core.config import settings
 from app.multi_agent.agents.base_chat import ActionType, BaseChatAgent, ChatAction
 from app.multi_agent.schemas.plan import AgentResult
 from app.services.service_function.lawyer_service import (
+    build_dong_coords_cache,
     find_nearby_lawyers,
     search_lawyers,
 )
 
 # 검색 반경 (미터)
 DEFAULT_SEARCH_RADIUS = 3000  # 3km
+DEFAULT_DONG_SEARCH_RADIUS = 1500  # 동 단위 1.5km
 EXPANDED_SEARCH_RADIUS = 10000  # 10km
 
 
@@ -234,20 +237,61 @@ CATEGORY_NAMES: dict[str, str] = {
 }
 
 
-def extract_district(message: str) -> tuple[str | None, dict[str, float] | None]:
-    """메시지에서 지역명과 좌표 추출"""
+def extract_district(
+    message: str,
+) -> tuple[str | None, dict[str, float] | None, str]:
+    """메시지에서 지역명과 좌표 추출
+
+    Returns:
+        (location_name, coords, granularity)
+        granularity: "dong" | "gu" | "city" | "unknown"
+    """
+    # 1. 구+동 조합 패턴 (예: "강남구 역삼동", "서초구 서초동")
+    gu_dong_match = re.search(r"([가-힣]+구)\s*([가-힣0-9]+동)", message)
+    if gu_dong_match:
+        gu_name = gu_dong_match.group(1)
+        dong_name = gu_dong_match.group(2)
+        dong_cache = build_dong_coords_cache()
+        if dong_name in dong_cache:
+            entry = dong_cache[dong_name]
+            return (
+                f"{gu_name} {dong_name}",
+                {"latitude": entry["latitude"], "longitude": entry["longitude"]},
+                "dong",
+            )
+        # 동 캐시 miss → 구 좌표로 fallback
+        if gu_name in DISTRICT_COORDS:
+            return gu_name, DISTRICT_COORDS[gu_name], "gu"
+
+    # 2. 동 단독 패턴 (예: "역삼동 변호사")
+    dong_match = re.search(r"([가-힣0-9]+동)(?:\s|$|[을를에서의])", message)
+    if dong_match:
+        dong_name = dong_match.group(1)
+        dong_cache = build_dong_coords_cache()
+        if dong_name in dong_cache:
+            entry = dong_cache[dong_name]
+            return (
+                dong_name,
+                {"latitude": entry["latitude"], "longitude": entry["longitude"]},
+                "dong",
+            )
+
+    # 3. 기존 구/도시 매칭
     sorted_districts = sorted(DISTRICT_COORDS.keys(), key=len, reverse=True)
     for district in sorted_districts:
         if district in message:
             coords = DISTRICT_COORDS[district]
             district_name = district if district.endswith("구") else f"{district}구"
-            if district in [
+            cities = [
                 "부산", "대구", "인천", "광주", "대전", "울산",
-                "수원", "성남", "고양", "용인", "분당", "일산", "판교"
-            ]:
+                "수원", "성남", "고양", "용인", "분당", "일산", "판교",
+            ]
+            if district in cities:
                 district_name = district
-            return district_name, coords
-    return None, None
+                return district_name, coords, "city"
+            return district_name, coords, "gu"
+
+    return None, None, "unknown"
 
 
 def extract_specialty(message: str) -> tuple[str | None, str | None, str | None]:
@@ -289,7 +333,7 @@ class LawyerFinderAgent(BaseChatAgent):
         session_data = session_data or {}
 
         # 1. 지역명 추출
-        district_name, district_coords = extract_district(message)
+        district_name, district_coords, granularity = extract_district(message)
 
         # 2. 전문분야 추출
         specialty, category_id, category_name = extract_specialty(message)
@@ -352,19 +396,25 @@ class LawyerFinderAgent(BaseChatAgent):
                 agent_used=self.name,
             )
 
-        # 5. 3단계 반경 확장 검색
+        # 5. 동 단위일 때 기본 반경 축소
+        if granularity == "dong":
+            initial_radius = DEFAULT_DONG_SEARCH_RADIUS
+        else:
+            initial_radius = DEFAULT_SEARCH_RADIUS
+
+        # 6. 3단계 반경 확장 검색
         assert latitude is not None and longitude is not None
 
         if settings.USE_DB_LAWYERS:
             search_results, actual_radius, search_mode = await self._search_db(
-                latitude, longitude, category_id,
+                latitude, longitude, category_id, initial_radius,
             )
         else:
             search_results, actual_radius, search_mode = self._search_json(
-                latitude, longitude, category_id,
+                latitude, longitude, category_id, initial_radius,
             )
 
-        # 6. 네비게이션 파라미터 구성
+        # 7. 네비게이션 파라미터 구성
         nav_params: dict[str, Any] = {}
 
         if search_mode in ("nearby", "expanded"):
@@ -377,10 +427,20 @@ class LawyerFinderAgent(BaseChatAgent):
         if category_id:
             nav_params["category"] = category_id
 
-        if district_name and district_name.endswith("구"):
-            nav_params["sigungu"] = district_name
+        # 동 단위: zoom=3, 구 단위: zoom=5
+        if granularity == "dong":
+            nav_params["zoom"] = 3
+        elif granularity in ("gu", "city"):
+            nav_params["zoom"] = 5
 
-        # 7. 응답 메시지 생성
+        # sigungu 파라미터: 구 이름 추출
+        if district_name:
+            # "강남구 역삼동" → "강남구", "강남구" → "강남구"
+            gu_match = re.search(r"([가-힣]+구)", district_name)
+            if gu_match:
+                nav_params["sigungu"] = gu_match.group(1)
+
+        # 8. 응답 메시지 생성
         result_count = len(search_results)
         msg = self._build_response_message(
             search_mode=search_mode,
@@ -390,7 +450,7 @@ class LawyerFinderAgent(BaseChatAgent):
         )
         msg += "\n\n🗺️ 지도로 이동합니다..."
 
-        # 8. 결과 반환
+        # 9. 결과 반환
         return AgentResult(
             message=msg,
             sources=[],
@@ -424,16 +484,17 @@ class LawyerFinderAgent(BaseChatAgent):
         latitude: float,
         longitude: float,
         category_id: str | None,
+        initial_radius: int = DEFAULT_SEARCH_RADIUS,
     ) -> tuple[list[dict[str, Any]], int, str]:
         """JSON 기반 3단계 반경 확장 검색."""
         result = find_nearby_lawyers(
             latitude=latitude,
             longitude=longitude,
-            radius_m=DEFAULT_SEARCH_RADIUS,
+            radius_m=initial_radius,
             category=category_id,
         )
         if result["lawyers"]:
-            return result["lawyers"], DEFAULT_SEARCH_RADIUS, "nearby"
+            return result["lawyers"], initial_radius, "nearby"
 
         result = find_nearby_lawyers(
             latitude=latitude,
@@ -452,6 +513,7 @@ class LawyerFinderAgent(BaseChatAgent):
         latitude: float,
         longitude: float,
         category_id: str | None,
+        initial_radius: int = DEFAULT_SEARCH_RADIUS,
     ) -> tuple[list[dict[str, Any]], int, str]:
         """DB 기반 3단계 반경 확장 검색."""
         from app.core.database import async_session_factory
@@ -465,11 +527,11 @@ class LawyerFinderAgent(BaseChatAgent):
                 db=db,
                 latitude=latitude,
                 longitude=longitude,
-                radius_m=DEFAULT_SEARCH_RADIUS,
+                radius_m=initial_radius,
                 category=category_id,
             )
             if result["lawyers"]:
-                return result["lawyers"], DEFAULT_SEARCH_RADIUS, "nearby"
+                return result["lawyers"], initial_radius, "nearby"
 
             result = await find_nearby_lawyers_db(
                 db=db,

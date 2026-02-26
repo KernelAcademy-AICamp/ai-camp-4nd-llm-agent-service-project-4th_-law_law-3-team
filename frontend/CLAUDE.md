@@ -52,6 +52,26 @@ src/features/<module-name>/
 └── types/          # TypeScript 타입
 ```
 
+### ChatWidget (통합 채팅 위젯)
+
+`src/components/ChatWidget.tsx` — SSE 스트리밍 채팅, 에이전트 응답 후 자동 네비게이션.
+
+**네비게이션 우선순위:** NAVIGATE 액션 (좌표/파라미터 포함) > AGENT_PAGE_MAP (기본 페이지 이동)
+- NAVIGATE 액션: 에이전트가 `nav_params` (lat, lng, radius, zoom, category, sigungu)를 포함하여 URL 생성
+- AGENT_PAGE_MAP: NAVIGATE 액션이 없을 때 에이전트 유형별 기본 페이지로 이동
+
+### lawyer-finder (변호사 찾기)
+
+**경로:** `src/features/lawyer-finder/`
+
+**페이지 (`src/app/lawyer-finder/page.tsx`):**
+- URL searchParams에서 `lat`, `lng`, `radius`, `zoom`, `category`, `sigungu` 파라미터 파싱
+- `useState` 초기화 함수로 URL 파라미터를 동기적으로 반영 (첫 렌더 시 올바른 위치 표시)
+
+**KakaoMap (`components/KakaoMap.tsx`):**
+- `initialLevel` prop (optional, 기본값 5) — 초기 줌 레벨
+- `prevInitialLevelRef`로 줌 레벨 변경 감지, 드래그 시 리셋 방지
+
 ### API 프록시
 
 `next.config.js`의 rewrites 설정으로 `/api/*` 요청이 백엔드(localhost:8000)로 프록시됩니다.

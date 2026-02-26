@@ -117,6 +117,7 @@ interface KakaoMapProps {
   onZoomChange?: (zoom: number) => void
   onBoundsChange?: (bounds: { min_lat: number; max_lat: number; min_lng: number; max_lng: number }) => void
   showRadius?: boolean
+  initialLevel?: number  // 초기 줌 레벨 (기본: 5)
 }
 
 export function KakaoMap({
@@ -135,6 +136,7 @@ export function KakaoMap({
   onZoomChange,
   onBoundsChange,
   showRadius = true,
+  initialLevel,
 }: KakaoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<kakao.maps.Map | null>(null)
@@ -148,6 +150,7 @@ export function KakaoMap({
   const onZoomChangeRef = useRef(onZoomChange)
   const onBoundsChangeRef = useRef(onBoundsChange)
   const prevCenterRef = useRef<{ lat: number; lng: number } | null>(null)
+  const prevInitialLevelRef = useRef<number | undefined>(undefined)
   const skipCenterPanRef = useRef(false)
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 이벤트 핸들러 refs (클린업용)
@@ -183,7 +186,7 @@ export function KakaoMap({
 
         const options: kakao.maps.MapOptions = {
           center: new window.kakao.maps.LatLng(center.lat, center.lng),
-          level: 5,
+          level: initialLevel ?? 5,
         }
 
         const map = new window.kakao.maps.Map(containerRef.current, options)
@@ -338,7 +341,13 @@ export function KakaoMap({
       map.panTo(position)
       prevCenterRef.current = { lat: center.lat, lng: center.lng }
     }
-  }, [center, radius, showRadius])
+
+    // initialLevel이 변경되었을 때만 줌 레벨 적용 (드래그 시 리셋 방지)
+    if (initialLevel !== undefined && initialLevel !== prevInitialLevelRef.current) {
+      map.setLevel(initialLevel)
+      prevInitialLevelRef.current = initialLevel
+    }
+  }, [center, radius, showRadius, initialLevel])
 
   // 활성 오버레이 정리 헬퍼
   const clearActiveOverlay = () => {

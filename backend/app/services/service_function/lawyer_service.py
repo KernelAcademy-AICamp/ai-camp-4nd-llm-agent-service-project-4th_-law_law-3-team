@@ -177,6 +177,71 @@ def load_lawyers_data() -> Dict[str, Any]:
     return {"lawyers": [], "metadata": {}}
 
 
+@lru_cache(maxsize=1)
+def build_dong_coords_cache() -> Dict[str, Dict[str, Any]]:
+    """변호사 주소 데이터에서 동 이름별 중심점 좌표 캐시 구축
+
+    괄호 패턴 `(역삼동, ...)` + 일반 패턴 `강남구 삼성동 159-9`에서 동 이름 추출.
+    최소 3명 이상 데이터가 있는 동만 포함.
+
+    Returns:
+        {"역삼동": {"latitude": 37.50, "longitude": 127.04, "count": 624}, ...}
+    """
+    data = load_lawyers_data()
+    lawyers = data.get("lawyers", [])
+
+    # 동 이름 → 좌표 리스트
+    dong_coords: Dict[str, List[Tuple[float, float]]] = {}
+
+    # 패턴 1: 괄호 안 동 이름 (예: "(역삼동, 823)")
+    paren_pattern = re.compile(r"\(([가-힣0-9]+동)[,\s)]")
+    # 패턴 2: 구 + 동 조합 (예: "강남구 삼성동 159-9")
+    gu_dong_pattern = re.compile(r"[가-힣]+구\s+([가-힣0-9]+동)")
+
+    for lawyer in lawyers:
+        lat = lawyer.get("latitude")
+        lng = lawyer.get("longitude")
+        address = lawyer.get("address") or ""
+
+        if lat is None or lng is None or not address:
+            continue
+
+        dong_name: Optional[str] = None
+
+        # 괄호 패턴 우선
+        match = paren_pattern.search(address)
+        if match:
+            dong_name = match.group(1)
+        else:
+            # 일반 패턴
+            match = gu_dong_pattern.search(address)
+            if match:
+                dong_name = match.group(1)
+
+        if dong_name:
+            if dong_name not in dong_coords:
+                dong_coords[dong_name] = []
+            dong_coords[dong_name].append((lat, lng))
+
+    # 최소 3명 이상인 동만 중심점 계산
+    min_count = 3
+    result: Dict[str, Dict[str, Any]] = {}
+
+    for dong_name, coords_list in dong_coords.items():
+        if len(coords_list) < min_count:
+            continue
+        avg_lat = sum(c[0] for c in coords_list) / len(coords_list)
+        avg_lng = sum(c[1] for c in coords_list) / len(coords_list)
+        result[dong_name] = {
+            "latitude": round(avg_lat, 6),
+            "longitude": round(avg_lng, 6),
+            "count": len(coords_list),
+        }
+
+    logger.info(f"동 좌표 캐시 구축 완료: {len(result)}개 동")
+    return result
+
+
 def get_available_specialties() -> List[str]:
     """사용 가능한 전문분야 목록 조회"""
     data = load_lawyers_data()

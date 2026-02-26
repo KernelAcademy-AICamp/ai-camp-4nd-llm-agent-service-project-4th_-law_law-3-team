@@ -668,36 +668,34 @@ export default function ChatWidget() {
               setSessionData(receivedSessionData)
             }
 
-            // 에이전트 → 페이지 자동 이동 (일반화)
+            // NAVIGATE 액션 처리 (좌표/파라미터 포함 → 우선 적용)
             let hasNavigated = false
-            if (agentUsed && AGENT_PAGE_MAP[agentUsed]) {
+            const navigateAction = receivedActions?.find(
+              (action) => action.type === 'navigate' && action.url
+            )
+
+            if (navigateAction && navigateAction.url) {
+              const params = navigateAction.params as Record<string, string | number | boolean> | undefined
+              let fullUrl = navigateAction.url
+              if (params && Object.keys(params).length > 0) {
+                const urlSearchParams = new URLSearchParams()
+                Object.entries(params).forEach(([key, value]) => {
+                  if (value !== undefined && value !== null) {
+                    urlSearchParams.set(key, String(value))
+                  }
+                })
+                fullUrl = `${navigateAction.url}?${urlSearchParams.toString()}`
+              }
+              router.push(fullUrl)
+              hasNavigated = true
+            }
+
+            // NAVIGATE 액션이 없으면 에이전트 → 페이지 매핑으로 이동
+            if (!hasNavigated && agentUsed && AGENT_PAGE_MAP[agentUsed]) {
               const targetPage = AGENT_PAGE_MAP[agentUsed]
               const targetPathname = targetPage.split('?')[0]
               if (pathname !== targetPathname) {
                 router.push(targetPage)
-                hasNavigated = true
-              }
-            }
-
-            // NAVIGATE 액션 처리 (에이전트 네비게이션이 없을 때만)
-            if (!hasNavigated) {
-              const navigateAction = receivedActions?.find(
-                (action) => action.type === 'navigate' && action.url
-              )
-
-              if (navigateAction && navigateAction.url) {
-                const params = navigateAction.params as Record<string, string | number | boolean> | undefined
-                let fullUrl = navigateAction.url
-                if (params && Object.keys(params).length > 0) {
-                  const urlSearchParams = new URLSearchParams()
-                  Object.entries(params).forEach(([key, value]) => {
-                    if (value !== undefined && value !== null) {
-                      urlSearchParams.set(key, String(value))
-                    }
-                  })
-                  fullUrl = `${navigateAction.url}?${urlSearchParams.toString()}`
-                }
-                router.push(fullUrl)
               }
             }
           },

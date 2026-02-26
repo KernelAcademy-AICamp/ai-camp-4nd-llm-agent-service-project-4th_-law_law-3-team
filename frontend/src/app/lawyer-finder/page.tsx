@@ -56,29 +56,56 @@ function LawyerFinderLoading() {
 }
 
 function LawyerFinderPage() {
+  const searchParams = useSearchParams()
+
   const [lawyers, setLawyers] = useState<Lawyer[]>([])
   const [selectedLawyer, setSelectedLawyer] = useState<Lawyer | null>(null)
   const [selectionTrigger, setSelectionTrigger] = useState<number>(0)  // 선택 시점 (timestamp)
   const [selectedOffice, setSelectedOffice] = useState<Office | null>(null)
   const [loading, setLoading] = useState(false)
-  const [radius, setRadius] = useState(3000)
+  const [radius, setRadius] = useState(() => {
+    const r = searchParams.get('radius')
+    if (r) {
+      const parsed = parseInt(r, 10)
+      if (!isNaN(parsed)) return parsed
+    }
+    return 3000
+  })
   const [totalCount, setTotalCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
-  const [searchCenter, setSearchCenter] = useState<{ lat: number; lng: number } | null>(null)
+  const [searchCenter, setSearchCenter] = useState<{ lat: number; lng: number } | null>(() => {
+    const lat = searchParams.get('lat')
+    const lng = searchParams.get('lng')
+    if (lat && lng) {
+      const parsedLat = parseFloat(lat)
+      const parsedLng = parseFloat(lng)
+      if (!isNaN(parsedLat) && !isNaN(parsedLng)) {
+        return { lat: parsedLat, lng: parsedLng }
+      }
+    }
+    return null
+  })
   const [sigungu, setSigungu] = useState('')
   const [searchQuery, setSearchQuery] = useState('')  // 검색어 (빈 문자열 = 주변 탐색 모드)
   const [category, setCategory] = useState('')  // 선택된 전문분야 카테고리 ID
   const [specialty, setSpecialty] = useState('')  // 특정 전문분야 (예: "이혼") - category보다 우선
 
   // Phase 4: 클러스터 모드 상태
+  const [initialZoom, setInitialZoom] = useState<number | undefined>(() => {
+    const zoom = searchParams.get('zoom')
+    if (zoom) {
+      const parsed = parseInt(zoom, 10)
+      if (!isNaN(parsed)) return parsed
+    }
+    return undefined
+  })
   const [zoomLevel, setZoomLevel] = useState(5)
   const [mapBounds, setMapBounds] = useState<{ min_lat: number; max_lat: number; min_lng: number; max_lng: number } | null>(null)
   const [clusters, setClusters] = useState<ClusterData[]>([])
   const useClusterMode = zoomLevel >= CLUSTER_ZOOM_THRESHOLD
 
   const { isChatOpen, chatMode } = useUI()
-  const searchParams = useSearchParams()
   const initialSearchDone = useRef(false)
   const urlSearchInProgress = useRef(false)  // URL 파라미터 검색 진행 중
   const lastSearchParamsKey = useRef('')  // 마지막으로 처리한 URL 파라미터 키
@@ -108,6 +135,7 @@ function LawyerFinderPage() {
     const sigunguParam = searchParams.get('sigungu')
     const radiusParam = searchParams.get('radius')
     const searchAllParam = searchParams.get('searchAll')
+    const zoomParam = searchParams.get('zoom')
 
     // 파라미터가 없으면 스킵
     if (!lat && !lng && !categoryParam && !specialtyParam && !sigunguParam && !searchAllParam) {
@@ -115,7 +143,7 @@ function LawyerFinderPage() {
     }
 
     // 파라미터 조합으로 고유 키 생성 (같은 파라미터면 중복 검색 방지)
-    const paramsKey = `${lat}-${lng}-${categoryParam}-${specialtyParam}-${sigunguParam}-${radiusParam}-${searchAllParam}`
+    const paramsKey = `${lat}-${lng}-${categoryParam}-${specialtyParam}-${sigunguParam}-${radiusParam}-${searchAllParam}-${zoomParam}`
 
     if (lastSearchParamsKey.current === paramsKey) {
       return
@@ -143,6 +171,12 @@ function LawyerFinderPage() {
     }
     if (sigunguParam) {
       setSigungu(sigunguParam)
+    }
+    if (zoomParam) {
+      const parsedZoom = parseInt(zoomParam, 10)
+      if (!isNaN(parsedZoom)) {
+        setInitialZoom(parsedZoom)
+      }
     }
 
     // 검색 실행 (state가 아닌 파라미터 값 직접 사용)
@@ -487,6 +521,7 @@ function LawyerFinderPage() {
             onZoomChange={handleZoomChange}
             onBoundsChange={handleBoundsChange}
             showRadius={true}
+            initialLevel={initialZoom}
           />
         </div>
       </div>
