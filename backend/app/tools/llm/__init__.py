@@ -55,6 +55,8 @@ def get_chat_model(
         return _get_anthropic_model(model, temperature, **kwargs)
     elif provider_name == "google":
         return _get_google_model(model, temperature, **kwargs)
+    elif provider_name == "upstage":
+        return _get_upstage_model(model, temperature, **kwargs)
     else:
         # 기본값: OpenAI
         return _get_openai_model(model, temperature, **kwargs)
@@ -136,6 +138,30 @@ def _get_google_model(
     )
 
 
+def _get_upstage_model(
+    model: Optional[str] = None,
+    temperature: float = 0.7,
+    **kwargs: Any,
+) -> BaseChatModel:
+    """Upstage Solar ChatModel 생성 (OpenAI 호환 API)"""
+    from langchain_openai import ChatOpenAI
+
+    model_name = str(model or getattr(settings, "UPSTAGE_MODEL", "solar-pro"))
+    api_key = str(getattr(settings, "UPSTAGE_API_KEY", ""))
+
+    if not api_key:
+        raise ValueError("UPSTAGE_API_KEY가 설정되지 않았습니다.")
+
+    return ChatOpenAI(
+        model=model_name,
+        temperature=temperature,
+        api_key=api_key,  # type: ignore[arg-type]
+        base_url="https://api.upstage.ai/v1/solar",
+        request_timeout=settings.LLM_TIMEOUT_SECONDS,
+        **kwargs,
+    )
+
+
 def get_llm_config() -> dict[str, Any]:
     """현재 LLM 설정 정보 반환"""
     provider = getattr(settings, "LLM_PROVIDER", "openai")
@@ -150,6 +176,8 @@ def get_llm_config() -> dict[str, Any]:
         config["model"] = getattr(settings, "ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
     elif provider == "google":
         config["model"] = getattr(settings, "GOOGLE_MODEL", "gemini-1.5-flash")
+    elif provider == "upstage":
+        config["model"] = getattr(settings, "UPSTAGE_MODEL", "solar-pro")
 
     return config
 

@@ -95,6 +95,15 @@ export const modules: Module[] = [
     enabled: true,
     roles: ['user', 'lawyer'],
   },
+  {
+    id: 'content-marketing',
+    name: '콘텐츠 마케팅',
+    description: '법률 트렌드 분석 및 AI 유튜브 대본 자동 생성',
+    href: '/content-marketing',
+    icon: '📹',
+    enabled: true,
+    roles: ['lawyer'],
+  },
 ]
 
 export const getEnabledModules = (role?: 'lawyer' | 'user') => 

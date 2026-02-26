@@ -19,6 +19,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from app.multi_agent.nodes import (
+    content_marketing_node,
     law_study_node,
     lawyer_finder_node,
     lawyer_stats_node,
@@ -56,6 +57,7 @@ def build_graph() -> StateGraph:
     builder.add_node("storyboard_node", storyboard_node)
     builder.add_node("lawyer_stats_node", lawyer_stats_node)
     builder.add_node("law_study_node", law_study_node)
+    builder.add_node("content_marketing_node", content_marketing_node)
     builder.add_node("simple_chat_node", simple_chat_node)
 
     # 엣지: START -> router_node
@@ -71,6 +73,7 @@ def build_graph() -> StateGraph:
         "storyboard_node",
         "lawyer_stats_node",
         "law_study_node",
+        "content_marketing_node",
         "simple_chat_node",
     ):
         builder.add_edge(node_name, END)

@@ -27,6 +27,10 @@ from app.models.ingest import (
 from app.models.law import Law
 from app.models.law_document import LawDocument
 from app.models.lawyer import Lawyer
+from app.models.lawyer_persona import (
+    LawyerPersonaFeedbackModel,
+    LawyerPersonaModel,
+)
 from app.models.legal_document import COMMITTEE_SOURCES, DocType, LegalDocument
 from app.models.legal_reference import LegalReference, RefType
 from app.models.legal_term import LegalTerm
@@ -46,6 +50,9 @@ __all__ = [
     "LawDocument",
     "PrecedentDocument",
     "TrialStatistics",
+    # 콘텐츠 마케팅 v2.0
+    "LawyerPersonaModel",
+    "LawyerPersonaFeedbackModel",
     # ingest 모델
     "AdminRuleDocument",
     "ConstitutionalDocument",

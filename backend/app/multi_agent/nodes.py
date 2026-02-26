@@ -42,6 +42,8 @@ AGENT_NODE_MAP: dict[str, str] = {
     "law_study": "law_study_node",
     # 공통 (체험형)
     "mock_trial": "mock_trial_subgraph",
+    # 콘텐츠 마케팅
+    "content_marketing": "content_marketing_node",
     # 폴백
     "general": "simple_chat_node",
     # 하위호환 (기존 agent_override 지원)
@@ -386,6 +388,15 @@ async def law_study_node(
     from app.multi_agent.agents.law_study_agent import LawStudyAgent
 
     return await _run_streaming_node(LawStudyAgent(), state, writer)
+
+
+async def content_marketing_node(
+    state: ChatState, writer: StreamWriter
+) -> dict[str, Any]:
+    """콘텐츠 마케팅 노드 (트렌드 분석 + 대본 생성)"""
+    from app.multi_agent.agents.content_marketing_agent import ContentMarketingAgent
+
+    return await _run_nonstreaming_node(ContentMarketingAgent(), state, writer)
 
 
 async def simple_chat_node(
