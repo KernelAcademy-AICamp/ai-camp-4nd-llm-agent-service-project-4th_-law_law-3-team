@@ -114,7 +114,7 @@ def main() -> None:
     # ─────────────────────────────────────────────────
     print_header("Step 3: 키워드 검색 (PostgreSQL FTS)")
 
-    from app.services.rag.keyword_search import is_fts_available, search_by_keyword  # noqa: E402
+    from app.services.rag.keyword_search import is_fts_available, search_by_keyword  # noqa: E402, I001
 
     fts_available = is_fts_available()
     keyword_results: list[dict] = []
@@ -167,21 +167,25 @@ def main() -> None:
     timings.append(("4", "RRF 병합", rrf_time, f"{len(merged)}건"))
 
     # ─────────────────────────────────────────────────
-    # [5] LanceDB 요약문 조회 (리랭킹용)
+    # [5] 요약문 조회 (PostgreSQL ai_summary, 리랭킹용)
     # ─────────────────────────────────────────────────
-    print_header("Step 5: 요약문 조회 (LanceDB)")
+    print_header("Step 5: 요약문 조회 (PostgreSQL)")
 
-    from app.services.rag.retrieval import _populate_content, fetch_lancedb_summaries  # noqa: E402
+    from app.services.rag.retrieval import (  # noqa: E402
+        _extract_id_data_type_map,
+        _populate_content,
+        fetch_ai_summaries,
+    )
 
-    source_ids = [d.get("metadata", {}).get("doc_id", "") for d in merged]
+    id_type_map_summary = _extract_id_data_type_map(merged)
 
     t0 = time.monotonic()
-    summaries = fetch_lancedb_summaries(source_ids)
+    summaries = fetch_ai_summaries(id_type_map_summary)
     _populate_content(merged, summaries)
     summary_time = time.monotonic() - t0
     filled_count = sum(1 for d in merged if d.get("content"))
-    print_step("5", "요약문 조회", summary_time, f"{len(summaries)}/{len(source_ids)}건 매칭")
-    timings.append(("5", "요약문 조회 (LanceDB)", summary_time, f"{filled_count}건 content 주입"))
+    print_step("5", "요약문 조회", summary_time, f"{len(summaries)}/{len(id_type_map_summary)}건 매칭")
+    timings.append(("5", "요약문 조회 (PostgreSQL)", summary_time, f"{filled_count}건 content 주입"))
 
     # ─────────────────────────────────────────────────
     # [6] Cross-encoder 리랭킹
@@ -329,7 +333,7 @@ def main() -> None:
     ├─[4] RRF 병합 (벡터 + FTS 결과 합산)
     │     └─ reciprocal_rank_fusion → source_id별 최고 유사도 선택
     │
-    ├─[5] 요약문 조회 (LanceDB content → 리랭킹 입력)
+    ├─[5] 요약문 조회 (PostgreSQL ai_summary → 리랭킹 입력)
     │
     ├─[6] Cross-encoder 리랭킹 (bge-reranker-v2-m3-ko)
     │     └─ 적응형 truncation (head 3000 + tail 1000자)

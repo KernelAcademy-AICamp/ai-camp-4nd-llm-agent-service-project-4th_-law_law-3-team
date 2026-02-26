@@ -13,7 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
-from openai import OpenAI
+from langsmith import traceable
 
 from app.core.config import settings
 from app.core.errors import EmbeddingModelNotFoundError
@@ -106,10 +106,6 @@ def check_embedding_model_availability() -> bool:
     if _embedding_model_available is not None:
         return _embedding_model_available
 
-    if not settings.USE_LOCAL_EMBEDDING:
-        _embedding_model_available = True
-        return True
-
     _embedding_model_available = is_embedding_model_cached()
 
     if not _embedding_model_available and not _embedding_model_warning_shown:
@@ -182,6 +178,7 @@ def _compute_embedding(query: str) -> List[float]:
         return response.data[0].embedding
 
 
+@traceable(name="embedding")
 def create_query_embedding(query: str) -> List[float]:
     """
     쿼리 텍스트를 임베딩 벡터로 변환 (LRU 캐시 + thundering herd 방지)

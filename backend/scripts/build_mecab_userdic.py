@@ -45,6 +45,7 @@ CSV_PATH = OUTPUT_DIR / "legal_terms.csv"
 DIC_PATH = OUTPUT_DIR / "legal_terms.dic"
 DECOMP_MAP_PATH = OUTPUT_DIR / "decomposition_map.json"
 PRIORITY_TERMS_PATH = OUTPUT_DIR / "priority_terms.json"
+MANUAL_TERMS_PATH = SCRIPT_DIR / "manual_terms.json"
 
 # MeCab 시스템 경로
 MECAB_DICT_INDEX_CANDIDATES = [
@@ -655,6 +656,15 @@ def main() -> None:
         terms = asyncio.run(load_terms_from_db())
 
     print(f"  로드 완료: {len(terms):,}개")
+
+    # 수동 추가 용어 병합 (manual_terms.json)
+    if MANUAL_TERMS_PATH.exists():
+        with open(MANUAL_TERMS_PATH, encoding="utf-8") as f:
+            manual_terms = set(json.load(f))
+        new_terms = manual_terms - terms
+        if new_terms:
+            terms.update(new_terms)
+            print(f"  수동 추가: {len(new_terms):,}개 ({', '.join(sorted(new_terms))})")
 
     if not terms:
         print("[ERROR] 로드된 용어가 없습니다")

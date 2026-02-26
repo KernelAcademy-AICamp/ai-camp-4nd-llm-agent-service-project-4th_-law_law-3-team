@@ -29,6 +29,9 @@ from scripts.ingest.shared import get_tokenizer, upsert_fts_batch
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 1000
+
+# PostgreSQL tsvector 최대 1MB (1,048,575 bytes)
+# 한글 1자 ≈ 3 bytes UTF-8, 안전 마진 고려하여 300,000자 제한
 _MAX_FULLTEXT_CHARS = 300_000
 
 
@@ -63,13 +66,22 @@ def run_fts_rebuild(
     with sync_session_factory() as session:
         # 리셋
         if reset:
-            session.execute(
-                delete(FtsIndex).where(
-                    FtsIndex.data_type == config.data_type_label
-                )
+            stmt = delete(FtsIndex).where(
+                FtsIndex.data_type == config.data_type_label
             )
+            # dec_* 위원회결정례는 data_type을 공유하므로
+            # source_id 접두사로 해당 타입만 삭제 (다른 dec_* 보호)
+            if config.name.startswith("dec_"):
+                stmt = stmt.where(
+                    FtsIndex.source_id.like(f"{config.name}:%")
+                )
+            session.execute(stmt)
             session.commit()
-            logger.info("%s FTS 인덱스 삭제 완료", config.data_type_label)
+            logger.info(
+                "%s(%s) FTS 인덱스 삭제 완료",
+                config.data_type_label,
+                config.name,
+            )
 
         # 원본 건수 조회
         total = session.execute(

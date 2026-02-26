@@ -190,20 +190,18 @@ prompt = f"""다음 법률 검색 쿼리를 {num_queries - 1}개의 다른 표�
 | **구체화** | 추상적 → 구체적 | "이혼" → "이혼 재산분할 기준", "양육권 결정" |
 | **문맥 보존** | 대화형 쿼리 처리 | "그건 어떻게 되나요?" → (히스토리 참조) 독립 쿼리로 |
 
-### 대화형 쿼리 리라이팅
+### 쿼리 리라이팅 (`rewrite_query`)
 
 ```python
-async def rewrite_conversational_query(
-    message: str,
-    history: list[dict],
-) -> str:
-    """짧은 follow-up 메시지를 독립적인 검색 쿼리로 변환"""
-    # follow-up 감지 기준: 짧은 메시지 + 키워드
-    follow_up_keywords = ["그건", "그러면", "그래서", "더", "또", "다른"]
+from app.services.rag.query_rewrite import rewrite_query
 
-    if len(message) < 20 and any(kw in message for kw in follow_up_keywords):
-        # 히스토리에서 맥락 추출 → 독립 쿼리 생성
-        ...
+# LLM 기반: 일상 표현 → 법률 용어 변환, 자연스러운 문장 형태
+queries = rewrite_query("당근마켓에서 사기당했어", use_llm=True)
+# → ["중고거래 사기 피해에 대한 형사고소 및 손해배상청구 절차"]
+
+# 키워드 기반 (LLM 미사용)
+queries = rewrite_query("사기당했어", use_llm=False)
+# → ["사기당했어 사기 소송"]
 ```
 
 ---

@@ -10,8 +10,9 @@
 - **Frontend**: Next.js 14 (React, TypeScript)
 - **Database**: PostgreSQL, Neo4j (Graph DB)
 - **Vector DB**: LanceDB (RAG, 1문서=1벡터)
-- **AI/ML**: Solar (Upstage), LangGraph
+- **AI/ML**: Solar (Upstage), LangGraph, LangSmith (트레이싱)
 - **Embedding**: KURE-v1 (로컬, 1024차원) / OpenAI (선택)
+- **Reranker**: bge-reranker-v2-m3-ko (Cross-encoder, 한국어 특화)
 
 ## 프로젝트 구조
 
@@ -26,10 +27,14 @@ law-3-team/
 │   │   │   ├── database.py          # DB 연결
 │   │   │   ├── errors.py            # 공통 예외
 │   │   │   └── registry.py          # 모듈 자동 등록
-│   │   ├── multi_agent/             # 멀티 에이전트 시스템
-│   │   │   ├── orchestrator.py      # 오케스트레이션
-│   │   │   ├── routing/             # 라우팅 (rules_router)
-│   │   │   └── agents/              # 에이전트 구현체
+│   │   ├── multi_agent/             # LangGraph 멀티 에이전트 시스템
+│   │   │   ├── graph.py             # StateGraph 빌드/컴파일
+│   │   │   ├── nodes.py             # router_node + 에이전트 노드
+│   │   │   ├── router.py            # RulesRouter, AgentType
+│   │   │   ├── state.py             # ChatState TypedDict
+│   │   │   ├── agents/              # 에이전트 구현체
+│   │   │   ├── subgraphs/           # 서브그래프 (소액소송, 모의법정)
+│   │   │   └── schemas/             # 스키마
 │   │   ├── services/                # 비즈니스 로직
 │   │   │   ├── rag/                 # RAG 검색 서비스
 │   │   │   └── service_function/    # 통합 서비스 함수
@@ -599,6 +604,9 @@ npm run dev               # 개발 서버 (localhost:3000)
 | `LANCEDB_TABLE_NAME` | LanceDB 테이블명 | `legal_chunks` |
 | `USE_LOCAL_EMBEDDING` | 로컬 임베딩 사용 여부 (무료) | `true` |
 | `LOCAL_EMBEDDING_MODEL` | 로컬 임베딩 모델 | `nlpai-lab/KURE-v1` |
+| `LANGCHAIN_TRACING_V2` | LangSmith 트레이싱 활성화 | `false` |
+| `LANGCHAIN_PROJECT` | LangSmith 프로젝트명 | `law-platform` |
+| `LANGCHAIN_API_KEY` | LangSmith API 키 | - |
 
 ### .env 파일 예시
 
@@ -624,6 +632,11 @@ LANCEDB_TABLE_NAME=legal_chunks
 # 로컬 임베딩 (무료, 권장)
 USE_LOCAL_EMBEDDING=true
 LOCAL_EMBEDDING_MODEL=nlpai-lab/KURE-v1
+
+# LangSmith 트레이싱 (선택)
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT=law-platform
+LANGCHAIN_API_KEY=lsv2_pt_your-langsmith-api-key
 ```
 
 ## Docker 프로덕션 배포

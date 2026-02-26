@@ -4,6 +4,9 @@ RAG 서비스 모듈
 검색, 리랭킹, 쿼리 리라이팅, 파이프라인 함수 제공
 """
 
+# Context 압축
+from app.services.rag.compression import ContextCompressor, get_context_compressor
+
 # 임베딩 함수
 from app.services.rag.embedding import (
     check_embedding_model_availability,
@@ -11,6 +14,17 @@ from app.services.rag.embedding import (
     create_query_embedding_async,
     get_local_model,
     is_embedding_model_cached,
+)
+
+# 포맷팅 유틸리티
+from app.services.rag.format_utils import (
+    format_generic_context,
+    format_law_context,
+    format_law_sources,
+    format_precedent_context,
+    format_precedent_sources,
+    format_supplementary_context,
+    format_supplementary_sources,
 )
 
 # 하이브리드 검색
@@ -40,7 +54,6 @@ from app.services.rag.pipeline import (
 # 쿼리 리라이팅
 from app.services.rag.query_rewrite import (
     extract_legal_keywords,
-    rewrite_conversational_query,
     rewrite_query,
 )
 
@@ -61,6 +74,9 @@ from app.services.rag.retrieval import (
 )
 
 __all__ = [
+    # Context 압축
+    "ContextCompressor",
+    "get_context_compressor",
     # 임베딩
     "create_query_embedding",
     "create_query_embedding_async",
@@ -86,8 +102,15 @@ __all__ = [
     "is_reranker_available",
     # 쿼리 리라이팅
     "rewrite_query",
-    "rewrite_conversational_query",
     "extract_legal_keywords",
+    # 포맷팅 유틸리티
+    "format_precedent_context",
+    "format_law_context",
+    "format_supplementary_context",
+    "format_generic_context",
+    "format_precedent_sources",
+    "format_law_sources",
+    "format_supplementary_sources",
     # 파이프라인
     "RAGPipeline",
     "PRESETS",

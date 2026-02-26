@@ -31,6 +31,12 @@ logger = logging.getLogger(__name__)
 # · (U+00B7, 가운데점): MeCab이 SC(특수문자)로 정상 처리하지만 통일성 위해 포함
 _MIDDOT_PATTERN = re.compile(r"[ㆍ·]")
 
+# 명사 품사 태그 (일반명사 + 고유명사만)
+_FTS_POS_TAGS: frozenset[str] = frozenset({"NNG", "NNP"})
+
+# FTS 최소 토큰 길이 (1글자 명사 "시", "때" 등 노이즈 제거)
+_MIN_TOKEN_LENGTH = 2
+
 # MeCab 설치 여부 확인
 _MECAB_AVAILABLE = False
 try:
@@ -157,7 +163,7 @@ class MeCabTokenizer:
 
     def morphs(self, text: str) -> list[str]:
         """
-        형태소 분석 결과를 리스트로 반환
+        형태소 분석 결과를 리스트로 반환 (명사만: NNG + NNP, 2자 이상)
 
         MeCab이 인식한 복합어에 분해맵의 서브 토큰을 추가한다.
 
@@ -165,24 +171,26 @@ class MeCabTokenizer:
             text: 분석할 한국어 텍스트
 
         Returns:
-            형태소 리스트 (예: ["소멸시효", "소멸", "시효"])
+            명사 형태소 리스트 (예: ["소멸시효", "소멸", "시효"])
         """
         base_morphs = self._mecab_morphs(text)
 
         if self._decomposition_map:
-            return self._decompose_compounds(base_morphs)
+            tokens = self._decompose_compounds(base_morphs)
+        else:
+            tokens = base_morphs
 
-        return base_morphs
+        return [t for t in tokens if len(t) >= _MIN_TOKEN_LENGTH]
 
     def _mecab_morphs(self, text: str) -> list[str]:
         """
-        MeCab 형태소 분석 (Compound 분해 포함)
+        MeCab 형태소 분석 (Compound 분해 포함, 명사만 반환)
 
         Args:
             text: 분석할 한국어 텍스트
 
         Returns:
-            형태소 리스트
+            명사 형태소 리스트
         """
         if not text or not text.strip():
             return []
@@ -201,15 +209,22 @@ class MeCabTokenizer:
             if not surface:
                 continue
 
-            # 피처 문자열 분석하여 Compound 분해
+            # 피처 문자열 분석하여 Compound 분해 및 POS 필터링
             if len(parts) > 1:
                 features = parts[1].split(",")
+                pos_tag = features[0] if features else "*"
                 morph_type = features[4] if len(features) > 4 else "*"
                 if morph_type == "Compound" and len(features) > 7:
                     decomposed = self._decompose_compound(features[7])
                     if decomposed:
+                        # Compound 분해 토큰은 구성 형태소가 대부분 NNG이므로
+                        # 필터 없이 포함
                         morphs_list.extend(decomposed)
                         continue
+
+                # 명사(NNG + NNP)만 허용
+                if pos_tag not in _FTS_POS_TAGS:
+                    continue
 
             morphs_list.append(surface)
 
@@ -268,13 +283,13 @@ class MeCabTokenizer:
 
     def tokenize(self, text: str) -> str:
         """
-        텍스트를 형태소 분석하여 공백 구분 문자열로 반환
+        텍스트를 형태소 분석하여 공백 구분 문자열로 반환 (명사만)
 
         Args:
             text: 원본 텍스트
 
         Returns:
-            공백 구분 형태소 문자열 (예: "손해 배상 청구")
+            공백 구분 명사 문자열 (예: "손해 배상 청구")
         """
         return " ".join(self.morphs(text))
 
@@ -286,6 +301,6 @@ class MeCabTokenizer:
             query: 검색 쿼리 문자열
 
         Returns:
-            공백 구분 형태소 문자열
+            공백 구분 명사 문자열
         """
         return self.tokenize(query)

@@ -1,3 +1,4 @@
+import os
 from typing import List
 from urllib.parse import urlparse, urlunparse
 
@@ -61,8 +62,8 @@ class Settings(BaseSettings):
     # LanceDB 설정 (VECTOR_DB=lancedb 일 때 사용)
     LANCEDB_URI: str = "./lancedb_data"
     LANCEDB_TABLE_NAME: str = "legal_chunks"
-    LANCEDB_INDEX_TYPE: str = ""  # 빈 문자열이면 brute-force, "IVF_FLAT" 등 설정 가능
-    LANCEDB_NPROBES: int = 40  # IVF 인덱스 검색 시 탐색할 파티션 수 (높을수록 정확, 느림)
+    LANCEDB_INDEX_TYPE: str = "IVF_FLAT"  # 빈 문자열이면 brute-force, "IVF_FLAT" 등 설정 가능
+    LANCEDB_NPROBES: int = 30  # IVF 인덱스 검색 시 탐색할 파티션 수 (높을수록 정확, 느림)
     LANCEDB_MODE: str = "local"  # "local" | "remote"
     LANCEDB_SERVICE_URL: str = "http://localhost:8100"  # remote 모드 시 마이크로서비스 URL
     LANCEDB_SERVICE_TIMEOUT: float = 30.0  # HTTP timeout (초)
@@ -144,6 +145,11 @@ class Settings(BaseSettings):
     PERSONA_MIN_HISTORY: int = 30
     PERSONA_CONFIDENCE_THRESHOLD: float = 0.6
 
+    # LangSmith 트레이싱
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_PROJECT: str = "law-platform"
+    LANGCHAIN_API_KEY: str = ""
+
     # ONNX 임베딩 최적화
     USE_ONNX_EMBEDDING: bool = False
     ONNX_EMBEDDING_VARIANT: str = "ort-opt"  # ort-opt (FP32 무손실) | ort-opt-qdq (INT8, cosine 0.999) | onnx-fp16 (FP16, cosine 1.0)
@@ -157,48 +163,12 @@ class Settings(BaseSettings):
     ONNX_ENABLE_BF16_FASTMATH: bool = False  # Graviton3+ 전용 (Mac ARM 미지원)
     ONNX_QDQ_SENSITIVE_LAYERS: str = ""  # 쉼표 구분 민감 레이어 인덱스 (예: "0,1,22,23"), 빈 문자열이면 기본값 사용
 
-    # Upstage (Solar)
-    UPSTAGE_API_KEY: str = ""
-    UPSTAGE_MODEL: str = "solar-pro"
-
-    # Content Marketing (콘텐츠 마케팅 자동화)
-    TAVILY_API_KEY: str = ""
-    NAVER_CLIENT_ID: str = ""
-    NAVER_CLIENT_SECRET: str = ""
-    PERPLEXITY_API_KEY: str = ""  # Phase 2
-    YOUTUBE_API_KEY: str = ""  # Phase 2
-    GOOGLE_CSE_API_KEY: str = ""  # Google Custom Search JSON API 키
-    GOOGLE_CSE_ID: str = ""  # Programmable Search Engine ID
-    NEWSDATA_API_KEY: str = ""  # NewsData.io API 키
-    NEWSAPI_API_KEY: str = ""  # NewsAPI.org API 키
-    CONTENT_MARKETING_CACHE_TTL: int = 86400  # 24시간
-
-    # Content Marketing v2.1 — Keyword Flow
-    KEYWORD_COLLECT_CACHE_TTL: int = 3600  # 1시간
-    KEYWORD_NEWS_CACHE_TTL: int = 1800  # 30분
-    KEYWORD_MAX_RESULTS: int = 10
-    KEYWORD_NEWS_MAX_RESULTS: int = 10
-    KEYWORD_COMMUNITY_DOMAINS: List[str] = [
-        "dcinside.com",
-        "fmkorea.com",
-        "theqoo.net",
-        "bobaedream.co.kr",
-        "inven.co.kr",
-    ]
-    KEYWORD_COLLECT_RATE_LIMIT: int = 5  # 시간당
-    KEYWORD_NEWS_RATE_LIMIT: int = 30  # 시간당
-
-    # Content Marketing v2.1 — Legal Gate + 5차원 가중합 스코어링
-    TREND_LEGAL_THRESHOLD: float = 0.3  # Legal Gate 임계값 (설계 기준 복원)
-    TREND_MENTION_WEIGHT: float = 0.25  # 언급 빈도
-    TREND_LEGAL_WEIGHT: float = 0.6  # v1.0 하위호환 유지 (v2에서는 _LEGAL_ADDITIVE_WEIGHT 사용)
-    TREND_CONTROVERSY_WEIGHT: float = 0.20  # 논란/찬반 대립
-    TREND_SPREAD_WEIGHT: float = 0.10  # 확산도 (소스 다양성)
-    TREND_FITNESS_WEIGHT: float = 0.25  # 채널 적합도
-
-    # Content Marketing v2.0 — 페르소나
-    PERSONA_MIN_HISTORY: int = 30
-    PERSONA_CONFIDENCE_THRESHOLD: float = 0.6
+    # Context 압축 (LLMLingua-2)
+    ENABLE_CONTEXT_COMPRESSION: bool = False
+    COMPRESSION_MODEL: str = "microsoft/llmlingua-2-xlm-roberta-large-meetingbank"
+    COMPRESSION_DEFAULT_RATE: float = 0.5
+    COMPRESSION_MIN_LENGTH: int = 500
+    COMPRESSION_DEVICE: str = "cpu"  # "cpu" | "cuda"
 
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []
@@ -217,3 +187,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# LangSmith/LangChain SDK는 os.environ에서 직접 읽으므로 설정값을 내보냄
+if settings.LANGCHAIN_TRACING_V2:
+    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+    os.environ.setdefault("LANGCHAIN_PROJECT", settings.LANGCHAIN_PROJECT)
+    if settings.LANGCHAIN_API_KEY:
+        os.environ.setdefault("LANGCHAIN_API_KEY", settings.LANGCHAIN_API_KEY)

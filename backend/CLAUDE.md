@@ -157,7 +157,7 @@ app/
 │   ├── state.py         # ChatState TypedDict (emotion 포함), 변환 함수
 │   ├── agents/          # 에이전트 구현 (BaseChatAgent 상속)
 │   │   ├── base_chat.py              # 베이스 클래스
-│   │   ├── legal_search_agent.py     # 판례/법령 RAG 검색
+│   │   ├── legal_search_agent.py     # 판례/법령 RAG 검색 (Focus+Supplementary 병렬)
 │   │   ├── lawyer_finder_agent.py    # 변호사 찾기
 │   │   ├── small_claims_agent.py     # 소액소송
 │   │   ├── storyboard_agent.py       # 사건 타임라인
@@ -175,10 +175,12 @@ app/
 ├── services/            # 비즈니스 로직
 │   ├── rag/
 │   │   ├── embedding.py  # 임베딩 모델
-│   │   ├── retrieval.py  # 벡터 검색
+│   │   ├── retrieval.py  # 벡터 검색 + 원문/요약문 배치 조회
 │   │   ├── rerank.py     # 리랭킹
 │   │   ├── query_rewrite.py  # 쿼리 리라이팅
-│   │   ├── pipeline.py   # 검색 파이프라인
+│   │   ├── keyword_search.py  # FTS 키워드 검색
+│   │   ├── pipeline.py   # 검색 파이프라인 (동기 + async)
+│   │   ├── format_utils.py     # LLM 컨텍스트 + 프론트엔드 소스 포맷팅
 │   │   ├── onnx_session.py       # ONNX 세션 싱글턴 관리
 │   │   └── onnx_quality_gate.py  # ONNX 품질 게이트 (PyTorch 비교)
 │   └── service_function/ # 통합 서비스 함수
@@ -274,7 +276,7 @@ START → router_node ──(Command)──→ legal_search_node ───→ EN
 **에이전트 목록:**
 | 에이전트 | 역할 | 노드 | RAG | LLM |
 |---------|------|------|-----|-----|
-| `LegalSearchAgent` | 판례/법령 RAG 검색 (search_focus 분기) | `legal_search_node` | ✅ | ✅ |
+| `LegalSearchAgent` | 판례/법령 RAG 검색 (Focus+Supplementary 병렬) | `legal_search_node` | ✅ | ✅ |
 | `LawyerFinderAgent` | 위치 기반 변호사 추천 | `lawyer_finder_node` | ❌ | ❌ |
 | `SmallClaimsAgent` | 소액소송 단계별 가이드 | `small_claims_subgraph` | ✅ | ❌ |
 | `StoryboardAgent` | 사건 타임라인 생성 | `storyboard_node` | ❌ | ✅ |
@@ -312,6 +314,9 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `UPSTAGE_MODEL` | Solar 모델명 | `solar-pro3-260126` |
 | `USE_DB_LAWYERS` | 변호사 데이터 소스 (true: PostgreSQL, false: JSON) | `false` |
 | `USE_LEGAL_TERM_DICT` | 법률 용어 사전 사용 (true: MeCab 토큰 보강) | `false` |
+| `LANGCHAIN_TRACING_V2` | LangSmith 트레이싱 활성화 | `false` |
+| `LANGCHAIN_PROJECT` | LangSmith 프로젝트명 | `law-platform` |
+| `LANGCHAIN_API_KEY` | LangSmith API 키 | `""` |
 | `USE_ONNX_EMBEDDING` | ONNX 임베딩 사용 (쿼리 + 인제스트 배치, CUDA 자동 감지) | `false` |
 | `ONNX_EMBEDDING_VARIANT` | ONNX 임베딩 variant (`ort-opt`, `ort-opt-qdq`, `onnx-fp16`) | `ort-opt` |
 | `USE_ONNX_RERANKER` | ONNX 리랭커 사용 | `false` |
@@ -336,7 +341,7 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 ```python
 from app.services.rag.retrieval import get_retrieval_service, create_query_embedding
 
-# 검색 서비스
+# 검색 서비스 (동기)
 service = get_retrieval_service()
 results = service.search(
     query="손해배상 판례",
@@ -347,6 +352,24 @@ results = service.search(
 # 임베딩 생성
 embedding = create_query_embedding("검색 쿼리")
 ```
+
+```python
+# 파이프라인 (async, 내부 병렬화)
+from app.services.rag.pipeline import search_with_pipeline_async, PipelineConfig
+
+config = PipelineConfig(
+    n_results=15, doc_type="precedent",
+    enable_rerank=True, rerank_top_k=5,
+)
+result = await search_with_pipeline_async(query, config)
+# result.documents, result.metrics, result.rewritten_queries
+```
+
+**async 파이프라인 내부 병렬화:**
+- 다중 리라이팅 쿼리 → `asyncio.gather` 병렬 검색
+- 각 검색 내 벡터 + FTS → `asyncio.gather` 병렬 실행
+- 요약문/원문 조회 → data_type별 `asyncio.gather` 병렬
+- 리랭킹 → `asyncio.to_thread` (CPU-bound)
 
 ### 통합 서비스 함수 (`app/services/service_function/`)
 
@@ -578,7 +601,7 @@ app/models/
 | `legal_terms` | 법률 용어 사전 (~72,700건) | term(UNIQUE), definition, source_code, source_count, term_length, is_korean_only |
 | `trial_statistics` | 재판 통계 | category, court_name, court_type, parent_court, year, case_count |
 | `local_ordinance_documents` | 자치법규 원본 (160,276건) | ordinance_id, ordinance_name, local_government, overall_summary, content |
-| `fts_index` | FTS 전문 검색 인덱스 (579,498건) | **PK: (source_id, data_type)**, title, date, tsvector. dec_* source_id는 `{name}:{serial_number}` 형식 |
+| `fts_index` | FTS 전문 검색 인덱스 (579,498건) | **PK: (source_id, data_type)**, title, date, tsvector. dec_* source_id는 `{name}:{serial_number}` 형식. tsvector는 명사만 저장 (NNG+NNP, 2자 이상) |
 
 ### 변호사 데이터 (lawyers 테이블)
 
@@ -657,10 +680,17 @@ uv run python scripts/build_mecab_userdic.py --dry-run  # 통계만
 - `data/mecab_userdic/legal_terms.dic` - 컴파일된 MeCab 바이너리 사전
 - `data/mecab_userdic/decomposition_map.json` - 복합어→서브 토큰 분해맵
 
-**Fallback 체인:**
-1. MeCab + `USE_LEGAL_TERM_DICT=true` → 사후 복원 모드
-2. MeCab 기본 → Compound 분해만
-3. MeCab 미설치 → 공백 분리
+**FTS 명사 필터링:**
+- `_FTS_POS_TAGS = frozenset({"NNG", "NNP"})` — 일반명사 + 고유명사만 허용 (내부 상수)
+- `_MIN_TOKEN_LENGTH = 2` — 1자 명사("시", "때" 등) 노이즈 제거
+- `morphs()` 호출 시 항상 명사 필터 + 2자 이상 필터 적용 (옵션 없음)
+- FTS 생성(`db_writer`, `fts_builder`)과 검색(`keyword_search`) 양쪽에 적용
+- MeCab 미설치 시 에러 발생 (silent fallback 없음)
+
+**수동 용어 추가 (`scripts/manual_terms.json`):**
+- MeCab이 오분석하는 법률 용어를 수동으로 userdic에 추가하는 JSON 파일
+- VV+ETN(동사 활용형): 괴롭힘, 파면 / Compound 분리 방지: 임대차, 부당해고, 채무불이행 등
+- 빌드 시 자동 병합: `build_mecab_userdic.py`가 DB 용어 + manual_terms.json을 합산
 
 **시스템 요구:**
 - `mecab`, `libmecab-dev`, `mecab-ko-dic` 시스템 패키지

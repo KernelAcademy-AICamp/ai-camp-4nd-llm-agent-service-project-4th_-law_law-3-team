@@ -168,11 +168,13 @@ class SimpleChatAgent(BaseChatAgent):
 
         messages.append(("user", message))
 
-        # LLM 호출
-        response = model.invoke(messages)
+        # LLM 호출 (비동기)
+        response = await model.ainvoke(messages)
+        content = response.content
+        text = content if isinstance(content, str) else str(content)
 
         return AgentResult(
-            message=response.content,
+            message=text,
             sources=[],
             actions=[],
             session_data={"active_agent": self.name},

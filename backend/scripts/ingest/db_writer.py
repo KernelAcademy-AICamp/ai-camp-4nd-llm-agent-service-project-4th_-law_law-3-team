@@ -137,12 +137,17 @@ def run_db_ingest(
         # 리셋
         if reset:
             logger.info("기존 데이터 삭제 중...")
-            # fts_index에서 해당 data_type 삭제
-            session.execute(
-                delete(FtsIndex).where(
-                    FtsIndex.data_type == config.data_type_label
-                )
+            # fts_index에서 해당 타입 삭제
+            fts_del = delete(FtsIndex).where(
+                FtsIndex.data_type == config.data_type_label
             )
+            # dec_* 위원회결정례는 data_type을 공유하므로
+            # source_id 접두사로 해당 타입만 삭제 (다른 dec_* 보호)
+            if config.name.startswith("dec_"):
+                fts_del = fts_del.where(
+                    FtsIndex.source_id.like(f"{config.name}:%")
+                )
+            session.execute(fts_del)
             # ORM 테이블 전체 삭제
             orm_table = config.orm_class.__table__
             session.execute(delete(orm_table))
@@ -287,5 +292,15 @@ def verify_db(config: IngestConfig) -> dict[str, Any]:
         if result["fts_count"]
         else 0,
     )
+
+    # ORM↔FTS 건수 불일치 경고
+    if result["orm_count"] != result["fts_count"]:
+        diff = result["orm_count"] - result["fts_count"]
+        logger.warning(
+            "  ⚠️  ORM↔FTS 건수 불일치: ORM %d건, FTS %d건 (차이: %+d)",
+            result["orm_count"],
+            result["fts_count"],
+            diff,
+        )
 
     return result

@@ -19,6 +19,7 @@ import logging
 import re
 from typing import Any, Optional
 
+from langsmith import traceable
 from sqlalchemy import func, select
 
 from app.core.database import async_session_factory, sync_session_factory
@@ -32,19 +33,21 @@ _INVALID_TOKEN_RE = re.compile(r"['\\\x00]")
 # 개념 AND 결과가 이 수보다 적으면 OR fallback
 _CONCEPT_AND_MIN_RESULTS = 5
 
+# FTS 불용어: 문서 빈도가 너무 높아 검색 변별력이 없는 토큰
+# "판례" = 69,113/368,232건 (18.8%) → GIN 인덱스 비효율 + 랭킹 노이즈
+_FTS_STOPWORDS: frozenset[str] = frozenset({"판례"})
 
+# FTS 가용성 캐시 (서버 수명 동안 유효 — 인제스트 후 재시작 필요)
+_fts_available_cache: bool | None = None
+
+
+@traceable(name="mecab_tokenize")
 def _tokenize(text: str) -> list[str]:
-    """텍스트를 MeCab 토큰으로 분해 (2자 이상만)."""
-    try:
-        from app.tools.vectorstore.lancedb import _get_thread_tokenizer
+    """텍스트를 MeCab 토큰으로 분해 (명사만, 2자 이상)."""
+    from app.tools.vectorstore.lancedb import _get_thread_tokenizer
 
-        tokenizer = _get_thread_tokenizer()
-        tokens = tokenizer.morphs(text)
-    except Exception:
-        logger.warning("MeCab 사용 불가, 공백 분리 fallback")
-        tokens = text.strip().split()
-
-    return [t for t in tokens if len(t) >= 2]
+    tokenizer = _get_thread_tokenizer()
+    return tokenizer.morphs(text)
 
 
 def _clean_token(token: str) -> str:
@@ -53,6 +56,7 @@ def _clean_token(token: str) -> str:
     return _INVALID_TOKEN_RE.sub("", token)
 
 
+@traceable(name="build_concept_and_tsquery")
 def _build_concept_and_tsquery(query: str) -> str:
     """개념 단위 AND tsquery 생성.
 
@@ -69,7 +73,7 @@ def _build_concept_and_tsquery(query: str) -> str:
     groups: list[list[str]] = []
     for concept in concepts:
         tokens = [_clean_token(t) for t in _tokenize(concept)]
-        tokens = [t for t in tokens if t]
+        tokens = [t for t in tokens if t and t not in _FTS_STOPWORDS]
         if tokens:
             groups.append(tokens)
 
@@ -86,10 +90,11 @@ def _build_concept_and_tsquery(query: str) -> str:
     return " & ".join(parts)
 
 
+@traceable(name="build_or_tsquery")
 def _build_or_tsquery(query: str) -> str:
     """전체 OR tsquery 생성 (fallback용)."""
     tokens = [_clean_token(t) for t in _tokenize(query)]
-    tokens = [t for t in tokens if t]
+    tokens = [t for t in tokens if t and t not in _FTS_STOPWORDS]
     if not tokens:
         return ""
     return " | ".join(tokens)
@@ -115,11 +120,13 @@ def _map_data_type_to_doc_type(data_type: str) -> str:
     return mapping.get(data_type, data_type.lower() if data_type else "")
 
 
+@traceable(name="execute_fts_query")
 def _execute_fts_query(
     session: Any,
     tsquery_str: str,
     n_results: int,
     doc_type: Optional[str],
+    exclude_doc_types: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     """tsquery 문자열로 FTS 검색 실행."""
     tsquery_expr = func.to_tsquery("simple", tsquery_str)
@@ -138,6 +145,8 @@ def _execute_fts_query(
     if doc_type:
         data_type = _map_doc_type_to_data_type(doc_type)
         stmt = stmt.where(FtsIndex.data_type == data_type)
+    elif exclude_doc_types:
+        stmt = stmt.where(FtsIndex.data_type.not_in(exclude_doc_types))
 
     stmt = stmt.order_by(rank_expr.desc()).limit(n_results)
 
@@ -166,15 +175,21 @@ def _execute_fts_query(
             "content": "",
             "metadata": metadata,
             "similarity": row.rank / max_rank,
+            "score_type": "fts_rank",
         })
 
     return documents
 
 
+@traceable(name="keyword_search")
 def search_by_keyword(
     query: str,
     n_results: int = 50,
     doc_type: Optional[str] = None,
+    exclude_doc_types: Optional[list[str]] = None,
+    *,
+    precomputed_concept_tsq: Optional[str] = None,
+    precomputed_or_tsq: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """
     PostgreSQL tsvector 기반 키워드 검색.
@@ -185,18 +200,23 @@ def search_by_keyword(
         query: 검색 쿼리
         n_results: 반환할 최대 결과 수
         doc_type: 문서 유형 필터 ("precedent", "law")
+        exclude_doc_types: 제외할 data_type 목록 (한국어)
+        precomputed_concept_tsq: 사전 계산된 개념 AND tsquery (focus 모드 공유용)
+        precomputed_or_tsq: 사전 계산된 OR tsquery (focus 모드 공유용)
 
     Returns:
         [{"id": source_id, "content": "", "metadata": dict, "similarity": float}, ...]
     """
-    concept_tsq = _build_concept_and_tsquery(query)
+    concept_tsq = precomputed_concept_tsq or _build_concept_and_tsquery(query)
     if not concept_tsq:
         return []
 
     try:
         with sync_session_factory() as session:
             # Step 1: 개념 AND 검색 (빠름, GIN 인덱스 활용)
-            results = _execute_fts_query(session, concept_tsq, n_results, doc_type)
+            results = _execute_fts_query(
+                session, concept_tsq, n_results, doc_type, exclude_doc_types
+            )
 
             if len(results) >= _CONCEPT_AND_MIN_RESULTS:
                 return results
@@ -207,11 +227,13 @@ def search_by_keyword(
                 len(results),
                 _CONCEPT_AND_MIN_RESULTS,
             )
-            or_tsq = _build_or_tsquery(query)
+            or_tsq = precomputed_or_tsq or _build_or_tsquery(query)
             if not or_tsq:
                 return results
 
-            return _execute_fts_query(session, or_tsq, n_results, doc_type)
+            return _execute_fts_query(
+                session, or_tsq, n_results, doc_type, exclude_doc_types
+            )
 
     except Exception as e:
         logger.warning("키워드 검색 실패 (fts_index 미생성 또는 비어있음): %s", e)
@@ -219,26 +241,38 @@ def search_by_keyword(
 
 
 def is_fts_available_sync() -> bool:
-    """fts_index 테이블에 데이터가 있는지 확인 (동기 버전)."""
+    """fts_index 테이블에 데이터가 있는지 확인 (동기, 캐시).
+
+    서버 수명 동안 결과를 캐시합니다.
+    인제스트 후 서버 재시작 시 자동 갱신됩니다.
+    """
+    global _fts_available_cache  # noqa: PLW0603
+    if _fts_available_cache is not None:
+        return _fts_available_cache
     try:
         with sync_session_factory() as session:
             result = session.execute(
-                select(func.count()).select_from(FtsIndex)
+                select(func.count()).select_from(FtsIndex).limit(1)
             )
             count = result.scalar_one()
-            return count > 0
+            _fts_available_cache = count > 0
+            return _fts_available_cache
     except Exception:
         return False
 
 
 async def is_fts_available() -> bool:
-    """fts_index 테이블에 데이터가 있는지 확인 (비동기 버전)."""
+    """fts_index 테이블에 데이터가 있는지 확인 (비동기, 캐시)."""
+    global _fts_available_cache  # noqa: PLW0603
+    if _fts_available_cache is not None:
+        return _fts_available_cache
     try:
         async with async_session_factory() as session:
             result = await session.execute(
-                select(func.count()).select_from(FtsIndex)
+                select(func.count()).select_from(FtsIndex).limit(1)
             )
             count = result.scalar_one()
-            return count > 0
+            _fts_available_cache = count > 0
+            return _fts_available_cache
     except Exception:
         return False

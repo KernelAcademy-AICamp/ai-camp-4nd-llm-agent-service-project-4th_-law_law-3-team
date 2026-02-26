@@ -35,10 +35,12 @@ async_session_factory = async_sessionmaker(
 )
 
 # Sync Engine (RAG 서비스 등 동기 함수용)
+# pool_size=10: RAG 파이프라인의 asyncio.gather 병렬 검색에서
+# 동시에 여러 sync 세션이 필요하므로 기본값(5)보다 크게 설정
 sync_engine = create_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
-    pool_size=5,
+    pool_size=10,
     max_overflow=10,
     pool_pre_ping=True,
 )
