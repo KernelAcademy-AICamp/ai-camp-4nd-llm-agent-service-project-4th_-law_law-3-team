@@ -32,35 +32,37 @@ function StatuteList({
   nodes: StatuteNode[]
   onNodeClick: (node: StatuteNode) => void
 }) {
-  if (nodes.length === 0) return null
-
   return (
     <div>
       <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
         {title} ({nodes.length})
       </h4>
-      <ul className="space-y-1">
-        {nodes.map((node) => (
-          <li key={node.id}>
-            <button
-              onClick={() => onNodeClick(node)}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-700/50
-                         transition-colors group flex items-center justify-between"
-            >
-              <div className="flex-1 min-w-0">
-                <span className="text-sm text-slate-200 group-hover:text-white truncate block">
-                  {node.name}
-                </span>
-                <span className="text-xs text-slate-500">
-                  {node.type}
-                  {node.abbreviation && ` · ${node.abbreviation}`}
-                </span>
-              </div>
-              <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 shrink-0 ml-2" />
-            </button>
-          </li>
-        ))}
-      </ul>
+      {nodes.length === 0 ? (
+        <p className="text-xs text-slate-600 px-3 py-2">없음</p>
+      ) : (
+        <ul className="space-y-1">
+          {nodes.map((node) => (
+            <li key={node.id}>
+              <button
+                onClick={() => onNodeClick(node)}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-700/50
+                           transition-colors group flex items-center justify-between"
+              >
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm text-slate-200 group-hover:text-white truncate block">
+                    {node.name}
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {node.type}
+                    {node.abbreviation && ` · ${node.abbreviation}`}
+                  </span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 shrink-0 ml-2" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -132,13 +134,6 @@ export function StatuteDetailPanel({
 
           {/* 관련 법령 */}
           <StatuteList title="관련 법령" nodes={data.related} onNodeClick={onNodeClick} />
-
-          {/* 관계 없는 경우 */}
-          {data.upper.length === 0 && data.lower.length === 0 && data.related.length === 0 && (
-            <p className="text-sm text-slate-500 text-center py-4">
-              연결된 법령이 없습니다.
-            </p>
-          )}
         </div>
       )}
     </div>
