@@ -846,46 +846,29 @@ export default function ChatWidget() {
     setChatMode(chatMode === 'split' ? 'floating' : 'split')
   }
 
-  // Theme configuration (map page uses light theme, others use dark)
-  const isLightTheme = isMapPage
+  // Theme: always light (Apple HIG white theme)
+  const isLightTheme = true
 
   // Memoized markdown components for ReactMarkdown
   const markdownComponents = useMarkdownComponents(setHighlightedCaseNumber, isLightTheme)
 
-  // Styles based on theme
-  const themeClasses = isLightTheme
-    ? {
-        container:
-          'bg-white/90 backdrop-blur-xl border-l border-gray-200 shadow-2xl text-gray-900',
-        header: 'bg-gray-50 border-b border-gray-200',
-        headerTitle: 'text-gray-900',
-        headerSubtitle: 'text-blue-600',
-        messageUser: 'bg-blue-600 text-white shadow-md',
-        messageBot: 'bg-gray-100 text-gray-800 border border-gray-200',
-        inputArea: 'bg-gray-50 border-t border-gray-200',
-        input:
-          'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:bg-white',
-        closeBtn: 'text-gray-400 hover:bg-gray-100 hover:text-gray-600',
-        roleSelector: 'bg-gray-100 border-gray-200',
-        roleActive: 'bg-blue-600 text-white',
-        roleInactive: 'text-gray-600 hover:bg-gray-200',
-      }
-    : {
-        container:
-          'bg-slate-900/95 backdrop-blur-xl border-l border-white/10 shadow-2xl text-white',
-        header: 'bg-blue-600/10 border-b border-white/10',
-        headerTitle: 'text-white',
-        headerSubtitle: 'text-blue-400',
-        messageUser: 'bg-blue-600 text-white shadow-lg',
-        messageBot: 'bg-white/5 text-gray-200 border border-white/5',
-        inputArea: 'bg-white/5 border-t border-white/10',
-        input:
-          'bg-black/20 border-white/10 text-white placeholder-white/30 focus:border-blue-500/50 focus:bg-white/5',
-        closeBtn: 'text-white/50 hover:bg-white/10 hover:text-white',
-        roleSelector: 'bg-white/10 border-white/10',
-        roleActive: 'bg-blue-600 text-white',
-        roleInactive: 'text-white/70 hover:bg-white/10',
-      }
+  // Apple HIG white theme
+  const themeClasses = {
+    container:
+      'bg-white/95 backdrop-blur-xl border-l border-black/[0.06] shadow-2xl text-[#1D1D1F]',
+    header: 'bg-white border-b border-black/[0.06]',
+    headerTitle: 'text-[#1D1D1F]',
+    headerSubtitle: 'text-[#007AFF]',
+    messageUser: 'bg-[#007AFF] text-white shadow-sm',
+    messageBot: 'bg-[#F5F5F7] text-[#1D1D1F] border border-black/[0.04]',
+    inputArea: 'bg-white border-t border-black/[0.06]',
+    input:
+      'bg-[#F5F5F7] border-black/[0.06] text-[#1D1D1F] placeholder-[#86868B] focus:border-[#007AFF] focus:bg-white',
+    closeBtn: 'text-[#86868B] hover:bg-[#F5F5F7] hover:text-[#1D1D1F]',
+    roleSelector: 'bg-[#F5F5F7] border-black/[0.06]',
+    roleActive: 'bg-[#007AFF] text-white',
+    roleInactive: 'text-[#86868B] hover:bg-black/[0.04]',
+  }
 
   // Layout classes based on viewMode
   const layoutClasses =
@@ -899,7 +882,7 @@ export default function ChatWidget() {
     return (
       <button
         onClick={toggleChat}
-        className="fixed bottom-6 right-6 w-16 h-16 bg-blue-600 hover:bg-blue-500 text-white rounded-full shadow-lg flex items-center justify-center text-3xl z-50 transition-all hover:scale-110 active:scale-95 animate-in fade-in zoom-in duration-300"
+        className="fixed bottom-6 right-6 w-14 h-14 bg-[#007AFF] hover:bg-[#0056CC] text-white rounded-full shadow-apple-hover flex items-center justify-center z-50 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer"
       >
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -1094,7 +1077,7 @@ export default function ChatWidget() {
           <button
             onClick={() => handleSend()}
             disabled={isLoading || isStreaming || !input.trim()}
-            className={`p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors shadow-lg active:scale-95 ${isLoading || isStreaming || !input.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`p-3 md:p-4 bg-[#007AFF] hover:bg-[#0056CC] text-white rounded-xl transition-colors shadow-sm active:scale-95 cursor-pointer ${isLoading || isStreaming || !input.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {isLoading || isStreaming ? (
               <svg className="w-5 h-5 md:w-6 md:h-6 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1130,7 +1113,7 @@ export default function ChatWidget() {
           </button>
         </div>
         {(isLoading || isStreaming) && (
-          <p className={`mt-2 text-xs ${isLightTheme ? 'text-gray-500' : 'text-white/60'}`}>
+          <p className="mt-2 text-xs text-[#86868B]">
             {loadingStatus.detail}
           </p>
         )}

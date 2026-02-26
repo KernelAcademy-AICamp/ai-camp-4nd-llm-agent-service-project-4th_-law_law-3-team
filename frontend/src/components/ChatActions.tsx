@@ -48,17 +48,11 @@ export default function ChatActions({
     router.push(fullUrl)
   }
 
-  const buttonClasses = isLightTheme
-    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-200'
-    : 'bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border border-blue-500/30'
+  const buttonClasses = 'bg-[#007AFF]/10 text-[#007AFF] hover:bg-[#007AFF]/20 border border-[#007AFF]/20'
 
-  const linkClasses = isLightTheme
-    ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-200'
-    : 'bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30'
+  const linkClasses = 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'
 
-  const locationClasses = isLightTheme
-    ? 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-200'
-    : 'bg-orange-600/20 text-orange-400 hover:bg-orange-600/30 border border-orange-500/30'
+  const locationClasses = 'bg-orange-50 text-orange-600 hover:bg-orange-100 border border-orange-200'
 
   return (
     <div className="flex flex-wrap gap-2 mt-3">
