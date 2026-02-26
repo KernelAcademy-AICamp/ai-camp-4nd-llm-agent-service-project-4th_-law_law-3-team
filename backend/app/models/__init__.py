@@ -2,6 +2,8 @@
 SQLAlchemy 모델 정의
 """
 
+from app.models.case_case_citation import CaseCaseCitation
+from app.models.case_statute_citation import CaseStatuteCitation
 from app.models.fts_index import FtsIndex
 from app.models.ingest import (
     AdministrationDocument,
@@ -32,6 +34,9 @@ from app.models.lawyer_persona import (
 )
 from app.models.legal_term import LegalTerm
 from app.models.precedent_document import PrecedentDocument
+from app.models.statute_alias import StatuteAlias
+from app.models.statute_hierarchy import StatuteHierarchy
+from app.models.statute_relation import StatuteRelation
 from app.models.trial_statistics import TrialStatistics
 
 __all__ = [
@@ -44,6 +49,12 @@ __all__ = [
     # 콘텐츠 마케팅 v2.0
     "LawyerPersonaModel",
     "LawyerPersonaFeedbackModel",
+    # 그래프 모델 (Neo4j → PostgreSQL)
+    "StatuteHierarchy",
+    "StatuteAlias",
+    "StatuteRelation",
+    "CaseStatuteCitation",
+    "CaseCaseCitation",
     # ingest 모델
     "AdminRuleDocument",
     "ConstitutionalDocument",

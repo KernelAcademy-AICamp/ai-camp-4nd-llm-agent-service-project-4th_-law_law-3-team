@@ -8,9 +8,11 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from app.core.config import settings
 from app.core.errors import EmbeddingModelNotFoundError
 from app.services.rag import search_relevant_documents_async
 from app.services.service_function.precedent_service import fetch_precedent_details
+from app.tools.graph.pg_graph_service import get_pg_graph_service
 from app.tools.vectorstore import get_vector_store
 
 
@@ -485,6 +487,27 @@ async def search_statutes(
 
     법령명, 공식 약칭, 비공식 약칭으로 법령을 검색합니다.
     """
+    if settings.USE_PG_GRAPH:
+        try:
+            pg = get_pg_graph_service()
+            results = await pg.search_statutes(query, limit)
+            return StatuteSearchResponse(
+                query=query,
+                results=[
+                    StatuteNodeResponse(
+                        id=r["id"] or "",
+                        name=r["name"] or "",
+                        type=r["type"] or "",
+                        abbreviation=r.get("abbreviation"),
+                        citation_count=r.get("citation_count") or 0,
+                    )
+                    for r in results
+                ],
+            )
+        except Exception as e:
+            logger.error(f"법령 검색 실패 (PG): {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="법령 검색 중 오류가 발생했습니다")
+
     graph = _get_graph_service()
     if not graph:
         raise HTTPException(status_code=503, detail="그래프 DB가 연결되지 않았습니다")
@@ -574,6 +597,36 @@ async def get_statute_hierarchy(statute_id: str):
 
     특정 법령의 상위/하위 계급 및 관련 법령을 조회합니다.
     """
+    if settings.USE_PG_GRAPH:
+        try:
+            pg = get_pg_graph_service()
+            detail = await pg.get_statute_hierarchy_detail(statute_id)
+            if not detail:
+                raise HTTPException(status_code=404, detail="법령을 찾을 수 없습니다")
+
+            def _to_node(d: dict) -> StatuteNodeResponse:
+                return StatuteNodeResponse(
+                    id=d["id"] or "",
+                    name=d["name"] or "",
+                    type=d["type"] or "",
+                    abbreviation=d.get("abbreviation"),
+                    citation_count=d.get("citation_count") or 0,
+                )
+
+            return StatuteHierarchyResponse(
+                root=_to_node(detail["root"]),
+                upper=[_to_node(n) for n in detail["upper"]],
+                lower=[_to_node(n) for n in detail["lower"]],
+                related=[_to_node(n) for n in detail["related"]],
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"법령 계층 조회 실패 (PG): {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500, detail="법령 계층 조회 중 오류가 발생했습니다"
+            )
+
     graph = _get_graph_service()
     if not graph:
         raise HTTPException(status_code=503, detail="그래프 DB가 연결되지 않았습니다")
@@ -655,6 +708,29 @@ async def get_statute_children(
 
     특정 법령의 하위 법령 목록을 조회합니다.
     """
+    if settings.USE_PG_GRAPH:
+        try:
+            pg = get_pg_graph_service()
+            children = await pg.get_statute_children(statute_id, limit)
+            return StatuteChildrenResponse(
+                statute_id=statute_id,
+                children=[
+                    StatuteNodeResponse(
+                        id=r["id"] or "",
+                        name=r["name"] or "",
+                        type=r["type"] or "",
+                        abbreviation=r.get("abbreviation"),
+                        citation_count=r.get("citation_count") or 0,
+                    )
+                    for r in children
+                ],
+            )
+        except Exception as e:
+            logger.error(f"하위 법령 조회 실패 (PG): {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500, detail="하위 법령 조회 중 오류가 발생했습니다"
+            )
+
     graph = _get_graph_service()
     if not graph:
         raise HTTPException(status_code=503, detail="그래프 DB가 연결되지 않았습니다")
@@ -702,6 +778,36 @@ async def get_statute_graph(
     중심 법령 기준으로 연결된 법령들의 그래프 데이터를 반환합니다.
     center_id가 없으면 인용수 상위 법령들로 시작합니다.
     """
+    if settings.USE_PG_GRAPH:
+        try:
+            pg = get_pg_graph_service()
+            graph_data = await pg.get_statute_graph(center_id, depth, limit)
+            return StatuteGraphResponse(
+                nodes=[
+                    GraphNodeResponse(
+                        id=n["id"] or "",
+                        name=n["name"] or "",
+                        type=n["type"] or "",
+                        abbreviation=n.get("abbreviation"),
+                        citation_count=n.get("citation_count") or 0,
+                    )
+                    for n in graph_data.get("nodes", [])
+                ],
+                links=[
+                    GraphLinkResponse(
+                        source=link["source"],
+                        target=link["target"],
+                        relation=link["relation"],
+                    )
+                    for link in graph_data.get("links", [])
+                ],
+            )
+        except Exception as e:
+            logger.error(f"법령 그래프 조회 실패 (PG): {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500, detail="법령 그래프 조회 중 오류가 발생했습니다"
+            )
+
     graph = _get_graph_service()
     if not graph:
         raise HTTPException(status_code=503, detail="그래프 DB가 연결되지 않았습니다")

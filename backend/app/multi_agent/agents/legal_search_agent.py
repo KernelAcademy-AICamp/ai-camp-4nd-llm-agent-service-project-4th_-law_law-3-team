@@ -6,10 +6,11 @@ RAG 기반 판례/법령 + 다중 타입 검색 및 법률 상담 제공.
 """
 
 import logging
+import re
 from collections.abc import AsyncGenerator
 from typing import Any, Literal
 
-from app.multi_agent.agents.base_chat import BaseChatAgent
+from app.multi_agent.agents.base_chat import ActionType, BaseChatAgent, ChatAction
 from app.multi_agent.schemas.plan import AgentResult
 from app.services.rag.format_utils import (
     format_law_context,
@@ -31,6 +32,14 @@ from app.services.service_function import (
 from app.tools.llm import get_chat_model
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# 체계도 네비게이션 키워드
+# ---------------------------------------------------------------------------
+
+_HIERARCHY_KEYWORDS = re.compile(
+    r"체계도|법령\s*계층|상위법|하위법|시행령\s*구조|법률\s*체계|법령\s*관계"
+)
 
 # ---------------------------------------------------------------------------
 # PRESETS 매핑
@@ -128,6 +137,58 @@ class LegalSearchAgent(BaseChatAgent):
         return context, sources
 
     # ------------------------------------------------------------------
+    # 체계도 네비게이션
+    # ------------------------------------------------------------------
+
+    async def _build_hierarchy_actions(
+        self, message: str, sources: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """체계도 키워드가 있으면 NAVIGATE 액션 생성."""
+        if self.focus != "law" or not _HIERARCHY_KEYWORDS.search(message):
+            return []
+
+        # sources에서 첫 번째 법령명 추출
+        statute_name: str | None = None
+        statute_id: str | None = None
+        for src in sources:
+            if src.get("doc_type") == "law" and src.get("title"):
+                statute_name = src["title"]
+                statute_id = src.get("doc_id")
+                break
+
+        if not statute_name:
+            return []
+
+        # PgGraphService로 statute_id 조회 (없으면 이름 검색)
+        if not statute_id:
+            try:
+                from app.core.config import settings
+
+                if settings.USE_PG_GRAPH:
+                    from app.tools.graph.pg_graph_service import get_pg_graph_service
+
+                    pg = get_pg_graph_service()
+                    results = await pg.search_statutes(statute_name, limit=1)
+                    if results:
+                        statute_id = results[0]["id"]
+                        statute_name = results[0]["name"]
+            except Exception:
+                logger.debug("체계도 statute_id 조회 실패", exc_info=True)
+
+        params: dict[str, str] = {"name": statute_name}
+        if statute_id:
+            params["id"] = statute_id
+
+        return [
+            ChatAction(
+                type=ActionType.NAVIGATE,
+                label="법령 체계도에서 보기",
+                url="/statute-hierarchy",
+                params=params,
+            ).model_dump()
+        ]
+
+    # ------------------------------------------------------------------
     # process / process_stream
     # ------------------------------------------------------------------
 
@@ -147,10 +208,12 @@ class LegalSearchAgent(BaseChatAgent):
             history=history,
         )
 
+        actions = await self._build_hierarchy_actions(message, sources)
+
         return AgentResult(
             message=response,
             sources=sources,
-            actions=[],
+            actions=actions,
             session_data={"active_agent": self.name, "focus": self.focus},
             agent_used=self.name,
         )
@@ -172,10 +235,12 @@ class LegalSearchAgent(BaseChatAgent):
             if chunk.content and isinstance(chunk.content, str):
                 yield ("token", {"content": chunk.content})
 
+        actions = await self._build_hierarchy_actions(message, sources)
+
         yield ("sources", {"sources": sources})
         yield ("metadata", {
             "agent_used": self.name,
-            "actions": [],
+            "actions": actions,
             "session_data": {"active_agent": self.name, "focus": self.focus},
         })
         yield ("done", {})

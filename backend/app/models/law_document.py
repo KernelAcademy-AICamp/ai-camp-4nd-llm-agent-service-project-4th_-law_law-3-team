@@ -105,6 +105,20 @@ class LawDocument(Base):
         comment="AI 생성 법령요약",
     )
 
+    # 그래프 관련 컬럼 (Neo4j → PostgreSQL 이관)
+    abbreviation = Column(
+        String(200),
+        nullable=True,
+        comment="법령 약칭 (공식)",
+    )
+    citation_count = Column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        comment="판례 인용 횟수",
+    )
+
     # 메타데이터
     created_at = Column(
         DateTime,

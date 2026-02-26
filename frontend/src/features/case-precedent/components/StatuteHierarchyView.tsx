@@ -4,9 +4,10 @@ import { useState, useCallback, useEffect } from 'react'
 import { Network, Search, X, Loader2, ArrowLeft } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { StatuteForceGraph } from './StatuteForceGraph'
+import { StatuteDetailPanel } from './StatuteDetailPanel'
 import { casePrecedentService, type GraphNode } from '../services'
 import { useChat } from '@/context/ChatContext'
-import type { StatuteNode } from '../types'
+import type { StatuteNode, StatuteHierarchyResponse } from '../types'
 
 export function StatuteHierarchyView() {
   const router = useRouter()
@@ -17,6 +18,8 @@ export function StatuteHierarchyView() {
   const [isSearching, setIsSearching] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
   const [selectedStatute, setSelectedStatute] = useState<StatuteNode | null>(null)
+  const [detailData, setDetailData] = useState<StatuteHierarchyResponse | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
 
   // URL 파라미터에서 선택된 법령 복원
   useEffect(() => {
@@ -99,8 +102,33 @@ export function StatuteHierarchyView() {
   const handleClear = useCallback(() => {
     setSearchResults([])
     setShowDropdown(false)
+    setDetailData(null)
     router.push('/statute-hierarchy')
   }, [router])
+
+  // 상세 정보 로드
+  const loadDetail = useCallback(async (statuteId: string) => {
+    setDetailLoading(true)
+    try {
+      const response = await casePrecedentService.getStatuteHierarchy(statuteId)
+      setDetailData(response)
+    } catch (error) {
+      console.error('상세 정보 로드 실패:', error)
+      setDetailData(null)
+    } finally {
+      setDetailLoading(false)
+    }
+  }, [])
+
+  // URL 파라미터에서 선택된 법령의 상세 정보도 로드
+  useEffect(() => {
+    const statuteId = searchParams.get('id')
+    if (statuteId) {
+      loadDetail(statuteId)
+    } else {
+      setDetailData(null)
+    }
+  }, [searchParams, loadDetail])
 
   // 그래프에서 노드 클릭 (URL에 추가하여 뒤로가기 지원)
   const handleNodeClick = useCallback((node: GraphNode) => {
@@ -110,6 +138,11 @@ export function StatuteHierarchyView() {
     if (node.type) params.set('type', node.type)
     router.push(`/statute-hierarchy?${params.toString()}`)
   }, [router])
+
+  // 패널 내 법령 클릭 → 그래프 이동
+  const handlePanelNodeClick = useCallback((node: StatuteNode) => {
+    handleNodeClick(node)
+  }, [handleNodeClick])
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-900">
@@ -190,14 +223,27 @@ export function StatuteHierarchyView() {
         </div>
       </div>
 
-      {/* 그래프 영역 */}
-      <div className="relative flex-1 w-full">
-        <div className="absolute inset-0">
-          <StatuteForceGraph
-            centerId={selectedStatute?.id}
-            onNodeClick={handleNodeClick}
-          />
+      {/* 그래프 + 상세 패널 */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* 그래프 영역 */}
+        <div className="relative flex-1">
+          <div className="absolute inset-0">
+            <StatuteForceGraph
+              centerId={selectedStatute?.id}
+              onNodeClick={handleNodeClick}
+            />
+          </div>
         </div>
+
+        {/* 상세 사이드 패널 */}
+        {(detailData || detailLoading) && (
+          <StatuteDetailPanel
+            data={detailData || { root: null, upper: [], lower: [], related: [] }}
+            loading={detailLoading}
+            onClose={() => setDetailData(null)}
+            onNodeClick={handlePanelNodeClick}
+          />
+        )}
       </div>
     </div>
   )

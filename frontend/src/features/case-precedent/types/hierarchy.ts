@@ -11,18 +11,18 @@ export interface StatuteNode {
 }
 
 export interface StatuteSearchResponse {
+  query: string
   results: StatuteNode[]
-  total: number
 }
 
 export interface StatuteHierarchyResponse {
-  statute: StatuteNode
-  parents: StatuteNode[]
-  children: StatuteNode[]
+  root: StatuteNode | null
+  upper: StatuteNode[]
+  lower: StatuteNode[]
+  related: StatuteNode[]
 }
 
 export interface StatuteChildrenResponse {
-  statute: StatuteNode
+  statute_id: string
   children: StatuteNode[]
-  total: number
 }
