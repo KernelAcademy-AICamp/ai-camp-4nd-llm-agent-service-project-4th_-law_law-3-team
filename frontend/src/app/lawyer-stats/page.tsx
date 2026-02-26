@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
+import { useChat } from '@/context/ChatContext'
 import { useUI } from '@/context/UIContext'
 import { StickyTabNav, type TabType } from '@/features/lawyer-stats/components/StickyTabNav'
 
@@ -47,7 +48,7 @@ import {
   fetchRegionStats,
   fetchSpecialtyStats,
 } from '@/features/lawyer-stats/services'
-import type { CourtDemandMarker, DemandStat } from '@/features/lawyer-stats/types'
+import type { CourtDemandMarker, DemandStat, StatsFilter } from '@/features/lawyer-stats/types'
 
 export type IndicatorGroup = 'supply' | 'demand'
 export type ViewMode = 'count' | 'density' | 'prediction' | 'case_count' | 'burden_index'
@@ -104,6 +105,7 @@ const PROVINCES = [
 
 export default function LawyerStatPage() {
   const { isChatOpen, chatMode } = useUI()
+  const { sessionData } = useChat()
   const [activeTab, setActiveTab] = useState<TabType>('region')
   const [indicatorGroup, setIndicatorGroup] = useState<IndicatorGroup>('supply')
   const [viewMode, setViewMode] = useState<ViewMode>('count')
@@ -126,6 +128,34 @@ export default function LawyerStatPage() {
       .then(setCourtCoords)
       .catch(() => {})
   }, [])
+
+  // 채팅 에이전트 sessionData.stats_filter → 대시보드 필터 자동 적용
+  const appliedFilterRef = useRef<string>('')
+  useEffect(() => {
+    const filter = sessionData.stats_filter as StatsFilter | undefined
+    if (!filter) return
+    const filterKey = JSON.stringify(filter)
+    if (filterKey === appliedFilterRef.current) return
+    appliedFilterRef.current = filterKey
+
+    // 지역 선택 (null이면 전체)
+    if ('selectedProvince' in filter) {
+      setSelectedProvince(filter.selectedProvince ?? null)
+      setHighlightedRegion(null)
+      setMapSelectedRegion(null)
+      setSelectedCourt(null)
+    }
+    if (filter.indicatorGroup) setIndicatorGroup(filter.indicatorGroup)
+    if (filter.viewMode) setViewMode(filter.viewMode)
+    if (filter.activeTab) {
+      setActiveTab(filter.activeTab)
+      const targetRef = filter.activeTab === 'region' ? regionSectionRef : crossSectionRef
+      setTimeout(() => targetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+    }
+    if (filter.predictionYear) setPredictionYear(filter.predictionYear)
+    if (filter.demandCategory) setDemandCategory(filter.demandCategory as DemandCategory)
+    if (filter.demandYear) setDemandYear(filter.demandYear)
+  }, [sessionData.stats_filter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 공급 그룹으로 전환 시 viewMode 복원
   const handleIndicatorGroupChange = useCallback((group: IndicatorGroup) => {

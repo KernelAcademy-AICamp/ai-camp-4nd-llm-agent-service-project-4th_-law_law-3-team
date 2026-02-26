@@ -1,5 +1,7 @@
 """변호사 통계 모듈 - Pydantic 스키마"""
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -115,3 +117,35 @@ class DemandStatResponse(BaseModel):
     category: str
     available_years: list[int]
     available_categories: list[str]
+
+
+# =============================================================================
+# 에이전트 의도 분석 스키마
+# =============================================================================
+QueryType = Literal[
+    "recommend_market",
+    "recommend_specialty",
+    "recommend_region",
+    "overview",
+    "region",
+    "density",
+    "specialty",
+    "cross",
+    "demand",
+    "prediction",
+]
+
+
+class StatsIntent(BaseModel):
+    """LLM이 파싱한 통계 요청 의도"""
+
+    query_type: QueryType
+    regions: list[str] = []
+    province: str | None = None
+    specialty_interest: str | None = None
+    view_mode: str | None = None
+    indicator_group: str | None = None
+    active_tab: str | None = None
+    prediction_year: int | None = None
+    demand_category: str | None = None
+    demand_year: int | None = None

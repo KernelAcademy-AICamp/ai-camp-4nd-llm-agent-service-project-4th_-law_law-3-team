@@ -375,10 +375,10 @@ async def storyboard_node(
 async def lawyer_stats_node(
     state: ChatState, writer: StreamWriter
 ) -> dict[str, Any]:
-    """변호사 통계 안내 노드"""
+    """변호사 시장 분석 노드 (LLM 스트리밍)"""
     from app.multi_agent.agents.lawyer_stats_agent import LawyerStatsAgent
 
-    return await _run_nonstreaming_node(LawyerStatsAgent(), state, writer)
+    return await _run_streaming_node(LawyerStatsAgent(), state, writer)
 
 
 async def law_study_node(

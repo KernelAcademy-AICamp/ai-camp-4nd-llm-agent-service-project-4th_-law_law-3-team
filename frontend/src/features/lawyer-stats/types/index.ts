@@ -82,6 +82,17 @@ export interface DemandStatResponse {
   available_categories: string[]
 }
 
+/** 채팅 에이전트가 sessionData로 전달하는 대시보드 필터 */
+export interface StatsFilter {
+  viewMode?: 'count' | 'density' | 'prediction' | 'case_count' | 'burden_index'
+  indicatorGroup?: 'supply' | 'demand'
+  activeTab?: 'region' | 'cross'
+  selectedProvince?: string | null
+  predictionYear?: 2030 | 2035 | 2040
+  demandCategory?: string
+  demandYear?: number
+}
+
 /** 법원 단위로 그룹화된 수요 데이터 (지도 마커용) */
 export interface CourtDemandMarker {
   court_name: string
