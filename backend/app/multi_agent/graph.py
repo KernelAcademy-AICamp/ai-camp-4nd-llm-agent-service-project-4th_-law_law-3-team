@@ -26,11 +26,11 @@ from app.multi_agent.nodes import (
     legal_search_node,
     router_node,
     simple_chat_node,
-    storyboard_node,
 )
 from app.multi_agent.state import ChatState
 from app.multi_agent.subgraphs.mock_trial import build_mock_trial_subgraph
 from app.multi_agent.subgraphs.small_claims import build_small_claims_subgraph
+from app.multi_agent.subgraphs.storyboard import build_storyboard_subgraph
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def build_graph() -> StateGraph:
     builder.add_node("lawyer_finder_node", lawyer_finder_node)
     builder.add_node("small_claims_subgraph", build_small_claims_subgraph())
     builder.add_node("mock_trial_subgraph", build_mock_trial_subgraph())
-    builder.add_node("storyboard_node", storyboard_node)
+    builder.add_node("storyboard_subgraph", build_storyboard_subgraph())
     builder.add_node("lawyer_stats_node", lawyer_stats_node)
     builder.add_node("law_study_node", law_study_node)
     builder.add_node("content_marketing_node", content_marketing_node)
@@ -70,7 +70,7 @@ def build_graph() -> StateGraph:
         "lawyer_finder_node",
         "small_claims_subgraph",
         "mock_trial_subgraph",
-        "storyboard_node",
+        "storyboard_subgraph",
         "lawyer_stats_node",
         "law_study_node",
         "content_marketing_node",
