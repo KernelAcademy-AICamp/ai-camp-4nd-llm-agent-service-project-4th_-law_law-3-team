@@ -33,6 +33,10 @@ _INVALID_TOKEN_RE = re.compile(r"['\\\x00]")
 # 개념 AND 결과가 이 수보다 적으면 OR fallback
 _CONCEPT_AND_MIN_RESULTS = 5
 
+# FTS 불용어: 문서 빈도가 너무 높아 검색 변별력이 없는 토큰
+# "판례" = 69,113/368,232건 (18.8%) → GIN 인덱스 비효율 + 랭킹 노이즈
+_FTS_STOPWORDS: frozenset[str] = frozenset({"판례"})
+
 # FTS 가용성 캐시 (서버 수명 동안 유효 — 인제스트 후 재시작 필요)
 _fts_available_cache: bool | None = None
 
@@ -69,7 +73,7 @@ def _build_concept_and_tsquery(query: str) -> str:
     groups: list[list[str]] = []
     for concept in concepts:
         tokens = [_clean_token(t) for t in _tokenize(concept)]
-        tokens = [t for t in tokens if t]
+        tokens = [t for t in tokens if t and t not in _FTS_STOPWORDS]
         if tokens:
             groups.append(tokens)
 
@@ -90,7 +94,7 @@ def _build_concept_and_tsquery(query: str) -> str:
 def _build_or_tsquery(query: str) -> str:
     """전체 OR tsquery 생성 (fallback용)."""
     tokens = [_clean_token(t) for t in _tokenize(query)]
-    tokens = [t for t in tokens if t]
+    tokens = [t for t in tokens if t and t not in _FTS_STOPWORDS]
     if not tokens:
         return ""
     return " | ".join(tokens)

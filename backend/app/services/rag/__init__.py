@@ -4,6 +4,9 @@ RAG 서비스 모듈
 검색, 리랭킹, 쿼리 리라이팅, 파이프라인 함수 제공
 """
 
+# Context 압축
+from app.services.rag.compression import ContextCompressor, get_context_compressor
+
 # 임베딩 함수
 from app.services.rag.embedding import (
     check_embedding_model_availability,
@@ -71,6 +74,9 @@ from app.services.rag.retrieval import (
 )
 
 __all__ = [
+    # Context 압축
+    "ContextCompressor",
+    "get_context_compressor",
     # 임베딩
     "create_query_embedding",
     "create_query_embedding_async",

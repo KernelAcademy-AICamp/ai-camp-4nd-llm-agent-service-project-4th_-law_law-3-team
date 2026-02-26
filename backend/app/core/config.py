@@ -120,6 +120,13 @@ class Settings(BaseSettings):
     ONNX_ENABLE_BF16_FASTMATH: bool = False  # Graviton3+ 전용 (Mac ARM 미지원)
     ONNX_QDQ_SENSITIVE_LAYERS: str = ""  # 쉼표 구분 민감 레이어 인덱스 (예: "0,1,22,23"), 빈 문자열이면 기본값 사용
 
+    # Context 압축 (LLMLingua-2)
+    ENABLE_CONTEXT_COMPRESSION: bool = False
+    COMPRESSION_MODEL: str = "microsoft/llmlingua-2-xlm-roberta-large-meetingbank"
+    COMPRESSION_DEFAULT_RATE: float = 0.5
+    COMPRESSION_MIN_LENGTH: int = 500
+    COMPRESSION_DEVICE: str = "cpu"  # "cpu" | "cuda"
+
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []
 

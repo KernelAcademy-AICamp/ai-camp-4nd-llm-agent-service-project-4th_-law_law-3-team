@@ -306,6 +306,14 @@ class RAGPipeline:
                 _extract_id_data_type_map(reranked)
             )
             _populate_content(reranked, contents)
+
+            # Context 압축 (LLMLingua-2)
+            if settings.ENABLE_CONTEXT_COMPRESSION:
+                from app.services.rag.compression import get_context_compressor
+
+                compressor = get_context_compressor()
+                compressor.compress_documents(reranked)
+
             result.documents = reranked
         else:
             # 리랭킹 미사용 시 similarity 기준 정렬
@@ -588,6 +596,16 @@ class RAGPipeline:
                 _extract_id_data_type_map(reranked)
             )
             _populate_content(reranked, contents)
+
+            # Context 압축 (LLMLingua-2)
+            if settings.ENABLE_CONTEXT_COMPRESSION:
+                from app.services.rag.compression import get_context_compressor
+
+                compressor = get_context_compressor()
+                await asyncio.to_thread(
+                    compressor.compress_documents, reranked
+                )
+
             return reranked
 
         documents.sort(key=lambda x: x.get("similarity", 0), reverse=True)
