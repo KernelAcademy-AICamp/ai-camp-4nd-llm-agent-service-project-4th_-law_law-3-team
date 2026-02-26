@@ -673,7 +673,27 @@ CREATE TABLE fts_index (
 | 016 | `add_dec_media_documents_table` | 방송미디어통신위원회 결정례 테이블 |
 | f61f09ed1c72 | `widen_fts_index_date_to_50` | fts_index.date VARCHAR(20)→VARCHAR(50) 확장 |
 | 017 | `fts_index_composite_pk` | fts_index PK를 `source_id` → `(source_id, data_type)` 복합 PK로 변경. 타입 간 serial_number 충돌 해결. TRUNCATE 포함 (전체 FTS 재빌드 필요) |
+| 018 | `add_graph_tables` | 5개 그래프 테이블 (statute_hierarchy, statute_aliases, statute_relations, case_statute_citations, case_case_citations) + law_documents에 abbreviation/citation_count 컬럼 + pg_trgm GIN 인덱스 |
 
 ---
 
-*최종 업데이트: 2026-02-25*
+## 15. 그래프 테이블 (migration 018)
+
+Neo4j 그래프 데이터를 PostgreSQL로 이관하기 위한 5개 테이블. `USE_PG_GRAPH=true` 설정 시 활성화.
+
+| 테이블 | 설명 | 주요 컬럼 |
+|--------|------|-----------|
+| `statute_hierarchy` | 법령 계급 관계 (child→parent) | child_id(FK→law_documents), parent_id(FK→law_documents), relation_type |
+| `statute_aliases` | 법령 약칭 | law_id(FK→law_documents), alias, alias_type(official/informal) |
+| `statute_relations` | 법령 관련 관계 | source_id(FK), target_id(FK), relation_type, weight |
+| `case_statute_citations` | 판례→법령 인용 | case_id(FK→precedent_documents), statute_id(FK→law_documents) |
+| `case_case_citations` | 판례→판례 인용 | citing_id(FK→precedent_documents), cited_id(FK→precedent_documents) |
+
+추가 컬럼: `law_documents.abbreviation` (약칭), `law_documents.citation_count` (인용 횟수)
+인덱스: `pg_trgm` GIN 인덱스 (법령명 fuzzy 검색)
+
+데이터 로드: `uv run python scripts/load_graph_data.py` (법령 계급, 약칭, 판례 인용 관계 일괄 로드)
+
+---
+
+*최종 업데이트: 2026-02-27*

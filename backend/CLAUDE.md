@@ -193,7 +193,7 @@ app/
 ├── tools/               # 외부 도구 클라이언트
 │   ├── llm/             # LLM (Solar, OpenAI)
 │   ├── vectorstore/     # LanceDB, Chroma, Qdrant
-│   ├── graph/           # Neo4j GraphService
+│   ├── graph/           # Neo4j GraphService + PgGraphService (USE_PG_GRAPH)
 │   └── geo/             # 거리 계산
 ├── modules/             # 독립 API 모듈 (자동 등록)
 │   ├── case_precedent/
@@ -276,7 +276,7 @@ START → router_node ──(Command)──→ legal_search_node ───→ EN
 **에이전트 목록:**
 | 에이전트 | 역할 | 노드 | RAG | LLM |
 |---------|------|------|-----|-----|
-| `LegalSearchAgent` | 판례/법령 RAG 검색 (Focus+Supplementary 병렬) | `legal_search_node` | ✅ | ✅ |
+| `LegalSearchAgent` | 판례/법령 RAG 검색 (Focus+Supplementary 병렬), 체계도 NAVIGATE 액션 | `legal_search_node` | ✅ | ✅ |
 | `LawyerFinderAgent` | 위치 기반 변호사 추천 (동 단위 지원) | `lawyer_finder_node` | ❌ | ❌ |
 | `SmallClaimsAgent` | 소액소송 단계별 가이드 | `small_claims_subgraph` | ✅ | ❌ |
 | `StoryboardAgent` | 사건 타임라인 생성 | `storyboard_node` | ❌ | ✅ |
@@ -325,6 +325,7 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `ONNX_QUALITY_GATE_ENABLED` | ONNX 품질 게이트 활성화 (PyTorch 대비 cosine/pearson 검증) | `true` |
 | `ONNX_QUALITY_GATE_FALLBACK` | 품질 미달 시 자동 PyTorch 폴백 | `true` |
 | `ONNX_INFERENCE_TIMEOUT_SECONDS` | ONNX 추론 타임아웃 (초) | `30.0` |
+| `USE_PG_GRAPH` | PostgreSQL 그래프 사용 (Neo4j 대체, Recursive CTE) | `false` |
 
 > **ONNX Variant (임베딩)**: `ort-opt` (FP32 무손실, cosine 1.0), `ort-opt-qdq` (INT8, cosine 0.999, 23% 빠름), `onnx-fp16` (FP16, cosine 1.0).
 > **ONNX Variant (리랭커)**: `ort-opt` (FP32 무손실) | `ort-opt-qdq` (INT8, 4 FP32, Pearson 0.9999, 3.52x) | `ort-opt-qdq-6fp32` (INT8, 6 FP32, Pearson 0.9994, Spearman 0.993).
@@ -589,7 +590,12 @@ app/models/
 ├── legal_reference.py     # 참조 정보
 ├── lawyer.py              # 변호사 정보
 ├── legal_term.py          # 법률 용어 사전 (MeCab 보강용)
-└── trial_statistics.py    # 재판 통계
+├── trial_statistics.py    # 재판 통계
+├── statute_hierarchy.py   # 법령 계급 관계 (child→parent)
+├── statute_alias.py       # 법령 약칭
+├── statute_relation.py    # 법령 관련 관계
+├── case_statute_citation.py # 판례→법령 인용
+└── case_case_citation.py  # 판례→판례 인용
 ```
 
 ### 테이블 구조
@@ -603,6 +609,11 @@ app/models/
 | `trial_statistics` | 재판 통계 | category, court_name, court_type, parent_court, year, case_count |
 | `local_ordinance_documents` | 자치법규 원본 (160,276건) | ordinance_id, ordinance_name, local_government, overall_summary, content |
 | `fts_index` | FTS 전문 검색 인덱스 (579,498건) | **PK: (source_id, data_type)**, title, date, tsvector. dec_* source_id는 `{name}:{serial_number}` 형식. tsvector는 명사만 저장 (NNG+NNP, 2자 이상) |
+| `statute_hierarchy` | 법령 계급 관계 | child_id(FK→law_documents), parent_id(FK→law_documents), relation_type |
+| `statute_aliases` | 법령 약칭 | law_id(FK→law_documents), alias, alias_type |
+| `statute_relations` | 법령 관련 관계 | source_id(FK), target_id(FK), relation_type, weight |
+| `case_statute_citations` | 판례→법령 인용 | case_id(FK→precedent_documents), statute_id(FK→law_documents) |
+| `case_case_citations` | 판례→판례 인용 | citing_id(FK→precedent_documents), cited_id(FK→precedent_documents) |
 
 ### 변호사 데이터 (lawyers 테이블)
 

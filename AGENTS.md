@@ -66,6 +66,7 @@ frontend/src/
 | `UPSTAGE_API_KEY` | Solar LLM API 키 |
 | `NEO4J_URI` | Neo4j bolt 연결 |
 | `USE_LOCAL_EMBEDDING` | 로컬 임베딩 모델 사용 (기본: true) |
+| `USE_PG_GRAPH` | PostgreSQL 그래프 사용 (Neo4j 대체, 기본: false) |
 
 ## API 경로 규칙
 

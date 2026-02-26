@@ -11,6 +11,7 @@
 | `runpod_lancedb_embeddings.py` | RunPod 노트북용 thin wrapper (ingest 파이프라인 호출) |
 | `colab_lancedb_embeddings.py` | Google Colab 노트북용 thin wrapper (runpod wrapper re-export) |
 | `check_environment.py` | 데이터 로드 전 환경 검증 (Python, MeCab, Docker, Alembic 등) |
+| `load_graph_data.py` | PostgreSQL 그래프 테이블 데이터 로드 (법령 계급, 약칭, 인용 관계) |
 
 ### 범용 공통 모듈 (`common/`)
 
