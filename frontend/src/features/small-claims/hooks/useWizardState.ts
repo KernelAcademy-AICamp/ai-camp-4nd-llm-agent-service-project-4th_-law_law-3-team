@@ -10,8 +10,10 @@ import type {
   EvidenceItem,
   RelatedCaseItem,
   DocumentType,
+  UploadedFile,
   WIZARD_STEPS,
 } from '../types'
+import { MAX_FILE_SIZE_BYTES } from '../types'
 
 const STORAGE_KEY = 'small_claims_wizard_state'
 
@@ -37,6 +39,9 @@ interface UseWizardStateReturn {
   checkedEvidence: Set<string>
   toggleEvidence: (id: string) => void
   isLoadingEvidence: boolean
+  uploadedFiles: Map<string, UploadedFile[]>
+  handleFileUpload: (evidenceItemId: string, files: File[]) => Promise<void>
+  removeUploadedFile: (evidenceItemId: string, fileId: string) => void
 
   // Document
   generatedDocument: DocumentResponse | null
@@ -64,6 +69,7 @@ export function useWizardState(): UseWizardStateReturn {
   // Evidence state
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([])
   const [isLoadingEvidence, setIsLoadingEvidence] = useState(false)
+  const [uploadedFiles, setUploadedFiles] = useState<Map<string, UploadedFile[]>>(new Map())
 
   // Document state
   const [isGenerating, setIsGenerating] = useState(false)
@@ -231,6 +237,36 @@ export function useWizardState(): UseWizardStateReturn {
     })
   }, [])
 
+  const handleFileUpload = useCallback(
+    async (evidenceItemId: string, files: File[]) => {
+      const oversized = files.find((f) => f.size > MAX_FILE_SIZE_BYTES)
+      if (oversized) {
+        throw new Error(`파일 크기가 10MB를 초과합니다: ${oversized.name}`)
+      }
+
+      const response = await smallClaimsService.uploadEvidence(files, evidenceItemId)
+      setUploadedFiles((prev) => {
+        const next = new Map(prev)
+        const existing = next.get(evidenceItemId) ?? []
+        next.set(evidenceItemId, [...existing, ...response.uploaded_files])
+        return next
+      })
+    },
+    []
+  )
+
+  const removeUploadedFile = useCallback((evidenceItemId: string, fileId: string) => {
+    setUploadedFiles((prev) => {
+      const next = new Map(prev)
+      const existing = next.get(evidenceItemId) ?? []
+      next.set(
+        evidenceItemId,
+        existing.filter((f) => f.file_id !== fileId)
+      )
+      return next
+    })
+  }, [])
+
   const generateDocument = useCallback(
     async (documentType: DocumentType) => {
       if (!disputeType) {
@@ -280,6 +316,7 @@ export function useWizardState(): UseWizardStateReturn {
     setDisputeTypeState(null)
     setCaseInfo({})
     setCheckedEvidence(new Set())
+    setUploadedFiles(new Map())
     setGeneratedDocument(null)
     setEvidenceItems([])
     setRelatedCases([])
@@ -303,6 +340,9 @@ export function useWizardState(): UseWizardStateReturn {
     checkedEvidence,
     toggleEvidence,
     isLoadingEvidence,
+    uploadedFiles,
+    handleFileUpload,
+    removeUploadedFile,
     generatedDocument,
     isGenerating,
     generateError,

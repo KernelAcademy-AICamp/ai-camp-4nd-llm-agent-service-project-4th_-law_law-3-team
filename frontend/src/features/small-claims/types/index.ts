@@ -58,6 +58,8 @@ export interface RelatedCaseItem {
   summary: string
   similarity: number
   relevance: string
+  ruling?: string
+  reasoning?: string
 }
 
 export interface RelatedCasesResponse {
@@ -65,11 +67,53 @@ export interface RelatedCasesResponse {
   cases: RelatedCaseItem[]
 }
 
+export interface UploadedFile {
+  file_id: string
+  original_name: string
+  file_type: string
+  file_size: number
+}
+
+export interface FileTypeConfig {
+  label: string
+  color: string
+}
+
+export const FILE_TYPE_CONFIG: Record<string, FileTypeConfig> = {
+  pdf: { label: 'PDF', color: '#EF4444' },
+  hwp: { label: 'HWP', color: '#3B82F6' },
+  hwpx: { label: 'HWP', color: '#3B82F6' },
+  doc: { label: 'DOC', color: '#2563EB' },
+  docx: { label: 'DOC', color: '#2563EB' },
+  jpg: { label: 'IMG', color: '#22C55E' },
+  jpeg: { label: 'IMG', color: '#22C55E' },
+  png: { label: 'IMG', color: '#22C55E' },
+  gif: { label: 'IMG', color: '#22C55E' },
+  webp: { label: 'IMG', color: '#22C55E' },
+  xls: { label: 'XLS', color: '#16A34A' },
+  xlsx: { label: 'XLS', color: '#16A34A' },
+  txt: { label: 'TXT', color: '#6B7280' },
+}
+
+export const ALLOWED_EXTENSIONS =
+  '.pdf,.hwp,.hwpx,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.xls,.xlsx,.txt'
+
+export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
+
+export interface CourtCostBreakdown {
+  claimAmount: number
+  stampFee: number
+  deliveryFee: number
+  totalCost: number
+  partyCount: number
+}
+
 export interface WizardState {
   currentStep: WizardStep
   disputeType: DisputeType | null
   caseInfo: Partial<CaseInfo>
   checkedEvidence: Set<string>
+  uploadedFiles: Map<string, UploadedFile[]>
   generatedDocument: DocumentResponse | null
 }
 

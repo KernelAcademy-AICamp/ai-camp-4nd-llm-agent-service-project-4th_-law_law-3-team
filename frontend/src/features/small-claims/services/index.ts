@@ -6,7 +6,12 @@ import type {
   RelatedCasesResponse,
   DocumentType,
   DisputeType,
+  UploadedFile,
 } from '../types'
+
+export interface EvidenceUploadResponse {
+  uploaded_files: UploadedFile[]
+}
 
 export const smallClaimsService = {
   startInterview: async (caseType: string) => {
@@ -32,15 +37,19 @@ export const smallClaimsService = {
     return response.data
   },
 
-  uploadEvidence: async (sessionId: string, files: File[], evidenceType: string) => {
+  uploadEvidence: async (
+    files: File[],
+    evidenceItemId: string,
+    sessionId: string = 'default'
+  ): Promise<EvidenceUploadResponse> => {
     const formData = new FormData()
-    formData.append('session_id', sessionId)
-    formData.append('evidence_type', evidenceType)
     files.forEach((file) => formData.append('files', file))
 
-    const response = await api.post(`${endpoints.smallClaims}/evidence/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    const response = await api.post(
+      `${endpoints.smallClaims}/evidence/upload?evidence_item_id=${encodeURIComponent(evidenceItemId)}&session_id=${encodeURIComponent(sessionId)}`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    )
     return response.data
   },
 

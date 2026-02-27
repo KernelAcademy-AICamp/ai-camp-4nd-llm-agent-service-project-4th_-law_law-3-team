@@ -1,12 +1,18 @@
 'use client'
 
-import type { EvidenceItem } from '../types'
+import { useRef, useState } from 'react'
+import type { EvidenceItem, UploadedFile } from '../types'
+import { ALLOWED_EXTENSIONS } from '../types'
+import { FileTypeIcon } from './FileTypeIcon'
 
 interface EvidenceStepProps {
   items: EvidenceItem[]
   checkedItems: Set<string>
   isLoading: boolean
+  uploadedFiles: Map<string, UploadedFile[]>
   onToggle: (id: string) => void
+  onFileUpload: (evidenceItemId: string, files: File[]) => Promise<void>
+  onFileRemove: (evidenceItemId: string, fileId: string) => void
   onNext: () => void
   onPrevious: () => void
 }
@@ -15,7 +21,10 @@ export function EvidenceStep({
   items,
   checkedItems,
   isLoading,
+  uploadedFiles,
   onToggle,
+  onFileUpload,
+  onFileRemove,
   onNext,
   onPrevious,
 }: EvidenceStepProps) {
@@ -42,7 +51,7 @@ export function EvidenceStep({
     <div className="max-w-2xl mx-auto">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">증거 체크리스트</h2>
-        <p className="text-gray-600">소송에 필요한 증거 자료를 확인해주세요</p>
+        <p className="text-gray-600">소송에 필요한 증거 자료를 확인하고 파일을 첨부해주세요</p>
       </div>
 
       {/* Progress */}
@@ -75,7 +84,10 @@ export function EvidenceStep({
               key={item.id}
               item={item}
               checked={checkedItems.has(item.id)}
+              files={uploadedFiles.get(item.id) ?? []}
               onToggle={() => onToggle(item.id)}
+              onFileUpload={(files) => onFileUpload(item.id, files)}
+              onFileRemove={(fileId) => onFileRemove(item.id, fileId)}
             />
           ))}
         </div>
@@ -91,7 +103,10 @@ export function EvidenceStep({
                 key={item.id}
                 item={item}
                 checked={checkedItems.has(item.id)}
+                files={uploadedFiles.get(item.id) ?? []}
                 onToggle={() => onToggle(item.id)}
+                onFileUpload={(files) => onFileUpload(item.id, files)}
+                onFileRemove={(fileId) => onFileRemove(item.id, fileId)}
               />
             ))}
           </div>
@@ -147,42 +162,158 @@ export function EvidenceStep({
 interface EvidenceCheckboxProps {
   item: EvidenceItem
   checked: boolean
+  files: UploadedFile[]
   onToggle: () => void
+  onFileUpload: (files: File[]) => Promise<void>
+  onFileRemove: (fileId: string) => void
 }
 
-function EvidenceCheckbox({ item, checked, onToggle }: EvidenceCheckboxProps) {
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+}
+
+function EvidenceCheckbox({
+  item,
+  checked,
+  files,
+  onToggle,
+  onFileUpload,
+  onFileRemove,
+}: EvidenceCheckboxProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = event.target.files
+    if (!selectedFiles || selectedFiles.length === 0) return
+
+    setIsUploading(true)
+    setUploadError(null)
+    try {
+      await onFileUpload(Array.from(selectedFiles))
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : '업로드에 실패했습니다')
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
   return (
-    <label
-      className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition ${
+    <div
+      className={`p-3 rounded-lg border transition ${
         checked ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
       }`}
     >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onToggle}
-        className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-      />
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          <span className={`font-medium ${checked ? 'text-blue-800' : 'text-gray-900'}`}>
-            {item.label}
-          </span>
-          {item.required && (
-            <span className="px-1.5 py-0.5 text-xs bg-red-100 text-red-600 rounded">필수</span>
-          )}
+      {/* 체크박스 행 */}
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onToggle}
+          className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+        />
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className={`font-medium ${checked ? 'text-blue-800' : 'text-gray-900'}`}>
+              {item.label}
+            </span>
+            {item.required && (
+              <span className="px-1.5 py-0.5 text-xs bg-red-100 text-red-600 rounded">필수</span>
+            )}
+          </div>
+          <p className="text-sm text-gray-500 mt-0.5">{item.description}</p>
         </div>
-        <p className="text-sm text-gray-500 mt-0.5">{item.description}</p>
+        {checked && (
+          <svg className="w-5 h-5 text-blue-600 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+              clipRule="evenodd"
+            />
+          </svg>
+        )}
+      </label>
+
+      {/* 파일 업로드 영역 */}
+      <div className="mt-2 ml-7">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ALLOWED_EXTENSIONS}
+          multiple
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition disabled:opacity-50"
+        >
+          {isUploading ? (
+            <>
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600" />
+              업로드 중...
+            </>
+          ) : (
+            <>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                />
+              </svg>
+              파일 첨부
+            </>
+          )}
+        </button>
+
+        {uploadError && (
+          <p className="mt-1 text-xs text-red-500">{uploadError}</p>
+        )}
+
+        {/* 업로드된 파일 목록 */}
+        {files.length > 0 && (
+          <div className="mt-2 space-y-1.5">
+            {files.map((file) => (
+              <div
+                key={file.file_id}
+                className="flex items-center gap-2 px-2 py-1.5 bg-white rounded border border-gray-200"
+              >
+                <FileTypeIcon fileName={file.original_name} size={20} />
+                <span className="flex-1 text-xs text-gray-700 truncate">
+                  {file.original_name}
+                </span>
+                <span className="text-xs text-gray-400 shrink-0">
+                  {formatFileSize(file.file_size)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onFileRemove(file.file_id)}
+                  className="p-0.5 text-gray-400 hover:text-red-500 transition"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-      {checked && (
-        <svg className="w-5 h-5 text-blue-600 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-          <path
-            fillRule="evenodd"
-            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-            clipRule="evenodd"
-          />
-        </svg>
-      )}
-    </label>
+    </div>
   )
 }
