@@ -2,7 +2,7 @@
 name: docker-containerization
 description: |
   Docker Compose 기반 로컬 개발환경 구성, 프로덕션 배포, 멀티스테이지 빌드 가이드.
-  PostgreSQL + Neo4j + LanceDB + FastAPI + Nginx 컨테이너 관리.
+  PostgreSQL + LanceDB + FastAPI + Nginx 컨테이너 관리.
   Docker 설정 변경, 새 서비스 추가, Dockerfile 수정, 배포 구성, 컨테이너 디버깅 시 반드시 사용.
   WSL2 환경, 프로덕션 빌드 최적화, 헬스체크, 네트워크 설정 시에도 사용.
 ---
@@ -25,10 +25,10 @@ description: |
 │       │            │                          │
 │  ┌────┴────────────┴──────────────────────┐  │
 │  │     Docker Compose                      │  │
-│  │  ┌──────────┐  ┌───────────────────┐   │  │
-│  │  │PostgreSQL│  │      Neo4j        │   │  │
-│  │  │ :5432    │  │ :7474 :7687       │   │  │
-│  │  └──────────┘  └───────────────────┘   │  │
+│  │  ┌──────────┐                          │  │
+│  │  │PostgreSQL│                          │  │
+│  │  │ :5432    │                          │  │
+│  │  └──────────┘                          │  │
 │  └────────────────────────────────────────┘  │
 └─────────────────────────────────────────────┘
 ```
@@ -56,7 +56,7 @@ description: |
 
 | 파일 | 용도 |
 |------|------|
-| `docker-compose.yml` | 개발 환경 (DB 3종) |
+| `docker-compose.yml` | 개발 환경 (DB 2종) |
 | `docker-compose.prod.yml` | 프로덕션 (Backend + Nginx + DB) |
 | `docker/backend/Dockerfile` | 백엔드 개발 이미지 |
 | `docker/backend/Dockerfile.prod` | 백엔드 프로덕션 (멀티스테이지) |
@@ -83,7 +83,6 @@ docker compose ps
 
 # 로그 확인
 docker compose logs -f postgres
-docker compose logs -f neo4j
 ```
 
 ### 컨테이너 상세
@@ -91,7 +90,6 @@ docker compose logs -f neo4j
 | 서비스 | 컨테이너명 | 이미지 | 포트 |
 |--------|-----------|--------|------|
 | PostgreSQL | `law-platform-db` | `postgres:15-alpine` | `127.0.0.1:5432` |
-| Neo4j | `neo4j-law-graph` | `neo4j:5.15.0` | `127.0.0.1:7474`, `127.0.0.1:7687` |
 | LanceDB | `lancedb-service` | 커스텀 빌드 | `127.0.0.1:8100` |
 
 ### 준비 대기
@@ -104,12 +102,6 @@ for i in $(seq 1 15); do
   sleep 2
 done
 
-# Neo4j 준비 대기
-for i in $(seq 1 15); do
-  wget -qO- http://localhost:7474 2>&1 && break
-  echo "waiting... ($i)"
-  sleep 2
-done
 ```
 
 ### 환경변수 (.env 루트)
@@ -118,8 +110,6 @@ done
 POSTGRES_USER=lawuser
 POSTGRES_PASSWORD=<strong_password>
 POSTGRES_DB=lawdb
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=<strong_password>
 ```
 
 ---
@@ -188,8 +178,6 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--worker
 | 볼륨 | 용도 | 영속성 |
 |------|------|--------|
 | `postgres_data` | PostgreSQL 데이터 | Named volume |
-| `neo4j_data` | Neo4j 그래프 데이터 | Named volume |
-| `neo4j_logs` | Neo4j 로그 | Named volume |
 | `lancedb_data` | 벡터 임베딩 데이터 | External volume |
 
 ### 볼륨 백업
@@ -212,7 +200,6 @@ docker run --rm -v postgres_data:/data -v $(pwd):/backup \
 | 서비스 | 방법 | 간격 | 타임아웃 | 재시도 |
 |--------|------|------|---------|--------|
 | PostgreSQL | `pg_isready` | 10s | 5s | 5 |
-| Neo4j | `wget http://localhost:7474` | 15s | 10s | 5 |
 | LanceDB | `curl http://localhost:8100/health` | 15s | 5s | 3 |
 | Backend (prod) | `curl http://localhost:8000/health` | 30s | 10s | 3 |
 | Frontend (prod) | `wget http://localhost:3000/` | 30s | 10s | 3 |
@@ -377,9 +364,6 @@ docker compose -f docker-compose.prod.yml logs -f backend
 # PostgreSQL CLI
 docker exec -it law-platform-db psql -U lawuser -d lawdb
 
-# Neo4j cypher-shell
-docker exec -it neo4j-law-graph cypher-shell -u neo4j -p <password>
-
 # Backend 셸
 docker exec -it law-platform-backend /bin/bash
 ```
@@ -401,7 +385,7 @@ docker exec -it law-platform-backend /bin/bash
 ### 새 환경 세팅
 
 - [ ] `.env` 파일 생성 (`.env.example` 복사)
-- [ ] 비밀번호 변경 (PostgreSQL, Neo4j)
+- [ ] 비밀번호 변경 (PostgreSQL)
 - [ ] `docker compose up -d`
 - [ ] 헬스체크 통과 대기
 - [ ] DB 초기 데이터 로드 (스크립트 실행)

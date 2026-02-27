@@ -49,7 +49,7 @@ __all__ = [
     # 콘텐츠 마케팅 v2.0
     "LawyerPersonaModel",
     "LawyerPersonaFeedbackModel",
-    # 그래프 모델 (Neo4j → PostgreSQL)
+    # 그래프 모델 (PostgreSQL)
     "StatuteHierarchy",
     "StatuteAlias",
     "StatuteRelation",

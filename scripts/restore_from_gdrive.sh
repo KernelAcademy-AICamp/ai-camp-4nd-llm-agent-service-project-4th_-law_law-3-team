@@ -6,7 +6,6 @@
 #   ./scripts/restore_from_gdrive.sh latest              # 최신 백업 복원
 #   ./scripts/restore_from_gdrive.sh 20260211_153000      # 특정 백업 복원
 #   ./scripts/restore_from_gdrive.sh latest --download-only  # 다운로드만
-#   ./scripts/restore_from_gdrive.sh latest --skip-neo4j     # Neo4j 제외
 #
 # 필수 조건:
 #   - rclone 설치 (brew install rclone)
@@ -35,7 +34,6 @@ fi
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-law-platform-db}"
 POSTGRES_USER="${POSTGRES_USER:-lawuser}"
 POSTGRES_DB="${POSTGRES_DB:-lawdb}"
-NEO4J_CONTAINER="${NEO4J_CONTAINER:-neo4j-law-graph}"
 LANCEDB_DATA_DIR="${LANCEDB_DATA_DIR:-${PROJECT_ROOT}/backend/lancedb_data}"
 BACKUP_BASE_DIR="${BACKUP_BASE_DIR:-${PROJECT_ROOT}/backups}"
 RCLONE_CONF="${RCLONE_CONF:-${PROJECT_ROOT}/rclone.conf}"
@@ -43,7 +41,6 @@ RCLONE_REMOTE="${RCLONE_REMOTE:-gdrive}"
 
 # 옵션 플래그
 SKIP_POSTGRES=false
-SKIP_NEO4J=false
 SKIP_LANCEDB=false
 DOWNLOAD_ONLY=false
 TARGET=""
@@ -92,7 +89,6 @@ format_duration() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --skip-postgres)  SKIP_POSTGRES=true;  shift ;;
-        --skip-neo4j)     SKIP_NEO4J=true;    shift ;;
         --skip-lancedb)   SKIP_LANCEDB=true;   shift ;;
         --download-only)  DOWNLOAD_ONLY=true;  shift ;;
         -h|--help)
@@ -104,7 +100,6 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --skip-postgres    PostgreSQL 복원 건너뛰기"
-            echo "  --skip-neo4j       Neo4j 복원 건너뛰기"
             echo "  --skip-lancedb     LanceDB 복원 건너뛰기"
             echo "  --download-only    다운로드만 (복원 안 함)"
             echo "  -h, --help         도움말"
@@ -265,7 +260,7 @@ TOTAL_START=$(date +%s)
 
 if [[ "${SKIP_POSTGRES}" == "false" && -f "${RESTORE_DIR}/postgres.dump" ]]; then
     echo ""
-    log_info "━━━ [1/3] PostgreSQL 복원 ━━━"
+    log_info "━━━ [1/2] PostgreSQL 복원 ━━━"
     PG_START=$(date +%s)
 
     # 컨테이너 실행 확인
@@ -294,82 +289,12 @@ elif [[ "${SKIP_POSTGRES}" == "false" ]]; then
 fi
 
 # ─────────────────────────────────────────────────
-# 2. Neo4j 복원
-# ─────────────────────────────────────────────────
-
-if [[ "${SKIP_NEO4J}" == "false" ]]; then
-    NEO_DUMP=""
-    if [[ -f "${RESTORE_DIR}/neo4j.dump" ]]; then
-        NEO_DUMP="neo4j.dump"
-    elif [[ -f "${RESTORE_DIR}/neo4j_data.tar.gz" ]]; then
-        NEO_DUMP="neo4j_data.tar.gz"
-    fi
-
-    if [[ -n "${NEO_DUMP}" ]]; then
-        echo ""
-        log_info "━━━ [2/3] Neo4j 복원 ━━━"
-        NEO_START=$(date +%s)
-
-        # 컨테이너 실행 확인
-        if ! ${DOCKER_CMD} ps --format '{{.Names}}' | grep -q "^${NEO4J_CONTAINER}$"; then
-            log_error "Neo4j 컨테이너가 실행 중이 아닙니다"
-            log_info "  실행: docker compose up -d neo4j"
-            exit 1
-        fi
-
-        # Neo4j 정지
-        log_info "Neo4j 컨테이너 정지 중..."
-        ${DOCKER_CMD} stop "${NEO4J_CONTAINER}" >/dev/null
-
-        if [[ "${NEO_DUMP}" == "neo4j.dump" ]]; then
-            # neo4j-admin database load
-            log_info "Neo4j 데이터베이스 로드 중..."
-            ${DOCKER_CMD} run --rm \
-                --volumes-from "${NEO4J_CONTAINER}" \
-                -v "${RESTORE_DIR}:/backup" \
-                neo4j:5.15.0 \
-                neo4j-admin database load neo4j --from-path=/backup --overwrite-destination=true \
-                2>/dev/null || {
-                    log_warn "neo4j-admin load 실패"
-                }
-        else
-            # tar.gz fallback
-            log_info "Neo4j data 디렉토리 복원 중..."
-            ${DOCKER_CMD} run --rm \
-                --volumes-from "${NEO4J_CONTAINER}" \
-                -v "${RESTORE_DIR}:/backup" \
-                alpine \
-                sh -c "rm -rf /data/* && tar xzf /backup/neo4j_data.tar.gz -C /data"
-        fi
-
-        # Neo4j 재시작
-        log_info "Neo4j 컨테이너 재시작 중..."
-        ${DOCKER_CMD} start "${NEO4J_CONTAINER}" >/dev/null
-
-        # 재시작 대기
-        for i in $(seq 1 15); do
-            if ${DOCKER_CMD} exec "${NEO4J_CONTAINER}" wget --no-verbose --tries=1 --spider localhost:7474 2>/dev/null; then
-                break
-            fi
-            sleep 2
-        done
-
-        NEO_END=$(date +%s)
-        log_ok "Neo4j 복원 완료 ($(format_duration $((NEO_END - NEO_START))))"
-    else
-        log_warn "Neo4j 덤프 파일 없음, 건너뛰기"
-    fi
-elif [[ "${SKIP_NEO4J}" == "true" ]]; then
-    log_warn "Neo4j 건너뛰기"
-fi
-
-# ─────────────────────────────────────────────────
-# 3. LanceDB 복원
+# 2. LanceDB 복원
 # ─────────────────────────────────────────────────
 
 if [[ "${SKIP_LANCEDB}" == "false" && -f "${RESTORE_DIR}/lancedb_data.tar.gz" ]]; then
     echo ""
-    log_info "━━━ [3/3] LanceDB 복원 ━━━"
+    log_info "━━━ [2/2] LanceDB 복원 ━━━"
     LANCE_START=$(date +%s)
 
     # 기존 데이터 백업 (안전 장치)

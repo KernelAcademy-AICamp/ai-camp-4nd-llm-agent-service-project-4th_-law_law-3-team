@@ -1,8 +1,7 @@
 """
 PostgreSQL 그래프 서비스
 
-Neo4j GraphService와 동일한 인터페이스를 PostgreSQL로 구현.
-Feature flag (USE_PG_GRAPH) 활성화 시 Neo4j 대신 사용.
+법령 계급, 판례 인용 관계를 PostgreSQL Recursive CTE로 구현.
 
 테이블:
 - law_documents: 법령 (abbreviation, citation_count 포함)

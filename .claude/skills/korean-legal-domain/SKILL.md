@@ -1,6 +1,6 @@
 ---
 name: korean-legal-domain
-description: 한국 법령/판례 RAG 시스템 도메인 지식. 법령 XML 계층 구조, 판례 데이터 구조, 참조 관계 유형, Graph DB 스키마(Neo4j), 청킹 전략. 법령/판례 데이터 처리, 참조 관계 추출, 법률 RAG 시스템 개발 시 사용.
+description: 한국 법령/판례 RAG 시스템 도메인 지식. 법령 XML 계층 구조, 판례 데이터 구조, 참조 관계 유형, PostgreSQL 그래프 쿼리, 청킹 전략. 법령/판례 데이터 처리, 참조 관계 추출, 법률 RAG 시스템 개발 시 사용.
 ---
 # Korean Legal Domain Skill
 
@@ -178,103 +178,73 @@ patterns = {
 
 ---
 
-## 4. Graph DB 스키마 (Neo4j)
+## 4. 그래프 데이터 (PostgreSQL Recursive CTE)
 
-이 프로젝트의 실제 Neo4j 그래프 스키마입니다.
+Neo4j에서 PostgreSQL로 이관. Recursive CTE로 그래프 탐색을 수행합니다.
 
-### 노드 (Nodes)
-```cypher
-// 법령 노드 (5,572개)
-(:Statute {
-  id: STRING,              // statute_id (고유 식별자)
-  name: STRING,            // 법령명
-  abbreviation: STRING,    // 약칭
-  law_type: STRING,        // 법종구분 (법률/대통령령/총리령/부령)
-})
+### 테이블 구조
+```sql
+-- statute_graph: 법령 계급 관계 (3,624건)
+CREATE TABLE statute_graph (
+    id SERIAL PRIMARY KEY,
+    child_id VARCHAR NOT NULL,   -- 하위 법령 ID
+    parent_id VARCHAR NOT NULL,  -- 상위 법령 ID
+    relation_type VARCHAR        -- HIERARCHY_OF
+);
 
-// 판례 노드 (65,107개)
-(:Case {
-  id: STRING,              // case_id (고유 식별자)
-  case_number: STRING,     // 사건번호 (예: "2023다12345")
-  case_name: STRING,       // 사건명
-})
+-- case_citation: 판례→법령/판례 인용
+CREATE TABLE case_citation (
+    id SERIAL PRIMARY KEY,
+    source_id VARCHAR NOT NULL,  -- 인용하는 판례 ID
+    target_id VARCHAR NOT NULL,  -- 인용 대상 (법령 or 판례)
+    target_type VARCHAR          -- statute | case
+);
 ```
 
-### 관계 (Relationships)
-```cypher
-// 법령 계급 관계 (3,624개) - 시행령→법률 등
-(:Statute)-[:HIERARCHY_OF]->(:Statute)
+### 예시 SQL 쿼리
 
-// 판례→법령 인용 (72,414개)
-(:Case)-[:CITES]->(:Statute)
+```sql
+-- 1. 특정 법령을 인용한 판례 찾기
+SELECT c.case_number, c.case_name
+FROM case_citation cc
+JOIN cases c ON cc.source_id = c.case_id
+JOIN statutes s ON cc.target_id = s.statute_id
+WHERE s.name = '민법' AND cc.target_type = 'statute'
+LIMIT 10;
 
-// 판례→판례 인용 (87,654개)
-(:Case)-[:CITES_CASE]->(:Case)
+-- 2. 법령 계급 체인 (Recursive CTE: 시행령 → 법률)
+WITH RECURSIVE hierarchy AS (
+    SELECT child_id, parent_id, 1 AS depth
+    FROM statute_graph
+    WHERE child_id = :statute_id
+    UNION ALL
+    SELECT sg.child_id, sg.parent_id, h.depth + 1
+    FROM statute_graph sg
+    JOIN hierarchy h ON sg.child_id = h.parent_id
+    WHERE h.depth < 3
+)
+SELECT * FROM hierarchy;
 
-// 법령→법령 관련 (93개)
-(:Statute)-[:RELATED_TO]->(:Statute)
-```
-
-### 예시 Cypher 쿼리
-
-```cypher
-// 1. 특정 법령을 인용한 판례 찾기
-MATCH (c:Case)-[:CITES]->(s:Statute)
-WHERE s.name = "민법"
-RETURN c.case_number, c.case_name
-LIMIT 10
-
-// 2. 법령 계급 체인 (시행령 → 법률)
-MATCH path = (child:Statute)-[:HIERARCHY_OF*1..3]->(parent:Statute)
-WHERE child.name CONTAINS "시행령"
-RETURN path
-
-// 3. 판례 인용 네트워크 (2단계)
-MATCH path = (c1:Case)-[:CITES_CASE*1..2]->(c2:Case)
-WHERE c1.case_number = "2023다12345"
-RETURN path
-
-// 4. 같은 법령을 인용한 유사 판례
-MATCH (c1:Case)-[:CITES]->(s:Statute)<-[:CITES]-(c2:Case)
-WHERE c1.case_number = "2023다12345" AND c1 <> c2
-RETURN c2.case_number, c2.case_name, count(s) AS common_statutes
+-- 3. 같은 법령을 인용한 유사 판례
+SELECT cc2.source_id AS similar_case, COUNT(*) AS common_statutes
+FROM case_citation cc1
+JOIN case_citation cc2 ON cc1.target_id = cc2.target_id
+    AND cc1.target_type = 'statute' AND cc2.target_type = 'statute'
+WHERE cc1.source_id = :case_id AND cc2.source_id != :case_id
+GROUP BY cc2.source_id
 ORDER BY common_statutes DESC
-LIMIT 5
+LIMIT 5;
 ```
 
 ---
 
-## 5. Graph DB 설정 (Neo4j)
+## 5. 그래프 서비스 (PgGraphService)
 
-이 프로젝트는 Neo4j Community Edition을 사용합니다.
-
-### 환경 변수
-```bash
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=password
-```
-
-### Docker 실행
-```bash
-docker compose up -d neo4j
-```
-
-### 그래프 구축
-```bash
-cd backend
-uv run python scripts/build_graph.py
-```
-
-### 검증
-```bash
-NEO4J_PASSWORD=password uv run python scripts/verify_graph.py
-```
+PostgreSQL 기반 그래프 탐색 서비스.
 
 ### 코드 위치
-- 그래프 서비스: `app/tools/graph/graph_service.py`
-- 그래프 구축 스크립트: `scripts/build_graph.py`
-- 스킬 가이드: `.claude/skills/neo4j-graph-construction/SKILL.md`
+- 그래프 서비스: `app/tools/graph/pg_graph_service.py`
+- 팩토리: `app/tools/graph/__init__.py` → `get_graph_service()`
 
 ### RAG 컨텍스트 보강
 ```python
@@ -283,11 +253,11 @@ from app.tools.graph import get_graph_service
 graph = get_graph_service()
 
 # 판례 컨텍스트 보강 (인용 법령 + 유사 판례)
-case_context = graph.enrich_case_context("2023다12345")
+case_context = await graph.enrich_case_context("2023다12345")
 # → {"cited_statutes": [...], "similar_cases": [...]}
 
 # 법령 컨텍스트 보강 (계급 관계 + 관련 법령)
-statute_context = graph.enrich_statute_context("민법")
+statute_context = await graph.enrich_statute_context("민법")
 # → {"hierarchy": {"upper": [...], "lower": [...]}, "related": [...]}
 ```
 
@@ -430,10 +400,10 @@ def extract_case_references(text):
 어떤 다른 조문을 인용하고 있고, 어떤 판례가 이 조문을 해석했는지."
 ```
 
-### Graph DB 쿼리 작성 요청
+### 그래프 쿼리 작성 요청
 ```
-"[법령 도메인] '불법행위 손해배상'과 관련된 법령과 판례의 
-참조 네트워크를 탐색하는 Cypher 쿼리를 작성해줘."
+"[법령 도메인] '불법행위 손해배상'과 관련된 법령과 판례의
+참조 네트워크를 탐색하는 SQL 쿼리를 작성해줘."
 ```
 
 ### 청킹 전략 검토 요청

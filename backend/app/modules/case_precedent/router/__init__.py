@@ -8,7 +8,6 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from app.core.config import settings
 from app.core.errors import EmbeddingModelNotFoundError
 from app.services.rag import search_relevant_documents_async
 from app.services.service_function.precedent_service import fetch_precedent_details
@@ -408,19 +407,6 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
         raise HTTPException(status_code=500, detail="판례 조회 중 오류가 발생했습니다")
 
 
-def _get_graph_service():
-    """GraphService lazy 로드 (Neo4j 연결 실패 시에도 동작)"""
-    try:
-        from app.tools.graph import get_graph_service
-
-        service = get_graph_service()
-        if service.is_connected:
-            return service
-    except Exception as e:
-        logger.debug(f"GraphService 로드 실패: {e}")
-    return None
-
-
 # ============================================
 # 법령 계층도 API (Statute Hierarchy)
 # ============================================
@@ -489,104 +475,22 @@ async def search_statutes(
 
     법령명, 공식 약칭, 비공식 약칭으로 법령을 검색합니다.
     """
-    if settings.USE_PG_GRAPH:
-        try:
-            pg = get_pg_graph_service()
-            results = await pg.search_statutes(query, limit)
-            return StatuteSearchResponse(
-                query=query,
-                results=[
-                    StatuteNodeResponse(
-                        id=r["id"] or "",
-                        name=r["name"] or "",
-                        type=r["type"] or "",
-                        abbreviation=r.get("abbreviation"),
-                        citation_count=r.get("citation_count") or 0,
-                    )
-                    for r in results
-                ],
-            )
-        except Exception as e:
-            logger.error(f"법령 검색 실패 (PG): {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="법령 검색 중 오류가 발생했습니다")
-
-    graph = _get_graph_service()
-    if not graph:
-        raise HTTPException(status_code=503, detail="그래프 DB가 연결되지 않았습니다")
-
     try:
-        with graph.session() as session:
-            # 통합 검색: 정식명, 공식 약칭, 비공식 약칭 (Alias)
-            # UNION으로 Statute 직접 검색 + Alias를 통한 검색 결합
-            cypher = """
-            CALL {
-                // 1. 법령명/공식약칭 검색
-                CALL db.index.fulltext.queryNodes("ft_statute_search", $search_term)
-                YIELD node, score
-                WHERE node:Statute
-                RETURN node as s, score, null as alias_name
-
-                UNION
-
-                // 2. 비공식 약칭(Alias) 검색
-                CALL db.index.fulltext.queryNodes("ft_alias_search", $search_term)
-                YIELD node, score
-                MATCH (node)-[:ALIAS_OF]->(s:Statute)
-                RETURN s, score, node.name as alias_name
-            }
-            WITH s, max(score) as best_score, collect(alias_name)[0] as matched_alias
-            RETURN s.id as id, s.name as name, s.type as type,
-                   COALESCE(matched_alias, s.abbreviation) as abbreviation,
-                   COALESCE(s.citation_count, 0) as citation_count
-            ORDER BY best_score DESC
-            LIMIT $limit
-            """
-            result = session.run(cypher, search_term=query, limit=limit)
-            search_results: list[StatuteNodeResponse] = [
+        pg = get_pg_graph_service()
+        results = await pg.search_statutes(query, limit)
+        return StatuteSearchResponse(
+            query=query,
+            results=[
                 StatuteNodeResponse(
                     id=r["id"] or "",
                     name=r["name"] or "",
                     type=r["type"] or "",
-                    abbreviation=r["abbreviation"],
-                    citation_count=r["citation_count"] or 0,
+                    abbreviation=r.get("abbreviation"),
+                    citation_count=r.get("citation_count") or 0,
                 )
-                for r in result
-            ]
-
-            # 결과가 없으면 LIKE 검색 fallback (Alias 포함)
-            if not search_results:
-                fallback_cypher = """
-                CALL {
-                    MATCH (s:Statute)
-                    WHERE s.name CONTAINS $search_term OR s.abbreviation CONTAINS $search_term
-                    RETURN s, s.abbreviation as matched_alias
-
-                    UNION
-
-                    MATCH (a:Alias)-[:ALIAS_OF]->(s:Statute)
-                    WHERE a.name CONTAINS $search_term
-                    RETURN s, a.name as matched_alias
-                }
-                WITH s, collect(matched_alias)[0] as abbreviation
-                RETURN DISTINCT s.id as id, s.name as name, s.type as type,
-                       abbreviation,
-                       COALESCE(s.citation_count, 0) as citation_count
-                ORDER BY citation_count DESC
-                LIMIT $limit
-                """
-                result = session.run(fallback_cypher, search_term=query, limit=limit)
-                search_results = [
-                    StatuteNodeResponse(
-                        id=r["id"] or "",
-                        name=r["name"] or "",
-                        type=r["type"] or "",
-                        abbreviation=r["abbreviation"],
-                        citation_count=r["citation_count"] or 0,
-                    )
-                    for r in result
-                ]
-
-            return StatuteSearchResponse(query=query, results=search_results)
+                for r in results
+            ],
+        )
     except Exception as e:
         logger.error(f"법령 검색 실패: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="법령 검색 중 오류가 발생했습니다")
@@ -599,119 +503,36 @@ async def get_statute_hierarchy(statute_id: str):
 
     특정 법령의 상위/하위 계급 및 관련 법령을 조회합니다.
     """
-    if settings.USE_PG_GRAPH:
-        try:
-            pg = get_pg_graph_service()
-            detail = await pg.get_statute_hierarchy_detail(statute_id)
-            if not detail:
-                raise HTTPException(status_code=404, detail="법령을 찾을 수 없습니다")
-
-            def _to_node(d: dict) -> StatuteNodeResponse:
-                return StatuteNodeResponse(
-                    id=d["id"] or "",
-                    name=d["name"] or "",
-                    type=d["type"] or "",
-                    abbreviation=d.get("abbreviation"),
-                    citation_count=d.get("citation_count") or 0,
-                    content=d.get("content"),
-                    supplementary=d.get("supplementary"),
-                )
-
-            return StatuteHierarchyResponse(
-                root=_to_node(detail["root"]),
-                upper=[_to_node(n) for n in detail["upper"]],
-                lower=[_to_node(n) for n in detail["lower"]],
-                related=[_to_node(n) for n in detail["related"]],
-            )
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"법령 계층 조회 실패 (PG): {e}", exc_info=True)
-            raise HTTPException(
-                status_code=500, detail="법령 계층 조회 중 오류가 발생했습니다"
-            )
-
-    graph = _get_graph_service()
-    if not graph:
-        raise HTTPException(status_code=503, detail="그래프 DB가 연결되지 않았습니다")
-
     try:
-        with graph.session() as session:
-            # 법령 정보 + 상위/하위 계급 + 관련 법령 조회
-            cypher = """
-            MATCH (s:Statute {id: $statute_id})
-            OPTIONAL MATCH (s)-[:HIERARCHY_OF]->(upper:Statute)
-            OPTIONAL MATCH (lower:Statute)-[:HIERARCHY_OF]->(s)
-            OPTIONAL MATCH (s)-[:RELATED_TO]-(related:Statute)
-                RETURN s.id as id, s.name as name, s.type as type,
-                       s.abbreviation as abbreviation,
-                       s.content as content,
-                       s.supplementary as supplementary,
-                       COALESCE(s.citation_count, 0) as citation_count,
-                       collect(DISTINCT {
-                           id: upper.id, name: upper.name, type: upper.type,
-                           abbreviation: upper.abbreviation,
-                           content: upper.content,
-                           supplementary: upper.supplementary,
-                           citation_count: COALESCE(upper.citation_count, 0)
-                       }) as upper_list,
-                       collect(DISTINCT {
-                           id: lower.id, name: lower.name, type: lower.type,
-                           abbreviation: lower.abbreviation,
-                           content: lower.content,
-                           supplementary: lower.supplementary,
-                           citation_count: COALESCE(lower.citation_count, 0)
-                       }) as lower_list,
-                       collect(DISTINCT {
-                           id: related.id, name: related.name, type: related.type,
-                           abbreviation: related.abbreviation,
-                           content: related.content,
-                           supplementary: related.supplementary,
-                           citation_count: COALESCE(related.citation_count, 0)
-                       }) as related_list
-                """
-            result = session.run(cypher, statute_id=statute_id)
-            record = result.single()
+        pg = get_pg_graph_service()
+        detail = await pg.get_statute_hierarchy_detail(statute_id)
+        if not detail:
+            raise HTTPException(status_code=404, detail="법령을 찾을 수 없습니다")
 
-            if not record or not record["id"]:
-                raise HTTPException(status_code=404, detail="법령을 찾을 수 없습니다")
-
-            root = StatuteNodeResponse(
-                id=record["id"],
-                name=record["name"] or "",
-                type=record["type"] or "",
-                abbreviation=record["abbreviation"],
-                citation_count=record["citation_count"] or 0,
-                content=record["content"],
-                supplementary=record["supplementary"],
+        def _to_node(d: dict) -> StatuteNodeResponse:
+            return StatuteNodeResponse(
+                id=d["id"] or "",
+                name=d["name"] or "",
+                type=d["type"] or "",
+                abbreviation=d.get("abbreviation"),
+                citation_count=d.get("citation_count") or 0,
+                content=d.get("content"),
+                supplementary=d.get("supplementary"),
             )
 
-            def filter_valid(items):
-                return [
-                    StatuteNodeResponse(
-                        id=item["id"],
-                        name=item["name"] or "",
-                        type=item["type"] or "",
-                        abbreviation=item["abbreviation"],
-                        content=item.get("content"),
-                        supplementary=item.get("supplementary"),
-                        citation_count=item["citation_count"] or 0,
-                    )
-                    for item in items
-                    if item.get("id") is not None
-                ]
-
-            return StatuteHierarchyResponse(
-                root=root,
-                upper=filter_valid(record["upper_list"]),
-                lower=filter_valid(record["lower_list"]),
-                related=filter_valid(record["related_list"]),
-            )
+        return StatuteHierarchyResponse(
+            root=_to_node(detail["root"]),
+            upper=[_to_node(n) for n in detail["upper"]],
+            lower=[_to_node(n) for n in detail["lower"]],
+            related=[_to_node(n) for n in detail["related"]],
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"법령 계층 조회 실패: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="법령 계층 조회 중 오류가 발생했습니다")
+        raise HTTPException(
+            status_code=500, detail="법령 계층 조회 중 오류가 발생했습니다"
+        )
 
 
 @router.get("/statutes/{statute_id}/children", response_model=StatuteChildrenResponse)
@@ -724,62 +545,27 @@ async def get_statute_children(
 
     특정 법령의 하위 법령 목록을 조회합니다.
     """
-    if settings.USE_PG_GRAPH:
-        try:
-            pg = get_pg_graph_service()
-            pg_children = await pg.get_statute_children(statute_id, limit)
-            return StatuteChildrenResponse(
-                statute_id=statute_id,
-                children=[
-                    StatuteNodeResponse(
-                        id=r["id"] or "",
-                        name=r["name"] or "",
-                        type=r["type"] or "",
-                        abbreviation=r.get("abbreviation"),
-                        citation_count=r.get("citation_count") or 0,
-                    )
-                    for r in pg_children
-                ],
-            )
-        except Exception as e:
-            logger.error(f"하위 법령 조회 실패 (PG): {e}", exc_info=True)
-            raise HTTPException(
-                status_code=500, detail="하위 법령 조회 중 오류가 발생했습니다"
-            )
-
-    graph = _get_graph_service()
-    if not graph:
-        raise HTTPException(status_code=503, detail="그래프 DB가 연결되지 않았습니다")
-
     try:
-        with graph.session() as session:
-            cypher = """
-            MATCH (lower:Statute)-[:HIERARCHY_OF]->(s:Statute {id: $statute_id})
-            RETURN lower.id as id, lower.name as name, lower.type as type,
-                   lower.abbreviation as abbreviation,
-                   COALESCE(lower.citation_count, 0) as citation_count
-            ORDER BY lower.citation_count DESC
-            LIMIT $limit
-            """
-            result = session.run(cypher, statute_id=statute_id, limit=limit)
-            child_nodes = [
+        pg = get_pg_graph_service()
+        pg_children = await pg.get_statute_children(statute_id, limit)
+        return StatuteChildrenResponse(
+            statute_id=statute_id,
+            children=[
                 StatuteNodeResponse(
                     id=r["id"] or "",
                     name=r["name"] or "",
                     type=r["type"] or "",
-                    abbreviation=r["abbreviation"],
-                    citation_count=r["citation_count"] or 0,
+                    abbreviation=r.get("abbreviation"),
+                    citation_count=r.get("citation_count") or 0,
                 )
-                for r in result
-            ]
-
-            return StatuteChildrenResponse(
-                statute_id=statute_id,
-                children=child_nodes,
-            )
+                for r in pg_children
+            ],
+        )
     except Exception as e:
         logger.error(f"하위 법령 조회 실패: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="하위 법령 조회 중 오류가 발생했습니다")
+        raise HTTPException(
+            status_code=500, detail="하위 법령 조회 중 오류가 발생했습니다"
+        )
 
 
 @router.get("/statutes/graph", response_model=StatuteGraphResponse)
@@ -794,101 +580,11 @@ async def get_statute_graph(
     중심 법령 기준으로 연결된 법령들의 그래프 데이터를 반환합니다.
     center_id가 없으면 인용수 상위 법령들로 시작합니다.
     """
-    if settings.USE_PG_GRAPH:
-        try:
-            pg = get_pg_graph_service()
-            graph_data = await pg.get_statute_graph(center_id, depth, limit)
-            return StatuteGraphResponse(
-                nodes=[
-                    GraphNodeResponse(
-                        id=n["id"] or "",
-                        name=n["name"] or "",
-                        type=n["type"] or "",
-                        abbreviation=n.get("abbreviation"),
-                        citation_count=n.get("citation_count") or 0,
-                    )
-                    for n in graph_data.get("nodes", [])
-                ],
-                links=[
-                    GraphLinkResponse(
-                        source=link["source"],
-                        target=link["target"],
-                        relation=link["relation"],
-                    )
-                    for link in graph_data.get("links", [])
-                ],
-            )
-        except Exception as e:
-            logger.error(f"법령 그래프 조회 실패 (PG): {e}", exc_info=True)
-            raise HTTPException(
-                status_code=500, detail="법령 그래프 조회 중 오류가 발생했습니다"
-            )
-
-    graph = _get_graph_service()
-    if not graph:
-        raise HTTPException(status_code=503, detail="그래프 DB가 연결되지 않았습니다")
-
     try:
-        with graph.session() as session:
-            if center_id:
-                # 특정 법령 중심 그래프
-                cypher = """
-                MATCH (center:Statute {id: $center_id})
-                CALL {
-                    WITH center
-                    MATCH path = (center)-[:HIERARCHY_OF|RELATED_TO*1..2]-(connected:Statute)
-                    RETURN DISTINCT connected
-                    LIMIT $limit
-                }
-                WITH center, collect(DISTINCT connected) as connected_nodes
-                UNWIND ([center] + connected_nodes) as node
-                WITH collect(DISTINCT node) as all_nodes
-                UNWIND all_nodes as n1
-                UNWIND all_nodes as n2
-                OPTIONAL MATCH (n1)-[r:HIERARCHY_OF]->(n2)
-                OPTIONAL MATCH (n1)-[r2:RELATED_TO]-(n2) WHERE id(n1) < id(n2)
-                WITH all_nodes,
-                     collect(DISTINCT CASE WHEN r IS NOT NULL THEN {source: n1.id, target: n2.id, relation: 'HIERARCHY_OF'} END) as hier_links,
-                     collect(DISTINCT CASE WHEN r2 IS NOT NULL THEN {source: n1.id, target: n2.id, relation: 'RELATED_TO'} END) as rel_links
-                RETURN all_nodes,
-                       [link in hier_links WHERE link IS NOT NULL] + [link in rel_links WHERE link IS NOT NULL] as links
-                """
-                result = session.run(cypher, center_id=center_id, limit=limit)
-            else:
-                # 인용수 상위 법령들로 시작하는 그래프
-                cypher = """
-                MATCH (s:Statute)
-                WHERE s.citation_count > 0
-                WITH s ORDER BY s.citation_count DESC LIMIT 50
-                WITH collect(s) as top_statutes
-                UNWIND top_statutes as center
-                CALL {
-                    WITH center
-                    MATCH (center)-[:HIERARCHY_OF|RELATED_TO]-(connected:Statute)
-                    RETURN connected
-                    LIMIT 3
-                }
-                WITH top_statutes, collect(DISTINCT connected) as connected_nodes
-                WITH top_statutes + connected_nodes as all_list
-                UNWIND all_list as node
-                WITH collect(DISTINCT node) as all_nodes
-                UNWIND all_nodes as n1
-                UNWIND all_nodes as n2
-                OPTIONAL MATCH (n1)-[r:HIERARCHY_OF]->(n2)
-                OPTIONAL MATCH (n1)-[r2:RELATED_TO]-(n2) WHERE id(n1) < id(n2)
-                WITH all_nodes,
-                     collect(DISTINCT CASE WHEN r IS NOT NULL THEN {source: n1.id, target: n2.id, relation: 'HIERARCHY_OF'} END) as hier_links,
-                     collect(DISTINCT CASE WHEN r2 IS NOT NULL THEN {source: n1.id, target: n2.id, relation: 'RELATED_TO'} END) as rel_links
-                RETURN all_nodes,
-                       [link in hier_links WHERE link IS NOT NULL] + [link in rel_links WHERE link IS NOT NULL] as links
-                """
-                result = session.run(cypher)
-
-            record = result.single()
-            if not record:
-                return StatuteGraphResponse(nodes=[], links=[])
-
-            nodes = [
+        pg = get_pg_graph_service()
+        graph_data = await pg.get_statute_graph(center_id, depth, limit)
+        return StatuteGraphResponse(
+            nodes=[
                 GraphNodeResponse(
                     id=n["id"] or "",
                     name=n["name"] or "",
@@ -896,24 +592,22 @@ async def get_statute_graph(
                     abbreviation=n.get("abbreviation"),
                     citation_count=n.get("citation_count") or 0,
                 )
-                for n in record["all_nodes"]
-                if n and n.get("id")
-            ]
-
-            links = [
+                for n in graph_data.get("nodes", [])
+            ],
+            links=[
                 GraphLinkResponse(
                     source=link["source"],
                     target=link["target"],
                     relation=link["relation"],
                 )
-                for link in record["links"]
-                if link and link.get("source") and link.get("target")
-            ]
-
-            return StatuteGraphResponse(nodes=nodes, links=links)
+                for link in graph_data.get("links", [])
+            ],
+        )
     except Exception as e:
         logger.error(f"법령 그래프 조회 실패: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="법령 그래프 조회 중 오류가 발생했습니다")
+        raise HTTPException(
+            status_code=500, detail="법령 그래프 조회 중 오류가 발생했습니다"
+        )
 
 
 @router.post("/precedents/{precedent_id}/ask", response_model=AIQuestionResponse)
@@ -943,23 +637,23 @@ async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest) ->
         similar_cases = None
         graph_context_text = ""
 
-        if graph_service := _get_graph_service():
-            try:
-                case_context = graph_service.enrich_case_context(case_number)
-                if case_context.get("cited_statutes"):
-                    cited_statutes = [
-                        s.get("name", "") for s in case_context["cited_statutes"][:5]
-                    ]
-                    graph_context_text += f"\n- 인용 법령: {', '.join(cited_statutes)}"
+        try:
+            pg = get_pg_graph_service()
+            case_context = await pg.enrich_case_context(case_number)
+            if case_context.get("cited_statutes"):
+                cited_statutes = [
+                    s.get("name", "") for s in case_context["cited_statutes"][:5]
+                ]
+                graph_context_text += f"\n- 인용 법령: {', '.join(cited_statutes)}"
 
-                if case_context.get("similar_cases"):
-                    similar_cases = [
-                        s.get("case_number", "")
-                        for s in case_context["similar_cases"][:3]
-                    ]
-                    graph_context_text += f"\n- 유사 판례: {', '.join(similar_cases)}"
-            except Exception as e:
-                logger.debug(f"그래프 컨텍스트 조회 실패: {e}")
+            if case_context.get("similar_cases"):
+                similar_cases = [
+                    s.get("case_number", "")
+                    for s in case_context["similar_cases"][:3]
+                ]
+                graph_context_text += f"\n- 유사 판례: {', '.join(similar_cases)}"
+        except Exception as e:
+            logger.debug(f"그래프 컨텍스트 조회 실패: {e}")
 
         # AI 응답 생성 (LLM 추상화 레이어 사용)
         system_prompt = """당신은 한국 법률 전문 AI 어시스턴트입니다.

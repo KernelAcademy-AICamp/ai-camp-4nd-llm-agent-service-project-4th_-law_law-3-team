@@ -1,6 +1,6 @@
 # Skills & Agents Catalog
 
-스킬 36개, 에이전트 5개, 규칙 7개의 분류 및 의존관계 인덱스.
+스킬 35개, 에이전트 5개, 규칙 7개의 분류 및 의존관계 인덱스.
 
 > 최종 업데이트: 2026-02-24
 
@@ -15,7 +15,7 @@
 | [프론트엔드](#3-프론트엔드) | 6 | - | React/Next.js, 성능, UI/UX, 모의 법정 |
 | [RAG/검색](#4-rag검색) | 5 | 1 | 파일 리네임, RAG 패턴, 평가, 실험 추적, 인제스트 |
 | [데이터/DB](#5-데이터db) | 4 | - | PostgreSQL, Alembic, 위치검색, 요약감사 |
-| [도메인 지식](#6-도메인-지식) | 2 | - | 한국 법률, Neo4j 그래프 |
+| [도메인 지식](#6-도메인-지식) | 1 | - | 한국 법률 도메인 지식 |
 | [멀티에이전트](#7-멀티에이전트) | 3 | - | LangGraph 패턴, 디버깅, 프롬프트 엔지니어링 |
 | [외부 CLI](#8-외부-cli) | 3 | 1 | Gemini, Codex, CLI 조합 |
 | [보안/성능](#9-보안성능) | 2 | - | 인증/보안, 캐싱 전략 |
@@ -122,10 +122,7 @@ PostgreSQL 마이그레이션, 공간 쿼리, 데이터 품질.
 
 | 스킬 | 줄 수 | 적용 시점 | 설명 |
 |------|------|----------|------|
-| `korean-legal-domain` | 443 | 법률 데이터 처리 시 | 법령 XML, 판례 구조, 청킹 전략 |
-| `neo4j-graph-construction` | 357 | 그래프 DB 작업 시 | 법령 계급, 판례 인용, 에이전트 연동 |
-
-**관계**: `korean-legal-domain` (데이터 구조) → `neo4j-graph-construction` (그래프 저장)
+| `korean-legal-domain` | 443 | 법률 데이터 처리 시 | 법령 XML, 판례 구조, 청킹 전략, PG 그래프 |
 
 ---
 
@@ -217,7 +214,7 @@ Docker 컨테이너, 배포, 의존성 관리, Google Drive 백업/복원.
            langchain-rag-patterns (601), phaser-nextjs-integration (598)
 400+ 줄 : multi-cli-integration (496), code-verification (463), korean-legal-domain (443)
 300+ 줄 : codex-cli-delegation (381), ui-ux-pro-max (377)
-           docker-containerization (360), neo4j-graph-construction (357)
+           docker-containerization (360)
            caching-strategy (340), security-authentication (310)
            python-coding-standards (298), update-docs (292), prompt-engineering (280)
 200+ 줄 : gemini-cli-delegation (249), google-drive-operations (239)
@@ -231,4 +228,4 @@ Docker 컨테이너, 배포, 의존성 관리, Google Drive 백업/복원.
  ~64 줄 : project-review (64)
 ```
 
-**총 줄 수**: ~11,470줄 (평균 319줄/스킬, 36개)
+**총 줄 수**: ~11,113줄 (평균 318줄/스킬, 35개)

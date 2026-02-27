@@ -7,7 +7,7 @@
 # - Frontend is deployed on Vercel (not included in this compose file)
 # - Default stack: postgres + backend + nginx
 # - Optional LanceDB service is disabled by default via profile `lancedb`
-# - Neo4j is intentionally excluded in this MVP baseline (some graph features may be limited)
+# - Graph features use PostgreSQL (Neo4j removed)
 
 services:
   postgres:

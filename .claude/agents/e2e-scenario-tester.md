@@ -31,8 +31,7 @@ color: purple
 ```
 1. Backend 서버 실행 중: http://localhost:8000
 2. Frontend 서버 실행 중: http://localhost:3000
-3. Neo4j 컨테이너 실행 중 (판례/법령 검색용)
-4. LanceDB 데이터 존재 (벡터 검색용)
+3. LanceDB 데이터 존재 (벡터 검색용)
 ```
 
 ### 환경 확인 방법
@@ -43,9 +42,6 @@ curl -s http://localhost:8000/health || echo "Backend 미실행"
 
 # Frontend 상태 확인
 curl -s http://localhost:3000 > /dev/null && echo "Frontend 실행 중" || echo "Frontend 미실행"
-
-# Neo4j 상태 확인
-curl -s http://localhost:7474 > /dev/null && echo "Neo4j 실행 중" || echo "Neo4j 미실행"
 ```
 
 ---
@@ -175,8 +171,6 @@ curl -X POST http://localhost:8000/api/chat \
 ### 환경 상태
 - Backend: ✅ 실행 중 / ❌ 미실행
 - Frontend: ✅ 실행 중 / ❌ 미실행
-- Neo4j: ✅ 실행 중 / ❌ 미실행
-
 ### 시나리오별 결과
 
 | # | 시나리오 | 결과 | 소요 시간 | 비고 |

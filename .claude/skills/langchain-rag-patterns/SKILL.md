@@ -65,7 +65,7 @@ backend/app/
 │   │   └── qdrant.py          # QdrantVectorStore 구현체
 │   └── graph/
 │       ├── __init__.py
-│       └── graph_service.py   # GraphService (Neo4j), get_graph_service
+│       └── pg_graph_service.py  # PgGraphService (PostgreSQL), get_graph_service
 └── services/rag/
     ├── __init__.py             # 모듈 export
     ├── embedding.py            # create_query_embedding, get_local_model
@@ -189,10 +189,10 @@ def build_rag_context(documents: list[dict]) -> str:
 ```python
 from app.tools.graph import get_graph_service
 
-def enrich_context_with_graph(documents: list[dict]) -> str:
-    """Neo4j 그래프 정보로 컨텍스트 보강"""
+async def enrich_context_with_graph(documents: list[dict]) -> str:
+    """PostgreSQL 그래프 정보로 컨텍스트 보강"""
     graph_service = get_graph_service()
-    if not graph_service or not graph_service.is_connected:
+    if not graph_service:
         return ""
 
     context_parts = []
@@ -202,8 +202,8 @@ def enrich_context_with_graph(documents: list[dict]) -> str:
         if not case_number:
             continue
 
-        # 그래프에서 관련 정보 조회
-        graph_context = graph_service.enrich_case_context(case_number)
+        # PgGraphService에서 관련 정보 조회
+        graph_context = await graph_service.enrich_case_context(case_number)
 
         if graph_context.get("cited_statutes"):
             statutes = ", ".join(
@@ -428,12 +428,12 @@ if not is_embedding_model_cached():
 ```python
 from app.tools.graph import get_graph_service
 
-# LRU 캐시로 싱글톤 관리
+# PgGraphService 인스턴스 (PostgreSQL 기반)
 graph_service = get_graph_service()
 
-if graph_service and graph_service.is_connected:
+if graph_service:
     # 그래프 보강 사용
-    context = graph_service.enrich_case_context(case_number)
+    context = await graph_service.enrich_case_context(case_number)
 else:
     # 그래프 없이 진행 (graceful degradation)
     context = {}

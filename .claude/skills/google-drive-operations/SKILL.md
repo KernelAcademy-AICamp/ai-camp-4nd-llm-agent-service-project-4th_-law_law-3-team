@@ -5,7 +5,7 @@ description: Google Drive를 통한 DB 백업/복원, 원본 데이터(data/) �
 
 # Google Drive 운영 스킬
 
-rclone을 통해 Google Drive와 3개 DB(PostgreSQL, Neo4j, LanceDB) 백업/복원, 원본 JSON 데이터 동기화를 수행합니다.
+rclone을 통해 Google Drive와 2개 DB(PostgreSQL, LanceDB) 백업/복원, 원본 JSON 데이터 동기화를 수행합니다.
 
 ## 아키텍처 개요
 
@@ -13,7 +13,6 @@ rclone을 통해 Google Drive와 3개 DB(PostgreSQL, Neo4j, LanceDB) 백업/복�
 Google Drive (gdrive:)
 ├── <TIMESTAMP>/              ← DB 백업 (scripts/backup_to_gdrive.sh)
 │   ├── postgres.dump
-│   ├── neo4j.dump (또는 neo4j_data.tar.gz)
 │   └── lancedb_data.tar.gz
 │
 └── data/                     ← 원본 데이터 (~7GB)
@@ -73,7 +72,6 @@ rclone ls --config rclone.conf gdrive: --max-depth 1
 ./scripts/backup_to_gdrive.sh --skip-upload
 
 # 특정 DB 건너뛰기
-./scripts/backup_to_gdrive.sh --skip-neo4j
 ./scripts/backup_to_gdrive.sh --skip-postgres
 ./scripts/backup_to_gdrive.sh --skip-lancedb
 
@@ -82,8 +80,6 @@ rclone ls --config rclone.conf gdrive: --max-depth 1
 ```
 
 **스크립트 동작**: Docker 컨테이너에서 덤프 → 로컬 `backups/<TIMESTAMP>/` 저장 → rclone으로 업로드 → 오래된 로컬 백업 자동 정리 (기본 5개 유지)
-
-**Neo4j 주의**: 덤프 중 컨테이너가 정지되었다가 자동 재시작됩니다. 프로덕션 환경에서는 사용자에게 경고하세요.
 
 ### B. DB 복원 (Google Drive →)
 
@@ -98,7 +94,7 @@ rclone ls --config rclone.conf gdrive: --max-depth 1
 ./scripts/restore_from_gdrive.sh latest --download-only
 
 # 특정 DB 건너뛰기
-./scripts/restore_from_gdrive.sh latest --skip-neo4j
+./scripts/restore_from_gdrive.sh latest --skip-postgres
 ```
 
 **스크립트 동작**: 백업 목록 조회 → 다운로드 → 사용자 확인 프롬프트 → DB별 복원
@@ -182,7 +178,6 @@ uv run python scripts/download_models.py
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `POSTGRES_CONTAINER` | PostgreSQL 컨테이너명 | `law-platform-db` |
-| `NEO4J_CONTAINER` | Neo4j 컨테이너명 | `neo4j-law-graph` |
 | `LANCEDB_DATA_DIR` | LanceDB 데이터 경로 | `backend/lancedb_data` |
 | `BACKUP_KEEP_LOCAL` | 로컬 백업 보관 개수 | `5` |
 | `RCLONE_CONF` | rclone 설정 파일 경로 | `rclone.conf` |

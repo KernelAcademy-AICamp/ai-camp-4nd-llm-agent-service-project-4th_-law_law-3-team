@@ -83,7 +83,7 @@ class VectorStoreError(RAGError):
 
 
 class GraphServiceError(ServiceError):
-    """Neo4j 그래프 서비스 관련 예외"""
+    """그래프 서비스 관련 예외"""
 
     def __init__(
         self,

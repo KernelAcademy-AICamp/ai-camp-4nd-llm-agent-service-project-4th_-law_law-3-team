@@ -39,7 +39,7 @@ chunking:
   overlap: [tokens or characters]
   
 graph_db: # Optional
-  type: [Neo4j | FalkorDB | PostgreSQL+AGE | None]
+  type: [PostgreSQL (Recursive CTE) | FalkorDB | None]
   version: x.x.x
   
 infrastructure:

@@ -14,7 +14,6 @@ WSL2 환경에서 Docker를 사용할 때 이 규칙들을 **항상(ALWAYS)** �
 | 컨테이너 | 이미지 | 포트 |
 |----------|--------|------|
 | `law-platform-db` | `postgres:15-alpine` | 5432 |
-| `neo4j-law-graph` | `neo4j:5.15.0` | 7474, 7687 |
 
 ## 3. 준비 대기
 

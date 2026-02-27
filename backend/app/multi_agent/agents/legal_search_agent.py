@@ -157,18 +157,15 @@ class LegalSearchAgent(BaseChatAgent):
     ) -> dict[str, str] | None:
         """PgGraphService로 법령 검색. 실패 시 None."""
         try:
-            from app.core.config import settings
+            from app.tools.graph.pg_graph_service import get_pg_graph_service
 
-            if settings.USE_PG_GRAPH:
-                from app.tools.graph.pg_graph_service import get_pg_graph_service
-
-                pg = get_pg_graph_service()
-                results = await pg.search_statutes(query, limit=1)
-                if results:
-                    return {
-                        "id": results[0]["id"],
-                        "name": results[0]["name"],
-                    }
+            pg = get_pg_graph_service()
+            results = await pg.search_statutes(query, limit=1)
+            if results:
+                return {
+                    "id": results[0]["id"],
+                    "name": results[0]["name"],
+                }
         except Exception:
             logger.debug("체계도 법령 검색 실패: %s", query, exc_info=True)
         return None

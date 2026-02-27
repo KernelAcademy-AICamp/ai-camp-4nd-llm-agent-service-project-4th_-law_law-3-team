@@ -30,7 +30,7 @@ cp .env.example .env
 # 필수 조건 자동 점검 (Python, MeCab, Docker, 디스크 등)
 uv run python scripts/check_environment.py
 
-# 특정 범위만: --step db | vector | neo4j
+# 특정 범위만: --step db | vector
 ```
 
 ### 3. PostgreSQL 실행
@@ -193,7 +193,7 @@ app/
 ├── tools/               # 외부 도구 클라이언트
 │   ├── llm/             # LLM (Solar, OpenAI)
 │   ├── vectorstore/     # LanceDB, Chroma, Qdrant
-│   ├── graph/           # Neo4j GraphService + PgGraphService (USE_PG_GRAPH)
+│   ├── graph/           # PgGraphService (PostgreSQL Recursive CTE)
 │   └── geo/             # 거리 계산
 ├── modules/             # 독립 API 모듈 (자동 등록)
 │   ├── case_precedent/
@@ -325,7 +325,6 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `ONNX_QUALITY_GATE_ENABLED` | ONNX 품질 게이트 활성화 (PyTorch 대비 cosine/pearson 검증) | `true` |
 | `ONNX_QUALITY_GATE_FALLBACK` | 품질 미달 시 자동 PyTorch 폴백 | `true` |
 | `ONNX_INFERENCE_TIMEOUT_SECONDS` | ONNX 추론 타임아웃 (초) | `30.0` |
-| `USE_PG_GRAPH` | PostgreSQL 그래프 사용 (Neo4j 대체, Recursive CTE) | `false` |
 
 > **ONNX Variant (임베딩)**: `ort-opt` (FP32 무손실, cosine 1.0), `ort-opt-qdq` (INT8, cosine 0.999, 23% 빠름), `onnx-fp16` (FP16, cosine 1.0).
 > **ONNX Variant (리랭커)**: `ort-opt` (FP32 무손실) | `ort-opt-qdq` (INT8, 4 FP32, Pearson 0.9999, 3.52x) | `ort-opt-qdq-6fp32` (INT8, 6 FP32, Pearson 0.9994, Spearman 0.993).
@@ -458,7 +457,6 @@ backend/tests/
 │   ├── test_lancedb_search.py       # LanceDB 벡터 검색 테스트
 │   ├── test_lancedb_integration.py  # LanceDB E2E + FTS + 하이브리드 (15개)
 │   ├── test_postgresql_data.py      # PostgreSQL 데이터 확인
-│   ├── test_neo4j_graph.py          # Neo4j 그래프 검증 테스트 (27개)
 │   ├── test_evaluation_runner.py    # 평가 실행기 테스트
 │   └── test_evaluation_search.py    # 평가 검색 테스트
 ├── unit/                            # 단위 테스트 (개별 함수/클래스)
@@ -899,194 +897,33 @@ LOCAL_EMBEDDING_MODEL=nlpai-lab/KURE-v1  # 임베딩 모델명
 > **팁**: `USE_LOCAL_EMBEDDING=false`로 설정하면 OpenAI 임베딩을 사용하며,
 > 이 경우 로컬 모델 다운로드가 필요 없습니다 (단, `OPENAI_API_KEY` 필요).
 
-## Graph DB (Neo4j)
+## Graph (PostgreSQL Recursive CTE)
 
-법령 계급(시행령→법률), 판례 인용 관계를 Neo4j 그래프로 저장합니다.
+법령 계급(시행령→법률), 판례 인용 관계를 PostgreSQL 테이블 + Recursive CTE로 처리합니다.
+(이전 Neo4j에서 이관 완료)
 
-### 실행 (Docker)
+### 관련 테이블
 
-```bash
-# 프로젝트 루트에서 실행
-cd ..
-docker compose up -d neo4j
-
-# 상태 확인
-docker ps
-docker logs neo4j-law-graph
-
-# Neo4j Browser 접속
-# http://localhost:7474 (neo4j / password)
-```
-
-### .env 설정
-
-```bash
-# backend/.env
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=password
-```
-
-### 그래프 구축
-
-```bash
-cd backend
-
-# 전체 그래프 구축 (초기 1회)
-uv run python scripts/build_graph.py
-
-# 구축 내용:
-# - Statute 노드 (법령): 5,572개
-# - Case 노드 (판례): 65,107개
-# - Alias 노드 (비공식 약칭): 69개
-# - HIERARCHY_OF 관계 (법령 계급): 3,624개
-# - CITES 관계 (판례→법령): 72,414개
-# - CITES_CASE 관계 (판례→판례): 87,654개
-# - RELATED_TO 관계 (법령→법령): 93개
-# - ALIAS_OF 관계 (약칭→법령): 69개
-```
-
-### 검증
-
-```bash
-# CLI 검증 (통계, 샘플 경로)
-uv run python scripts/verify_graph.py
-
-# Gradio UI 검증 (약칭 통합 검색 지원)
-uv run python scripts/verify_gradio.py
-# → http://localhost:7860
-
-# 테스트 실행 (30개 테스트)
-uv run pytest tests/integration/test_neo4j_graph.py -v
-```
-
-### 그래프 스키마
-
-```
-노드 (Nodes):
-- Statute: id, name, type, promulgation_date, abbreviation, citation_count
-- Case: id, case_number, name, summary
-- Alias: name, category (비공식 약칭)
-
-관계 (Relationships):
-- (Statute)-[:HIERARCHY_OF]->(Statute)  # 시행령 → 법률
-- (Case)-[:CITES]->(Statute)             # 판례 → 법령 인용
-- (Case)-[:CITES_CASE]->(Case)           # 판례 → 판례 인용
-- (Statute)-[:RELATED_TO]->(Statute)     # 법령 → 법령 관련
-- (Alias)-[:ALIAS_OF]->(Statute)         # 비공식 약칭 → 법령
-```
-
-### 약칭 검색
-
-세 가지 방식으로 법령을 검색할 수 있습니다:
-- **정식 법령명**: `민사소송법`, `도로교통법`
-- **공식 약칭** (`law_abbreviations.json`): `119법`, `특정범죄가중법`
-- **비공식 약칭** (`informal_abbreviations.json`): `민소법`, `도교법`, `특가법`
-
-```cypher
--- 통합 검색 (정식명/공식약칭/비공식약칭)
-OPTIONAL MATCH (s1:Statute {name: $query})
-OPTIONAL MATCH (s2:Statute {abbreviation: $query})
-OPTIONAL MATCH (a:Alias {name: $query})-[:ALIAS_OF]->(s3:Statute)
-WITH coalesce(s1, s2, s3) as s WHERE s IS NOT NULL
-RETURN s
-```
-
-### 성능 최적화
-
-인덱스 및 Full-text 검색이 적용되어 있습니다:
-
-| 인덱스 | 용도 |
+| 테이블 | 설명 |
 |--------|------|
-| `Statute.id`, `Statute.name` | 기본 조회 |
-| `Statute.abbreviation` | 공식 약칭 검색 |
-| `Case.id`, `Case.case_number`, `Case.name` | 판례 조회 |
-| `Alias.name` | 비공식 약칭 검색 |
-| `ft_statute_search` | 법령 Full-text 검색 |
-| `ft_case_search` | 판례 Full-text 검색 |
-| `ft_alias_search` | 약칭 Full-text 검색 |
+| `statute_hierarchy` | 법령 계급 관계 (child→parent) |
+| `statute_aliases` | 법령 약칭 |
+| `statute_relations` | 법령 관련 관계 |
+| `case_statute_citations` | 판례→법령 인용 |
+| `case_case_citations` | 판례→판례 인용 |
 
-**성능 벤치마크:**
+### 서비스
 
-| 쿼리 | 응답 시간 |
-|------|-----------|
-| ID/이름 조회 | 3-14ms |
-| 약칭 통합 검색 | 9ms |
-| 계급 탐색 | 17-33ms |
-| 인용 법령 TOP 10 | 13ms |
-| 유사 판례 검색 | 35ms |
-
-### Cypher 쿼리 예시
-
-```cypher
--- 특정 법령의 상하위 계급 조회
-MATCH (s:Statute {name: '도로교통법'})
-OPTIONAL MATCH (s)-[:HIERARCHY_OF]->(upper)
-OPTIONAL MATCH (lower)-[:HIERARCHY_OF]->(s)
-RETURN s.name, collect(upper.name) as 상위법, collect(lower.name) as 하위법
-
--- 비공식 약칭으로 법령 검색
-MATCH (a:Alias {name: '민소법'})-[:ALIAS_OF]->(s:Statute)
-RETURN s.name, s.abbreviation
-
--- Full-text 법령 검색
-CALL db.index.fulltext.queryNodes("ft_statute_search", "도로교통")
-YIELD node RETURN node LIMIT 10
-
--- Full-text 판례 검색
-CALL db.index.fulltext.queryNodes("ft_case_search", "손해배상")
-YIELD node RETURN node LIMIT 10
-
--- 가장 많이 인용된 법령 TOP 10 (최적화: citation_count 사용)
-MATCH (s:Statute) WHERE s.citation_count > 0
-RETURN s.name, s.citation_count
-ORDER BY s.citation_count DESC LIMIT 10
-
--- 같은 법령을 인용한 유사 판례
-MATCH (c1:Case {id: $id})-[:CITES]->(s:Statute)<-[:CITES]-(c2:Case)
-WHERE c1 <> c2
-RETURN c2.case_number, count(s) as common
-ORDER BY common DESC LIMIT 10
-```
-
-### 스크립트 파일
-
-| 파일 | 설명 |
-|------|------|
-| `scripts/build_graph.py` | 그래프 구축 (법령, 판례, 관계) |
-| `scripts/verify_graph.py` | CLI 검증 (통계, 샘플) |
-| `scripts/verify_gradio.py` | Gradio UI 검증 |
-
-### Python API 사용
+`app/tools/graph/pg_graph_service.py` — `PgGraphService`
 
 ```python
-from neo4j import GraphDatabase
+from app.tools.graph import get_pg_graph_service
 
-driver = GraphDatabase.driver(
-    "bolt://localhost:7687",
-    auth=("neo4j", "password")
-)
-
-with driver.session() as session:
-    # 법령 계급 조회
-    result = session.run("""
-        MATCH (s:Statute {name: $name})-[:HIERARCHY_OF]->(upper)
-        RETURN upper.name
-    """, name="도로교통법 시행령")
-
-    for record in result:
-        print(record["upper.name"])
-
-driver.close()
+pg = get_pg_graph_service()
+results = await pg.search_statutes("도로교통법", limit=5)
+hierarchy = await pg.get_statute_hierarchy("law_id")
+graph = await pg.get_statute_graph(center_id, depth=2, limit=100)
 ```
-
-### 활용 시나리오
-
-| 시나리오 | 관계 | 설명 |
-|----------|------|------|
-| RAG 컨텍스트 보강 | HIERARCHY_OF, CITES, RELATED_TO | 검색 결과에 관련 법령/판례 추가 |
-| 법령 탐색 UI | HIERARCHY_OF, RELATED_TO | 계급도 시각화, 관련 법령 탐색 |
-| 판례 추천 | CITES_CASE, CITES | 유사 판례 찾기 (같은 법령 인용) |
 
 ## Trial Statistics DB (재판 통계)
 
