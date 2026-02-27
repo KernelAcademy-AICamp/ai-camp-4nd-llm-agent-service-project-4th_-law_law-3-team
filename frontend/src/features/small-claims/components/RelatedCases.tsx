@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import type { RelatedCaseItem } from '../types'
 
 interface RelatedCasesProps {
@@ -42,32 +43,8 @@ export function RelatedCases({ cases, isLoading, disputeType }: RelatedCasesProp
           </div>
         ) : cases.length > 0 ? (
           <div className="space-y-3">
-            {cases.map((case_) => (
-              <div
-                key={case_.id}
-                className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition"
-              >
-                <h4 className="font-medium text-sm text-gray-900 line-clamp-2">
-                  {case_.case_name || '제목 없음'}
-                </h4>
-                {case_.case_number && (
-                  <p className="text-xs text-gray-500 font-mono mt-1">{case_.case_number}</p>
-                )}
-                <p className="text-xs text-gray-600 mt-2 line-clamp-3">{case_.summary}</p>
-                <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
-                  <span className="text-xs text-gray-400">
-                    유사도 {Math.round(case_.similarity * 100)}%
-                  </span>
-                  <a
-                    href={`/case-precedent?id=${case_.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-blue-600 hover:underline"
-                  >
-                    상세 보기
-                  </a>
-                </div>
-              </div>
+            {cases.map((caseItem) => (
+              <CaseCard key={caseItem.id} caseItem={caseItem} />
             ))}
           </div>
         ) : (
@@ -96,6 +73,74 @@ export function RelatedCases({ cases, isLoading, disputeType }: RelatedCasesProp
           <p className="text-xs text-gray-500">{cases[0].relevance}</p>
         </div>
       )}
+    </div>
+  )
+}
+
+function CaseCard({ caseItem }: { caseItem: RelatedCaseItem }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const hasDetails = Boolean(caseItem.ruling || caseItem.reasoning)
+
+  return (
+    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition">
+      <h4 className="font-medium text-sm text-gray-900 line-clamp-2">
+        {caseItem.case_name || '제목 없음'}
+      </h4>
+      {caseItem.case_number && (
+        <p className="text-xs text-gray-500 font-mono mt-1">{caseItem.case_number}</p>
+      )}
+      <p className="text-xs text-gray-600 mt-2 line-clamp-3">{caseItem.summary}</p>
+
+      {/* 판결 보기 토글 */}
+      {hasDetails && (
+        <>
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="mt-2 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium transition"
+          >
+            <svg
+              className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+            {isExpanded ? '판결 접기' : '판결 보기'}
+          </button>
+
+          {isExpanded && (
+            <div className="mt-2 space-y-2 border-t border-gray-200 pt-2">
+              {caseItem.ruling && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-700 mb-0.5">주문 (판결)</p>
+                  <p className="text-xs text-gray-600 line-clamp-4">{caseItem.ruling}</p>
+                </div>
+              )}
+              {caseItem.reasoning && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-700 mb-0.5">판결요지</p>
+                  <p className="text-xs text-gray-600 line-clamp-6">{caseItem.reasoning}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
+        <span className="text-xs text-gray-400">
+          유사도 {Math.round(caseItem.similarity * 100)}%
+        </span>
+        <a
+          href={`/case-precedent?id=${caseItem.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 hover:underline"
+        >
+          상세 보기
+        </a>
+      </div>
     </div>
   )
 }

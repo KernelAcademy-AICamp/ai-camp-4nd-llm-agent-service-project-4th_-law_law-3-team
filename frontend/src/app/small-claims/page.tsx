@@ -14,6 +14,14 @@ const CaseInfoStep = dynamic(
   { ssr: false }
 )
 
+const CourtCostCalculator = dynamic(
+  () =>
+    import('@/features/small-claims/components/CourtCostCalculator').then(
+      (m) => m.CourtCostCalculator
+    ),
+  { ssr: false }
+)
+
 const EvidenceStep = dynamic(
   () => import('@/features/small-claims/components/EvidenceStep').then((m) => m.EvidenceStep),
   { ssr: false }
@@ -53,6 +61,9 @@ export default function SmallClaimsPage() {
     checkedEvidence,
     toggleEvidence,
     isLoadingEvidence,
+    uploadedFiles,
+    handleFileUpload,
+    removeUploadedFile,
     generatedDocument,
     isGenerating,
     generateError,
@@ -76,12 +87,17 @@ export default function SmallClaimsPage() {
         )
       case 'case_info':
         return (
-          <CaseInfoStep
-            caseInfo={caseInfo}
-            onUpdate={updateCaseInfo}
-            onNext={goToNextStep}
-            onPrevious={goToPreviousStep}
-          />
+          <>
+            <CaseInfoStep
+              caseInfo={caseInfo}
+              onUpdate={updateCaseInfo}
+              onNext={goToNextStep}
+              onPrevious={goToPreviousStep}
+            />
+            <div className="max-w-2xl mx-auto mt-6">
+              <CourtCostCalculator claimAmount={caseInfo.amount} />
+            </div>
+          </>
         )
       case 'evidence':
         return (
@@ -89,7 +105,10 @@ export default function SmallClaimsPage() {
             items={evidenceItems}
             checkedItems={checkedEvidence}
             isLoading={isLoadingEvidence}
+            uploadedFiles={uploadedFiles}
             onToggle={toggleEvidence}
+            onFileUpload={handleFileUpload}
+            onFileRemove={removeUploadedFile}
             onNext={goToNextStep}
             onPrevious={goToPreviousStep}
           />
