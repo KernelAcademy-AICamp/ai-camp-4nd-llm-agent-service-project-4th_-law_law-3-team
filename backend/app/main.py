@@ -2,10 +2,13 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-# WSL2 환경: mecab-python3가 /usr/local/etc/mecabrc를 찾지만
-# 실제 mecabrc는 /etc/mecabrc에 위치. 환경변수로 보정.
-if "MECABRC" not in os.environ and Path("/etc/mecabrc").exists():
-    os.environ["MECABRC"] = "/etc/mecabrc"
+# mecab-python3가 /usr/local/etc/mecabrc를 찾지만
+# 실제 mecabrc 위치는 환경별로 다름. 환경변수로 보정.
+if "MECABRC" not in os.environ:
+    for _candidate in ("/opt/homebrew/etc/mecabrc", "/etc/mecabrc"):
+        if Path(_candidate).exists():
+            os.environ["MECABRC"] = _candidate
+            break
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware

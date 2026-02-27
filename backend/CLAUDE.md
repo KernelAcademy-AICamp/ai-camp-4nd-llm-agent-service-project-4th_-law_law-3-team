@@ -55,7 +55,8 @@ uv run alembic upgrade head
 ```bash
 # data/ 폴더는 .gitignore에 포함 → git clone만으로는 받을 수 없음
 # Google Drive에서 복원 (rclone + rclone.conf 필요, 루트 CLAUDE.md "사전 준비" 참조)
-rclone copy --config rclone.conf gdrive:data/ data/ --progress
+# ⚠ rclone 직접 실행 금지 → 경로 매핑 스크립트 사용
+./scripts/sync_data_from_gdrive.sh
 ```
 
 ### 6. 데이터 로드 (PostgreSQL)

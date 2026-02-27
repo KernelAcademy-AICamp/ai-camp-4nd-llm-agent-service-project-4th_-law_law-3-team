@@ -408,7 +408,7 @@ cd backend
 
 # 3-1. data/ 폴더에 법령/판례 JSON 준비
 # data/law_v3.json, data/precedents_v2.json 필요
-# Google Drive에서 복원: rclone copy --config rclone.conf gdrive:data/ data/ --progress
+# Google Drive에서 복원: ./scripts/sync_data_from_gdrive.sh (프로젝트 루트에서 실행)
 
 # 3-2. Variant A: ORT-opt FP32 (무손실)로 임베딩
 USE_ONNX_EMBEDDING=true \
