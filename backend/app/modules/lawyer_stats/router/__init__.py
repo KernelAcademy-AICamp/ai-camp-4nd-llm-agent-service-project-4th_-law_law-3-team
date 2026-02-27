@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.modules.lawyer_stats.schema import (
+    BubbleDataResponse,
     CrossAnalysisRequest,
     CrossAnalysisResponse,
     DemandStatResponse,
@@ -18,6 +19,7 @@ from app.modules.lawyer_stats.schema import (
     SpecialtyStatResponse,
 )
 from app.services.service_function.lawyer_stats_service import (
+    calculate_bubble_data,
     calculate_by_region,
     calculate_by_specialty,
     calculate_cross_analysis,
@@ -173,3 +175,16 @@ async def get_cross_analysis_by_regions(
     else:
         data = calculate_cross_analysis_by_regions(request.regions)
     return CrossAnalysisResponse(**data)
+
+
+@router.get("/bubble-data", response_model=BubbleDataResponse)
+async def get_bubble_data(db: AsyncSession = Depends(get_db)) -> BubbleDataResponse:
+    """버블 차트용 통합 데이터 조회."""
+    if settings.USE_DB_LAWYERS:
+        from app.services.service_function.lawyer_stats_db_service import (
+            calculate_bubble_data_db,
+        )
+        data = await calculate_bubble_data_db(db)
+    else:
+        data = await calculate_bubble_data(db)
+    return BubbleDataResponse(**data)

@@ -1,3 +1,4 @@
+export { BubbleChart } from './BubbleChart'
 export { CrossAnalysisHeatmap } from './CrossAnalysisHeatmap'
 export { KPICards } from './KPICards'
 export { OverviewCards } from './OverviewCards'

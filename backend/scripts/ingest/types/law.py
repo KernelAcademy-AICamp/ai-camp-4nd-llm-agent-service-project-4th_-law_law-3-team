@@ -83,6 +83,7 @@ def _orm_factory(item: dict[str, Any]) -> LawDocument:
         content=content,
         supplementary=supplementary,
         ai_summary=item.get("법령 요약") or item.get("ai_summary"),
+        citation_count=0,
     )
 
 

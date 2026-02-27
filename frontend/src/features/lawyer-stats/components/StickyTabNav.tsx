@@ -1,6 +1,6 @@
 'use client'
 
-export type TabType = 'region' | 'cross'
+export type TabType = 'region' | 'cross' | 'bubble'
 
 interface StickyTabNavProps {
   activeTab: TabType
@@ -10,6 +10,7 @@ interface StickyTabNavProps {
 const TABS: { id: TabType; label: string }[] = [
   { id: 'region', label: '지역별' },
   { id: 'cross', label: '지역 × 전문분야' },
+  { id: 'bubble', label: '분포 시각화' },
 ]
 
 export function StickyTabNav({ activeTab, onTabChange }: StickyTabNavProps) {

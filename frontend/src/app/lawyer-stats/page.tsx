@@ -37,7 +37,13 @@ const CrossAnalysisHeatmap = dynamic(
   { loading: DynamicLoadingFallback }
 )
 
+const BubbleChart = dynamic(
+  () => import('@/features/lawyer-stats/components/BubbleChart').then(m => m.BubbleChart),
+  { ssr: false, loading: DynamicLoadingFallback }
+)
+
 import {
+  fetchBubbleData,
   fetchDemandStats,
   fetchDensityStats,
   fetchOverview,
@@ -115,6 +121,7 @@ export default function LawyerStatPage() {
 
   const regionSectionRef = useRef<HTMLDivElement>(null)
   const crossSectionRef = useRef<HTMLDivElement>(null)
+  const bubbleSectionRef = useRef<HTMLDivElement>(null)
 
   // 법원 좌표 데이터 로드
   useEffect(() => {
@@ -144,8 +151,15 @@ export default function LawyerStatPage() {
     if (filter.viewMode) setViewMode(filter.viewMode)
     if (filter.activeTab) {
       setActiveTab(filter.activeTab)
-      const targetRef = filter.activeTab === 'region' ? regionSectionRef : crossSectionRef
-      setTimeout(() => targetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+      const refMap: Record<string, React.RefObject<HTMLDivElement | null>> = {
+        region: regionSectionRef,
+        cross: crossSectionRef,
+        bubble: bubbleSectionRef,
+      }
+      const targetRef = refMap[filter.activeTab]
+      if (targetRef) {
+        setTimeout(() => targetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+      }
     }
     if (filter.predictionYear) setPredictionYear(filter.predictionYear)
     if (filter.demandCategory) setDemandCategory(filter.demandCategory as DemandCategory)
@@ -183,6 +197,13 @@ export default function LawyerStatPage() {
       isPredictionMode
     ),
     placeholderData: keepPreviousData,
+  })
+
+  // === Bubble chart query ===
+  const bubbleQuery = useQuery({
+    queryKey: ['lawyer-stats', 'bubble-data'],
+    queryFn: fetchBubbleData,
+    enabled: activeTab === 'bubble',
   })
 
   // === Demand query ===
@@ -284,6 +305,7 @@ export default function LawyerStatPage() {
     const refs: Record<TabType, React.RefObject<HTMLDivElement | null>> = {
       region: regionSectionRef,
       cross: crossSectionRef,
+      bubble: bubbleSectionRef,
     }
     refs[tab].current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [])
@@ -306,6 +328,7 @@ export default function LawyerStatPage() {
           const id = entry.target.id
           if (id === 'region-section') setActiveTab('region')
           else if (id === 'cross-section') setActiveTab('cross')
+          else if (id === 'bubble-section') setActiveTab('bubble')
         }
       })
     }, options)
@@ -313,6 +336,7 @@ export default function LawyerStatPage() {
     const sections = [
       regionSectionRef.current,
       crossSectionRef.current,
+      bubbleSectionRef.current,
     ]
 
     sections.forEach((section) => {
@@ -583,6 +607,23 @@ export default function LawyerStatPage() {
               className="scroll-mt-16"
             >
               <CrossAnalysisHeatmap />
+            </section>
+
+            {/* Bubble Chart Section */}
+            <section
+              id="bubble-section"
+              ref={bubbleSectionRef}
+              className="scroll-mt-16"
+            >
+              {activeTab === 'bubble' && bubbleQuery.isLoading && (
+                <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                  <LoadingSpinner />
+                </div>
+              )}
+              {activeTab === 'bubble' && bubbleQuery.isError && (
+                <ErrorMessage message="버블 차트 데이터를 불러오는 중 오류가 발생했습니다." />
+              )}
+              {bubbleQuery.data && <BubbleChart data={bubbleQuery.data} />}
             </section>
 
           </div>

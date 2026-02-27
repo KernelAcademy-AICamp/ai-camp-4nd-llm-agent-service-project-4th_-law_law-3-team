@@ -120,6 +120,26 @@ class DemandStatResponse(BaseModel):
 
 
 # =============================================================================
+# 버블 차트 통합 스키마
+# =============================================================================
+class RegionDemandTotal(BaseModel):
+    """연도별 지역 사건 수요 총량"""
+
+    region: str
+    total_cases: int
+
+
+class BubbleDataResponse(BaseModel):
+    """버블 차트 통합 데이터"""
+
+    cross: list[CrossAnalysisCell]
+    regions: list[str]
+    categories: list[str]
+    demand_by_year: dict[str, list[RegionDemandTotal]]
+    available_years: list[int]
+
+
+# =============================================================================
 # 에이전트 의도 분석 스키마
 # =============================================================================
 QueryType = Literal[

@@ -4,6 +4,7 @@
 
 import { api, endpoints } from '@/lib/api'
 import type {
+  BubbleDataResponse,
   CrossAnalysisResponse,
   DemandStatResponse,
   DensityStatResponse,
@@ -73,5 +74,10 @@ export async function fetchDemandStats(
     `${endpoints.lawyerStat}/demand-by-region`,
     { params: { category, year } }
   )
+  return response.data
+}
+
+export async function fetchBubbleData(): Promise<BubbleDataResponse> {
+  const response = await api.get<BubbleDataResponse>(`${endpoints.lawyerStat}/bubble-data`)
   return response.data
 }

@@ -11,6 +11,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.trial_statistics import TrialStatistics
 from app.services.service_function.lawyer_service import (
     SPECIALTY_CATEGORIES,
     load_lawyers_data,
@@ -119,7 +123,8 @@ def get_population_data(year: int | str = "current") -> dict[str, int]:
 def get_population_meta() -> dict[str, Any]:
     """인구 데이터 메타 정보 반환."""
     data = _load_population_json()
-    return data.get("meta", {})
+    meta: dict[str, Any] = data.get("meta", {})
+    return meta
 
 
 # =============================================================================
@@ -616,4 +621,116 @@ def calculate_cross_analysis_by_province(province: str) -> dict[str, Any]:
         "data": cells,
         "regions": sorted_regions,
         "categories": category_names,
+    }
+
+
+# =============================================================================
+# 버블 차트 통합 데이터
+# =============================================================================
+
+# COURT_TO_CSV_GROUP의 group명 → province(시/도) 변환 매핑
+_CSV_GROUP_TO_PROVINCE: dict[str, str] = {
+    "서울": "서울",
+    "경기북부": "경기",
+    "경기중앙": "경기",
+    "인천": "인천",
+    "강원": "강원",
+    "충북": "충북",
+    "대전": "충남",
+    "대구": "경북",
+    "부산": "부산",
+    "울산": "울산",
+    "경남": "경남",
+    "광주": "전남",
+    "전북": "전북",
+    "제주": "제주",
+}
+
+# court_name → province 매핑 (지연 초기화)
+_COURT_TO_PROVINCE: dict[str, str] = {}
+
+
+def _get_court_to_province_map() -> dict[str, str]:
+    """trial_statistics court_name → province 매핑 반환 (지연 초기화)."""
+    global _COURT_TO_PROVINCE
+    if _COURT_TO_PROVINCE:
+        return _COURT_TO_PROVINCE
+
+    from app.services.service_function.case_demand_service import COURT_TO_CSV_GROUP
+
+    for court, csv_group in COURT_TO_CSV_GROUP.items():
+        province = _CSV_GROUP_TO_PROVINCE.get(csv_group)
+        if province:
+            _COURT_TO_PROVINCE[court] = province
+
+    return _COURT_TO_PROVINCE
+
+
+async def _calculate_demand_by_year(
+    db: AsyncSession,
+) -> dict[str, list[dict[str, Any]]]:
+    """2015~2024 연도별 지역(시/도) 사건 수요 총량 계산.
+
+    Args:
+        db: DB 세션
+
+    Returns:
+        {"2015": [{"region": "서울", "total_cases": 45000}, ...], ...}
+    """
+    court_to_province = _get_court_to_province_map()
+
+    stmt = (
+        select(
+            TrialStatistics.year,
+            TrialStatistics.court_name,
+            func.sum(TrialStatistics.case_count).label("total"),
+        )
+        .where(TrialStatistics.year.between(2015, 2024))
+        .group_by(TrialStatistics.year, TrialStatistics.court_name)
+        .order_by(TrialStatistics.year)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    year_province_totals: dict[int, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+    for row in rows:
+        province = court_to_province.get(row.court_name)
+        if province:
+            year_province_totals[row.year][province] += row.total
+
+    demand_by_year: dict[str, list[dict[str, Any]]] = {}
+    for year in range(2015, 2025):
+        province_totals = year_province_totals.get(year, {})
+        demand_by_year[str(year)] = [
+            {"region": province, "total_cases": total_cases}
+            for province, total_cases in sorted(
+                province_totals.items(), key=lambda x: -x[1]
+            )
+        ]
+
+    return demand_by_year
+
+
+async def calculate_bubble_data(db: AsyncSession) -> dict[str, Any]:
+    """버블 차트 통합 데이터 계산 (JSON 변호사 + DB 수요).
+
+    변호사 분포는 JSON 파일 기반 교차분석을 재활용하고,
+    사건 수요는 trial_statistics DB에서 직접 조회합니다.
+
+    Args:
+        db: DB 세션 (trial_statistics 조회용)
+
+    Returns:
+        BubbleDataResponse 형식의 딕셔너리
+    """
+    cross_result = calculate_cross_analysis()
+    demand_by_year = await _calculate_demand_by_year(db)
+    return {
+        "cross": cross_result["data"],
+        "regions": cross_result["regions"],
+        "categories": cross_result["categories"],
+        "demand_by_year": demand_by_year,
+        "available_years": list(range(2015, 2025)),
     }

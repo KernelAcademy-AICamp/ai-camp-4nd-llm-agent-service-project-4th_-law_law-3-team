@@ -16,6 +16,7 @@ from sqlalchemy.future import select
 from app.models.lawyer import Lawyer
 from app.services.service_function.lawyer_service import SPECIALTY_CATEGORIES
 from app.services.service_function.lawyer_stats_service import (
+    _calculate_demand_by_year,
     get_category_for_specialty,
     get_population_data,
 )
@@ -266,6 +267,26 @@ async def calculate_specialty_by_region_db(
 async def calculate_cross_analysis_db(db: AsyncSession) -> dict[str, Any]:
     """지역 × 전문분야 교차 분석 계산 (DB 기반)."""
     return await _cross_analysis_impl(db, top_n=15)
+
+
+async def calculate_bubble_data_db(db: AsyncSession) -> dict[str, Any]:
+    """버블 차트 통합 데이터 계산 (DB 변호사 + DB 수요).
+
+    Args:
+        db: DB 세션
+
+    Returns:
+        BubbleDataResponse 형식의 딕셔너리
+    """
+    cross_result = await calculate_cross_analysis_db(db)
+    demand_by_year = await _calculate_demand_by_year(db)
+    return {
+        "cross": cross_result["data"],
+        "regions": cross_result["regions"],
+        "categories": cross_result["categories"],
+        "demand_by_year": demand_by_year,
+        "available_years": list(range(2015, 2025)),
+    }
 
 
 async def calculate_cross_analysis_by_regions_db(
