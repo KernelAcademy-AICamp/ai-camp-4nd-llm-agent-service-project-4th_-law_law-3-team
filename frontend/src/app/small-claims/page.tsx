@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { ProgressBar } from '@/features/small-claims/components/ProgressBar'
 import { DisputeTypeStep } from '@/features/small-claims/components/DisputeTypeStep'
@@ -8,6 +8,7 @@ import { useWizardState } from '@/features/small-claims/hooks/useWizardState'
 import { DISPUTE_TYPE_OPTIONS } from '@/features/small-claims/types'
 import { BackButton } from '@/components/ui/BackButton'
 import { useUI } from '@/context/UIContext'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 const CaseInfoStep = dynamic(
   () => import('@/features/small-claims/components/CaseInfoStep').then((m) => m.CaseInfoStep),
@@ -48,6 +49,7 @@ function StepSkeleton() {
 
 export default function SmallClaimsPage() {
   const { isChatOpen, chatMode } = useUI()
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const {
     currentStep,
     goToStep,
@@ -150,22 +152,44 @@ export default function SmallClaimsPage() {
               </p>
             </div>
           </div>
-          {disputeType && (
-            <button
-              onClick={resetWizard}
-              className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-              처음부터 다시
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {disputeType && currentStep !== 'dispute_type' && (
+              <button
+                onClick={() => setIsSidebarOpen((prev) => !prev)}
+                className="hidden md:flex items-center gap-1.5 px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                aria-pressed={isSidebarOpen}
+                aria-label={isSidebarOpen ? '유사 판례 패널 접기' : '유사 판례 패널 열기'}
+              >
+                {isSidebarOpen ? (
+                  <ChevronRight className="w-4 h-4" />
+                ) : (
+                  <ChevronLeft className="w-4 h-4" />
+                )}
+                <span>유사 판례</span>
+                {relatedCases.length > 0 && (
+                  <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-medium bg-blue-100 text-blue-600 rounded-full">
+                    {relatedCases.length}
+                  </span>
+                )}
+              </button>
+            )}
+            {disputeType && (
+              <button
+                onClick={resetWizard}
+                className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                처음부터 다시
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -183,13 +207,21 @@ export default function SmallClaimsPage() {
 
         {/* Related Cases Sidebar - Show after selecting dispute type */}
         {disputeType && currentStep !== 'dispute_type' && (
-          <Suspense fallback={<div className="w-80 bg-white border-l border-navy-100 animate-pulse" />}>
-            <RelatedCases
-              cases={relatedCases}
-              isLoading={isLoadingRelatedCases}
-              disputeType={selectedDisputeOption?.name || null}
-            />
-          </Suspense>
+          <div
+            className={`hidden md:block overflow-hidden transition-all duration-300 ${
+              isSidebarOpen ? 'md:w-72 opacity-100' : 'md:w-0 opacity-0'
+            }`}
+          >
+            <div className="w-72 h-full">
+              <Suspense fallback={<div className="w-72 h-full bg-white border-l border-gray-100 animate-pulse" />}>
+                <RelatedCases
+                  cases={relatedCases}
+                  isLoading={isLoadingRelatedCases}
+                  disputeType={selectedDisputeOption?.name || null}
+                />
+              </Suspense>
+            </div>
+          </div>
         )}
       </div>
     </div>

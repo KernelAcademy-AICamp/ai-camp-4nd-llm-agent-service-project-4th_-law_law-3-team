@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -15,9 +16,31 @@ class DocumentService:
             autoescape=True,
         )
 
+    def _register_korean_font(self) -> str:
+        """한글 폰트를 등록하고 폰트명을 반환합니다 (크로스 플랫폼)."""
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        font_name = "Helvetica"
+        try:
+            font_paths = [
+                Path("C:/Windows/Fonts/malgun.ttf"),  # Windows
+                Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),  # Linux
+                Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),  # Mac
+            ]
+            for path in font_paths:
+                if path.exists():
+                    pdfmetrics.registerFont(TTFont("KoreanFont", str(path)))
+                    font_name = "KoreanFont"
+                    break
+        except Exception as e:
+            logger.warning("폰트 로드 실패: %s", e)
+
+        return font_name
+
     def generate_demand_letter(
         self,
-        data: dict,
+        data: dict[str, object],
         format: str = "text",
         output_path: str | None = None
     ) -> str:
@@ -37,25 +60,9 @@ class DocumentService:
                 raise ValueError("PDF 생성 시 output_path는 필수입니다.")
 
             from reportlab.lib.pagesizes import A4
-            from reportlab.pdfbase import pdfmetrics
-            from reportlab.pdfbase.ttfonts import TTFont
             from reportlab.pdfgen import canvas
 
-            # 한글 폰트 설정 (크로스 플랫폼)
-            font_name = "Helvetica"
-            try:
-                font_paths = [
-                    Path("C:/Windows/Fonts/malgun.ttf"),  # Windows
-                    Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),  # Linux
-                    Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),  # Mac
-                ]
-                for path in font_paths:
-                    if path.exists():
-                        pdfmetrics.registerFont(TTFont("KoreanFont", str(path)))
-                        font_name = "KoreanFont"
-                        break
-            except Exception as e:
-                logger.warning("폰트 로드 실패: %s", e)
+            font_name = self._register_korean_font()
 
             c = canvas.Canvas(output_path, pagesize=A4)
             c.setFont(font_name, 12)
@@ -74,52 +81,58 @@ class DocumentService:
             raise ValueError(f"지원하지 않는 포맷입니다: {format}")
 
     def generate_pdf_from_text(self, text: str, output_path: str) -> str:
-        """텍스트 내용을 PDF로 생성"""
+        """텍스트 내용을 PDF로 생성 (Platypus 기반, CJK 자동 줄바꿈)"""
         from reportlab.lib.pagesizes import A4
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        from reportlab.pdfgen import canvas
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import Flowable, Paragraph, SimpleDocTemplate, Spacer
 
-        # 폰트 설정
-        font_name = "Helvetica"
-        try:
-            # 윈도우/리눅스 폰트 경로 확인
-            font_paths = [
-                Path("C:/Windows/Fonts/malgun.ttf"),  # Windows
-                Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),  # Linux
-                Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),  # Mac
-            ]
+        font_name = self._register_korean_font()
 
-            for path in font_paths:
-                if path.exists():
-                    pdfmetrics.registerFont(TTFont("Malgun", str(path)))
-                    font_name = "Malgun"
-                    break
-        except Exception as e:
-            logger.warning("폰트 로드 실패: %s", e)
+        body_style = ParagraphStyle(
+            name="Korean",
+            fontName=font_name,
+            fontSize=11,
+            leading=18,
+            wordWrap="CJK",
+            spaceAfter=4,
+        )
+        title_style = ParagraphStyle(
+            name="KoreanTitle",
+            fontName=font_name,
+            fontSize=14,
+            leading=22,
+            wordWrap="CJK",
+            spaceAfter=8,
+            alignment=1,  # center
+        )
 
-        c = canvas.Canvas(output_path, pagesize=A4)
-        c.setFont(font_name, 11)
+        doc = SimpleDocTemplate(
+            output_path,
+            pagesize=A4,
+            leftMargin=25 * mm,
+            rightMargin=25 * mm,
+            topMargin=25 * mm,
+            bottomMargin=25 * mm,
+        )
 
-        # 텍스트 그리기 (간단한 줄바꿈 처리)
-        y = 800
-        line_height = 20
-        margin_left = 50
+        story: list[Flowable] = []
+        for line in text.split("\n"):
+            if not line.strip():
+                story.append(Spacer(1, 6))
+                continue
 
-        for line in text.split('\n'):
-            # 긴 줄 처리 (지나치게 길면 자르거나 줄바꿈.. 여기선 단순화)
-            # ReportLab의 simpledoctemplate을 쓰면 좋지만, 여기선 캔버스로 빠르게 구현
+            clean_line = line.strip()
+            # ** 마크다운 볼드 → 제목 스타일로 처리
+            if clean_line.startswith("**") and clean_line.endswith("**") and len(clean_line) > 4:
+                clean_line = clean_line[2:-2]
+                safe_line = escape(clean_line)
+                story.append(Paragraph(safe_line, title_style))
+            else:
+                safe_line = escape(clean_line)
+                story.append(Paragraph(safe_line, body_style))
 
-            # 페이지 넘김 처리
-            if y < 50:
-                c.showPage()
-                c.setFont(font_name, 11)
-                y = 800
-
-            c.drawString(margin_left, y, line)
-            y -= line_height
-
-        c.save()
+        doc.build(story)
         return output_path
 
     def generate_hwpx_from_text(self, text: str, output_path: str) -> str:

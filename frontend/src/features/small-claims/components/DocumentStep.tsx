@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import type { DocumentResponse, DocumentType } from '../types'
+import type { DocumentResponse, DocumentRegenerateResponse, DocumentType } from '../types'
+import { smallClaimsService } from '../services'
 
 interface DocumentStepProps {
   generatedDocument: DocumentResponse | null
@@ -41,10 +42,15 @@ export function DocumentStep({
   const [selectedType, setSelectedType] = useState<DocumentType>('demand_letter')
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState('')
+  const [isRegenerating, setIsRegenerating] = useState(false)
+  const [regenerateError, setRegenerateError] = useState<string | null>(null)
+  const [regeneratedUrls, setRegeneratedUrls] = useState<DocumentRegenerateResponse | null>(null)
 
   const handleGenerate = () => {
     onGenerate(selectedType)
     setIsEditing(false)
+    setRegeneratedUrls(null)
+    setRegenerateError(null)
   }
 
   const handleEdit = () => {
@@ -68,6 +74,31 @@ export function DocumentStep({
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   }
+
+  const handleRegenerate = async () => {
+    if (!generatedDocument || !editedContent.trim()) return
+    setIsRegenerating(true)
+    setRegenerateError(null)
+    try {
+      const result = await smallClaimsService.regenerateDocument({
+        document_type: generatedDocument.document_type,
+        title: generatedDocument.title,
+        content: editedContent,
+        formats: ['pdf', 'docx'],
+      })
+      setRegeneratedUrls(result)
+      setIsEditing(false)
+    } catch {
+      setRegenerateError('파일 재생성에 실패했습니다. 다시 시도해 주세요.')
+    } finally {
+      setIsRegenerating(false)
+    }
+  }
+
+  // 다운로드 링크: 재생성된 URL이 있으면 우선 사용
+  const activePdfUrl = regeneratedUrls?.pdf_url ?? generatedDocument?.pdf_url
+  const activeDocxUrl = regeneratedUrls?.docx_url ?? generatedDocument?.docx_url
+  const activeTitle = generatedDocument?.title || '서류'
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -195,16 +226,57 @@ export function DocumentStep({
               />
             ) : (
               <div className="bg-gray-50 rounded-lg p-6 font-mono text-sm whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
-                {isEditing ? editedContent : generatedDocument.content}
+                {generatedDocument.content}
               </div>
             )}
           </div>
 
-          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
-            {generatedDocument.pdf_url && (
+          {/* 재생성 오류 */}
+          {regenerateError && (
+            <div className="mx-6 mb-3 bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-sm text-red-700">{regenerateError}</p>
+            </div>
+          )}
+
+          {/* 재생성 성공 안내 */}
+          {regeneratedUrls && !isEditing && (
+            <div className="mx-6 mb-3 bg-green-50 border border-green-200 rounded-lg p-3">
+              <p className="text-sm text-green-700">파일이 재생성되었습니다. 아래 버튼으로 다운로드하세요.</p>
+            </div>
+          )}
+
+          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex flex-wrap justify-end gap-2">
+            {/* 편집 모드에서 저장 및 PDF 재생성 버튼 */}
+            {isEditing && (
+              <button
+                onClick={handleRegenerate}
+                disabled={isRegenerating || !editedContent.trim()}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition flex items-center gap-2"
+              >
+                {isRegenerating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    재생성 중...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12"
+                      />
+                    </svg>
+                    저장 및 PDF 재생성
+                  </>
+                )}
+              </button>
+            )}
+            {activePdfUrl && (
               <a
-                href={generatedDocument.pdf_url}
-                download={`${generatedDocument.title}_${new Date().toISOString().split('T')[0]}.pdf`}
+                href={activePdfUrl}
+                download={`${activeTitle}_${new Date().toISOString().split('T')[0]}.pdf`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition flex items-center gap-2"
@@ -215,10 +287,10 @@ export function DocumentStep({
                 PDF 다운로드
               </a>
             )}
-            {generatedDocument.docx_url && (
+            {activeDocxUrl && (
               <a
-                href={generatedDocument.docx_url}
-                download={`${generatedDocument.title}_${new Date().toISOString().split('T')[0]}.docx`}
+                href={activeDocxUrl}
+                download={`${activeTitle}_${new Date().toISOString().split('T')[0]}.docx`}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

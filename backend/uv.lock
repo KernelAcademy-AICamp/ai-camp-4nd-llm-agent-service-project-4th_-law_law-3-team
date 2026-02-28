@@ -2609,6 +2609,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "ruff" },
     { name = "tqdm" },
+    { name = "types-reportlab" },
 ]
 onnx-optimization = [
     { name = "onnx-simplifier" },
@@ -2700,6 +2701,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "ruff", specifier = ">=0.14.14" },
     { name = "tqdm", specifier = ">=4.66.0" },
+    { name = "types-reportlab", specifier = ">=4.4.10.20260223" },
 ]
 onnx-optimization = [
     { name = "onnx-simplifier", specifier = "==0.4.36" },
@@ -6186,6 +6188,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/36/bf/8825b5929afd84d0dabd606c67cd57b8388cb3ec385f7ef19c5cc2202069/typer-0.21.1.tar.gz", hash = "sha256:ea835607cd752343b6b2b7ce676893e5a0324082268b48f27aa058bdb7d2145d", size = 110371, upload-time = "2026-01-06T11:21:10.989Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/1d/d9257dd49ff2ca23ea5f132edf1281a0c4f9de8a762b9ae399b670a59235/typer-0.21.1-py3-none-any.whl", hash = "sha256:7985e89081c636b88d172c2ee0cfe33c253160994d47bdfdc302defd7d1f1d01", size = 47381, upload-time = "2026-01-06T11:21:09.824Z" },
+]
+
+[[package]]
+name = "types-reportlab"
+version = "4.4.10.20260223"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/25/6d/b3dbc2c923aa9e1f208b7d9d4ef30f0191723e40006dc90c2cc5d317e7c6/types_reportlab-4.4.10.20260223.tar.gz", hash = "sha256:c4bd78a73d711eddcf92a6f40a30dbc34276639722a592a6818b770635c85a2d", size = 71464, upload-time = "2026-02-23T04:11:25.721Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e9/11/6b9f3a2cb3a98a3781c03db653e69ec8cb3b55fed8b2a8ed020872d43e50/types_reportlab-4.4.10.20260223-py3-none-any.whl", hash = "sha256:10304a955cd40b964bd35357d99f548a29cf0fc0814d1532ad85b369228505bf", size = 112772, upload-time = "2026-02-23T04:11:24.481Z" },
 ]
 
 [[package]]

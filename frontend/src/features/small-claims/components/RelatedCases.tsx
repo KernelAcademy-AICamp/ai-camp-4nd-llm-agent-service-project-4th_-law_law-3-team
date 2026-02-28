@@ -15,7 +15,7 @@ export function RelatedCases({ cases, isLoading, disputeType }: RelatedCasesProp
   }
 
   return (
-    <div className="w-80 bg-white border-l border-gray-200 flex flex-col h-full">
+    <div className="w-full h-full bg-white border-l border-gray-200 flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-gray-200">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2">
