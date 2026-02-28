@@ -58,6 +58,7 @@ export function StatuteHierarchyView() {
       if (statuteId && statuteName) {
         try {
           const detail = await casePrecedentService.getStatuteHierarchy(statuteId)
+          if (!detail.root) return
           const normalizedTargetName = normalizeName(statuteName)
           if (!detail.root) {
             throw new Error('법령 루트 데이터가 없습니다')

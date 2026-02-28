@@ -2,7 +2,7 @@
  * 모의 법정 데모 시나리오 데이터
  * 법률 도메인 지식 없이도 테스트할 수 있도록 사전 작성된 시나리오
  */
-import type { CaseType, CaseCategory, UserRole, PhysicalEvidence } from '../types'
+import type { CaseType, CaseCategory, UserRole, PhysicalEvidence, ReferenceItem } from '../types'
 
 interface DemoStage {
   stageId: string
@@ -10,6 +10,8 @@ interface DemoStage {
   userInputs: string[]
   /** AI 응답 시뮬레이션 (백엔드 미연결 시 사용) */
   mockResponses: { speaker: string; content: string }[]
+  /** 해당 단계에서 ReferencePanel에 표시할 참조 자료 */
+  references?: ReferenceItem[]
 }
 
 export interface DemoCharacter {
@@ -149,6 +151,44 @@ const CRIMINAL_FRAUD_PROSECUTOR: DemoScenario = {
           speaker: 'attorney',
           content:
             '증거 제1호의 투자 설명서는 피고인이 실제 투자 계획을 기반으로 작성한 것이며, 당시에는 프로젝트가 진행 중이었습니다. 증거 제2호의 계좌 이체는 일시적인 자금 운용이었으며 투자금 전용을 위한 것이 아니었습니다.',
+        },
+      ],
+      references: [
+        {
+          id: 'demo-case-1',
+          type: 'case',
+          title: '대법원 2017도14749 판결',
+          summary: '사기죄에서 편취의 범의는 피고인의 재력, 환경, 범행의 내용, 거래의 이행과정 등 여러 사정을 종합하여 판단해야 한다.',
+          relevance_score: 0.92,
+          source: '데모 시나리오',
+          matched_text: '사기죄 편취 범의 판단 기준',
+        },
+        {
+          id: 'demo-case-2',
+          type: 'case',
+          title: '대법원 2019도3047 판결',
+          summary: '투자금 명목으로 금원을 교부받으면서 투자 실체가 없는 경우, 교부 당시 편취의 범의가 인정된다.',
+          relevance_score: 0.88,
+          source: '데모 시나리오',
+          matched_text: '투자 사기 편취 범의 인정',
+        },
+        {
+          id: 'demo-law-1',
+          type: 'law',
+          title: '형법 제347조 (사기)',
+          summary: '사람을 기망하여 재물의 교부를 받거나 재산상의 이익을 취득한 자는 10년 이하의 징역 또는 2천만원 이하의 벌금에 처한다.',
+          relevance_score: 0.95,
+          source: '데모 시나리오',
+          matched_text: '형법 제347조',
+        },
+        {
+          id: 'demo-law-2',
+          type: 'law',
+          title: '형법 제348조 (준사기)',
+          summary: '미성년자의 지려 천박 또는 사람의 심신장애를 이용하여 재물의 교부를 받거나 재산상의 이익을 취득한 자는 10년 이하의 징역 또는 2천만원 이하의 벌금에 처한다.',
+          relevance_score: 0.72,
+          source: '데모 시나리오',
+          matched_text: '형법 제348조',
         },
       ],
     },
@@ -299,6 +339,44 @@ const CIVIL_DAMAGES_PLAINTIFF: DemoScenario = {
           speaker: 'defendant',
           content:
             '증거 제3호로 사고 당시 원고 차량의 블랙박스 영상을 제출합니다. 원고 차량의 속도계가 제한속도 60km/h 구간에서 약 75km/h를 표시하고 있어, 원고에게도 과실이 있습니다.',
+        },
+      ],
+      references: [
+        {
+          id: 'demo-civil-case-1',
+          type: 'case',
+          title: '대법원 2018다253680 판결',
+          summary: '신호위반 교통사고에서 피해 차량의 경미한 과속은 과실 상계 비율을 10~20%로 제한하는 것이 타당하다.',
+          relevance_score: 0.91,
+          source: '데모 시나리오',
+          matched_text: '신호위반 교통사고 과실 상계',
+        },
+        {
+          id: 'demo-civil-case-2',
+          type: 'case',
+          title: '대법원 2020다221457 판결',
+          summary: '교통사고와 추간판 탈출증 사이의 인과관계는 전문의 소견과 사고 경위를 종합하여 판단한다.',
+          relevance_score: 0.85,
+          source: '데모 시나리오',
+          matched_text: '교통사고 추간판 탈출증 인과관계',
+        },
+        {
+          id: 'demo-civil-law-1',
+          type: 'law',
+          title: '민법 제750조 (불법행위의 내용)',
+          summary: '고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.',
+          relevance_score: 0.95,
+          source: '데모 시나리오',
+          matched_text: '민법 제750조',
+        },
+        {
+          id: 'demo-civil-law-2',
+          type: 'law',
+          title: '자동차손해배상보장법 제3조',
+          summary: '자기를 위하여 자동차를 운행하는 자는 그 운행으로 다른 사람을 사망하게 하거나 부상하게 한 경우에는 그 손해를 배상할 책임을 진다.',
+          relevance_score: 0.93,
+          source: '데모 시나리오',
+          matched_text: '자동차손해배상보장법 제3조',
         },
       ],
     },
