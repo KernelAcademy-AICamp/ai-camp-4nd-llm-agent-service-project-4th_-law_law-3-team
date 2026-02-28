@@ -199,9 +199,12 @@ def check_reranker_quality() -> QualityGateResult:
         import torch
         from sentence_transformers import CrossEncoder
 
+        model_cache_dir = Path(__file__).parent.parent.parent.parent / "data" / "models"
         pt_model = CrossEncoder(
             "dragonkue/bge-reranker-v2-m3-ko",
             activation_fn=torch.nn.Sigmoid(),
+            cache_folder=str(model_cache_dir),
+            local_files_only=True,
         )
     except Exception:
         return QualityGateResult(
