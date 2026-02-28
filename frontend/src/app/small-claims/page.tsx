@@ -153,26 +153,6 @@ export default function SmallClaimsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {disputeType && currentStep !== 'dispute_type' && (
-              <button
-                onClick={() => setIsSidebarOpen((prev) => !prev)}
-                className="hidden md:flex items-center gap-1.5 px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-                aria-pressed={isSidebarOpen}
-                aria-label={isSidebarOpen ? '유사 판례 패널 접기' : '유사 판례 패널 열기'}
-              >
-                {isSidebarOpen ? (
-                  <ChevronRight className="w-4 h-4" />
-                ) : (
-                  <ChevronLeft className="w-4 h-4" />
-                )}
-                <span>유사 판례</span>
-                {relatedCases.length > 0 && (
-                  <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-medium bg-blue-100 text-blue-600 rounded-full">
-                    {relatedCases.length}
-                  </span>
-                )}
-              </button>
-            )}
             {disputeType && (
               <button
                 onClick={resetWizard}
@@ -198,31 +178,44 @@ export default function SmallClaimsPage() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
+        {/* Related Cases Sidebar - Show after selecting dispute type */}
+        {disputeType && currentStep !== 'dispute_type' && (
+          <div className="hidden md:flex shrink-0">
+            {isSidebarOpen ? (
+              <div className="w-72 h-full relative">
+                <Suspense fallback={<div className="w-72 h-full bg-white border-r border-gray-100 animate-pulse" />}>
+                  <RelatedCases
+                    cases={relatedCases}
+                    isLoading={isLoadingRelatedCases}
+                    disputeType={selectedDisputeOption?.name || null}
+                    onClose={() => setIsSidebarOpen(false)}
+                  />
+                </Suspense>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsSidebarOpen(true)}
+                className="flex flex-col items-center justify-center w-8 bg-white border-r border-gray-200 hover:bg-gray-50 transition-colors gap-1"
+                aria-label="유사 판례 패널 열기"
+              >
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+                <span className="text-[10px] text-gray-500 [writing-mode:vertical-rl]">유사 판례</span>
+                {relatedCases.length > 0 && (
+                  <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-medium bg-blue-100 text-blue-600 rounded-full">
+                    {relatedCases.length}
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Wizard Content */}
         <div className="flex-1 overflow-y-auto p-8">
           <Suspense fallback={<StepSkeleton />}>
             {renderStep()}
           </Suspense>
         </div>
-
-        {/* Related Cases Sidebar - Show after selecting dispute type */}
-        {disputeType && currentStep !== 'dispute_type' && (
-          <div
-            className={`hidden md:block overflow-hidden transition-all duration-300 ${
-              isSidebarOpen ? 'md:w-72 opacity-100' : 'md:w-0 opacity-0'
-            }`}
-          >
-            <div className="w-72 h-full">
-              <Suspense fallback={<div className="w-72 h-full bg-white border-l border-gray-100 animate-pulse" />}>
-                <RelatedCases
-                  cases={relatedCases}
-                  isLoading={isLoadingRelatedCases}
-                  disputeType={selectedDisputeOption?.name || null}
-                />
-              </Suspense>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

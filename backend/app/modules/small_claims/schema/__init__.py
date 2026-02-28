@@ -77,6 +77,7 @@ class RelatedCaseItem(BaseModel):
     summary: str
     similarity: float
     relevance: str
+    doc_type: str = "판례"
     ruling: Optional[str] = None
     reasoning: Optional[str] = None
 

@@ -41,6 +41,7 @@ function CasePrecedentContent() {
   const { isChatOpen } = useUI()
   const searchParams = useSearchParams()
   const agentType = searchParams.get('agent')
+  const initialCaseId = searchParams.get('id')
 
   const isLawSearch = agentType === 'law_search'
   const pageTitle = isLawSearch ? '법령 검색' : '판례 검색'
@@ -68,7 +69,10 @@ function CasePrecedentContent() {
 
       <div className="flex-1 overflow-hidden">
         <Suspense fallback={<ViewSkeleton />}>
-          {userRole === 'lawyer' ? <LawyerView /> : <UserView />}
+          {initialCaseId
+            ? <LawyerView initialCaseId={initialCaseId} />
+            : userRole === 'lawyer' ? <LawyerView /> : <UserView />
+          }
         </Suspense>
       </div>
     </div>

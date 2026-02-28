@@ -599,7 +599,9 @@ async def get_related_cases(dispute_type: str) -> RelatedCasesResponse:
                 detail=f"지원하지 않는 분쟁 유형입니다: {dispute_type}",
             )
 
-        results = await search_relevant_documents_async(query=query, n_results=5)
+        results = await search_relevant_documents_async(
+            query=query, n_results=5, exclude_doc_types=["법령"],
+        )
 
         # 관련성 설명 생성
         relevance_descriptions = {
@@ -637,10 +639,14 @@ async def get_related_cases(dispute_type: str) -> RelatedCasesResponse:
                     summary=doc["content"][:200] + "..." if len(doc["content"]) > 200 else doc["content"],
                     similarity=round(doc.get("similarity", 0), 3),
                     relevance=relevance_descriptions.get(dispute_type, ""),
+                    doc_type=metadata.get("data_type", "판례"),
                     ruling=detail.get("ruling"),
                     reasoning=detail.get("reasoning"),
                 )
             )
+
+        # 유사도 내림차순 정렬 (하이브리드 검색의 RRF 병합 순서와 similarity 값이 불일치할 수 있음)
+        cases.sort(key=lambda c: c.similarity, reverse=True)
 
         return RelatedCasesResponse(
             dispute_type=EVIDENCE_CHECKLISTS.get(dispute_type, {}).get("dispute_type", dispute_type),

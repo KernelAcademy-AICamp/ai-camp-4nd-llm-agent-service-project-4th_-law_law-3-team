@@ -7,28 +7,42 @@ interface RelatedCasesProps {
   cases: RelatedCaseItem[]
   isLoading: boolean
   disputeType: string | null
+  onClose?: () => void
 }
 
-export function RelatedCases({ cases, isLoading, disputeType }: RelatedCasesProps) {
+export function RelatedCases({ cases, isLoading, disputeType, onClose }: RelatedCasesProps) {
   if (!disputeType) {
     return null
   }
 
   return (
-    <div className="w-full h-full bg-white border-l border-gray-200 flex flex-col">
+    <div className="w-full h-full bg-white border-r border-gray-200 flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-gray-200">
-        <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-            />
-          </svg>
-          유사 판례
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+              />
+            </svg>
+            유사 판례
+          </h3>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+              aria-label="유사 판례 패널 접기"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+        </div>
         <p className="text-xs text-gray-500 mt-1">비슷한 사건의 판결을 참고해보세요</p>
       </div>
 
@@ -77,15 +91,30 @@ export function RelatedCases({ cases, isLoading, disputeType }: RelatedCasesProp
   )
 }
 
+const DOC_TYPE_BADGE: Record<string, { label: string; color: string }> = {
+  판례: { label: '판례', color: 'bg-blue-100 text-blue-700' },
+  특별행정심판: { label: '특별행정심판', color: 'bg-purple-100 text-purple-700' },
+  행정심판례: { label: '행정심판', color: 'bg-indigo-100 text-indigo-700' },
+  헌재결정례: { label: '헌재결정', color: 'bg-rose-100 text-rose-700' },
+}
+
 function CaseCard({ caseItem }: { caseItem: RelatedCaseItem }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const hasDetails = Boolean(caseItem.ruling || caseItem.reasoning)
+  const badge = caseItem.doc_type ? DOC_TYPE_BADGE[caseItem.doc_type] : undefined
 
   return (
     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition">
-      <h4 className="font-medium text-sm text-gray-900 line-clamp-2">
-        {caseItem.case_name || '제목 없음'}
-      </h4>
+      <div className="flex items-start gap-1.5">
+        {badge && (
+          <span className={`shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${badge.color}`}>
+            {badge.label}
+          </span>
+        )}
+        <h4 className="font-medium text-sm text-gray-900 line-clamp-2">
+          {caseItem.case_name || '제목 없음'}
+        </h4>
+      </div>
       {caseItem.case_number && (
         <p className="text-xs text-gray-500 font-mono mt-1">{caseItem.case_number}</p>
       )}

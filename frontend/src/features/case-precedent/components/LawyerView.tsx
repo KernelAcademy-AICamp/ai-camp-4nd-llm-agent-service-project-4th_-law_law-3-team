@@ -4,7 +4,11 @@ import { SearchPanel } from '@/features/case-precedent/components/SearchPanel'
 import { CaseDetailPanel } from '@/features/case-precedent/components/CaseDetailPanel'
 import { useCaseSearch } from '@/features/case-precedent/hooks/useCaseSearch'
 
-export function LawyerView() {
+interface LawyerViewProps {
+  initialCaseId?: string
+}
+
+export function LawyerView({ initialCaseId }: LawyerViewProps) {
   const {
     searchResults,
     totalResults,
@@ -17,7 +21,7 @@ export function LawyerView() {
     setFilters,
     search,
     selectCase,
-  } = useCaseSearch()
+  } = useCaseSearch(initialCaseId)
 
   return (
     <div className="h-full flex overflow-hidden">

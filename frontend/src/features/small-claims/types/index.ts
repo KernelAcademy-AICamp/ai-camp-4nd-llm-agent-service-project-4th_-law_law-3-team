@@ -70,6 +70,7 @@ export interface RelatedCaseItem {
   summary: string
   similarity: number
   relevance: string
+  doc_type?: string
   ruling?: string
   reasoning?: string
 }

@@ -46,7 +46,7 @@ const DEFAULT_FILTERS: SearchFilters = {
   limit: 20,
 }
 
-export function useCaseSearch(): UseCaseSearchReturn {
+export function useCaseSearch(initialCaseId?: string): UseCaseSearchReturn {
   const { sessionData } = useChat()
 
   // Refs for stable callback access (avoids stale closure issues)
@@ -200,6 +200,13 @@ export function useCaseSearch(): UseCaseSearchReturn {
       setIsLoadingDetail(false)
     }
   }, []) // No dependencies needed - uses refs
+
+  // URL의 id 파라미터로 마운트 시 자동 상세 조회
+  useEffect(() => {
+    if (initialCaseId) {
+      selectCase(initialCaseId)
+    }
+  }, [initialCaseId, selectCase])
 
   const clearSelection = useCallback(() => {
     setSelectedCase(null)
