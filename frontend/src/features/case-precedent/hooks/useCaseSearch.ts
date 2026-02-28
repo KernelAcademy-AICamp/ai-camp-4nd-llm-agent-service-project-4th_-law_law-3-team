@@ -70,7 +70,9 @@ export function useCaseSearch(initialCaseId?: string): UseCaseSearchReturn {
   const [aiError, setAiError] = useState<string | null>(null)
 
   // Filters
-  const [filters, setFiltersState] = useState<SearchFilters>(DEFAULT_FILTERS)
+  const [filters, setFiltersState] = useState<SearchFilters>(() => ({
+    ...DEFAULT_FILTERS,
+  }))
 
   // Handle AI Generated Cases from Chat
   useEffect(() => {

@@ -1,7 +1,7 @@
 'use client'
 
-import { X, ChevronRight, Loader2, Sparkles, ExternalLink } from 'lucide-react'
-import Link from 'next/link'
+import { useState } from 'react'
+import { X, ChevronRight, ChevronDown, ChevronUp, Loader2, Sparkles, FileText } from 'lucide-react'
 import type { StatuteHierarchyResponse, StatuteNode } from '../types'
 
 interface StatuteDetailPanelProps {
@@ -63,6 +63,48 @@ function StatuteList({
             </li>
           ))}
         </ul>
+      )}
+    </div>
+  )
+}
+
+function StatuteContentSection({
+  content,
+  supplementary,
+}: {
+  content: string
+  supplementary?: string | null
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <div>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-amber-400
+                   border border-amber-500/30 rounded-lg hover:bg-amber-500/10 transition-colors"
+      >
+        <FileText className="w-3.5 h-3.5" />
+        원문 보기
+        {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+      {isOpen && (
+        <div className="mt-3 bg-slate-900/50 border border-slate-700 rounded-lg p-3 space-y-3">
+          <pre className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap break-words font-sans">
+            {content}
+          </pre>
+          {supplementary && (
+            <>
+              <hr className="border-slate-700" />
+              <div>
+                <span className="text-xs font-semibold text-slate-400 block mb-1">부칙</span>
+                <pre className="text-xs text-slate-400 leading-relaxed whitespace-pre-wrap break-words font-sans">
+                  {supplementary}
+                </pre>
+              </div>
+            </>
+          )}
+        </div>
       )}
     </div>
   )
@@ -136,15 +178,8 @@ export function StatuteDetailPanel({
             </div>
           )}
 
-          {/* 원문 보기 링크 */}
-          <Link
-            href={`/case-precedent?agent=law_search&query=${encodeURIComponent(root.name)}`}
-            className="flex items-center justify-center gap-2 px-3 py-2 text-sm text-amber-400
-                       border border-amber-500/30 rounded-lg hover:bg-amber-500/10 transition-colors"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            원문 보기
-          </Link>
+          {/* 원문 보기 (펼치기/접기) */}
+          {root.content && <StatuteContentSection content={root.content} supplementary={root.supplementary} />}
 
           <hr className="border-slate-700" />
 
