@@ -544,6 +544,7 @@ class PgGraphService:
                         "citation_count": ld.citation_count or 0,
                         "content": ld.content,
                         "supplementary": ld.supplementary,
+                        "ai_summary": ld.ai_summary,
                     }
 
                 # 상위 법령

@@ -10,6 +10,29 @@
   }
 }
 
+/* 법령 체계도 커스텀 스크롤바 */
+.statute-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+}
+
+.statute-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.statute-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.statute-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 3px;
+}
+
+.statute-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
 /* 현재 위치 마커 */
 .current-location-marker {
   position: relative;

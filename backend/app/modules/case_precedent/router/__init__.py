@@ -431,6 +431,7 @@ class StatuteNodeResponse(BaseModel):
     citation_count: int = 0
     content: Optional[str] = None
     supplementary: Optional[str] = None
+    ai_summary: Optional[str] = None
 
 
 class StatuteSearchResponse(BaseModel):
@@ -528,6 +529,7 @@ async def get_statute_hierarchy(statute_id: str) -> StatuteHierarchyResponse:
                 citation_count=d.get("citation_count") or 0,
                 content=d.get("content"),
                 supplementary=d.get("supplementary"),
+                ai_summary=d.get("ai_summary"),
             )
 
         return StatuteHierarchyResponse(
