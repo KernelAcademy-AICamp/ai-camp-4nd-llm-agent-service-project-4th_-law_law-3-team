@@ -5,7 +5,7 @@ description: Google Drive를 통한 DB 백업/복원, 원본 데이터(data/) �
 
 # Google Drive 운영 스킬
 
-rclone을 통해 Google Drive와 3개 DB(PostgreSQL, Neo4j, LanceDB) 백업/복원, 원본 JSON 데이터 동기화를 수행합니다.
+rclone을 통해 Google Drive와 2개 DB(PostgreSQL, LanceDB) 백업/복원, 원본 JSON 데이터 동기화를 수행합니다.
 
 ## 아키텍처 개요
 
@@ -13,7 +13,6 @@ rclone을 통해 Google Drive와 3개 DB(PostgreSQL, Neo4j, LanceDB) 백업/복�
 Google Drive (gdrive:)
 ├── <TIMESTAMP>/              ← DB 백업 (scripts/backup_to_gdrive.sh)
 │   ├── postgres.dump
-│   ├── neo4j.dump (또는 neo4j_data.tar.gz)
 │   └── lancedb_data.tar.gz
 │
 └── data/                     ← 원본 데이터 (~7GB)
@@ -73,7 +72,6 @@ rclone ls --config rclone.conf gdrive: --max-depth 1
 ./scripts/backup_to_gdrive.sh --skip-upload
 
 # 특정 DB 건너뛰기
-./scripts/backup_to_gdrive.sh --skip-neo4j
 ./scripts/backup_to_gdrive.sh --skip-postgres
 ./scripts/backup_to_gdrive.sh --skip-lancedb
 
@@ -82,8 +80,6 @@ rclone ls --config rclone.conf gdrive: --max-depth 1
 ```
 
 **스크립트 동작**: Docker 컨테이너에서 덤프 → 로컬 `backups/<TIMESTAMP>/` 저장 → rclone으로 업로드 → 오래된 로컬 백업 자동 정리 (기본 5개 유지)
-
-**Neo4j 주의**: 덤프 중 컨테이너가 정지되었다가 자동 재시작됩니다. 프로덕션 환경에서는 사용자에게 경고하세요.
 
 ### B. DB 복원 (Google Drive →)
 
@@ -98,7 +94,7 @@ rclone ls --config rclone.conf gdrive: --max-depth 1
 ./scripts/restore_from_gdrive.sh latest --download-only
 
 # 특정 DB 건너뛰기
-./scripts/restore_from_gdrive.sh latest --skip-neo4j
+./scripts/restore_from_gdrive.sh latest --skip-postgres
 ```
 
 **스크립트 동작**: 백업 목록 조회 → 다운로드 → 사용자 확인 프롬프트 → DB별 복원
@@ -116,37 +112,43 @@ uv run python -c \
 uv run --no-sync python scripts/update_content_tokenized.py --userdic
 ```
 
-### C. 원본 JSON 데이터 동기화 (data/)
+### C. 데이터 동기화 (data/ + backend 데이터)
 
-DB 백업과는 별개로, 법령/판례 등 원본 JSON 파일(~3.5GB)을 Google Drive `data/` 폴더와 동기화합니다.
+`gdrive:data/`에는 원본 JSON과 backend 전용 데이터가 혼재되어 있습니다.
+**반드시 전용 스크립트를 사용**하세요.
+
+> **주의**: `rclone copy gdrive:data/ data/`를 직접 실행하면 `lancedb_data`, `mecab_userdic`, `models`가
+> 잘못된 경로(`data/`)에 들어갑니다.
+
+**경로 매핑**:
+
+| Google Drive | 로컬 경로 |
+|---|---|
+| `gdrive:data/lancedb_data/` | `backend/lancedb_data/` |
+| `gdrive:data/mecab_userdic/` | `backend/data/mecab_userdic/` |
+| `gdrive:data/models/` | `backend/data/models/` |
+| `gdrive:data/*.json` 등 | `data/` |
 
 ```bash
-# ── 다운로드 (다른 기기에서 복원) ──
-# 전체 다운로드
-rclone copy --config rclone.conf gdrive:data/ data/ --progress
+# ── 다운로드 (경로 자동 매핑) ──
+./scripts/sync_data_from_gdrive.sh
 
-# 특정 파일만 다운로드
-rclone copy --config rclone.conf gdrive:data/precedents_v2.json data/ --progress
+# 미리보기
+./scripts/sync_data_from_gdrive.sh --dry-run
+
+# JSON/원본 데이터만
+./scripts/sync_data_from_gdrive.sh --only-json
+
+# backend 데이터만 (lancedb, mecab, models)
+./scripts/sync_data_from_gdrive.sh --only-backend
 
 # ── 업로드 (로컬 변경 후 동기화) ──
-# sync: 로컬에 없는 파일은 드라이브에서도 삭제
-rclone sync data/ --config rclone.conf gdrive:data/ --progress
+rclone sync data/ --config rclone.conf gdrive:data/ --progress \
+  --exclude "lancedb_data/**" --exclude "mecab_userdic/**" --exclude "models/**"
 
 # ── 현재 Drive 내용 확인 ──
 rclone ls --config rclone.conf gdrive:data/
-
-# ── 로컬 vs Drive 차이 비교 (dry-run) ──
-rclone sync data/ --config rclone.conf gdrive:data/ --dry-run
 ```
-
-**`copy` vs `sync` 사용 기준**:
-
-| 명령 | 동작 | 사용 시점 |
-|------|------|----------|
-| `copy` | 소스에 있는 파일만 추가/덮어쓰기 | 다운로드(복원) 시 |
-| `sync` | 소스와 동일하게 만듦 (소스에 없으면 삭제) | 업로드(동기화) 시 |
-
-파일명 변경(`v2→v3`) 후 `copy`를 쓰면 이전 버전이 드라이브에 잔류하므로 `sync` 권장.
 
 ## 새 환경 세팅 (전체 워크플로우)
 
@@ -160,8 +162,8 @@ git clone <repo-url> && cd law-3-team
 cp ~/받은파일/rclone.conf .
 cp ~/받은파일/gdrive-service-account.json secrets/  # SA 방식 시
 
-# 3. 원본 JSON 데이터 복원
-rclone copy --config rclone.conf gdrive:data/ data/ --progress
+# 3. 데이터 복원 (경로 자동 매핑)
+./scripts/sync_data_from_gdrive.sh
 
 # 4. DB 백업 복원 (Docker 컨테이너 먼저 시작)
 docker compose up -d
@@ -182,7 +184,6 @@ uv run python scripts/download_models.py
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `POSTGRES_CONTAINER` | PostgreSQL 컨테이너명 | `law-platform-db` |
-| `NEO4J_CONTAINER` | Neo4j 컨테이너명 | `neo4j-law-graph` |
 | `LANCEDB_DATA_DIR` | LanceDB 데이터 경로 | `backend/lancedb_data` |
 | `BACKUP_KEEP_LOCAL` | 로컬 백업 보관 개수 | `5` |
 | `RCLONE_CONF` | rclone 설정 파일 경로 | `rclone.conf` |
@@ -194,6 +195,7 @@ uv run python scripts/download_models.py
 |------|------|
 | `scripts/backup_to_gdrive.sh` | DB 백업 + Google Drive 업로드 |
 | `scripts/restore_from_gdrive.sh` | Google Drive → DB 복원 |
+| `scripts/sync_data_from_gdrive.sh` | data/ 다운로드 (경로 자동 매핑) |
 | `rclone.conf` | rclone 설정 (.gitignored) |
 | `secrets/` | 서비스 계정 키 (.gitignored) |
 | `backups/` | 로컬 백업 저장 (.gitignored) |
@@ -223,11 +225,7 @@ docker.exe compose up -d
 
 ### rclone 속도 개선
 
-대용량 전송 시 `--transfers` 옵션으로 병렬 수를 조정합니다 (기본 4):
-
-```bash
-rclone copy --config rclone.conf gdrive:data/ data/ --progress --transfers 8
-```
+sync_data_from_gdrive.sh는 기본 4 병렬 전송을 사용합니다. 변경하려면 스크립트 내 `--transfers` 값을 조정하세요.
 
 ### Drive 용량 확인
 

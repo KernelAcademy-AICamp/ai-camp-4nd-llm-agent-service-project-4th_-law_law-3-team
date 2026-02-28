@@ -1,3 +1,16 @@
+// 태그 유형 (백엔드 TagType enum 매핑)
+export type TagType = 'lawyer' | 'precedent' | 'evidence' | 'timeline' | 'party' | 'amount'
+
+// 태그 항목 (백엔드 TaggedItem 매핑)
+export interface TaggedItem {
+  tag_type: TagType
+  content: string
+  source_agent: string
+  turn_index: number
+  date_hint: string | null
+  confidence: number
+}
+
 // 전환 효과 타입
 export type TransitionType = 'fade' | 'slide' | 'zoom' | 'none'
 

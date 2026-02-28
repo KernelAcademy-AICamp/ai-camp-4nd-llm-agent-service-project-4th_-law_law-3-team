@@ -43,6 +43,7 @@ const imageCache = new Map<string, HTMLImageElement>()
 
 interface StatuteForceGraphProps {
   centerId?: string
+  centerName?: string
   onNodeClick?: (node: GraphNode) => void
 }
 
@@ -128,13 +129,37 @@ function getLogoImage(type: string): HTMLImageElement | null {
   return null
 }
 
-export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphProps) {
+export function StatuteForceGraph({ centerId, centerName, onNodeClick }: StatuteForceGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const fgRef = useRef<ForceGraphInstance | null>(null)
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; links: GraphLink[] }>({ nodes: [], links: [] })
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
   const [isLoading, setIsLoading] = useState(true)
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null)
+
+  const resolveCenterId = useCallback((nodes: GraphNode[]): string | undefined => {
+    const normalizedCenterName = centerName?.trim()
+    const normalizedCenterId = centerId?.trim()
+
+    if (normalizedCenterName) {
+      const nameMatchedNode = nodes.find(
+        (node) =>
+          node.name === normalizedCenterName || node.abbreviation === normalizedCenterName
+      )
+      if (nameMatchedNode) {
+        return nameMatchedNode.id
+      }
+    }
+
+    if (normalizedCenterId) {
+      const explicitCenterId = nodes.find((node) => node.id === normalizedCenterId)?.id
+      if (explicitCenterId) {
+        return explicitCenterId
+      }
+    }
+
+    return undefined
+  }, [centerId, centerName])
 
   // 그래프 데이터 로드
   useEffect(() => {
@@ -144,6 +169,8 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
         const data = await casePrecedentService.getStatuteGraph(centerId, 150)
 
         let nodes = [...data.nodes]
+        const normalizedCenterId = centerId?.trim()
+        const normalizedCenterName = centerName?.trim()
 
         // centerId가 없을 때만 헌법을 추가하고, 하위 법령(총리령/부령/규칙)은 필터링
         if (!centerId) {
@@ -158,19 +185,32 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
           )
         }
 
+        // 중심 노드 결정: centerId가 실제 노드로 존재하면 해당 노드, 없으면 최소한 요청한 centerId를 우선 사용
+        const resolvedCenterId = resolveCenterId(nodes)
+        const centerNodeId = resolvedCenterId || normalizedCenterId || CONSTITUTION_NODE.id
+
+        // API 반환 노드에 중심 노드가 누락되는 경우를 보정(네트워크/데이터 정합성 편차 대비)
+        if (normalizedCenterId && !nodes.some((node) => node.id === normalizedCenterId)) {
+          nodes.push({
+            id: centerNodeId,
+            name: normalizedCenterName || centerNodeId,
+            type: centerNodeId === CONSTITUTION_NODE.id ? '헌법' : '법률',
+            citation_count: 0,
+          })
+        }
+
         // 필터링된 노드 ID 집합 생성 (링크 필터링용)
-        const visibleNodeIds = new Set(nodes.map(n => n.id))
+        const visibleNodeIds = new Set(nodes.map((n) => n.id))
 
         // 유효한 노드끼리 연결된 링크만 남김 (dangling link 제거)
-        const links = data.links.filter(link => {
+        const links = data.links.filter((link) => {
           // D3 초기화 전에는 source/target이 string ID임
-          const sourceId = typeof link.source === 'object' ? (link.source as any).id : link.source
-          const targetId = typeof link.target === 'object' ? (link.target as any).id : link.target
+          const sourceId =
+            typeof link.source === 'object' ? (link.source as { id: string }).id : link.source
+          const targetId =
+            typeof link.target === 'object' ? (link.target as { id: string }).id : link.target
           return visibleNodeIds.has(sourceId) && visibleNodeIds.has(targetId)
         })
-
-        // 중심 노드 결정: centerId가 있으면 해당 노드, 없으면 헌법
-        const centerNodeId = centerId || CONSTITUTION_NODE.id
 
         // HIERARCHY_OF 관계로 부모-자식 맵 생성 (법률 → 시행령)
         const parentToChildren: Record<string, string[]> = {}
@@ -258,7 +298,7 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
       }
     }
     loadGraph()
-  }, [centerId])
+  }, [centerId, resolveCenterId])
 
   // 컨테이너 크기 감지 (ResizeObserver 사용)
   useEffect(() => {
@@ -420,13 +460,15 @@ export function StatuteForceGraph({ centerId, onNodeClick }: StatuteForceGraphPr
           const fontSize = Math.max(12 / globalScale, 3)
           const isHovered = hoveredNode?.id === n.id
           // 중심 노드: centerId가 있으면 해당 노드, 없으면 헌법
-          const isCenterNode = centerId ? (n.id === centerId) : (n.type === '헌법')
+          const currentCenterId = resolveCenterId(graphData.nodes) || CONSTITUTION_NODE.id
+          const isCenterNode = n.id === currentCenterId
+          const isSunNode = isCenterNode && n.type === '헌법'
 
           // 로고 이미지 가져오기
           const logoImg = getLogoImage(n.type)
 
           // 중심 노드(태양) 특별 효과
-          if (isCenterNode) {
+          if (isSunNode) {
             // 태양 glow 효과
             const gradient = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, size * 2)
             gradient.addColorStop(0, 'rgba(255, 107, 53, 0.8)')

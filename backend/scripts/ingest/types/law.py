@@ -73,7 +73,7 @@ def _orm_factory(item: dict[str, Any]) -> LawDocument:
     return LawDocument(
         law_id=item.get("법령ID", "") or item.get("law_id", ""),
         law_name=item.get("법령명_한글", "") or item.get("law_name", ""),
-        law_type=item.get("법령구분") or item.get("law_type"),
+        law_type=item.get("법령유형") or item.get("법령구분") or item.get("law_type"),
         ministry=item.get("소관부처명") or item.get("ministry"),
         promulgation_date=item.get("공포일자") or item.get("promulgation_date"),
         promulgation_no=item.get("공포번호") or item.get("promulgation_no"),

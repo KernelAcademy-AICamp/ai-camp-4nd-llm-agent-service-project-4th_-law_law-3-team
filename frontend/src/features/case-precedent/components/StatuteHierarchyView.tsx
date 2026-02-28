@@ -4,39 +4,150 @@ import { useState, useCallback, useEffect } from 'react'
 import { Network, Search, X, Loader2, ArrowLeft } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { StatuteForceGraph } from './StatuteForceGraph'
+import { StatuteDetailPanel } from './StatuteDetailPanel'
 import { casePrecedentService, type GraphNode } from '../services'
 import { useChat } from '@/context/ChatContext'
-import type { StatuteNode } from '../types'
+import type { StatuteNode, StatuteHierarchyResponse } from '../types'
 
 export function StatuteHierarchyView() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { userRole } = useChat()
+  const statuteId = searchParams.get('id')
+  const statuteName = searchParams.get('name')
+  const statuteType = searchParams.get('type')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<StatuteNode[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
   const [selectedStatute, setSelectedStatute] = useState<StatuteNode | null>(null)
+  const [detailData, setDetailData] = useState<StatuteHierarchyResponse | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
 
   // URL 파라미터에서 선택된 법령 복원
   useEffect(() => {
-    const statuteId = searchParams.get('id')
-    const statuteName = searchParams.get('name')
-    const statuteType = searchParams.get('type')
+    let isCancelled = false
+    const normalizeName = (value: string): string =>
+      value.trim().replace(/\s+/g, '').toLowerCase()
 
-    if (statuteId && statuteName) {
-      setSelectedStatute({
-        id: statuteId,
-        name: statuteName,
-        type: statuteType || '',
-        citation_count: 0,
-      })
+    const resolveStatute = async () => {
+      if (statuteId && statuteName) {
+        try {
+          const detail = await casePrecedentService.getStatuteHierarchy(statuteId)
+          const normalizedTargetName = normalizeName(statuteName)
+          const normalizeRootName = normalizeName(detail.root.name)
+          const normalizedAbbreviation = detail.root.abbreviation
+            ? normalizeName(detail.root.abbreviation)
+            : ''
+
+          if (
+            normalizeRootName === normalizedTargetName ||
+            (normalizedAbbreviation && normalizedAbbreviation === normalizedTargetName)
+          ) {
+            if (!isCancelled) {
+              setSelectedStatute({
+                id: detail.root.id || statuteId,
+                name: detail.root.name,
+                type: detail.root.type || statuteType || '',
+                abbreviation: detail.root.abbreviation,
+                citation_count: detail.root.citation_count,
+              })
+              setSearchQuery(detail.root.name)
+            }
+            return
+          }
+
+          console.info('법령 ID와 이름 불일치, 이름 기반으로 재검색:', {
+            id: statuteId,
+            name: statuteName,
+          })
+        } catch (error) {
+          console.error('법령 ID 유효성 검증 실패:', error)
+        }
+
+        const response = await casePrecedentService.searchStatutes(statuteName, 1)
+        const firstResult = response.results.find(
+          (statute) =>
+            statute.name === statuteName ||
+            (statute.abbreviation && statute.abbreviation === statuteName)
+        )
+        const targetResult = firstResult || response.results[0]
+
+        if (!targetResult || isCancelled) {
+          if (!isCancelled) {
+            setSelectedStatute({
+              id: statuteId,
+              name: statuteName,
+              type: statuteType || '',
+              citation_count: 0,
+            })
+            setSearchQuery(statuteName)
+          }
+          return
+        }
+
+        if (!isCancelled) {
+          setSelectedStatute({
+            id: targetResult.id,
+            name: targetResult.name,
+            type: targetResult.type,
+            abbreviation: targetResult.abbreviation,
+            citation_count: targetResult.citation_count,
+          })
+          setSearchQuery(targetResult.name)
+        }
+        return
+
+      }
+
+      if (!statuteName) {
+        if (!isCancelled) {
+          setSelectedStatute(null)
+          setSearchQuery('')
+        }
+        return
+      }
+
       setSearchQuery(statuteName)
-    } else {
-      setSelectedStatute(null)
-      setSearchQuery('')
+      try {
+        const response = await casePrecedentService.searchStatutes(statuteName, 1)
+        const matchedResult = response.results.find(
+          (statute) =>
+            statute.name === statuteName ||
+            (statute.abbreviation && statute.abbreviation === statuteName)
+        )
+        const targetResult = matchedResult || response.results[0]
+        if (!targetResult) {
+          if (!isCancelled) {
+            setSelectedStatute(null)
+          }
+          return
+        }
+
+        if (!isCancelled) {
+          setSelectedStatute({
+            id: targetResult.id,
+            name: targetResult.name,
+            type: targetResult.type,
+            abbreviation: targetResult.abbreviation,
+            citation_count: targetResult.citation_count,
+          })
+        }
+      } catch (error) {
+        console.error('법령 검색으로 중심 법령 복원 실패:', error)
+        if (isCancelled) return
+        if (!isCancelled) {
+          setSelectedStatute(null)
+        }
+      }
     }
-  }, [searchParams])
+
+    resolveStatute()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [statuteId, statuteName, statuteType])
 
   const handleBack = useCallback(() => {
     // 선택된 법령이 있으면 브라우저 히스토리로 뒤로가기
@@ -99,8 +210,32 @@ export function StatuteHierarchyView() {
   const handleClear = useCallback(() => {
     setSearchResults([])
     setShowDropdown(false)
+    setDetailData(null)
     router.push('/statute-hierarchy')
   }, [router])
+
+  // 상세 정보 로드
+  const loadDetail = useCallback(async (statuteId: string) => {
+    setDetailLoading(true)
+    try {
+      const response = await casePrecedentService.getStatuteHierarchy(statuteId)
+      setDetailData(response)
+    } catch (error) {
+      console.error('상세 정보 로드 실패:', error)
+      setDetailData(null)
+    } finally {
+      setDetailLoading(false)
+    }
+  }, [])
+
+  // URL 파라미터에서 선택된 법령의 상세 정보도 로드
+  useEffect(() => {
+    if (selectedStatute?.id) {
+      loadDetail(selectedStatute.id)
+    } else {
+      setDetailData(null)
+    }
+  }, [selectedStatute?.id, loadDetail])
 
   // 그래프에서 노드 클릭 (URL에 추가하여 뒤로가기 지원)
   const handleNodeClick = useCallback((node: GraphNode) => {
@@ -110,6 +245,11 @@ export function StatuteHierarchyView() {
     if (node.type) params.set('type', node.type)
     router.push(`/statute-hierarchy?${params.toString()}`)
   }, [router])
+
+  // 패널 내 법령 클릭 → 그래프 이동
+  const handlePanelNodeClick = useCallback((node: StatuteNode) => {
+    handleNodeClick(node)
+  }, [handleNodeClick])
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-900">
@@ -190,14 +330,28 @@ export function StatuteHierarchyView() {
         </div>
       </div>
 
-      {/* 그래프 영역 */}
-      <div className="relative flex-1 w-full">
-        <div className="absolute inset-0">
-          <StatuteForceGraph
-            centerId={selectedStatute?.id}
-            onNodeClick={handleNodeClick}
-          />
+      {/* 그래프 + 상세 패널 */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* 그래프 영역 */}
+        <div className="relative flex-1">
+          <div className="absolute inset-0">
+            <StatuteForceGraph
+              centerId={selectedStatute?.id}
+              centerName={selectedStatute?.name}
+              onNodeClick={handleNodeClick}
+            />
+          </div>
         </div>
+
+        {/* 상세 사이드 패널 */}
+        {(detailData || detailLoading) && (
+          <StatuteDetailPanel
+            data={detailData || { root: null, upper: [], lower: [], related: [] }}
+            loading={detailLoading}
+            onClose={() => setDetailData(null)}
+            onNodeClick={handlePanelNodeClick}
+          />
+        )}
       </div>
     </div>
   )

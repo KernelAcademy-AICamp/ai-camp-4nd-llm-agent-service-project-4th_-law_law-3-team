@@ -59,6 +59,7 @@ src/features/<module-name>/
 **네비게이션 우선순위:** NAVIGATE 액션 (좌표/파라미터 포함) > AGENT_PAGE_MAP (기본 페이지 이동)
 - NAVIGATE 액션: 에이전트가 `nav_params` (lat, lng, radius, zoom, category, sigungu)를 포함하여 URL 생성
 - AGENT_PAGE_MAP: NAVIGATE 액션이 없을 때 에이전트 유형별 기본 페이지로 이동
+- PATHNAME_AGENT_MAP: 현재 페이지 경로에서 active agent 자동 감지 (예: `/statute-hierarchy` → `law_search`)
 
 ### lawyer-finder (변호사 찾기)
 
@@ -77,6 +78,18 @@ src/features/<module-name>/
 `next.config.js`의 rewrites 설정으로 `/api/*` 요청이 백엔드(localhost:8000)로 프록시됩니다.
 
 ## Features
+
+### case-precedent (판례/법령 검색 + 법령 체계도)
+
+**경로:** `src/features/case-precedent/`
+
+**컴포넌트:**
+- `StatuteHierarchyView` - 법령 체계도 메인 뷰 (검색 + D3 그래프 + 상세 패널)
+- `StatuteForceGraph` - D3 force-directed 그래프 (법령 계급/인용 관계 시각화)
+- `StatuteDetailPanel` - 법령 상세 사이드 패널 (상위/하위/관련 법령 목록, 클릭으로 그래프 이동)
+
+**타입 (`types/hierarchy.ts`):**
+- `StatuteHierarchyResponse` - `{ root, upper, lower, related }` (백엔드 응답 매칭)
 
 ### lawyer-stats (변호사 통계 대시보드)
 

@@ -11,7 +11,7 @@ Claude는 Google Drive 관련 작업(백업, 복원, 데이터 동기화) 시 �
 | rclone 설치 여부 | `which rclone` |
 | rclone.conf 존재 | 프로젝트 루트에 `rclone.conf` 파일 확인 |
 | 인증 유효성 | `rclone ls --config rclone.conf gdrive: --max-depth 1` |
-| Docker 컨테이너 (백업/복원 시) | `docker ps` 로 `law-platform-db`, `neo4j-law-graph` 확인 |
+| Docker 컨테이너 (백업/복원 시) | `docker ps` 로 `law-platform-db` 확인 |
 
 검증 실패 시 사용자에게 누락된 사전 조건을 안내하고, 직접 해결을 시도하지 않는다.
 
@@ -37,7 +37,6 @@ Claude는 Google Drive 관련 작업(백업, 복원, 데이터 동기화) 시 �
 ## 4. DB 백업/복원 시 주의사항
 
 - **백업 전**: Docker 컨테이너 실행 상태 확인
-- **Neo4j 백업**: 컨테이너가 일시 정지됨 → 프로덕션 환경에서 사용자에게 사전 경고
 - **복원 시**: 기존 데이터가 덮어씌워짐 → 사용자 확인 후 진행
 - **LanceDB 복원 후**: 벡터 인덱스 + FTS 인덱스 재생성 필수 안내
 

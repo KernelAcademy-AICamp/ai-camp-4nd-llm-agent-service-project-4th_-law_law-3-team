@@ -60,33 +60,53 @@ PostgreSQL, Neo4j, LanceDB 3개 DB를 Google Drive에 백업/복원합니다.
 | `secrets/` | 서비스 계정 키 등 (.gitignored) |
 | `rclone.conf` | rclone 설정 (.gitignored) |
 
-## data/ JSON 파일 (원본 데이터)
+## data/ 동기화 (원본 데이터 + backend 데이터)
 
-법령/판례 등 원본 JSON 데이터(약 3.5GB, 63개 파일)는 `gdrive:data/`에 저장되어 있습니다.
-DB 백업/복원 스크립트와는 별개이며, 항상 최신 작업 데이터를 유지합니다.
+`gdrive:data/`에는 원본 JSON 파일과 backend 전용 데이터가 함께 저장되어 있습니다.
+로컬에서는 경로가 다르므로 **반드시 전용 스크립트**를 사용하세요.
 
-> **버전 아카이브**(`v1`, `v2` 등 과거 버전)는 별도 Google Drive에서 관리합니다.
-> `gdrive:data/`는 "현재 작업 세트"이며, 버전 히스토리 용도가 아닙니다.
+> **주의**: `rclone copy gdrive:data/ data/`를 직접 실행하면 `lancedb_data`, `mecab_userdic`, `models`가
+> 잘못된 경로(`data/`)에 들어갑니다.
+
+### 경로 매핑
+
+| Google Drive | 로컬 경로 |
+|---|---|
+| `gdrive:data/lancedb_data/` | `backend/lancedb_data/` |
+| `gdrive:data/mecab_userdic/` | `backend/data/mecab_userdic/` |
+| `gdrive:data/models/` | `backend/data/models/` |
+| `gdrive:data/*.json` 등 | `data/` |
+
+### 다운로드
 
 ```bash
-# 사전 조건: rclone 설치 + rclone.conf 배치 (위 "사전 준비" 참조)
+# 전체 다운로드 (경로 자동 매핑)
+./scripts/sync_data_from_gdrive.sh
 
-# ── 다른 기기에서 복원 ──
-rclone copy --config rclone.conf gdrive:data/ data/ --progress
+# 미리보기
+./scripts/sync_data_from_gdrive.sh --dry-run
 
-# 특정 파일만 복원
-rclone copy --config rclone.conf gdrive:data/precedents_v2.json data/ --progress
+# JSON/원본 데이터만 (data/)
+./scripts/sync_data_from_gdrive.sh --only-json
 
-# ── 로컬 변경 후 업로드 (동기화) ──
-# sync: 로컬에 없는 파일은 드라이브에서도 삭제 (항상 로컬과 동일하게 유지)
-rclone sync data/ --config rclone.conf gdrive:data/ --progress
+# backend 데이터만 (lancedb, mecab, models)
+./scripts/sync_data_from_gdrive.sh --only-backend
+```
+
+### 업로드 (수동)
+
+업로드는 기존 rclone 명령을 사용합니다.
+
+```bash
+# 원본 JSON 업로드
+rclone sync data/ --config rclone.conf gdrive:data/ --progress \
+  --exclude "lancedb_data/**" --exclude "mecab_userdic/**" --exclude "models/**"
 
 # 현재 Google Drive 내용 확인
 rclone ls --config rclone.conf gdrive:data/
 ```
 
 > **`copy` vs `sync`**: 복원 시에는 `copy` (추가만), 업로드 시에는 `sync` (삭제 반영) 사용.
-> 파일명 변경(`v2→v3`) 시 `copy`를 쓰면 이전 버전이 드라이브에 잔류하므로 `sync` 권장.
 >
 > **참고**: `data/`는 `.gitignore`에 포함되어 있어 git clone만으로는 받을 수 없습니다.
 > 새 환경 세팅 시 DB 복원(`restore_from_gdrive.sh`)과 함께 이 단계를 수행하세요.

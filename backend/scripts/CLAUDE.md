@@ -11,6 +11,7 @@
 | `runpod_lancedb_embeddings.py` | RunPod 노트북용 thin wrapper (ingest 파이프라인 호출) |
 | `colab_lancedb_embeddings.py` | Google Colab 노트북용 thin wrapper (runpod wrapper re-export) |
 | `check_environment.py` | 데이터 로드 전 환경 검증 (Python, MeCab, Docker, Alembic 등) |
+| `load_graph_data.py` | PostgreSQL 그래프 테이블 데이터 로드 (법령 계급, 약칭, 인용 관계) |
 
 ### 범용 공통 모듈 (`common/`)
 
@@ -407,7 +408,7 @@ cd backend
 
 # 3-1. data/ 폴더에 법령/판례 JSON 준비
 # data/law_v3.json, data/precedents_v2.json 필요
-# Google Drive에서 복원: rclone copy --config rclone.conf gdrive:data/ data/ --progress
+# Google Drive에서 복원: ./scripts/sync_data_from_gdrive.sh (프로젝트 루트에서 실행)
 
 # 3-2. Variant A: ORT-opt FP32 (무손실)로 임베딩
 USE_ONNX_EMBEDDING=true \

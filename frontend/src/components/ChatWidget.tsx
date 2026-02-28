@@ -143,6 +143,7 @@ const PATHNAME_AGENT_MAP: Record<string, string> = {
   '/lawyer-stats': 'lawyer_stats',
   '/law-study': 'law_study',
   '/small-claims': 'small_claims',
+  '/statute-hierarchy': 'law_search',
   // /case-precedent는 기존 ?agent= URL 파라미터 사용
 }
 

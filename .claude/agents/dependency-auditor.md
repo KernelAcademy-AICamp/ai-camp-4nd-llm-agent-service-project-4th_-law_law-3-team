@@ -51,7 +51,6 @@ uv sync --check
 | langgraph | 에이전트 그래프 | High |
 | pydantic | 데이터 검증 | High |
 | lancedb | 벡터 DB | Medium |
-| neo4j | 그래프 DB | Medium |
 | httpx | HTTP 클라이언트 | Medium |
 
 ### Step 2: Node.js 의존성 스캔

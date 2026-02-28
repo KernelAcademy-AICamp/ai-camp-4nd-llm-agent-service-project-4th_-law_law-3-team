@@ -255,31 +255,34 @@ def main() -> None:
     timings.append(("8", "판례 상세 조회", detail_time, f"{len(details)}건"))
 
     # ─────────────────────────────────────────────────
-    # [9] 그래프 보강 (Neo4j)
+    # [9] 그래프 보강 (PostgreSQL)
     # ─────────────────────────────────────────────────
-    print_header("Step 9: 그래프 보강 (Neo4j)")
+    print_header("Step 9: 그래프 보강 (PostgreSQL)")
 
-    from app.tools.graph import get_graph_service  # noqa: E402
+    import asyncio  # noqa: E402
+
+    from app.tools.graph import get_pg_graph_service  # noqa: E402
 
     t0 = time.monotonic()
     graph_contexts: dict = {}
     try:
-        graph_service = get_graph_service()
-        if graph_service.is_connected:
+        pg_graph = get_pg_graph_service()
+
+        async def _enrich_cases() -> None:
             for doc in reranked:
                 case_number = doc.get("metadata", {}).get("case_number", "")
                 if case_number:
-                    ctx = graph_service.enrich_case_context(case_number)
+                    ctx = await pg_graph.enrich_case_context(case_number)
                     if ctx.get("cited_statutes") or ctx.get("similar_cases"):
                         graph_contexts[case_number] = ctx
-            graph_status = f"{len(graph_contexts)}건 보강"
-        else:
-            graph_status = "Neo4j 미연결"
+
+        asyncio.run(_enrich_cases())
+        graph_status = f"{len(graph_contexts)}건 보강"
     except Exception as e:
         graph_status = f"실패: {e}"
     graph_time = time.monotonic() - t0
-    print_step("9", "그래프 보강 (Neo4j)", graph_time, graph_status)
-    timings.append(("9", "그래프 보강 (Neo4j)", graph_time, graph_status))
+    print_step("9", "그래프 보강 (PostgreSQL)", graph_time, graph_status)
+    timings.append(("9", "그래프 보강 (PostgreSQL)", graph_time, graph_status))
 
     # ─────────────────────────────────────────────────
     # [*] LLM 응답 생성 (측정만, 실제 호출 선택)

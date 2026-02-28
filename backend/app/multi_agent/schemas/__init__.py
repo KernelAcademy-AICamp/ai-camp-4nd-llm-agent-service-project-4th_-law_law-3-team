@@ -4,6 +4,7 @@ Multi-Agent 스키마 모듈
 
 from app.multi_agent.schemas.messages import ChatMessage, ChatRequest, ChatResponse
 from app.multi_agent.schemas.plan import AgentPlan, AgentResult
+from app.multi_agent.schemas.tag import TaggedItem, TagType
 
 __all__ = [
     "AgentPlan",
@@ -11,4 +12,6 @@ __all__ = [
     "ChatMessage",
     "ChatRequest",
     "ChatResponse",
+    "TaggedItem",
+    "TagType",
 ]

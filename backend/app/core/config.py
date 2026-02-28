@@ -76,11 +76,6 @@ class Settings(BaseSettings):
     USE_LOCAL_EMBEDDING: bool = True
     LOCAL_EMBEDDING_MODEL: str = "nlpai-lab/KURE-v1"  # 1024차원, LanceDB 데이터와 일치
 
-    # Neo4j Graph DB 설정
-    NEO4J_URI: str = "bolt://localhost:7687"
-    NEO4J_USER: str = "neo4j"
-    NEO4J_PASSWORD: str = ""
-
     # 변호사 데이터 소스 (True: PostgreSQL, False: JSON 파일)
     USE_DB_LAWYERS: bool = False
 

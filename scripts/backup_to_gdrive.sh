@@ -5,7 +5,6 @@
 # 사용법:
 #   ./scripts/backup_to_gdrive.sh                # 전체 백업 + 업로드
 #   ./scripts/backup_to_gdrive.sh --skip-upload   # 로컬 덤프만
-#   ./scripts/backup_to_gdrive.sh --skip-neo4j    # Neo4j 제외
 #   ./scripts/backup_to_gdrive.sh --dry-run       # 미리보기
 #
 # 필수 조건:
@@ -34,7 +33,6 @@ fi
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-law-platform-db}"
 POSTGRES_USER="${POSTGRES_USER:-lawuser}"
 POSTGRES_DB="${POSTGRES_DB:-lawdb}"
-NEO4J_CONTAINER="${NEO4J_CONTAINER:-neo4j-law-graph}"
 LANCEDB_DATA_DIR="${LANCEDB_DATA_DIR:-${PROJECT_ROOT}/backend/lancedb_data}"
 BACKUP_BASE_DIR="${BACKUP_BASE_DIR:-${PROJECT_ROOT}/backups}"
 BACKUP_KEEP_LOCAL="${BACKUP_KEEP_LOCAL:-5}"
@@ -46,7 +44,6 @@ BACKUP_DIR="${BACKUP_BASE_DIR}/${TIMESTAMP}"
 
 # 옵션 플래그
 SKIP_POSTGRES=false
-SKIP_NEO4J=false
 SKIP_LANCEDB=false
 SKIP_UPLOAD=false
 DRY_RUN=false
@@ -113,7 +110,6 @@ format_size() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --skip-postgres) SKIP_POSTGRES=true; shift ;;
-        --skip-neo4j)    SKIP_NEO4J=true;   shift ;;
         --skip-lancedb)  SKIP_LANCEDB=true;  shift ;;
         --skip-upload)   SKIP_UPLOAD=true;   shift ;;
         --dry-run)       DRY_RUN=true;       shift ;;
@@ -122,7 +118,6 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --skip-postgres  PostgreSQL 건너뛰기"
-            echo "  --skip-neo4j     Neo4j 건너뛰기"
             echo "  --skip-lancedb   LanceDB 건너뛰기"
             echo "  --skip-upload    로컬 덤프만 (Google Drive 업로드 안 함)"
             echo "  --dry-run        실제 실행 없이 계획만 출력"
@@ -158,17 +153,6 @@ preflight_check() {
             errors=$((errors + 1))
         else
             log_ok "PostgreSQL 컨테이너 실행 중"
-        fi
-    fi
-
-    # Neo4j 컨테이너 확인
-    if [[ "${SKIP_NEO4J}" == "false" ]]; then
-        if ! ${DOCKER_CMD} ps --format '{{.Names}}' | grep -q "^${NEO4J_CONTAINER}$"; then
-            log_error "Neo4j 컨테이너 '${NEO4J_CONTAINER}'가 실행 중이 아닙니다"
-            log_info "  실행: docker compose up -d neo4j"
-            errors=$((errors + 1))
-        else
-            log_ok "Neo4j 컨테이너 실행 중"
         fi
     fi
 
@@ -241,7 +225,6 @@ if [[ "${DRY_RUN}" == "true" ]]; then
     echo ""
     echo "대상 DB:"
     [[ "${SKIP_POSTGRES}" == "false" ]] && echo "  - PostgreSQL (${POSTGRES_CONTAINER})" || echo "  - PostgreSQL (건너뛰기)"
-    [[ "${SKIP_NEO4J}" == "false" ]]    && echo "  - Neo4j (${NEO4J_CONTAINER})"         || echo "  - Neo4j (건너뛰기)"
     [[ "${SKIP_LANCEDB}" == "false" ]]  && echo "  - LanceDB (${LANCEDB_DATA_DIR})"      || echo "  - LanceDB (건너뛰기)"
     echo ""
     [[ "${SKIP_UPLOAD}" == "false" ]] && echo "업로드:      ${RCLONE_REMOTE}:${TIMESTAMP}/" || echo "업로드:      건너뛰기"
@@ -275,7 +258,7 @@ TOTAL_START=$(date +%s)
 
 if [[ "${SKIP_POSTGRES}" == "false" ]]; then
     echo ""
-    log_info "━━━ [1/3] PostgreSQL 백업 ━━━"
+    log_info "━━━ [1/2] PostgreSQL 백업 ━━━"
     PG_START=$(date +%s)
 
     PG_DUMP_FILE="${BACKUP_DIR}/postgres.dump"
@@ -296,73 +279,12 @@ else
 fi
 
 # ─────────────────────────────────────────────────
-# 2. Neo4j 백업
-# ─────────────────────────────────────────────────
-
-if [[ "${SKIP_NEO4J}" == "false" ]]; then
-    echo ""
-    log_info "━━━ [2/3] Neo4j 백업 ━━━"
-    NEO_START=$(date +%s)
-
-    NEO_DUMP_FILE="${BACKUP_DIR}/neo4j.dump"
-
-    # Neo4j 컨테이너 정지 (dump는 오프라인 필요)
-    log_info "Neo4j 컨테이너 정지 중..."
-    ${DOCKER_CMD} stop "${NEO4J_CONTAINER}" >/dev/null
-
-    # neo4j-admin database dump 실행
-    log_info "Neo4j 데이터베이스 덤프 중..."
-    ${DOCKER_CMD} run --rm \
-        --volumes-from "${NEO4J_CONTAINER}" \
-        -v "${BACKUP_DIR}:/backup" \
-        neo4j:5.15.0 \
-        neo4j-admin database dump neo4j --to-path=/backup --overwrite-destination=true \
-        2>/dev/null || {
-            # 5.x dump 명령이 다를 수 있으므로 fallback
-            log_warn "neo4j-admin dump 실패, data 디렉토리 직접 복사..."
-            ${DOCKER_CMD} run --rm \
-                --volumes-from "${NEO4J_CONTAINER}" \
-                -v "${BACKUP_DIR}:/backup" \
-                alpine \
-                tar czf /backup/neo4j_data.tar.gz -C /data .
-        }
-
-    # Neo4j 컨테이너 재시작
-    log_info "Neo4j 컨테이너 재시작 중..."
-    ${DOCKER_CMD} start "${NEO4J_CONTAINER}" >/dev/null
-
-    # 재시작 대기
-    for i in $(seq 1 15); do
-        if ${DOCKER_CMD} exec "${NEO4J_CONTAINER}" wget --no-verbose --tries=1 --spider localhost:7474 2>/dev/null; then
-            break
-        fi
-        sleep 2
-    done
-
-    NEO_END=$(date +%s)
-
-    # 덤프 파일 크기 확인 (dump 또는 tar.gz)
-    if [[ -f "${BACKUP_DIR}/neo4j.dump" ]]; then
-        NEO_SIZE=$(stat -f%z "${BACKUP_DIR}/neo4j.dump" 2>/dev/null || stat --printf="%s" "${BACKUP_DIR}/neo4j.dump" 2>/dev/null || echo 0)
-    elif [[ -f "${BACKUP_DIR}/neo4j_data.tar.gz" ]]; then
-        NEO_SIZE=$(stat -f%z "${BACKUP_DIR}/neo4j_data.tar.gz" 2>/dev/null || stat --printf="%s" "${BACKUP_DIR}/neo4j_data.tar.gz" 2>/dev/null || echo 0)
-    else
-        NEO_SIZE=0
-    fi
-
-    log_ok "Neo4j 백업 완료: $(format_size "${NEO_SIZE}") ($(format_duration $((NEO_END - NEO_START))))"
-    log_ok "Neo4j 컨테이너 재시작 완료"
-else
-    log_warn "Neo4j 건너뛰기"
-fi
-
-# ─────────────────────────────────────────────────
-# 3. LanceDB 백업
+# 2. LanceDB 백업
 # ─────────────────────────────────────────────────
 
 if [[ "${SKIP_LANCEDB}" == "false" ]]; then
     echo ""
-    log_info "━━━ [3/3] LanceDB 백업 ━━━"
+    log_info "━━━ [2/2] LanceDB 백업 ━━━"
     LANCE_START=$(date +%s)
 
     LANCE_ARCHIVE="${BACKUP_DIR}/lancedb_data.tar.gz"
