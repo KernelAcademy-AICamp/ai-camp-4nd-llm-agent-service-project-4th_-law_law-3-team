@@ -8,10 +8,24 @@ import { useState, useCallback, useRef } from 'react'
 import type { ChatAction } from '@/components/ChatActions'
 import type { ChatSource } from '@/features/case-precedent/types'
 
-interface ChatMetadata {
+export interface ChatMetadata {
   agent_used: string
   actions: ChatAction[]
   session_data: Record<string, unknown>
+  // mock_trial 확장
+  speaking_agent?: string
+  emotion?: string
+  stage?: string
+  evidence?: { cases: unknown[]; articles: unknown[] }
+  user_hints?: unknown[]
+  references?: Array<{
+    id: string
+    type: string
+    title: string
+    summary: string
+    relevance_score: number
+    source: string
+  }>
 }
 
 interface StreamingChatOptions {

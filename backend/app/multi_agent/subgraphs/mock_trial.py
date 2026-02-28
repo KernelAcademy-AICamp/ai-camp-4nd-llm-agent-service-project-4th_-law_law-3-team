@@ -32,6 +32,7 @@ from app.multi_agent.subgraphs.mock_trial_prompts import (
 )
 from app.services.service_function.mock_trial_service import (
     build_rag_context,
+    build_references_payload,
     build_user_hints,
     get_evidence_searcher,
     search_for_role,
@@ -78,6 +79,7 @@ class MockTrialState(TypedDict, total=False):
     rag_prosecutor_context: str
     rag_attorney_context: str
     rag_user_hints: list[dict[str, Any]]
+    rag_references: list[dict[str, Any]]
 
     # Rate limiting
     llm_call_count: int
@@ -366,6 +368,11 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
         hint_cases, hint_articles = atty_cases, atty_articles
     rag_user_hints = build_user_hints(hint_cases, hint_articles)
 
+    # 프론트엔드 ReferencePanel용 참조 데이터 생성
+    rag_references = build_references_payload(
+        pros_cases + atty_cases, pros_articles + atty_articles
+    )
+
     # 판사 발언: 증거조사 시작 안내
     judge = _get_agent(state, "judge")
     judge_response, judge_emotion = await judge.generate(
@@ -387,6 +394,7 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
             "articles": evidence_articles,
         },
         "user_hints": rag_user_hints,
+        "references": rag_references,
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -431,6 +439,7 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
             "rag_prosecutor_context": rag_prosecutor_context,
             "rag_attorney_context": rag_attorney_context,
             "rag_user_hints": rag_user_hints,
+            "rag_references": rag_references,
             "agents": _update_agent_in_state(state.get("agents", {}), judge),
             "response": judge_response,
             "speaking_agent": "judge",
@@ -525,6 +534,7 @@ async def identity_node(state: MockTrialState) -> Command[str]:
         "speaking_agent": "judge",
         "emotion": identity_emotion,
         "stage": "identity",
+        "references": state.get("rag_references", []),
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -572,6 +582,7 @@ async def opening_node(state: MockTrialState) -> Command[str]:
             "speaking_agent": "judge",
             "stage": "opening",
             "user_hints": rag_hints,
+            "references": state.get("rag_references", []),
             "actions": [],
         })
         pros_stmt = str(interrupt_value)
@@ -612,6 +623,7 @@ async def opening_node(state: MockTrialState) -> Command[str]:
             "emotion": opening_emotion,
             "stage": "opening",
             "user_hints": rag_hints,
+            "references": state.get("rag_references", []),
             "actions": [
                 ChatAction(
                     type=ActionType.BUTTON,
@@ -681,6 +693,7 @@ async def examination_node(state: MockTrialState) -> Command[str]:
         "emotion": exam_emotion,
         "stage": "examination",
         "user_hints": rag_hints,
+        "references": state.get("rag_references", []),
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -749,6 +762,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
             "speaking_agent": "judge",
             "stage": "closing",
             "user_hints": rag_hints,
+            "references": state.get("rag_references", []),
             "actions": [],
         })
         user_stmt = str(interrupt_value)
@@ -792,6 +806,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
             "emotion": closing_emotion,
             "stage": "closing",
             "user_hints": rag_hints,
+            "references": state.get("rag_references", []),
             "actions": [],
         })
         user_stmt = str(interrupt_value)
@@ -852,6 +867,7 @@ async def pretrial_node(state: MockTrialState) -> Command[str]:
         "speaking_agent": "judge",
         "emotion": pretrial_emotion,
         "stage": "pretrial",
+        "references": state.get("rag_references", []),
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -900,6 +916,7 @@ async def claims_node(state: MockTrialState) -> Command[str]:
             "speaking_agent": "judge",
             "stage": "claims",
             "user_hints": rag_hints,
+            "references": state.get("rag_references", []),
             "actions": [],
         })
         user_input = str(interrupt_value)
@@ -942,6 +959,7 @@ async def claims_node(state: MockTrialState) -> Command[str]:
             "emotion": claims_emotion,
             "stage": "claims",
             "user_hints": rag_hints,
+            "references": state.get("rag_references", []),
             "actions": [],
         })
         user_input = str(interrupt_value)
@@ -981,6 +999,7 @@ async def argument_node(state: MockTrialState) -> Command[str]:
         ),
         "stage": "argument",
         "user_hints": rag_hints,
+        "references": state.get("rag_references", []),
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -1069,6 +1088,7 @@ async def civil_closing_node(state: MockTrialState) -> Command[str]:
         "speaking_agent": "judge",
         "stage": "closing",
         "user_hints": rag_hints,
+        "references": state.get("rag_references", []),
         "actions": [],
     })
     user_stmt = str(interrupt_value)
