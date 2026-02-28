@@ -1581,18 +1581,15 @@ def build_embedding_models(
             fusion_stats, static64_qdq_quality, "ort-optimizer-qdq-int8-static64",
         )
 
-    # 임시 디렉토리 → 벤치마크용 raw ONNX 보존
+    # 임시 디렉토리 삭제
     print(f"\n  {SUBSEPARATOR}")
     print("  정리")
     print(f"  {SUBSEPARATOR}")
-    emb_raw_dir = DATA_MODELS_DIR / "kure-v1-onnx"
     if EMB_ONNX_EXPORT_DIR.exists():
-        if emb_raw_dir.exists():
-            shutil.rmtree(emb_raw_dir)
-        EMB_ONNX_EXPORT_DIR.rename(emb_raw_dir)
-        print(f"    raw ONNX 보존: {emb_raw_dir.name}/")
+        shutil.rmtree(EMB_ONNX_EXPORT_DIR)
+        print(f"    임시 디렉토리 삭제: {EMB_ONNX_EXPORT_DIR.name}/")
     else:
-        print("    raw ONNX export 없음 (이미 정리됨)")
+        print("    임시 디렉토리 없음 (이미 정리됨)")
 
     # 요약
     build_time = time.perf_counter() - build_start
@@ -1758,18 +1755,15 @@ def build_reranker_models(
             fusion_stats, qdq_quality, "ort-optimizer-qdq-int8",
         )
 
-    # 임시 디렉토리 → 벤치마크용 raw ONNX 보존
+    # 임시 디렉토리 삭제
     print(f"\n  {SUBSEPARATOR}")
     print("  정리")
     print(f"  {SUBSEPARATOR}")
-    rr_raw_dir = DATA_MODELS_DIR / "reranker-onnx"
     if RR_ONNX_EXPORT_DIR.exists():
-        if rr_raw_dir.exists():
-            shutil.rmtree(rr_raw_dir)
-        RR_ONNX_EXPORT_DIR.rename(rr_raw_dir)
-        print(f"    raw ONNX 보존: {rr_raw_dir.name}/")
+        shutil.rmtree(RR_ONNX_EXPORT_DIR)
+        print(f"    임시 디렉토리 삭제: {RR_ONNX_EXPORT_DIR.name}/")
     else:
-        print("    raw ONNX export 없음 (이미 정리됨)")
+        print("    임시 디렉토리 없음 (이미 정리됨)")
 
     # 요약
     build_time = time.perf_counter() - build_start
