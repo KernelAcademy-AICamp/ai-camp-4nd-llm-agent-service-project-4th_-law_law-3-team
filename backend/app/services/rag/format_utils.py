@@ -12,15 +12,34 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
+# 컬럼명 → LLM 친화 레이블 (자연어 매핑)
+_FIELD_LABELS: dict[str, str] = {
+    "ruling": "주문",
+    "reasoning": "판결요지",
+    "content": "내용",
+    "answer": "회답",
+    "reason": "이유",
+    "claim": "청구취지",
+    "judgment_summary": "결정요지",
+    "judgment_result": "결정결과",
+    "action_reason": "처분사유",
+    "action_content": "처분내용",
+    "evaluation_opinion": "평가의견",
+    "overall_summary": "전체요약",
+}
+
+
 def _format_fields(doc: dict[str, Any]) -> str:
-    """content_fields를 [컬럼명] 값 형태로 포맷.
+    """content_fields를 자연어 레이블로 포맷.
 
     content_fields가 없으면 content로 fallback.
     """
     fields: dict[str, str] = doc.get("content_fields", {})
     if not fields:
         return str(doc.get("content", ""))
-    return "\n".join(f"[{col}] {val}" for col, val in fields.items())
+    return "\n".join(
+        f"{_FIELD_LABELS.get(col, col)}:\n{val}" for col, val in fields.items()
+    )
 
 
 def _get_title(metadata: dict[str, Any]) -> str:
@@ -39,6 +58,7 @@ def format_precedent_context(
     """판례 문서 → LLM 컨텍스트 문자열.
 
     content_fields(DOCUMENT_TABLE_REGISTRY 기반)로 LLM context를 구성.
+    사건번호·법원명·선고일을 메타라인으로 표시하여 LLM 인용 정확도를 높인다.
     """
     if not documents:
         return ""
@@ -47,16 +67,30 @@ def format_precedent_context(
 
     for i, doc in enumerate(documents, 1):
         metadata = doc.get("metadata", {})
-        doc_id = metadata.get("doc_id", "")
         case_name = _get_title(metadata)
-        case_number = metadata.get("case_number", "")
 
         header = f"[판례 {i}] {case_name}"
-        if case_number:
-            header += f" ({case_number})"
-        header += f" (id: {doc_id})"
 
-        parts.append(f"{header}\n{_format_fields(doc)}")
+        # 메타 정보 라인 구성 (사건번호 | 법원 | 선고일)
+        meta_items: list[str] = []
+        case_number = metadata.get("case_number", "")
+        if case_number:
+            meta_items.append(f"사건번호: {case_number}")
+        court_name = metadata.get("court_name", "")
+        if court_name:
+            meta_items.append(f"법원: {court_name}")
+        date = metadata.get("date", "")
+        if date:
+            meta_items.append(f"선고일: {date}")
+
+        meta_line = " | ".join(meta_items) if meta_items else ""
+
+        block = header
+        if meta_line:
+            block += f"\n{meta_line}"
+        block += f"\n{_format_fields(doc)}"
+
+        parts.append(block)
 
     return "\n\n".join(parts)
 
@@ -97,7 +131,7 @@ def format_law_context(documents: list[dict[str, Any]]) -> str:
 
         if article_docs:
             # 조문 단위 표시
-            header = f"[법령 {law_idx}] {law_name} (id: {doc_id})"
+            header = f"[법령 {law_idx}] {law_name}"
             article_parts: list[str] = [header]
             for adoc in article_docs:
                 article_num = adoc.get("metadata", {}).get("article_number", "")
@@ -109,7 +143,7 @@ def format_law_context(documents: list[dict[str, Any]]) -> str:
             parts.append("\n".join(article_parts))
         elif no_article_docs:
             # 키워드 only: 법령명만 참조
-            parts.append(f"[법령 {law_idx}] {law_name} (id: {doc_id})")
+            parts.append(f"[법령 {law_idx}] {law_name}")
 
     return "\n\n".join(parts)
 
@@ -123,12 +157,14 @@ def format_supplementary_context(documents: list[dict[str, Any]]) -> str:
     for i, doc in enumerate(documents, 1):
         metadata = doc.get("metadata", {})
         data_type = metadata.get("data_type", "")
-        doc_id = metadata.get("doc_id", "")
         title = _get_title(metadata)
+        source_name = metadata.get("court_name", "")
 
-        parts.append(
-            f"[{data_type} {i}] {title} (id: {doc_id})\n{_format_fields(doc)}"
-        )
+        header = f"[{data_type} {i}] {title}"
+        if source_name:
+            header += f" ({source_name})"
+
+        parts.append(f"{header}\n{_format_fields(doc)}")
 
     return "\n\n".join(parts)
 
@@ -142,12 +178,11 @@ def format_generic_context(documents: list[dict[str, Any]]) -> str:
     for i, doc in enumerate(documents, 1):
         metadata = doc.get("metadata", {})
         data_type = metadata.get("data_type", "")
-        doc_id = metadata.get("doc_id", "")
         title = _get_title(metadata)
 
         label = f"{data_type} " if data_type else ""
         parts.append(
-            f"[{label}{i}] {title} (id: {doc_id})\n{_format_fields(doc)}"
+            f"[{label}{i}] {title}\n{_format_fields(doc)}"
         )
 
     return "\n\n".join(parts)

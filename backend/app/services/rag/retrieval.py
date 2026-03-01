@@ -510,6 +510,51 @@ def _apply_law_article_content(docs: list[dict[str, Any]]) -> None:
             )
 
 
+def _populate_precedent_metadata(docs: list[dict[str, Any]]) -> None:
+    """판례 문서의 case_number·decision_date·court_name 보강 (in-place).
+
+    벡터 검색 결과는 LanceDB에 case_number가 없어 빈 문자열이므로,
+    원문 조회 후 precedent_documents 테이블에서 메타 컬럼을 배치 조회하여 주입.
+    """
+    precedent_sids = [
+        doc.get("metadata", {}).get("doc_id", "")
+        for doc in docs
+        if doc.get("metadata", {}).get("data_type") == "판례"
+        and not doc.get("metadata", {}).get("case_number")
+    ]
+    if not precedent_sids:
+        return
+
+    meta_map: dict[str, dict[str, str]] = {}
+    with sync_session_factory() as session:
+        rows = session.execute(
+            text(
+                "SELECT serial_number, case_number, decision_date, court_name "
+                "FROM precedent_documents "
+                "WHERE serial_number = ANY(:ids)"
+            ),
+            {"ids": precedent_sids},
+        ).fetchall()
+        for row in rows:
+            meta_map[str(row[0])] = {
+                "case_number": row[1] or "",
+                "decision_date": str(row[2]) if row[2] else "",
+                "court_name": row[3] or "",
+            }
+
+    for doc in docs:
+        meta = doc.get("metadata", {})
+        sid = meta.get("doc_id", "")
+        if sid in meta_map:
+            extra = meta_map[sid]
+            if not meta.get("case_number"):
+                meta["case_number"] = extra["case_number"]
+            if not meta.get("date") and extra["decision_date"]:
+                meta["date"] = extra["decision_date"]
+            if not meta.get("court_name") and extra["court_name"]:
+                meta["court_name"] = extra["court_name"]
+
+
 def _populate_rerank_text(
     docs: list[dict[str, Any]],
     summaries: dict[str, str],

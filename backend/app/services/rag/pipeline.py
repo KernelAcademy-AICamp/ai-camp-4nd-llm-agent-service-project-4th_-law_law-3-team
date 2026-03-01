@@ -23,6 +23,7 @@ from app.services.rag.retrieval import (
     _apply_law_article_content,
     _extract_id_data_type_map,
     _populate_content,
+    _populate_precedent_metadata,
     _populate_rerank_text,
     fetch_ai_summaries,
     fetch_ai_summaries_async,
@@ -301,6 +302,7 @@ class RAGPipeline:
                 _extract_id_data_type_map(reranked)
             )
             _populate_content(reranked, contents)
+            _populate_precedent_metadata(reranked)
             _apply_law_article_content(reranked)
 
             # Context 압축 (LLMLingua-2)
@@ -568,6 +570,7 @@ class RAGPipeline:
                 _extract_id_data_type_map(reranked)
             )
             _populate_content(reranked, contents)
+            _populate_precedent_metadata(reranked)
             _apply_law_article_content(reranked)
 
             # Context 압축 (LLMLingua-2)
