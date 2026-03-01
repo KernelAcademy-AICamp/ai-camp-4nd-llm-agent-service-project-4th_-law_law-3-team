@@ -17,10 +17,6 @@ from langsmith.run_helpers import get_current_run_tree
 
 from app.core.config import settings
 from app.services.rag.embedding import create_query_embedding
-from app.services.rag.keyword_search import (
-    _build_concept_and_tsquery,
-    _build_or_tsquery,
-)
 from app.services.rag.query_rewrite import rewrite_query
 from app.services.rag.rerank import rerank_documents
 from app.services.rag.retrieval import (
@@ -126,12 +122,10 @@ class PipelineResult:
 class _PrecomputedInputs:
     """쿼리별 사전 계산된 검색 입력 (focus 모드 전용).
 
-    임베딩·tsquery를 1회만 계산하여 focus/supplementary 양쪽에 공유.
+    임베딩을 1회만 계산하여 focus/supplementary 양쪽에 공유.
     """
 
     embeddings: dict[str, list[float]]
-    concept_tsqueries: dict[str, str]
-    or_tsqueries: dict[str, str]
 
 
 # ---------------------------------------------------------------------------
@@ -473,31 +467,17 @@ class RAGPipeline:
     async def _precompute_inputs(
         queries: list[str],
     ) -> _PrecomputedInputs:
-        """리라이팅된 쿼리들의 임베딩·tsquery를 1회 사전 계산.
+        """리라이팅된 쿼리들의 임베딩을 1회 사전 계산.
 
-        focus 모드에서 focus/supplementary 양쪽이 동일한 임베딩·tsquery를
-        공유하도록 한다. 각 쿼리에 대해 (임베딩, concept_tsq, or_tsq)를
-        to_thread로 병렬 계산.
+        focus 모드에서 focus/supplementary 양쪽이 동일한 임베딩을
+        공유하도록 한다.
         """
-
-        async def _compute_for_query(
-            q: str,
-        ) -> tuple[str, list[float], str, str]:
-            emb, concept_tsq, or_tsq = await asyncio.gather(
-                asyncio.to_thread(create_query_embedding, q),
-                asyncio.to_thread(_build_concept_and_tsquery, q),
-                asyncio.to_thread(_build_or_tsquery, q),
-            )
-            return q, emb, concept_tsq, or_tsq
-
         results = await asyncio.gather(
-            *[_compute_for_query(q) for q in queries]
+            *[asyncio.to_thread(create_query_embedding, q) for q in queries]
         )
 
         return _PrecomputedInputs(
-            embeddings={q: emb for q, emb, _, _ in results},
-            concept_tsqueries={q: tsq for q, _, tsq, _ in results},
-            or_tsqueries={q: tsq for q, _, _, tsq in results},
+            embeddings=dict(zip(queries, results)),
         )
 
     async def _search_and_deduplicate(
@@ -511,7 +491,7 @@ class RAGPipeline:
         Args:
             queries: 검색할 쿼리 목록
             config: 파이프라인 설정
-            precomputed: 사전 계산된 임베딩·tsquery (focus 모드 공유용)
+            precomputed: 사전 계산된 임베딩 (focus 모드 공유용)
         """
         exclude = (
             config.exclude_doc_types
@@ -528,16 +508,6 @@ class RAGPipeline:
                     exclude_doc_types=exclude,
                     query_embedding=(
                         precomputed.embeddings.get(q)
-                        if precomputed
-                        else None
-                    ),
-                    precomputed_concept_tsq=(
-                        precomputed.concept_tsqueries.get(q)
-                        if precomputed
-                        else None
-                    ),
-                    precomputed_or_tsq=(
-                        precomputed.or_tsqueries.get(q)
                         if precomputed
                         else None
                     ),

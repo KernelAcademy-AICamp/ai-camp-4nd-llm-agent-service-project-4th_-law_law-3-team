@@ -594,8 +594,6 @@ async def search_without_content_async(
     exclude_doc_types: Optional[list[str]] = None,
     *,
     query_embedding: list[float] | None = None,
-    precomputed_concept_tsq: str | None = None,
-    precomputed_or_tsq: str | None = None,
 ) -> list[dict[str, Any]]:
     """벡터 + FTS 병렬 하이브리드 검색 (async, content 미포함).
 
@@ -608,8 +606,6 @@ async def search_without_content_async(
         doc_type: 문서 유형 필터
         exclude_doc_types: 제외할 data_type 목록
         query_embedding: 사전 계산된 임베딩 (focus 모드 공유용)
-        precomputed_concept_tsq: 사전 계산된 개념 AND tsquery
-        precomputed_or_tsq: 사전 계산된 OR tsquery
     """
     from app.services.rag.keyword_search import (
         is_fts_available_sync,
@@ -636,8 +632,6 @@ async def search_without_content_async(
             n_results=n_results,
             doc_type=doc_type,
             exclude_doc_types=exclude_doc_types,
-            precomputed_concept_tsq=precomputed_concept_tsq,
-            precomputed_or_tsq=precomputed_or_tsq,
         ),
     )
 
