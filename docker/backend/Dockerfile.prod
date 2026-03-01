@@ -71,8 +71,8 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 # uv 복사
 COPY --from=deps /root/.local/bin/uv /usr/local/bin/uv
 
-# 가상환경 복사
-COPY --from=deps /app/.venv /app/.venv
+# 가상환경 복사 (비루트 사용자 소유권 설정)
+COPY --from=deps --chown=appuser:appuser /app/.venv /app/.venv
 
 # 애플리케이션 코드 복사
 COPY --chown=appuser:appuser . .
@@ -89,8 +89,8 @@ USER appuser
 EXPOSE 8000
 
 # 헬스체크
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=5 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# 프로덕션 서버 실행
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# 프로덕션 서버 실행 (2vCPU + ML 모델 4.4GB → workers=2로 제한)
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

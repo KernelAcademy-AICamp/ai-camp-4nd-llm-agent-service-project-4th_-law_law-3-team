@@ -5,6 +5,7 @@ API_KEY 환경변수가 설정되면 X-API-Key 헤더 검증을 수행.
 비어있으면 인증을 건너뜀 (개발 모드).
 """
 
+import hmac
 import logging
 
 from fastapi import HTTPException, Request, Security
@@ -34,7 +35,10 @@ async def verify_api_key(
     if request.url.path in public_paths:
         return
 
-    if not api_key or api_key != settings.API_KEY:
+    if not api_key or not hmac.compare_digest(
+        api_key.encode("utf-8"),
+        settings.API_KEY.encode("utf-8"),
+    ):
         raise HTTPException(
             status_code=401,
             detail="유효하지 않은 API 키입니다.",

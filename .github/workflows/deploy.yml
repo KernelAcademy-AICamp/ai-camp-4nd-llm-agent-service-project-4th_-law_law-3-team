@@ -32,17 +32,17 @@ jobs:
             docker compose --env-file ${{ env.ENV_FILE }} -f ${{ env.COMPOSE_FILE }} up -d
 
             # DB 마이그레이션
-            docker compose -f ${{ env.COMPOSE_FILE }} exec -T backend python -m alembic upgrade head
+            docker compose --env-file ${{ env.ENV_FILE }} -f ${{ env.COMPOSE_FILE }} exec -T backend python -m alembic upgrade head
 
-            # 헬스 체크 (최대 30초 대기)
-            for i in $(seq 1 6); do
+            # 헬스 체크 (최대 120초 대기 — ML 모델 로드 고려)
+            for i in $(seq 1 12); do
               if curl -sf http://localhost/health > /dev/null 2>&1; then
                 echo "Health check passed"
                 exit 0
               fi
-              echo "Waiting for health check... ($i/6)"
-              sleep 5
+              echo "Waiting for health check... ($i/12)"
+              sleep 10
             done
-            echo "WARNING: Health check did not pass within 30s"
-            docker compose -f ${{ env.COMPOSE_FILE }} logs --tail=20 backend
+            echo "WARNING: Health check did not pass within 120s"
+            docker compose --env-file ${{ env.ENV_FILE }} -f ${{ env.COMPOSE_FILE }} logs --tail=50 backend
             exit 1
