@@ -440,9 +440,13 @@ def _populate_content(
     """검색 결과에 구조화 원문 주입 (in-place).
 
     content_fields에 컬럼별 dict, content에 조인 문자열(하위 호환)을 세팅.
+    법령은 제외 — _apply_law_article_content()에서 조문 단위로 별도 처리.
     """
     for doc in docs:
-        sid = doc.get("metadata", {}).get("doc_id", "")
+        meta = doc.get("metadata", {})
+        if meta.get("data_type") == "법령":
+            continue
+        sid = meta.get("doc_id", "")
         if sid and sid in contents:
             fields = contents[sid]
             doc["content_fields"] = fields

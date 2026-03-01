@@ -137,9 +137,9 @@ def format_law_context(documents: list[dict[str, Any]]) -> str:
                 article_num = adoc.get("metadata", {}).get("article_number", "")
                 content = adoc.get("content", "")
                 if content:
-                    article_parts.append(f"  [제{article_num}조]\n  {content}")
+                    article_parts.append(f"  [제{article_num}]\n  {content}")
                 else:
-                    article_parts.append(f"  [제{article_num}조]")
+                    article_parts.append(f"  [제{article_num}]")
             parts.append("\n".join(article_parts))
         elif no_article_docs:
             # 키워드 only: 법령명만 참조
