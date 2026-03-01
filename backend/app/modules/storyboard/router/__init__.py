@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from sse_starlette.sse import EventSourceResponse
 
 from ..schema import (
+    AnalyzeBatchResponse,
     AnalyzeImageResponse,
     ExtractTimelineRequest,
     ExtractTimelineResponse,
@@ -19,20 +20,28 @@ from ..schema import (
     GenerateVideoRequest,
     GenerateVideoResponse,
     JobStatusResponse,
+    MergeTimelineResponse,
     TimelineItem,
     TranscribeResponse,
     ValidateTimelineRequest,
     ValidateTimelineResponse,
 )
 from ..service import extract_timeline_from_text, validate_timeline_data
+from ..service.batch_analyzer import BatchAnalyzer
+from ..service.file_validation import FileValidationGate
 from ..service.image_generation import generate_image, generate_image_fallback
 from ..service.job_manager import (
     job_manager,
     run_batch_image_generation,
 )
 from ..service.stt import transcribe_audio
+from ..service.timeline_merger import TimelineMerger
 from ..service.video_generation import generate_video
 from ..service.vision import analyze_image
+
+_file_validation_gate = FileValidationGate()
+_batch_analyzer = BatchAnalyzer(job_manager)
+_timeline_merger = TimelineMerger()
 
 logger = logging.getLogger(__name__)
 
@@ -288,6 +297,147 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
         message=job.message,
         result=job.result,
         error=job.error,
+    )
+
+
+@router.post("/analyze-batch", response_model=AnalyzeBatchResponse)
+async def analyze_batch_endpoint(
+    files: list[UploadFile] = File(..., description="증거 파일 (최대 10개)"),
+    context: str = Form(default="", description="추가 컨텍스트"),
+) -> AnalyzeBatchResponse:
+    """
+    다중 증거 파일 일괄 분석 → 통합 타임라인 생성
+
+    1. FileValidationGate 통과
+    2. BatchAnalyzeJob 생성 (job_id 반환)
+    3. 백그라운드에서 asyncio.create_task 실행
+    4. SSE /jobs/{id}/status 로 진행 상태 확인
+
+    에러 코드:
+    - 400: 파일 없음 / 개수 초과
+    - 413: 파일 크기 초과
+    - 415: 지원하지 않는 파일 형식
+    - 422: 파일 검증 실패 (매직 넘버 불일치)
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="파일을 하나 이상 업로드해야 합니다")
+
+    try:
+        validated_files = await _file_validation_gate.validate_and_prepare(files)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("파일 검증 실패: %s", exc, exc_info=True)
+        raise HTTPException(status_code=422, detail="파일 검증 중 오류가 발생했습니다")
+
+    job_id = job_manager.create_job(total_steps=len(validated_files))
+
+    async def _run() -> None:
+        try:
+            result = await _batch_analyzer.analyze_batch(
+                job_id=job_id,
+                validated_files=validated_files,
+                context=context,
+            )
+            await job_manager.complete_job(
+                job_id,
+                result=result.model_dump(),
+            )
+        except Exception as exc:
+            logger.error("배치 분석 실패 (job_id=%s): %s", job_id, exc, exc_info=True)
+            await job_manager.fail_job(job_id, error=str(exc))
+
+    asyncio.create_task(_run())
+    return AnalyzeBatchResponse(success=True, job_id=job_id)
+
+
+@router.post("/merge", response_model=MergeTimelineResponse)
+async def merge_timeline_endpoint(
+    existing_timeline: str = Form(..., description="기존 타임라인 JSON (MergeTimelineRequest)"),
+    files: list[UploadFile] = File(default=[], description="추가 증거 파일"),
+    text: str = Form(default="", description="추가 텍스트 입력"),
+) -> MergeTimelineResponse:
+    """
+    기존 타임라인에 새 증거/텍스트 병합
+
+    1. 기존 타임라인 JSON 파싱
+    2. 신규 입력 분석 (파일 + 텍스트)
+    3. TimelineMerger 3단계 병합 (날짜 후보 → LLM 중복 감지 → 적용)
+    4. 병합 결과 + 보고서 반환
+    """
+    import json
+
+    from ..schema import MergeTimelineRequest
+
+    try:
+        request_data = json.loads(existing_timeline)
+        merge_request = MergeTimelineRequest(**request_data)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"기존 타임라인 JSON 파싱 실패: {exc}",
+        )
+
+    # 신규 파일 분석
+    new_items: list[TimelineItem] = []
+    new_evidence = []
+
+    if files:
+        try:
+            validated_files = await _file_validation_gate.validate_and_prepare(files)
+            temp_job_id = job_manager.create_job(total_steps=len(validated_files))
+            result = await _batch_analyzer.analyze_batch(
+                job_id=temp_job_id,
+                validated_files=validated_files,
+                context=text,
+            )
+            new_items = result.timeline_items
+            new_evidence = result.evidence_files
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error("병합용 파일 분석 실패: %s", exc, exc_info=True)
+            return MergeTimelineResponse(
+                success=False,
+                error=f"신규 파일 분석 실패: {exc}",
+            )
+    elif text:
+        try:
+            extract_result = await extract_timeline_from_text(text)
+            if extract_result.success:
+                new_items = extract_result.timeline
+        except Exception as exc:
+            logger.error("병합용 텍스트 분석 실패: %s", exc, exc_info=True)
+
+    # TimelineMerger 3단계 병합
+    return await _timeline_merger.merge(
+        existing_items=list(merge_request.existing_items),
+        new_items=new_items,
+        existing_evidence=list(merge_request.existing_evidence),
+        new_evidence=new_evidence,
+    )
+
+
+@router.get("/evidence/{evidence_id}")
+async def get_evidence_file(evidence_id: str) -> dict[str, str]:
+    """
+    증거 파일 메타데이터 조회
+
+    SEC-03: UUID v4 + 세션 기반 소유권 검증
+    - evidence_id는 UUID v4 형식 필수
+    - 현재는 메타데이터 조회만 지원 (파일 스토리지 연동은 Phase 3+)
+    """
+    try:
+        _uuid_module.UUID(evidence_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="evidence_id가 유효한 UUID v4 형식이 아닙니다",
+        )
+    # Phase 3에서 파일 스토리지 연동 예정
+    raise HTTPException(
+        status_code=404,
+        detail="증거 파일 스토리지가 아직 구현되지 않았습니다 (Phase 3 예정)",
     )
 
 

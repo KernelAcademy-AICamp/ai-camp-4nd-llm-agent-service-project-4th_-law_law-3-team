@@ -1,4 +1,5 @@
 """스토리보드 모듈 - 데이터 모델 스키마"""
+import uuid
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -73,6 +74,13 @@ class TimelineItem(BaseModel):
     evidence_items: list[str] = Field(default_factory=list, description="관련 증거물")
     mood: str | None = Field(None, description="장면 분위기")
 
+    # 간트차트 추가 필드
+    topic: str | None = Field(None, description="사건 주제 (AI 자동 분류: 폭행, 협박, 금전 등)")
+    date_start: str | None = Field(None, description="기간 시작일 (YYYY-MM-DD)")
+    date_end: str | None = Field(None, description="기간 종료일 (YYYY-MM-DD)")
+    evidence_ids: list[str] = Field(default_factory=list, description="연결된 증거 파일 ID (N:M)")
+    confidence: float | None = Field(None, ge=0.0, le=1.0, description="추출 신뢰도 (0.0~1.0)")
+
 
 class TimelineData(BaseModel):
     """타임라인 전체 데이터 (JSON 내보내기/가져오기용)"""
@@ -81,3 +89,34 @@ class TimelineData(BaseModel):
     updated_at: str = Field(..., description="수정일시")
     items: list[TimelineItem] = Field(default_factory=list)
     original_text: str | None = Field(None, description="원본 입력 텍스트")
+    evidence_files: list["EvidenceFile"] = Field(default_factory=list, description="증거 파일 목록")
+    topics: list[str] = Field(default_factory=list, description="전체 주제 목록 (간트차트 Y축)")
+
+
+class EvidenceType(str, Enum):
+    """증거 파일 유형"""
+    KAKAO_TXT = "kakao_txt"
+    MESSENGER_SCREENSHOT = "messenger_screenshot"
+    VOICE_RECORDING = "voice_recording"
+    DOCUMENT = "document"
+    PHOTO = "photo"
+    TEXT_INPUT = "text_input"
+    OTHER = "other"
+
+
+class EvidenceFile(BaseModel):
+    """증거 파일 메타데이터"""
+    evidence_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="UUID v4")
+    evidence_type: EvidenceType = Field(..., description="증거 유형")
+    filename: str = Field(..., description="원본 파일명")
+    uploaded_at: str = Field(..., description="업로드 시각 (ISO 8601)")
+    file_size_kb: int = Field(..., description="파일 크기 (KB)")
+    file_hash: str | None = Field(None, description="SHA-256 해시 (중복 감지용)")
+    session_id: str = Field(..., description="소유자 세션 ID (IDOR 방어)")
+    extracted_timeline_ids: list[str] = Field(default_factory=list, description="추출된 타임라인 항목 ID")
+    tags: list[str] = Field(default_factory=list, description="사용자 정의 태그")
+    source_description: str | None = Field(None, description="증거 설명")
+
+
+# Forward reference 해소
+TimelineData.model_rebuild()

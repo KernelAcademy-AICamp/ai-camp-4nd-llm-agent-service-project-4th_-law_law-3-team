@@ -131,6 +131,29 @@ EXTRACTION_SYSTEM_PROMPT = """당신은 법률 사건 분석 전문가이자 영
 
 추가 설명 없이 JSON만 출력합니다. 모든 필드를 가능한 상세하게 채워주세요."""
 
+GANTT_CHART_FIELDS_INSTRUCTION = """
+## 간트차트 추가 필드 (신규)
+
+각 이벤트에 아래 필드를 추가로 추출하세요:
+
+- **topic**: 사건의 법적 주제 (한국어, 예: "폭행", "협박", "금전 갈취")
+  - 전체 타임라인에서 3~8개 범위로 그룹핑
+  - 하나의 이벤트에 하나의 topic만
+
+- **date_start**: 사건 시작일 (YYYY-MM-DD 또는 YYYY-MM 또는 YYYY)
+  - 단발성이면 date와 동일
+  - 지속적이면 시작일
+
+- **date_end**: 사건 종료일 (같은 형식)
+  - 단발성이면 date_start와 동일
+  - 현재 진행 중이면 null
+
+- **confidence**: 추출 신뢰도 (0.0~1.0)
+  - 1.0: 날짜/내용이 원문에 명확히 기재
+  - 0.7~0.9: 문맥에서 추론
+  - 0.5 미만: 추정이 많음
+"""
+
 # --- 장문 1단계 프롬프트: 날짜 문장 추출 ---
 
 _DATE_EXTRACTION_PROMPT = """다음 법률 문서에서 **날짜가 포함된 문장**과 그 전후 2줄을 추출해주세요.
@@ -158,9 +181,10 @@ def _parse_participant(participant_data: dict[str, Any]) -> Participant:
 def _build_system_prompt(doc_type: str) -> str:
     """문서 유형에 맞는 시스템 프롬프트를 조합한다."""
     extra = _DOC_TYPE_EXTRA.get(doc_type, "")
+    base = EXTRACTION_SYSTEM_PROMPT + GANTT_CHART_FIELDS_INSTRUCTION
     if extra:
-        return EXTRACTION_SYSTEM_PROMPT + "\n" + extra
-    return EXTRACTION_SYSTEM_PROMPT
+        return base + "\n" + extra
+    return base
 
 
 def _date_sort_key(date: str) -> str:
@@ -241,6 +265,11 @@ def _parse_timeline_response(data: dict[str, Any]) -> ExtractTimelineResponse:
                 legal_significance=item.get("legal_significance"),
                 evidence_items=item.get("evidence_items", []),
                 mood=item.get("mood"),
+                topic=item.get("topic"),
+                date_start=item.get("date_start"),
+                date_end=item.get("date_end"),
+                evidence_ids=item.get("evidence_ids", []),
+                confidence=item.get("confidence"),
             )
         )
 

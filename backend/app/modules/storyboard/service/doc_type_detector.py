@@ -5,6 +5,13 @@ import re
 DocType = str  # "criminal" | "civil" | "public" | "general"
 
 DOC_TYPE_PATTERNS: dict[str, list[str]] = {
+    "kakao": [
+        r"카카오톡 대화",
+        r"\d{4}년\s*\d{1,2}월\s*\d{1,2}일\s*(오전|오후)\s*\d{1,2}:\d{2},",
+        r"^\[.+?\]\s*\[(오전|오후)\s*\d{1,2}:\d{2}\]",
+        r"저장한 날짜",
+        r"님과 카카오톡 대화",
+    ],
     "criminal": [
         r"공소사실",
         r"피고인\s*\w+",

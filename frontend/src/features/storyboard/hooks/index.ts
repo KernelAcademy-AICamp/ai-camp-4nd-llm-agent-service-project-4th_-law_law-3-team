@@ -1,1 +1,4 @@
 export { useTimelineState } from './useTimelineState'
+export { useGanttChart } from './useGanttChart'
+export type { VisItem, VisGroup } from './useGanttChart'
+export { useEvidenceUpload } from './useEvidenceUpload'

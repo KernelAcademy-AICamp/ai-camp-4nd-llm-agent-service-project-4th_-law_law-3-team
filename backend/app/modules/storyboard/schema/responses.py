@@ -3,7 +3,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .models import Participant, TimelineData, TimelineItem, TransitionType
+from .models import (
+    EvidenceFile,
+    Participant,
+    TimelineData,
+    TimelineItem,
+    TransitionType,
+)
 
 
 class ExtractTimelineRequest(BaseModel):
@@ -115,3 +121,72 @@ class JobStatusResponse(BaseModel):
     message: str
     result: dict[str, Any] | None = None
     error: str | None = None
+
+
+# --- 배치 분석 ---
+class AnalyzeBatchResponse(BaseModel):
+    """배치 분석 응답 (job 생성)"""
+    success: bool
+    job_id: str | None = None
+    error: str | None = None
+
+
+# --- 병합 ---
+class MergeConflict(BaseModel):
+    """병합 충돌 정보"""
+    existing_item_id: str
+    new_item_id: str
+    conflict_type: str  # "date_overlap", "content_contradiction"
+    description: str
+
+
+class MergeReport(BaseModel):
+    """병합 결과 보고"""
+    new_items_added: int = 0
+    duplicates_detected: int = 0
+    items_updated: int = 0
+    conflicts: list[MergeConflict] = Field(default_factory=list)
+
+
+class MergeTimelineRequest(BaseModel):
+    """증분 병합 요청 (기존 타임라인 정보, 신규 파일은 multipart로 수신)"""
+    existing_items: list[TimelineItem] = Field(..., description="기존 타임라인 항목")
+    existing_evidence: list[EvidenceFile] = Field(default_factory=list, description="기존 증거 파일")
+
+
+class MergeTimelineResponse(BaseModel):
+    """증분 병합 응답"""
+    success: bool
+    merged_items: list[TimelineItem] = Field(default_factory=list)
+    merged_evidence: list[EvidenceFile] = Field(default_factory=list)
+    merge_report: MergeReport | None = None
+    error: str | None = None
+
+
+# --- 배치 분석 진행 상태 (SSE 확장) ---
+class BatchJobProgress(BaseModel):
+    """배치 분석 진행 상태 (SSE event data 확장)"""
+    job_id: str
+    status: str
+    progress: int  # 0~100
+    current_file: str | None = None
+    current_file_index: int = 0
+    total_files: int = 0
+    message: str = ""
+    result: "BatchAnalysisResult | None" = None
+    error: str | None = None
+
+
+class BatchAnalysisResult(BaseModel):
+    """배치 분석 최종 결과"""
+    timeline_items: list[TimelineItem]
+    evidence_files: list[EvidenceFile]
+    topics: list[str]
+    summary: str | None = None
+    total_files: int
+    success_count: int
+    failed_files: list[str] = Field(default_factory=list)
+
+
+# Forward reference 해소
+BatchJobProgress.model_rebuild()

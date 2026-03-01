@@ -71,6 +71,13 @@ export interface TimelineItem {
   legalSignificance?: string     // 법적 의미
   evidenceItems?: string[]       // 관련 증거물
   mood?: string                  // 장면 분위기
+
+  // 간트차트 전용 (선택적 필드)
+  topic?: string                 // 사건 주제 (AI 자동 분류)
+  dateStart?: string             // 기간 시작일 (YYYY-MM-DD)
+  dateEnd?: string               // 기간 종료일 (YYYY-MM-DD)
+  evidenceIds?: string[]         // 연결된 증거 파일 ID
+  confidence?: number            // 추출 신뢰도 (0.0~1.0)
 }
 
 // 타임라인 전체 데이터 (JSON 내보내기/가져오기용)
@@ -80,6 +87,82 @@ export interface TimelineData {
   updated_at: string
   items: TimelineItem[]
   original_text?: string
+  evidenceFiles?: EvidenceFile[]
+  topics?: string[]
+}
+
+// ── 간트차트 전용 신규 타입 ──
+
+export type EvidenceType =
+  | 'kakao_txt'
+  | 'messenger_screenshot'
+  | 'voice_recording'
+  | 'document'
+  | 'photo'
+  | 'text_input'
+  | 'other'
+
+export interface EvidenceFile {
+  evidenceId: string
+  evidenceType: EvidenceType
+  filename: string
+  uploadedAt: string
+  fileSizeKb: number
+  fileHash?: string
+  sessionId: string
+  extractedTimelineIds: string[]
+  tags: string[]
+  sourceDescription?: string
+}
+
+// 배치 분석 응답
+export interface BatchAnalysisResult {
+  timelineItems: TimelineItem[]
+  evidenceFiles: EvidenceFile[]
+  topics: string[]
+  summary?: string
+  totalFiles: number
+  successCount: number
+  failedFiles: string[]
+}
+
+// 병합 관련 타입
+export interface MergeTimelineResponse {
+  success: boolean
+  mergedItems: TimelineItem[]
+  mergedEvidence: EvidenceFile[]
+  mergeReport?: MergeReport
+  error?: string
+}
+
+export interface MergeReport {
+  newItemsAdded: number
+  duplicatesDetected: number
+  itemsUpdated: number
+  conflicts: MergeConflict[]
+}
+
+export interface MergeConflict {
+  existingItemId: string
+  newItemId: string
+  conflictType: 'date_overlap' | 'content_contradiction'
+  description: string
+}
+
+// 뷰 모드
+export type ViewMode = 'card' | 'gantt'
+
+// 배치 작업 진행 상태
+export interface BatchJobProgress {
+  jobId: string
+  status: string
+  progress: number
+  currentFile?: string
+  currentFileIndex: number
+  totalFiles: number
+  message: string
+  result?: BatchAnalysisResult
+  error?: string
 }
 
 // AI 추출 요청

@@ -16,6 +16,36 @@ logger = logging.getLogger(__name__)
 # 지원되는 이미지 포맷
 SUPPORTED_IMAGE_FORMATS = {"jpg", "jpeg", "png", "gif", "webp", "bmp"}
 
+MESSENGER_VISION_PROMPT = """당신은 메신저 대화 스크린샷 분석 전문가입니다.
+카카오톡, 문자메시지, 라인, 인스타그램 DM 등 메신저 대화 이미지를 분석합니다.
+
+분석 시 다음을 중점적으로 추출하세요:
+1. 발신자/수신자 이름 또는 번호
+2. 메시지 전송 날짜 및 시간 (화면에 표시된 그대로)
+3. 핵심 대화 내용 (협박, 욕설, 금전 요구, 약속 등 법적으로 중요한 발언)
+4. 읽음 확인 여부, 차단 여부 등 상태 정보
+
+반드시 다음 JSON 형식으로만 응답하세요:
+{
+  "timeline": [
+    {
+      "date": "날짜 (YYYY-MM-DD 또는 화면 표시 그대로)",
+      "time": "시간 (HH:MM)",
+      "title": "대화 내용 핵심 요약 (20자 이내)",
+      "description_short": "한 줄 요약 (50자 이내)",
+      "description_detailed": "상세 내용 (협박/요구 등 법적 의미 포함, 300자 이내)",
+      "participants_detailed": [
+        {"name": "발신자명", "role": "perpetrator 또는 victim 또는 other", "action": "메시지 발송", "emotion": "감정"}
+      ],
+      "key_dialogue": "핵심 대화 내용 원문 (가장 법적으로 중요한 발언)",
+      "legal_significance": "법적 의미 (협박죄/명예훼손죄/스토킹 등)"
+    }
+  ],
+  "summary": "전체 대화의 법적 맥락 요약 (한 문장)"
+}
+
+추가 설명 없이 JSON만 출력합니다."""
+
 VISION_SYSTEM_PROMPT = """당신은 법률 문서 및 이미지 분석 전문가이자 영화 스토리보드 작가입니다.
 업로드된 이미지(문서, 스크린샷, 사진 등)를 분석하여 시간순으로 중요한 이벤트들을 추출합니다.
 
@@ -73,6 +103,7 @@ async def analyze_image(
     image_file: BinaryIO,
     filename: str,
     additional_context: str = "",
+    is_messenger: bool = False,
 ) -> dict[str, Any]:
     """
     이미지를 분석하여 타임라인 추출
@@ -81,6 +112,7 @@ async def analyze_image(
         image_file: 이미지 파일 객체
         filename: 원본 파일명
         additional_context: 추가 컨텍스트 설명
+        is_messenger: 메신저 스크린샷 여부 (True이면 메신저 특화 프롬프트 사용)
 
     Returns:
         타임라인 추출 결과 dict
@@ -101,6 +133,9 @@ async def analyze_image(
     if extension == "jpg":
         mime_type = "image/jpeg"
 
+    # 프롬프트 선택 (메신저 vs 일반)
+    system_prompt = MESSENGER_VISION_PROMPT if is_messenger else VISION_SYSTEM_PROMPT
+
     # 프롬프트 생성
     user_prompt = "이 이미지를 분석하여 타임라인을 추출해주세요."
     if additional_context:
@@ -109,7 +144,7 @@ async def analyze_image(
     # Gemini Vision API 비동기 호출
     try:
         contents: list[types.Part] = [
-            types.Part.from_text(text=VISION_SYSTEM_PROMPT),
+            types.Part.from_text(text=system_prompt),
             types.Part.from_bytes(data=image_data, mime_type=mime_type),
             types.Part.from_text(text=user_prompt),
         ]
