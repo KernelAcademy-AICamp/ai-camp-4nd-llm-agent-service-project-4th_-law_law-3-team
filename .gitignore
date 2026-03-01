@@ -73,6 +73,7 @@ embedding_cache/
 
 # Docker
 .env.docker
+.env.prod
 docker-compose.override.yml
 
 # Backups

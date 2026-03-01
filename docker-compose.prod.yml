@@ -13,6 +13,11 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: law-platform-db-prod
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-lawuser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
@@ -35,10 +40,15 @@ services:
       context: ./backend
       dockerfile: ../docker/backend/Dockerfile.prod
     container_name: law-platform-backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-lawuser}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lawdb}
       ENVIRONMENT: production
-      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
+      CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS must be set for production}
 
       # AI / external APIs
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
@@ -48,8 +58,8 @@ services:
       KAKAO_MAP_API_KEY: ${KAKAO_MAP_API_KEY:-}
       KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
 
-      # Optional API authentication (X-API-Key)
-      API_KEY: ${API_KEY:-}
+      # API authentication (X-API-Key) — 프로덕션 필수
+      API_KEY: ${API_KEY:?API_KEY must be set for production}
 
       # Rate limit storage (MVP single instance default)
       # Use redis://... for multi-instance deployment
@@ -73,6 +83,15 @@ services:
       # MeCab userdic
       MECAB_USERDIC_PATH: ${MECAB_USERDIC_PATH:-data/mecab_userdic/legal_terms.dic}
 
+      # AI model selection
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
+      GOOGLE_MODEL: ${GOOGLE_MODEL:-gemini-3-flash-preview}
+
+      # Runtime tuning
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
+      AGENT_TIMEOUT_SECONDS: ${AGENT_TIMEOUT_SECONDS:-120}
+
       # Feature flags
       USE_DB_LAWYERS: ${USE_DB_LAWYERS:-false}
       ENABLED_MODULES: ${ENABLED_MODULES:-[]}
@@ -94,22 +113,45 @@ services:
       - law-network
 
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: ./docker/nginx
+      dockerfile: Dockerfile
     container_name: law-platform-nginx
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+    entrypoint: ["sh", "/usr/local/bin/docker-entrypoint-wrapper.sh"]
+    command: ["nginx", "-g", "daemon off;"]
     ports:
-      # Public API entrypoint (HTTPS should be enabled before connecting Vercel production frontend)
       - "80:80"
-      # - "443:443"
+      - "443:443"
     environment:
       API_DOMAIN: ${API_DOMAIN:-api.example.com}
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./docker/nginx/conf.d/api.conf.template:/etc/nginx/templates/api.conf.template:ro
-      # Uncomment after issuing certificates for your free/custom domain
-      # - ./docker/nginx/certs:/etc/nginx/certs:ro
+      - ./docker/nginx/docker-entrypoint-wrapper.sh:/usr/local/bin/docker-entrypoint-wrapper.sh:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_certs:/etc/nginx/certs
     depends_on:
       backend:
         condition: service_started
+    restart: unless-stopped
+    networks:
+      - law-network
+
+  # Let's Encrypt 인증서 자동 발급/갱신
+  # 초기 설정: scripts/deploy/init-letsencrypt.sh 실행
+  # 갱신 후 nginx 적용: crontab -e → 0 */12 * * * docker exec law-platform-nginx nginx -s reload
+  certbot:
+    image: certbot/certbot
+    container_name: law-platform-certbot
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_certs:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
     restart: unless-stopped
     networks:
       - law-network
@@ -146,3 +188,5 @@ volumes:
   postgres_data:
   chroma_data:
   lancedb_data:
+  certbot_www:
+  certbot_certs:
