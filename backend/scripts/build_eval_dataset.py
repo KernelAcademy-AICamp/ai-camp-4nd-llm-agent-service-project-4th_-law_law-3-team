@@ -16,7 +16,7 @@ from app.modules.storyboard.evaluation.schemas import (
     TimelineEvalDataset,
 )
 
-BASE_DIR = Path(__file__).parent.parent.parent / "data" / "ingest_source" / "bar_exam_markdown"
+BASE_DIR = Path(__file__).parent.parent.parent / "data" / "bar_exam_raw"
 OUTPUT_PATH = (
     Path(__file__).parent.parent
     / "app"
