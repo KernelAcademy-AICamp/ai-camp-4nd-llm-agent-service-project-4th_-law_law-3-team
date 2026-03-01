@@ -22,6 +22,16 @@ export interface VisGroup {
   className?: string
 }
 
+// HTML 이스케이프 (vis-timeline content는 HTML 렌더링 → XSS 방어)
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 // 신뢰도 레벨 분류
 function getConfidenceLevel(confidence: number | undefined): 'high' | 'medium' | 'low' {
   if (confidence === undefined || confidence >= 0.8) return 'high'
@@ -40,12 +50,12 @@ export function timelineItemsToVisItems(items: TimelineItem[]): VisItem[] {
     return {
       id: item.id,
       group: item.topic ?? 'uncategorized',
-      content: item.title,
+      content: escapeHtml(item.title),
       start,
       end,
       type: isRange ? 'range' : 'point',
       className: `gantt-item confidence-${confidenceLevel}`,
-      title: item.descriptionShort ?? item.description,
+      title: escapeHtml(item.descriptionShort ?? item.description),
     }
   })
 }
@@ -104,7 +114,7 @@ export function evidenceToVisMarkers(
       end: evidenceDateMap.get(file.evidenceId) ?? '',
       type: 'point' as const,
       className: 'evidence-marker-item',
-      title: file.filename,
+      title: escapeHtml(file.filename),
     }))
 }
 

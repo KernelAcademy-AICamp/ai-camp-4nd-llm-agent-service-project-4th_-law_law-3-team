@@ -3,9 +3,9 @@ import asyncio
 import json
 import logging
 import uuid as _uuid_module
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from sse_starlette.sse import EventSourceResponse
 
 from ..schema import (
@@ -42,6 +42,9 @@ from ..service.vision import analyze_image
 _file_validation_gate = FileValidationGate()
 _batch_analyzer = BatchAnalyzer(job_manager)
 _timeline_merger = TimelineMerger()
+
+# SEC-11: 인메모리 증거 메타데이터 저장소 (evidence_id → EvidenceFile dict)
+_evidence_store: dict[str, dict[str, Any]] = {}
 
 logger = logging.getLogger(__name__)
 
@@ -300,10 +303,11 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
     )
 
 
-@router.post("/analyze-batch", response_model=AnalyzeBatchResponse)
+@router.post("/analyze-batch", response_model=AnalyzeBatchResponse, status_code=status.HTTP_201_CREATED)
 async def analyze_batch_endpoint(
     files: list[UploadFile] = File(..., description="증거 파일 (최대 10개)"),
     context: str = Form(default="", description="추가 컨텍스트"),
+    session_id: str = Form(default="", description="세션 ID (증거 소유권 추적)"),
 ) -> AnalyzeBatchResponse:
     """
     다중 증거 파일 일괄 분석 → 통합 타임라인 생성
@@ -323,7 +327,9 @@ async def analyze_batch_endpoint(
         raise HTTPException(status_code=400, detail="파일을 하나 이상 업로드해야 합니다")
 
     try:
-        validated_files = await _file_validation_gate.validate_and_prepare(files)
+        validated_files = await _file_validation_gate.validate_and_prepare(
+            files, session_id=session_id,
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -338,7 +344,11 @@ async def analyze_batch_endpoint(
                 job_id=job_id,
                 validated_files=validated_files,
                 context=context,
+                session_id=session_id,
             )
+            # SEC-11: 증거 메타데이터를 인메모리 저장소에 보관
+            for ev in result.evidence_files:
+                _evidence_store[ev.evidence_id] = ev.model_dump()
             await job_manager.complete_job(
                 job_id,
                 result=result.model_dump(),
@@ -351,7 +361,7 @@ async def analyze_batch_endpoint(
     return AnalyzeBatchResponse(success=True, job_id=job_id)
 
 
-@router.post("/merge", response_model=MergeTimelineResponse)
+@router.post("/merge", response_model=MergeTimelineResponse, status_code=status.HTTP_201_CREATED)
 async def merge_timeline_endpoint(
     existing_timeline: str = Form(..., description="기존 타임라인 JSON (MergeTimelineRequest)"),
     files: list[UploadFile] = File(default=[], description="추가 증거 파일"),
@@ -410,22 +420,29 @@ async def merge_timeline_endpoint(
             logger.error("병합용 텍스트 분석 실패: %s", exc, exc_info=True)
 
     # TimelineMerger 3단계 병합
-    return await _timeline_merger.merge(
+    response = await _timeline_merger.merge(
         existing_items=list(merge_request.existing_items),
         new_items=new_items,
         existing_evidence=list(merge_request.existing_evidence),
         new_evidence=new_evidence,
     )
+    # SEC-11: 병합 결과의 증거 메타데이터를 인메모리 저장소에 보관
+    if response.success:
+        for ev in response.merged_evidence:
+            _evidence_store[ev.evidence_id] = ev.model_dump()
+    return response
 
 
 @router.get("/evidence/{evidence_id}")
-async def get_evidence_file(evidence_id: str) -> dict[str, str]:
+async def get_evidence_file(evidence_id: str) -> dict[str, Any]:
     """
     증거 파일 메타데이터 조회
 
-    SEC-03: UUID v4 + 세션 기반 소유권 검증
+    SEC-03: UUID v4 형식 검증
+    SEC-11: 인메모리 증거 저장소에서 메타데이터 반환
     - evidence_id는 UUID v4 형식 필수
-    - 현재는 메타데이터 조회만 지원 (파일 스토리지 연동은 Phase 3+)
+    - 배치 분석/병합 시 자동 저장된 메타데이터 반환
+    - 파일 바이너리 스토리지 연동은 Phase 3+
     """
     try:
         _uuid_module.UUID(evidence_id)
@@ -434,11 +451,13 @@ async def get_evidence_file(evidence_id: str) -> dict[str, str]:
             status_code=400,
             detail="evidence_id가 유효한 UUID v4 형식이 아닙니다",
         )
-    # Phase 3에서 파일 스토리지 연동 예정
-    raise HTTPException(
-        status_code=404,
-        detail="증거 파일 스토리지가 아직 구현되지 않았습니다 (Phase 3 예정)",
-    )
+    evidence = _evidence_store.get(evidence_id)
+    if evidence is None:
+        raise HTTPException(
+            status_code=404,
+            detail="증거 파일을 찾을 수 없습니다",
+        )
+    return evidence
 
 
 @router.post("/generate-video", response_model=GenerateVideoResponse)

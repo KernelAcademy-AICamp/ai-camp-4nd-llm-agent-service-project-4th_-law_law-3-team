@@ -22,6 +22,9 @@ from ..schema.responses import MergeConflict, MergeReport, MergeTimelineResponse
 
 logger = logging.getLogger(__name__)
 
+# SEC-08: 병합 충돌 감사 로그 전용 logger
+audit_logger = logging.getLogger("storyboard.merge_audit")
+
 # LLM 중복 감지 최대 후보 쌍 수 (비용 절감)
 MAX_DUPLICATE_CANDIDATES = 5
 
@@ -65,21 +68,35 @@ class _DuplicateResult:
     new_item: TimelineItem
 
 
-def _normalize_date_prefix(date: str) -> str:
-    """날짜를 비교 가능한 형태로 정규화 (앞 DATE_OVERLAP_CHARS 글자)."""
-    return date.strip()[:DATE_OVERLAP_CHARS]
+def _parse_date(date_str: str) -> datetime | None:
+    """날짜 문자열에서 datetime 추출. YYYY-MM-DD 또는 YYYY.MM.DD 등 지원."""
+    cleaned = date_str.strip()
+    if not cleaned or "미상" in cleaned:
+        return None
+    # YYYY-MM-DD, YYYY.MM.DD, YYYY/MM/DD 패턴 추출
+    match = re.search(r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})", cleaned)
+    if match:
+        try:
+            return datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except ValueError:
+            return None
+    # YYYY-MM 패턴 (일자 없음)
+    match = re.search(r"(\d{4})[-./](\d{1,2})", cleaned)
+    if match:
+        try:
+            return datetime(int(match.group(1)), int(match.group(2)), 15)
+        except ValueError:
+            return None
+    return None
 
 
 def _dates_overlap(date_a: str, date_b: str) -> bool:
-    """두 날짜가 연/월 수준에서 겹치는지 확인."""
-    prefix_a = _normalize_date_prefix(date_a)
-    prefix_b = _normalize_date_prefix(date_b)
-    if not prefix_a or not prefix_b:
+    """두 날짜가 ±DATE_OVERLAP_DAYS일 이내인지 확인."""
+    dt_a = _parse_date(date_a)
+    dt_b = _parse_date(date_b)
+    if dt_a is None or dt_b is None:
         return False
-    # "날짜 미상" 등은 겹침으로 보지 않음
-    if "미상" in prefix_a or "미상" in prefix_b:
-        return False
-    return prefix_a == prefix_b
+    return abs(dt_a - dt_b) <= timedelta(days=DATE_OVERLAP_DAYS)
 
 
 class TimelineMerger:
@@ -103,6 +120,34 @@ class TimelineMerger:
         if self._client is None:
             self._client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         return self._client
+
+    @staticmethod
+    def _parse_llm_json(raw: str) -> dict[str, Any]:
+        """다단계 JSON 파싱 fallback: 코드블록 → 직접 파싱 → 정규식 추출."""
+        candidates: list[str] = []
+        # 1) ```json ... ``` 코드블록
+        if "```json" in raw:
+            parts = raw.split("```json")
+            for part in parts[1:]:
+                if "```" in part:
+                    candidates.append(part.split("```")[0])
+        elif "```" in raw:
+            parts = raw.split("```")
+            if len(parts) >= 3:
+                candidates.append(parts[1])
+        # 2) 원본 그대로
+        candidates.append(raw)
+        # 3) { ... } 정규식 추출
+        brace_match = re.search(r"\{[\s\S]*\}", raw)
+        if brace_match:
+            candidates.append(brace_match.group(0))
+
+        for candidate in candidates:
+            try:
+                return json.loads(candidate.strip())  # type: ignore[no-any-return]
+            except (json.JSONDecodeError, ValueError):
+                continue
+        raise ValueError(f"LLM JSON 파싱 실패: {raw[:200]}")
 
     async def merge(
         self,
@@ -222,13 +267,8 @@ class TimelineMerger:
         )
 
         raw = response.choices[0].message.content or ""
-        # JSON 파싱
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-
-        data = json.loads(raw.strip())
+        # 다단계 JSON 파싱 fallback
+        data = self._parse_llm_json(raw)
         llm_results: list[dict[str, Any]] = data.get("results", [])
 
         results: list[_DuplicateResult] = []
@@ -331,6 +371,23 @@ class TimelineMerger:
             items_updated=updated_count,
             conflicts=conflicts,
         )
+
+        # SEC-08: 병합 충돌 감사 로그
+        if conflicts:
+            audit_logger.info(
+                "병합 충돌 감지: %d건 | 중복흡수: %d건 | 신규추가: %d건",
+                len(conflicts),
+                len(absorbed_new_ids),
+                len(added_items),
+            )
+            for conflict in conflicts:
+                audit_logger.info(
+                    "  충돌 상세: type=%s, existing=%s, new=%s, desc=%s",
+                    conflict.conflict_type,
+                    conflict.existing_item_id,
+                    conflict.new_item_id,
+                    conflict.description,
+                )
 
         return MergeTimelineResponse(
             success=True,

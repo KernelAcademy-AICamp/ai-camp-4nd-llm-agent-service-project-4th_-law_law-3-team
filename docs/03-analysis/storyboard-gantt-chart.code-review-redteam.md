@@ -15,7 +15,7 @@
 | **Critical** | 인증/인가 부재 | router/__init__.py 전역 | 기존 알려진 이슈 (MVP 범위 외), Phase 0에서 해결 예정 |
 | **High** | Prompt Injection | batch_analyzer.py `context` | **수정 완료** - 길이 제한 + 경고 프리픽스 |
 | **High** | Zip Bomb (DOCX) | batch_analyzer.py `_extract_text_from_document` | **수정 완료** - 읽기 크기 제한 (10MB) |
-| **Medium** | XSS (vis-timeline content) | GanttChartViewInner.tsx | **수정 완료** - HTML 이스케이프 적용 |
+| **Medium** | XSS (vis-timeline content) | useGanttChart.ts `timelineItemsToVisItems` | **수정 완료** - HTML 이스케이프 적용 |
 | **Medium** | 이벤트 루프 블로킹 | file_validation.py, batch_analyzer.py | **수정 완료** - asyncio.to_thread 적용 |
 
 ### 2. 버그 및 논리적 오류

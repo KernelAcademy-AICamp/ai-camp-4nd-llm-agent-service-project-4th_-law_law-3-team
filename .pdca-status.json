@@ -4,5 +4,11 @@
     "startedAt": "2026-02-26T00:00:00Z",
     "matchRate": null,
     "iterationCount": 0
+  },
+  "storyboard-gantt-chart": {
+    "phase": "check",
+    "startedAt": "2026-03-01T00:00:00Z",
+    "matchRate": 100,
+    "iterationCount": 2
   }
 }

@@ -468,7 +468,10 @@ backend/tests/
 │   ├── test_legal_term_dict.py      # 법률 용어 사전 테스트 (18개)
 │   ├── test_evaluation_metrics.py   # 메트릭 계산 테스트 (31개)
 │   ├── test_evaluation_schemas.py   # 스키마 검증 테스트 (21개)
-│   └── test_evaluation_dataset_builder.py  # 데이터셋 빌더 테스트 (14개)
+│   ├── test_evaluation_dataset_builder.py  # 데이터셋 빌더 테스트 (14개)
+│   ├── test_storyboard_kakao_parser.py    # 카카오톡 파서 테스트 (16개)
+│   ├── test_storyboard_file_validation.py # 파일 검증 게이트 테스트 (29개)
+│   └── test_storyboard_helpers.py         # 스토리보드 헬퍼 테스트 (28개)
 └── e2e/                             # E2E 테스트 (API 엔드포인트)
     └── __init__.py
 ```

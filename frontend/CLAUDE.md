@@ -142,6 +142,7 @@ src/features/<module-name>/
 - `POST /api/storyboard/analyze-batch` - 다중 파일 배치 분석 (job_id 반환)
 - `GET /api/storyboard/jobs/{job_id}/status` - SSE 진행 상태 (`event: "progress"`)
 - `POST /api/storyboard/merge` - 증분 병합 (existing_timeline JSON + files multipart)
+- `GET /api/storyboard/evidence/{evidence_id}` - 증거 메타데이터 조회
 
 **주의사항:**
 - SSE는 named event(`progress`)이므로 `addEventListener('progress', ...)` 필수 (`onmessage` 불가)

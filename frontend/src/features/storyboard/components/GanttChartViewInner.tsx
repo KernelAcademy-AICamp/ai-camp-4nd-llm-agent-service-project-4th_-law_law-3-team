@@ -150,7 +150,7 @@ export default function GanttChartViewInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // items/evidenceFiles/conflicts 변경 시 DataSet 업데이트
+  // items/evidenceFiles/conflicts 변경 시 DataSet 증분 업데이트
   useEffect(() => {
     const itemsDs = itemsDataSetRef.current
     const groupsDs = groupsDataSetRef.current
@@ -159,10 +159,18 @@ export default function GanttChartViewInner({
     const allItems = buildAllItems(items, evidenceFiles)
     const allGroups = buildAllGroups(items, evidenceFiles)
 
-    itemsDs.clear()
-    itemsDs.add(allItems)
-    groupsDs.clear()
-    groupsDs.add(allGroups)
+    // 증분 업데이트: 기존 ID와 비교하여 추가/업데이트/삭제 (스크롤·줌 유지)
+    const currentItemIds = new Set(itemsDs.getIds() as (string | number)[])
+    const newItemIds = new Set(allItems.map((i) => i.id!))
+    const itemsToRemove = Array.from(currentItemIds).filter((id) => !newItemIds.has(id))
+    if (itemsToRemove.length > 0) itemsDs.remove(itemsToRemove)
+    itemsDs.update(allItems)
+
+    const currentGroupIds = new Set(groupsDs.getIds() as (string | number)[])
+    const newGroupIds = new Set(allGroups.map((g) => g.id!))
+    const groupsToRemove = Array.from(currentGroupIds).filter((id) => !newGroupIds.has(id))
+    if (groupsToRemove.length > 0) groupsDs.remove(groupsToRemove)
+    groupsDs.update(allGroups)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, evidenceFiles, conflicts])
 

@@ -95,21 +95,22 @@ class KakaoTalkParser:
                 )
                 continue
 
-            # 형식 2 (모바일): [발신자] [시간] 내용 (current_date 필요)
-            if current_date:
-                mobile_match = KAKAO_PATTERNS[1].match(line)
-                if mobile_match:
-                    sender, ampm, hour, minute, content = mobile_match.groups()
-                    time = _convert_time(ampm, hour, minute)
-                    messages.append(
-                        KakaoMessage(
-                            sender=sender.strip(),
-                            datetime_str=f"{current_date} {time}",
-                            date=current_date,
-                            time=time,
-                            content=content.strip(),
-                        )
+            # 형식 2 (모바일): [발신자] [시간] 내용
+            mobile_match = KAKAO_PATTERNS[1].match(line)
+            if mobile_match:
+                sender, ampm, hour, minute, content = mobile_match.groups()
+                time = _convert_time(ampm, hour, minute)
+                # 날짜 헤더 전 메시지는 "날짜 미상" fallback
+                date = current_date if current_date else "날짜 미상"
+                messages.append(
+                    KakaoMessage(
+                        sender=sender.strip(),
+                        datetime_str=f"{date} {time}",
+                        date=date,
+                        time=time,
+                        content=content.strip(),
                     )
+                )
 
         # 시간순 정렬
         messages.sort(key=lambda m: m.datetime_str)
@@ -131,21 +132,46 @@ class KakaoTalkParser:
         """
         대용량 카카오톡 대화를 슬라이딩 윈도우로 분할.
 
-        KAKAO_CHUNK_SIZE 문자 기준으로 분할하며,
-        KAKAO_CHUNK_OVERLAP 문자 겹침을 유지하여 경계 이벤트 누락 방지.
+        메시지(줄) 단위로 분할하여 대화 중간 절단 방지.
+        KAKAO_CHUNK_SIZE 문자 이내에서 메시지 경계를 유지하며,
+        KAKAO_CHUNK_OVERLAP 문자 분량의 겹침으로 경계 이벤트 누락 방지.
         """
-        full_text = self.to_timeline_text(messages)
+        lines = [
+            f"{msg.datetime_str} {msg.sender}: {msg.content}"
+            for msg in messages
+        ]
+
+        if not lines:
+            return []
+
+        full_text = "\n".join(lines)
         if len(full_text) <= KAKAO_CHUNK_SIZE:
             return [full_text]
 
         chunks: list[str] = []
-        start = 0
-        while start < len(full_text):
-            end = start + KAKAO_CHUNK_SIZE
-            chunk = full_text[start:end]
-            chunks.append(chunk)
-            if end >= len(full_text):
-                break
-            start = end - KAKAO_CHUNK_OVERLAP
+        current_lines: list[str] = []
+        current_size = 0
+
+        for line in lines:
+            line_size = len(line) + 1  # +1 for newline
+            if current_size + line_size > KAKAO_CHUNK_SIZE and current_lines:
+                chunks.append("\n".join(current_lines))
+                # 겹침(overlap): 끝에서 KAKAO_CHUNK_OVERLAP 문자 분량의 줄을 이월
+                overlap_lines: list[str] = []
+                overlap_size = 0
+                for prev_line in reversed(current_lines):
+                    prev_size = len(prev_line) + 1
+                    if overlap_size + prev_size > KAKAO_CHUNK_OVERLAP:
+                        break
+                    overlap_lines.insert(0, prev_line)
+                    overlap_size += prev_size
+                current_lines = overlap_lines
+                current_size = overlap_size
+
+            current_lines.append(line)
+            current_size += line_size
+
+        if current_lines:
+            chunks.append("\n".join(current_lines))
 
         return chunks
