@@ -13,10 +13,11 @@
 id, source_id, data_type, title, content, vector(1024), source_name, chunk_index, total_chunks, date
 ```
 
-### FTS (fts_index) — 모든 타입 동일: 6개 메타 + search_text
+### FTS (fts_index) — 모든 타입 동일: 6개 메타 + search_text (BM25)
 
 ```
 source_id, data_type, title, date, source_name, case_number + search_text
+BM25 인덱스: idx_fts_bm25 (pg_textsearch, text_config='simple')
 ```
 
 ### PostgreSQL — 타입마다 다름 (아래 상세)
@@ -432,9 +433,9 @@ WHERE NOT EXISTS (SELECT 1 FROM fts_index f WHERE f.source_id = p.<id_col> AND f
 
 **해결**: `--step fts --reset`으로 ORM에서 FTS 재빌드.
 
-#### 3. PostgreSQL tsvector 1MB 제한
+#### 3. PostgreSQL search_text 크기 제한
 
-단일 문서의 tsvector가 1,048,575 바이트를 초과하면 `ProgramLimitExceeded` 오류가 발생합니다.
+BM25 인덱싱에서도 과도하게 긴 search_text는 성능 문제를 유발할 수 있습니다.
 `db_writer.py`와 `search_text_rebuilder.py` 모두 `_MAX_FULLTEXT_CHARS = 300,000`으로 truncate합니다.
 
 **영향 타입**: dec_fair_trade (공정거래위원회 일부 결정문)

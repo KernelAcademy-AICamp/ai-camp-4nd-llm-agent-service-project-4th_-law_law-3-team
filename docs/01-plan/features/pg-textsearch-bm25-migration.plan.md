@@ -277,4 +277,5 @@ fts_index 테이블은 이미 579K행이 존재하고 `search_text` 컬럼만 NU
 | v2 | 2026-03-01 | fts_builder/tsvector_builder 삭제 반영 (11개 수정, 2개 삭제) |
 | v3 | 2026-03-01 | BMW 최적화 상세 반영 (레이어 4: 11개 작업), 병렬 인덱스 빌드 설정 추가 (레이어 6: 3단계), CONCURRENTLY 시도→fallback 전략 |
 | v4 | 2026-03-01 | 코드 교차 검증 반영: (1) 누락 파일 5개 추가 (cli.py, __init__.py, shared.py docstring, test_ingest_pipeline.py, verify_db), (2) pg_textsearch C 확장 설치 구체화 (Dockerfile.postgres 필수), (3) Feature Flag 관계 명시 (USE_BM25_SEARCH vs USE_HYBRID_SEARCH), (4) keyword_search.py 보존/삭제 함수 구분표 추가, (5) 삭제 파일 참조 정리 섹션 신설 (3-4), (6) CLAUDE.md 3곳 + ingest.md 문서 갱신 추가 |
+| v5 | 2026-03-01 | Layer 6 실행 완료 (search_text 425,209건 적재, BM25 인덱스 생성, docker shm_size 1gb), Layer 7 완료: (1) BM25 버그 3건 수정 — to_bm25query 인자 순서, ORDER BY ASC, abs(score), (2) BMW 최적화 활성화 (Seq Scan 15s → Index Scan 21ms), (3) 10개 data_type 전수 테스트 통과, (4) 아키텍처/CLAUDE.md/ingest.md 문서 일괄 갱신 |
 | v5 | 2026-03-01 | 레이어 6-1 수정: `--step db` (JSON 전체 재적재) → `--step fts` (ORM에서 search_text만 재빌드). fts_index 테이블은 이미 579K행 존재, search_text 컬럼만 NULL이므로 `search_text_rebuilder.py` 경로가 적합 |
