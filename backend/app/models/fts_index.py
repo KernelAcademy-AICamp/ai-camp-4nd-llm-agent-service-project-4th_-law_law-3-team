@@ -1,8 +1,8 @@
 """
 FTS 인덱스 모델 (하이브리드 검색용)
 
-원본 문서의 tsvector를 저장하여 PostgreSQL FTS 키워드 검색 지원.
-원문 텍스트는 law_documents/precedent_documents에 있으므로 여기에는 저장하지 않음.
+BM25 전문 검색 인덱스: MeCab 전처리된 토큰 텍스트를 search_text에 저장하고
+pg_textsearch BM25 인덱스로 검색. 원문은 law_documents/precedent_documents에 보유.
 순수 검색 인덱스 + 결과 표시용 메타데이터만 보유.
 """
 
@@ -70,10 +70,15 @@ class FtsIndex(Base):
         nullable=True,
         comment="판례 사건번호 (법령은 NULL, 병합사건은 수백자 가능)",
     )
+    search_text = Column(
+        Text,
+        nullable=True,
+        comment="MeCab 전처리된 공백 구분 토큰 텍스트 (BM25 인덱스 대상)",
+    )
     content_tsvector = Column(
         TSVECTOR,
         nullable=True,
-        comment="MeCab 토크나이징 기반 tsvector (GIN 인덱스 대상)",
+        comment="롤백용 tsvector (BM25 안정화 후 제거 예정)",
     )
     created_at = Column(
         DateTime,
@@ -82,11 +87,8 @@ class FtsIndex(Base):
     )
 
     __table_args__ = (
-        Index(
-            "idx_fts_index_content_tsvector",
-            "content_tsvector",
-            postgresql_using="gin",
-        ),
+        # BM25 인덱스는 Alembic 마이그레이션에서 raw SQL로 생성
+        # (ORM Index 객체는 bm25 access method 미지원)
         Index("idx_fts_index_data_type", "data_type"),
     )
 

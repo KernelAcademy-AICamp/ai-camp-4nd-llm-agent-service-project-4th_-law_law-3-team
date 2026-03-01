@@ -4,5 +4,11 @@
     "startedAt": "2026-02-26T00:00:00Z",
     "matchRate": null,
     "iterationCount": 0
+  },
+  "pg-textsearch-bm25-migration": {
+    "phase": "do",
+    "startedAt": "2026-03-01T00:00:00Z",
+    "matchRate": null,
+    "iterationCount": 0
   }
 }
