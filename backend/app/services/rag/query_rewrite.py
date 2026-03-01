@@ -5,7 +5,6 @@ LLM 기반 쿼리 확장, 키워드 추출
 """
 
 import logging
-from typing import List
 
 from langsmith import traceable
 
@@ -27,23 +26,21 @@ LEGAL_KEYWORDS = [
 def rewrite_query(
     query: str,
     use_llm: bool = True,
-) -> List[str]:
-    """
-    쿼리를 법률 검색에 최적화된 형태로 리라이팅
+) -> str:
+    """쿼리를 법률 검색에 최적화된 형태로 리라이팅.
 
     Args:
         query: 원본 검색 쿼리
         use_llm: LLM 사용 여부 (False면 키워드 기반 확장)
 
     Returns:
-        리라이팅된 쿼리 리스트 (1개)
+        리라이팅된 쿼리 문자열
     """
     if not use_llm:
-        # LLM 미사용 시 키워드 기반 확장
         keywords = extract_legal_keywords(query)
         if keywords:
-            return [f"{query} {' '.join(keywords)}"]
-        return [query]
+            return f"{query} {' '.join(keywords)}"
+        return query
 
     try:
         model = get_chat_model(temperature=0.3)
@@ -67,21 +64,19 @@ def rewrite_query(
         rewritten = content.strip().lstrip("1.-) ").strip()
 
         if rewritten:
-            return [rewritten]
+            return rewritten
 
     except Exception as e:
         logger.warning("쿼리 리라이팅 실패 (LLM): %s", e)
-        # 폴백: 키워드 기반 확장
         keywords = extract_legal_keywords(query)
         if keywords:
-            return [f"{query} {' '.join(keywords[:3])}"]
+            return f"{query} {' '.join(keywords[:3])}"
 
-    return [query]
+    return query
 
 
-def extract_legal_keywords(query: str) -> List[str]:
-    """
-    쿼리에서 법률 관련 키워드 추출
+def extract_legal_keywords(query: str) -> list[str]:
+    """쿼리에서 법률 관련 키워드 추출.
 
     Args:
         query: 검색 쿼리
@@ -95,14 +90,13 @@ def extract_legal_keywords(query: str) -> List[str]:
         if keyword in query:
             found_keywords.append(keyword)
 
-    # 관련 키워드 추가 (연관어 확장)
     expanded = _expand_related_keywords(found_keywords)
 
     return list(set(found_keywords + expanded))
 
 
-def _expand_related_keywords(keywords: List[str]) -> List[str]:
-    """키워드에 대한 연관어 확장"""
+def _expand_related_keywords(keywords: list[str]) -> list[str]:
+    """키워드에 대한 연관어 확장."""
     related_map = {
         "손해배상": ["불법행위", "과실", "책임"],
         "계약": ["채무불이행", "이행청구", "해제"],

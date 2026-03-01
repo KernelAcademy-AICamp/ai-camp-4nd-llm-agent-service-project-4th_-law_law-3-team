@@ -566,6 +566,21 @@ def _populate_rerank_text(
             doc["rerank_text"] = summaries[sid]
 
 
+def _populate_rerank_text_from_contents(
+    docs: list[dict[str, Any]],
+    contents: dict[str, dict[str, str]],
+) -> None:
+    """원문 컬럼을 rerank_text로 주입 (리랭킹용, in-place).
+
+    DOCUMENT_TABLE_REGISTRY에 정의된 content_columns(ruling, reasoning 등)를
+    결합하여 rerank_text에 세팅한다. ai_summary 대비 cross-encoder 입력 품질 향상.
+    """
+    for doc in docs:
+        sid = doc.get("metadata", {}).get("doc_id", "")
+        if sid and sid in contents:
+            doc["rerank_text"] = "\n\n".join(contents[sid].values())
+
+
 @traceable(name="hybrid_search")
 def search_without_content(
     query: str,

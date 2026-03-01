@@ -363,7 +363,7 @@ config = PipelineConfig(
     enable_rerank=True, rerank_top_k=5,
 )
 result = await search_with_pipeline_async(query, config)
-# result.documents, result.metrics, result.rewritten_queries
+# result.documents, result.metrics, result.rewritten_query
 ```
 
 **async 파이프라인 내부 병렬화:**
