@@ -155,11 +155,17 @@ def search_by_keyword(
 
 
 def is_fts_available_sync() -> bool:
-    """BM25 인덱스(idx_fts_bm25) 존재 여부 확인 (동기, 캐시).
+    """BM25 FTS 사용 가능 여부 확인 (동기, 캐시).
 
+    USE_BM25_SEARCH=False → 즉시 False (FTS 비활성화).
+    USE_BM25_SEARCH=True → pg_indexes에서 idx_fts_bm25 존재 확인.
     서버 수명 동안 결과를 캐시합니다.
-    인제스트 후 서버 재시작 시 자동 갱신됩니다.
     """
+    from app.core.config import settings
+
+    if not settings.USE_BM25_SEARCH:
+        return False
+
     global _fts_available_cache  # noqa: PLW0603
     if _fts_available_cache is not None:
         return _fts_available_cache
@@ -179,7 +185,16 @@ def is_fts_available_sync() -> bool:
 
 
 async def is_fts_available() -> bool:
-    """BM25 인덱스(idx_fts_bm25) 존재 여부 확인 (비동기, 캐시)."""
+    """BM25 FTS 사용 가능 여부 확인 (비동기, 캐시).
+
+    USE_BM25_SEARCH=False → 즉시 False (FTS 비활성화).
+    USE_BM25_SEARCH=True → pg_indexes에서 idx_fts_bm25 존재 확인.
+    """
+    from app.core.config import settings
+
+    if not settings.USE_BM25_SEARCH:
+        return False
+
     global _fts_available_cache  # noqa: PLW0603
     if _fts_available_cache is not None:
         return _fts_available_cache
