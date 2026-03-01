@@ -43,6 +43,8 @@ services:
       # AI / external APIs
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       KAKAO_MAP_API_KEY: ${KAKAO_MAP_API_KEY:-}
       KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
 
@@ -58,13 +60,32 @@ services:
       LANCEDB_MODE: ${LANCEDB_MODE:-local}
       LANCEDB_SERVICE_URL: ${LANCEDB_SERVICE_URL:-http://lancedb:8100}
       LANCEDB_URI: ${LANCEDB_URI:-/app/lancedb_data}
+      LANCEDB_TABLE_NAME: ${LANCEDB_TABLE_NAME:-legal_chunks}
+      USE_LEGAL_TERM_DICT: ${USE_LEGAL_TERM_DICT:-false}
       CHROMA_PERSIST_DIR: /app/data/chroma
+
+      # Embedding / Reranker
+      USE_LOCAL_EMBEDDING: ${USE_LOCAL_EMBEDDING:-true}
+      LOCAL_EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-nlpai-lab/KURE-v1}
+      USE_ONNX_EMBEDDING: ${USE_ONNX_EMBEDDING:-false}
+      USE_ONNX_RERANKER: ${USE_ONNX_RERANKER:-false}
+
+      # MeCab userdic
+      MECAB_USERDIC_PATH: ${MECAB_USERDIC_PATH:-data/mecab_userdic/legal_terms.dic}
+
+      # Feature flags
+      USE_DB_LAWYERS: ${USE_DB_LAWYERS:-false}
+      ENABLED_MODULES: ${ENABLED_MODULES:-[]}
     volumes:
       - chroma_data:/app/data/chroma
       # App data (readonly)
       - ./data:/app/data:ro
       # LanceDB local mode data (persistent)
       - lancedb_data:/app/lancedb_data
+      # ML models (writable - 컨테이너 내부에서 다운로드 가능)
+      - ./backend/data/models:/app/data/models
+      # MeCab userdic (readonly, host에서 사전 빌드)
+      - ./backend/data/mecab_userdic:/app/data/mecab_userdic:ro
     depends_on:
       postgres:
         condition: service_healthy
