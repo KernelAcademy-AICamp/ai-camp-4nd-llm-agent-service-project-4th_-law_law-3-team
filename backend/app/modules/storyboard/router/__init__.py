@@ -2,7 +2,8 @@
 import asyncio
 import json
 import logging
-from typing import Any, AsyncGenerator
+import uuid as _uuid_module
+from typing import AsyncGenerator
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from sse_starlette.sse import EventSourceResponse
@@ -21,6 +22,7 @@ from ..schema import (
     TimelineItem,
     TranscribeResponse,
     ValidateTimelineRequest,
+    ValidateTimelineResponse,
 )
 from ..service import extract_timeline_from_text, validate_timeline_data
 from ..service.image_generation import generate_image, generate_image_fallback
@@ -33,6 +35,10 @@ from ..service.video_generation import generate_video
 from ..service.vision import analyze_image
 
 logger = logging.getLogger(__name__)
+
+# 파일 업로드 크기 제한
+MAX_AUDIO_SIZE = 25 * 1024 * 1024  # 25MB
+MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20MB
 
 router = APIRouter()
 
@@ -54,8 +60,8 @@ async def extract_timeline(request: ExtractTimelineRequest) -> ExtractTimelineRe
         raise HTTPException(status_code=500, detail="타임라인 추출 중 오류가 발생했습니다")
 
 
-@router.post("/validate")
-async def validate_timeline(request: ValidateTimelineRequest) -> dict[str, Any]:
+@router.post("/validate", response_model=ValidateTimelineResponse)
+async def validate_timeline(request: ValidateTimelineRequest) -> ValidateTimelineResponse:
     """
     가져온 JSON 데이터 유효성 검사
 
@@ -63,10 +69,10 @@ async def validate_timeline(request: ValidateTimelineRequest) -> dict[str, Any]:
     """
     try:
         is_valid = validate_timeline_data(request.timeline.model_dump())
-        return {
-            "valid": is_valid,
-            "message": "유효한 타임라인 데이터입니다" if is_valid else "잘못된 형식입니다",
-        }
+        return ValidateTimelineResponse(
+            valid=is_valid,
+            message="유효한 타임라인 데이터입니다" if is_valid else "잘못된 형식입니다",
+        )
     except Exception as e:
         logger.warning(f"유효성 검사 실패: {e}")
         raise HTTPException(status_code=400, detail="유효성 검사에 실패했습니다")
@@ -82,6 +88,12 @@ async def transcribe_audio_endpoint(
 
     OpenAI Whisper API를 사용하여 음성을 텍스트로 변환합니다.
     """
+    if audio.size is not None and audio.size > MAX_AUDIO_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"음성 파일 크기가 제한을 초과했습니다 (최대 {MAX_AUDIO_SIZE // (1024 * 1024)}MB)",
+        )
+
     try:
         text = await transcribe_audio(
             audio_file=audio.file,
@@ -106,6 +118,12 @@ async def analyze_image_endpoint(
 
     Gemini Vision API를 사용하여 문서/스크린샷에서 타임라인을 추출합니다.
     """
+    if image.size is not None and image.size > MAX_IMAGE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"이미지 파일 크기가 제한을 초과했습니다 (최대 {MAX_IMAGE_SIZE // (1024 * 1024)}MB)",
+        )
+
     try:
         result = await analyze_image(
             image_file=image.file,
@@ -141,6 +159,11 @@ async def generate_image_endpoint(request: GenerateImageRequest) -> GenerateImag
     Google Gemini 2.0 Flash를 사용하여 스토리보드 스타일 이미지를 생성합니다.
     확장 필드(장소, 시간대, 참여자 역할, 분위기)가 있으면 더 상세한 이미지를 생성합니다.
     """
+    try:
+        _uuid_module.UUID(request.item_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="item_id가 유효한 UUID 형식이 아닙니다")
+
     try:
         result = await generate_image(
             item_id=request.item_id,
@@ -221,6 +244,11 @@ async def get_job_status_sse(job_id: str) -> EventSourceResponse:
 
     Server-Sent Events를 통해 실시간으로 작업 진행 상태를 전송합니다.
     """
+    try:
+        _uuid_module.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="job_id가 유효한 UUID 형식이 아닙니다")
+
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다")
@@ -242,6 +270,11 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
 
     SSE 대신 폴링 방식으로 작업 상태를 조회합니다.
     """
+    try:
+        _uuid_module.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="job_id가 유효한 UUID 형식이 아닙니다")
+
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다")

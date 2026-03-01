@@ -4,6 +4,107 @@
 
 ---
 
+## [2026-03-01] - Storyboard Module Completion
+
+### Added
+
+- **스토리보드 모듈 (storyboard)**: 멀티모달 입력 → AI 사건 타임라인 추출 → 스토리보드 이미지 생성 → 영상 합성
+  - 백엔드: FastAPI 모듈 (timeline 추출, 이미지 생성, 비디오 합성, STT, Gemini Vision, JobManager)
+  - 프론트엔드: Next.js 컴포넌트/훅/서비스 (TimelineCard, TimelineItemEditor, VideoGenerationModal, MultiInputPanel 등)
+
+- **API 엔드포인트** (9개)
+  - POST /api/storyboard/extract-timeline: 텍스트 기반 타임라인 추출
+  - POST /api/storyboard/extract-from-audio: 음성 기반 타임라인 추출 (Whisper STT)
+  - POST /api/storyboard/extract-from-image: 이미지 기반 타임라인 추출 (Gemini Vision)
+  - POST /api/storyboard/validate-timeline: 타임라인 검증
+  - POST /api/storyboard/generate-image: 단일 이미지 생성
+  - POST /api/storyboard/generate-images-batch: 배치 이미지 생성 (비동기 JobManager)
+  - GET /api/storyboard/job-status/{job_id}: 배치 작업 폴링
+  - GET /api/storyboard/job-stream/{job_id}: 배치 작업 SSE 스트리밍
+  - POST /api/storyboard/generate-video: 영상 합성 (moviepy)
+
+- **타임라인 추출 기능**
+  - OpenAI GPT-4o-mini 기반 구조화 텍스트 분석 (date, time, location, participants, evidence 등 12개 필드)
+  - Whisper STT 음성 인식 → 타임라인 추출 파이프라인
+  - Gemini Vision 이미지 분석 → 타임라인 추출 파이프라인
+  - 한국 법률 사건 도메인 특화 프롬프트
+
+- **스토리보드 이미지 생성**
+  - Gemini 2.0 Flash 이미지 생성
+  - 배치 처리: Semaphore(2) + asyncio.gather() 병렬화
+  - SSE + 폴링 이중 진행 모니터링
+  - 1시간 자동 Job 정리 (메모리 누수 방지)
+
+- **영상 합성**
+  - moviepy 기반 이미지 시퀀스 → 영상 변환
+  - `/media/` 정적 파일 서빙
+
+- **프론트엔드 UI**
+  - MultiInputPanel: 텍스트/음성/이미지 탭 전환 입력
+  - TimelineView: 날짜 그룹 기반 타임라인 시각화
+  - TimelineCard: 6가지 참여자 역할 색상 코딩, 이미지 생성 인라인
+  - TimelineItemEditor: 타임라인 아이템 인라인 편집
+  - VideoGenerationModal: 아이템 선택 → 영상 생성
+
+### Changed
+
+- `useImageGeneration`, `useVideoGeneration` 서브 훅 분리 (useTimelineState 391줄 → 291줄)
+- `schema/__init__.py` → `schema/models.py` + `schema/responses.py` 파일 분리
+- `utils/generateId.ts` 유틸 분리
+- `transformParticipant()`, `transformTimelineItem()` 런타임 타입 가드 도입
+
+### Fixed
+
+- C-1: 동기 OpenAI 클라이언트 → AsyncOpenAI 전환 (이벤트 루프 차단 해소)
+- C-2: JobManager 메모리 누수 → 1시간 자동 정리
+- C-3: React setState updater 남용 → useRef 참조 패턴 (Strict Mode 호환)
+- C-4: 마이크 스트림 리소스 누수 수정
+- H-1: 파일 업로드 크기 검증 (DoS 방지, 25MB/20MB 제한)
+- H-3: assert 문 → ValueError 명시 교체
+- H-4: vision.py 동기 Gemini 호출 → 비동기 전환
+- H-8: 이미지 URL 검증 (XSS 방지)
+- H-13: camelCase→snake_case 변환 누락 수정 (API 계약 동기화)
+- M-4/M-7: UUID 형식 검증 추가
+
+### Quality Metrics
+
+- **정적 검증**: ruff PASS / mypy PASS (type:ignore 2건) / npm run build PASS
+- **설계 준수도**: 94.2% (목표 90% 초과)
+- **이슈 수정**: 39/43건 (Critical 100%, High 100%, Medium 93.8%, Low 70%)
+
+### Tech Stack
+
+| 영역 | 기술 |
+|------|------|
+| 텍스트 추출 | OpenAI GPT-4o-mini |
+| 음성 인식 | OpenAI Whisper |
+| 이미지 분석 | Google Gemini 2.0 Flash (Vision) |
+| 이미지 생성 | Google Gemini 2.0 Flash |
+| 영상 합성 | moviepy |
+| Backend | FastAPI + asyncio |
+| Frontend | Next.js + Tailwind CSS |
+
+### Documentation
+
+- 분석: `docs/03-analysis/storyboard.analysis.md` (43건 이슈 + Gap Analysis 재검증)
+- 완료: `docs/04-report/features/storyboard.report.md`
+
+### Known Limitations
+
+- L-8: `types-requests` mypy 스텁 미설치 (기능 영향 없음)
+- L-9: Gemini `generate_content()` 인자 타입 `type: ignore` 억제
+- M-12: 앱 전체 다크 테마 미구현 (별도 PR 예정)
+- N-2: `video_generation.py` MEDIA_DIR 하드코딩 미수정 (`image_generation.py`와 불일치)
+
+### Next Steps
+
+1. N-2: `video_generation.py` MEDIA_DIR `_resolve_media_dir()` 패턴 통일
+2. N-1: `useVideoGeneration.ts` generateId import 교체
+3. L-8: `types-requests` 스텁 설치
+4. 타임라인 저장/불러오기 (PostgreSQL 연동) — 다음 스프린트
+
+---
+
 ## [2026-02-20] - Content Marketing Module Completion
 
 ### Added

@@ -2,7 +2,6 @@ import { api, endpoints } from '@/lib/api'
 import type {
   AnalyzeImageResponse,
   ExtractTimelineResponse,
-  GenerateImageRequest,
   GenerateImageResponse,
   GenerateImagesBatchResponse,
   GenerateVideoRequest,
@@ -18,15 +17,39 @@ import type {
 
 const BASE_URL = endpoints.storyboard
 
+const VALID_PARTICIPANT_ROLES: ParticipantRole[] = [
+  'victim', 'perpetrator', 'witness', 'bystander', 'authority', 'other',
+]
+
+const VALID_IMAGE_STATUSES: TimelineItem['imageStatus'][] = ['pending', 'processing', 'completed', 'failed']
+
+function toStringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function toParticipantRole(value: unknown): ParticipantRole {
+  if (typeof value === 'string' && (VALID_PARTICIPANT_ROLES as string[]).includes(value)) {
+    return value as ParticipantRole
+  }
+  return 'other'
+}
+
+function toImageStatus(value: unknown): TimelineItem['imageStatus'] {
+  if (typeof value === 'string' && (VALID_IMAGE_STATUSES as string[]).includes(value)) {
+    return value as TimelineItem['imageStatus']
+  }
+  return undefined
+}
+
 /**
  * API 응답 참여자(snake_case)를 프론트엔드 형식(camelCase)으로 변환
  */
 function transformParticipant(p: Record<string, unknown>): Participant {
   return {
-    name: p.name as string,
-    role: p.role as ParticipantRole,
-    action: p.action as string | undefined,
-    emotion: p.emotion as string | undefined,
+    name: typeof p.name === 'string' ? p.name : '',
+    role: toParticipantRole(p.role),
+    action: toStringOrUndefined(p.action),
+    emotion: toStringOrUndefined(p.emotion),
   }
 }
 
@@ -37,36 +60,40 @@ function transformParticipant(p: Record<string, unknown>): Participant {
 function transformTimelineItem(item: Record<string, unknown>): TimelineItem {
   const rawParticipantsDetailed = item.participants_detailed
   const participantsDetailed = Array.isArray(rawParticipantsDetailed)
-    ? rawParticipantsDetailed.map(transformParticipant)
+    ? rawParticipantsDetailed.filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null).map(transformParticipant)
     : undefined
 
   const rawEvidenceItems = item.evidence_items
-  const evidenceItems = Array.isArray(rawEvidenceItems) ? rawEvidenceItems as string[] : undefined
+  const evidenceItems = Array.isArray(rawEvidenceItems)
+    ? rawEvidenceItems.filter((e): e is string => typeof e === 'string')
+    : undefined
 
   const rawParticipants = item.participants
-  const participants = Array.isArray(rawParticipants) ? rawParticipants as string[] : []
+  const participants = Array.isArray(rawParticipants)
+    ? rawParticipants.filter((p): p is string => typeof p === 'string')
+    : []
 
   return {
-    id: (item.id as string) || '',
-    date: (item.date as string) || '날짜 미상',
-    title: (item.title as string) || '제목 없음',
-    description: (item.description as string) || '',
+    id: typeof item.id === 'string' ? item.id : '',
+    date: typeof item.date === 'string' ? item.date : '날짜 미상',
+    title: typeof item.title === 'string' ? item.title : '제목 없음',
+    description: typeof item.description === 'string' ? item.description : '',
     participants,
     order: typeof item.order === 'number' ? item.order : 0,
-    imageUrl: item.image_url as string | undefined ?? undefined,
-    imagePrompt: item.image_prompt as string | undefined ?? undefined,
-    imageStatus: item.image_status as TimelineItem['imageStatus'] ?? undefined,
-    location: item.location as string | undefined ?? undefined,
-    timeOfDay: item.time_of_day as string | undefined ?? undefined,
-    time: item.time as string | undefined ?? undefined,
+    imageUrl: toStringOrUndefined(item.image_url),
+    imagePrompt: toStringOrUndefined(item.image_prompt),
+    imageStatus: toImageStatus(item.image_status),
+    location: toStringOrUndefined(item.location),
+    timeOfDay: toStringOrUndefined(item.time_of_day),
+    time: toStringOrUndefined(item.time),
     sceneNumber: typeof item.scene_number === 'number' ? item.scene_number : undefined,
-    descriptionShort: item.description_short as string | undefined ?? undefined,
-    descriptionDetailed: item.description_detailed as string | undefined ?? undefined,
+    descriptionShort: toStringOrUndefined(item.description_short),
+    descriptionDetailed: toStringOrUndefined(item.description_detailed),
     participantsDetailed,
-    keyDialogue: item.key_dialogue as string | undefined ?? undefined,
-    legalSignificance: item.legal_significance as string | undefined ?? undefined,
+    keyDialogue: toStringOrUndefined(item.key_dialogue),
+    legalSignificance: toStringOrUndefined(item.legal_significance),
     evidenceItems,
-    mood: item.mood as string | undefined ?? undefined,
+    mood: toStringOrUndefined(item.mood),
   }
 }
 
@@ -192,13 +219,42 @@ export const storyboardService = {
 
   /**
    * 여러 타임라인 항목에 대한 스토리보드 이미지 일괄 생성
+   * 프론트엔드 camelCase → 백엔드 snake_case 변환
    */
   generateImagesBatch: async (
     items: TimelineItem[]
   ): Promise<GenerateImagesBatchResponse> => {
+    const snakeCaseItems = items.map((item) => ({
+      id: item.id,
+      date: item.date,
+      title: item.title,
+      description: item.description,
+      participants: item.participants,
+      order: item.order,
+      image_url: item.imageUrl,
+      image_prompt: item.imagePrompt,
+      image_status: item.imageStatus,
+      location: item.location,
+      time_of_day: item.timeOfDay,
+      time: item.time,
+      scene_number: item.sceneNumber,
+      description_short: item.descriptionShort,
+      description_detailed: item.descriptionDetailed,
+      participants_detailed: item.participantsDetailed?.map((p) => ({
+        name: p.name,
+        role: p.role,
+        action: p.action,
+        emotion: p.emotion,
+      })),
+      key_dialogue: item.keyDialogue,
+      legal_significance: item.legalSignificance,
+      evidence_items: item.evidenceItems,
+      mood: item.mood,
+    }))
+
     const response = await api.post<GenerateImagesBatchResponse>(
       `${BASE_URL}/generate-images-batch`,
-      { items }
+      { items: snakeCaseItems }
     )
     return response.data
   },
@@ -226,49 +282,4 @@ export const storyboardService = {
     )
     return response.data
   },
-}
-
-/**
- * 폴링으로 작업 진행 상태 구독
- */
-export function subscribeToJobStatus(
-  jobId: string,
-  onProgress: (status: JobStatusResponse) => void,
-  onComplete: (result: JobStatusResponse) => void,
-  onError: (error: string) => void
-): () => void {
-  let isActive = true
-  const POLL_INTERVAL = 1000 // 1초마다 폴링
-
-  const poll = async () => {
-    if (!isActive) return
-
-    try {
-      const status = await storyboardService.getJobStatus(jobId)
-      onProgress(status)
-
-      if (status.status === 'completed') {
-        onComplete(status)
-        isActive = false
-      } else if (status.status === 'failed') {
-        onError(status.error || '작업 실패')
-        isActive = false
-      } else {
-        // 계속 폴링
-        setTimeout(poll, POLL_INTERVAL)
-      }
-    } catch (error) {
-      console.error('Polling error:', error)
-      onError('상태 조회 실패')
-      isActive = false
-    }
-  }
-
-  // 첫 폴링 시작
-  poll()
-
-  // 정리 함수 반환
-  return () => {
-    isActive = false
-  }
 }

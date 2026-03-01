@@ -1,9 +1,10 @@
 """스토리보드 모듈 - 서비스 레이어"""
 import json
 import uuid
-from typing import Any, List
+from typing import Any
 
-from openai import OpenAI
+from openai import AsyncOpenAI
+from pydantic import ValidationError
 
 from app.core.config import settings
 
@@ -97,9 +98,9 @@ def _parse_participant(participant_data: dict[str, Any]) -> Participant:
 
 async def extract_timeline_from_text(text: str) -> ExtractTimelineResponse:
     """텍스트에서 타임라인 추출 (OpenAI API 사용)"""
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
-    response = client.chat.completions.create(
+    response = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
@@ -120,7 +121,7 @@ async def extract_timeline_from_text(text: str) -> ExtractTimelineResponse:
     except json.JSONDecodeError:
         return ExtractTimelineResponse(success=False, timeline=[], summary=None)
 
-    timeline_items: List[TimelineItem] = []
+    timeline_items: list[TimelineItem] = []
     raw_timeline = data.get("timeline", [])
 
     for idx, item in enumerate(raw_timeline):
@@ -191,5 +192,5 @@ def validate_timeline_data(data: dict[str, Any]) -> bool:
     try:
         TimelineData(**data)
         return True
-    except Exception:
+    except (ValidationError, ValueError):
         return False

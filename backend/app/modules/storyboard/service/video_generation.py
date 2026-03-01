@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-import requests
+import requests  # type: ignore[import-untyped]
 from moviepy import (  # type: ignore[import-untyped]
     ImageClip,
     concatenate_videoclips,
@@ -114,7 +114,6 @@ def _download_image(url: str, local_path: Path) -> bool:
     try:
         if url.startswith("/media/"):
             # 로컬 파일인 경우 - 경로 순회 공격 방지
-            import shutil
             relative_path = url.replace("/media/", "")
             source_path = (MEDIA_DIR / relative_path).resolve()
             media_dir_resolved = MEDIA_DIR.resolve()

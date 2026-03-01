@@ -10,6 +10,9 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+# 완료된 작업 자동 정리 대기 시간 (초)
+JOB_CLEANUP_DELAY_SECONDS = 3600
+
 
 class JobStatus(str, Enum):
     """작업 상태"""
@@ -125,6 +128,7 @@ class JobManager:
             message="완료",
             result=result,
         )
+        self._schedule_cleanup(job_id)
 
     async def fail_job(
         self,
@@ -138,6 +142,16 @@ class JobManager:
             message="실패",
             error=error,
         )
+        self._schedule_cleanup(job_id)
+
+    def _schedule_cleanup(self, job_id: str) -> None:
+        """완료/실패 작업의 지연 정리 예약"""
+        async def _delayed_cleanup() -> None:
+            await asyncio.sleep(JOB_CLEANUP_DELAY_SECONDS)
+            self.cleanup_job(job_id)
+            logger.debug("작업 자동 정리 완료: %s", job_id)
+
+        asyncio.create_task(_delayed_cleanup())
 
     def get_job(self, job_id: str) -> Optional[JobProgress]:
         """작업 상태 조회"""
@@ -200,6 +214,10 @@ class JobManager:
 job_manager = JobManager()
 
 
+# API rate limit 고려: 최대 동시 이미지 생성 수 제한
+BATCH_CONCURRENCY_LIMIT = 2
+
+
 async def run_batch_image_generation(
     job_id: str,
     items: list[dict[str, Any]],
@@ -225,32 +243,45 @@ async def run_batch_image_generation(
         message="스토리보드 이미지 생성 시작...",
     )
 
-    for idx, item in enumerate(items):
-        await job_manager.update_progress(
-            job_id,
-            current_step=idx + 1,
-            message=f"스토리보드 이미지 생성 중... ({idx + 1}/{len(items)})",
-        )
+    semaphore = asyncio.Semaphore(BATCH_CONCURRENCY_LIMIT)
+    completed_count = 0
 
-        try:
-            result = await generate_fn(
-                item_id=item["id"],
-                title=item["title"],
-                description=item["description"],
-                participants=item.get("participants", []),
+    async def _generate_one(idx: int, item: dict[str, Any]) -> None:
+        nonlocal completed_count
+        async with semaphore:
+            try:
+                result = await generate_fn(
+                    item_id=item["id"],
+                    title=item["title"],
+                    description=item["description"],
+                    participants=item.get("participants", []),
+                    location=item.get("location"),
+                    time_of_day=item.get("time_of_day"),
+                    participants_detailed=item.get("participants_detailed"),
+                    mood=item.get("mood"),
+                )
+
+                if result["success"]:
+                    results.append({
+                        "item_id": item["id"],
+                        "image_url": result["image_url"],
+                        "image_prompt": result["image_prompt"],
+                    })
+                else:
+                    failed.append(item["id"])
+            except Exception as e:
+                logger.error("이미지 생성 실패 (item_id=%s): %s", item["id"], e, exc_info=True)
+                failed.append(item["id"])
+
+            completed_count += 1
+            await job_manager.update_progress(
+                job_id,
+                current_step=completed_count,
+                message=f"스토리보드 이미지 생성 중... ({completed_count}/{len(items)})",
             )
 
-            if result["success"]:
-                results.append({
-                    "item_id": item["id"],
-                    "image_url": result["image_url"],
-                    "image_prompt": result["image_prompt"],
-                })
-            else:
-                failed.append(item["id"])
-        except Exception as e:
-            logger.error(f"이미지 생성 실패 (item_id={item['id']}): {e}", exc_info=True)
-            failed.append(item["id"])
+    tasks = [_generate_one(idx, item) for idx, item in enumerate(items)]
+    await asyncio.gather(*tasks)
 
     final_result = {
         "generated": results,

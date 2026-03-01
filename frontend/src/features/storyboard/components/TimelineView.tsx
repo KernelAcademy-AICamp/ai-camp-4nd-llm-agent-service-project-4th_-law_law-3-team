@@ -15,6 +15,18 @@ interface TimelineViewProps {
   generatingImageIds?: Set<string>
 }
 
+function extractDateKey(date: string): string {
+  const ymdMatch = date.match(/(\d{4})[-.](\d{1,2})/)
+  const korMatch = date.match(/(\d{4})년\s*(\d{1,2})월/)
+
+  if (ymdMatch) return `${ymdMatch[1]}.${ymdMatch[2].padStart(2, '0')}`
+  if (korMatch) return `${korMatch[1]}.${korMatch[2].padStart(2, '0')}`
+
+  const yearMatch = date.match(/(\d{4})/)
+  if (yearMatch) return yearMatch[1]
+  return '기타'
+}
+
 export function TimelineView({
   items,
   editMode,
@@ -26,38 +38,15 @@ export function TimelineView({
   generatingImageIds = new Set(),
 }: TimelineViewProps) {
   // 날짜별 그룹화
-  const groupedItems = useMemo(() => {
-    const groups: { [key: string]: TimelineItem[] } = {}
+  const groupedItems = useMemo((): { dateLabel: string; items: TimelineItem[] }[] => {
+    const groups: Record<string, TimelineItem[]> = {}
+    const orderedKeys: string[] = []
 
     items.forEach((item) => {
-      let dateKey = '기타'
-
-      const ymdMatch = item.date.match(/(\d{4})[-.](\d{1,2})/)
-      const korMatch = item.date.match(/(\d{4})년\s*(\d{1,2})월/)
-
-      if (ymdMatch) dateKey = `${ymdMatch[1]}.${ymdMatch[2].padStart(2, '0')}`
-      else if (korMatch) dateKey = `${korMatch[1]}.${korMatch[2].padStart(2, '0')}`
-      else {
-        const yearMatch = item.date.match(/(\d{4})/)
-        if (yearMatch) dateKey = yearMatch[1]
-      }
+      const dateKey = extractDateKey(item.date)
 
       if (!groups[dateKey]) groups[dateKey] = []
       groups[dateKey].push(item)
-    })
-
-    const orderedKeys: string[] = []
-    items.forEach(item => {
-      let dateKey = '기타'
-      const ymdMatch = item.date.match(/(\d{4})[-.](\d{1,2})/)
-      const korMatch = item.date.match(/(\d{4})년\s*(\d{1,2})월/)
-
-      if (ymdMatch) dateKey = `${ymdMatch[1]}.${ymdMatch[2].padStart(2, '0')}`
-      else if (korMatch) dateKey = `${korMatch[1]}.${korMatch[2].padStart(2, '0')}`
-      else {
-        const yearMatch = item.date.match(/(\d{4})/)
-        if (yearMatch) dateKey = yearMatch[1]
-      }
 
       if (!orderedKeys.includes(dateKey)) orderedKeys.push(dateKey)
     })

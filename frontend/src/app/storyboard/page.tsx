@@ -6,7 +6,7 @@ import { BackButton } from '@/components/ui/BackButton'
 import { useUI } from '@/context/UIContext'
 import { TimelineToolbar } from '@/features/storyboard/components/TimelineToolbar'
 import { useTimelineState } from '@/features/storyboard/hooks'
-import type { TimelineItem, VideoSettings } from '@/features/storyboard/types'
+import type { TimelineItem } from '@/features/storyboard/types'
 
 // Dynamic imports for heavy components (reduces initial bundle size)
 const MultiInputPanel = dynamic(
@@ -111,31 +111,10 @@ export default function StoryboardPage() {
     setEditingItem(null)
   }, [])
 
-  // 스토리보드 이미지 생성
-  const handleGenerateImage = useCallback(
-    (id: string) => {
-      generateItemImage(id)
-    },
-    [generateItemImage]
-  )
-
-  // 전체 스토리보드 이미지 생성
-  const handleGenerateAllImages = useCallback(() => {
-    generateAllImages()
-  }, [generateAllImages])
-
   // 영상 생성 모달 열기
   const handleOpenVideoModal = useCallback(() => {
     setShowVideoModal(true)
   }, [setShowVideoModal])
-
-  // 영상 생성
-  const handleGenerateVideo = useCallback(
-    async (imageUrls: string[], settings: VideoSettings) => {
-      await generateVideo(imageUrls, settings)
-    },
-    [generateVideo]
-  )
 
   return (
     <div
@@ -240,7 +219,7 @@ export default function StoryboardPage() {
                 onAddItem={handleAddItem}
                 onExport={exportToJson}
                 onReset={resetTimeline}
-                onGenerateAllImages={handleGenerateAllImages}
+                onGenerateAllImages={generateAllImages}
                 onGenerateVideo={handleOpenVideoModal}
                 hasItems={items.length > 0}
                 hasImages={itemsWithImagesCount >= 2}
@@ -257,7 +236,7 @@ export default function StoryboardPage() {
               onItemSelect={selectItem}
               onItemEdit={handleEditItem}
               onItemDelete={deleteItem}
-              onItemGenerateImage={handleGenerateImage}
+              onItemGenerateImage={generateItemImage}
               generatingImageIds={generatingImageIds}
             />
           </div>
@@ -279,7 +258,7 @@ export default function StoryboardPage() {
         isOpen={showVideoModal}
         onClose={() => setShowVideoModal(false)}
         items={items}
-        onGenerate={handleGenerateVideo}
+        onGenerate={generateVideo}
         isGenerating={isGeneratingVideo}
         videoUrl={generatedVideoUrl}
       />

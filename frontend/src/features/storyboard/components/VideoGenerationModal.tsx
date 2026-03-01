@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import type { TimelineItem, TransitionType, VideoSettings } from '../types'
 import { TRANSITION_OPTIONS } from '../types'
 
@@ -24,6 +25,20 @@ export function VideoGenerationModal({
   const [selectedItems, setSelectedItems] = useState<Set<string>>(
     new Set(items.filter((item) => item.imageUrl).map((item) => item.id))
   )
+  useEffect(() => {
+    setSelectedItems(new Set(items.filter((item) => item.imageUrl).map((item) => item.id)))
+  }, [items])
+
+  // ESC 키로 모달 닫기
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
   const [settings, setSettings] = useState<VideoSettings>({
     durationPerImage: 6,
     transition: 'fade',
@@ -102,7 +117,6 @@ export function VideoGenerationModal({
                   src={videoUrl}
                   controls
                   className="w-full"
-                  autoPlay={false}
                 />
               </div>
               <div className="flex gap-2 mt-3">
@@ -163,9 +177,12 @@ export function VideoGenerationModal({
                         : 'border-transparent hover:border-gray-300'}
                     `}
                   >
-                    <img
-                      src={item.imageUrl}
+                    <Image
+                      src={item.imageUrl!}
                       alt={item.title}
+                      width={160}
+                      height={90}
+                      unoptimized
                       className="w-full h-full object-cover"
                     />
                     {selectedItems.has(item.id) && (
