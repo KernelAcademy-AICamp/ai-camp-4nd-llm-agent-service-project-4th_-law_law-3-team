@@ -55,7 +55,7 @@ export function GanttDetailPanel({
   )
 
   return (
-    <div className="fixed right-0 top-0 h-full w-96 bg-white border-l border-gray-200 shadow-xl z-50 flex flex-col overflow-hidden">
+    <div className="h-full w-96 flex-shrink-0 bg-white border-l border-gray-200 shadow-xl flex flex-col overflow-hidden">
       {/* 헤더 */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
         <h2 className="text-base font-bold text-gray-900 truncate pr-4">
