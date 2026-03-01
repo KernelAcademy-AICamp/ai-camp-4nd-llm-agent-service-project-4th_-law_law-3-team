@@ -2,7 +2,9 @@
 PostgreSQL pg_textsearch BM25 키워드 검색
 
 fts_index 테이블의 search_text 컬럼에 대해 BM25 스코어링으로 검색.
-BMW(Block-Max WAND) 최적화로 368K+ 문서에서 3-8초 내 결과 반환.
+pg_textsearch의 <@> 연산자는 **음수** BM25 점수를 반환 (PG는 ASC 인덱스 스캔만 지원).
+더 작은(더 음수인) 값이 더 높은 관련성을 의미.
+ORDER BY <@> ASC LIMIT n 패턴으로 BMW(Block-Max WAND) 최적화 트리거.
 
 retrieval.py의 search_relevant_documents()와 동일한 반환 형식을 유지하여
 RRF 병합이 가능하도록 한다.
@@ -59,8 +61,9 @@ def _execute_bm25_query(
 ) -> list[dict[str, Any]]:
     """BM25 스코어링으로 FTS 검색 실행.
 
+    <@> 연산자는 음수 BM25 점수 반환 (더 음수 = 더 관련성 높음).
     BMW(Block-Max WAND) 최적화 트리거:
-    ORDER BY <@> DESC LIMIT n 패턴 필수.
+    ORDER BY <@> ASC LIMIT n 패턴 필수.
     """
     tokens = _tokenize(query)
     if not tokens:
@@ -68,8 +71,8 @@ def _execute_bm25_query(
 
     search_query = " ".join(tokens)
 
-    # to_bm25query: 인덱스명 명시 전달 (IDF 정확성)
-    bm25_query = func.to_bm25query(_BM25_INDEX_NAME, search_query)
+    # to_bm25query(query_text, index_name): 인덱스명 명시 전달 (IDF 정확성)
+    bm25_query = func.to_bm25query(search_query, _BM25_INDEX_NAME)
     score_expr = FtsIndex.search_text.op("<@>")(bm25_query)
 
     stmt = select(
@@ -88,15 +91,15 @@ def _execute_bm25_query(
     elif exclude_doc_types:
         stmt = stmt.where(FtsIndex.data_type.not_in(exclude_doc_types))
 
-    # BMW 트리거: ORDER BY <@> DESC LIMIT n
-    stmt = stmt.order_by(score_expr.desc()).limit(n_results)
+    # BMW 트리거: ORDER BY <@> ASC LIMIT n (음수 점수 → ASC가 관련성 높은 순)
+    stmt = stmt.order_by(score_expr.asc()).limit(n_results)
 
     rows = session.execute(stmt).all()
 
     if not rows:
         return []
 
-    # BM25 raw score 직접 사용 (수동 정규화 제거 — BM25 내부 문서 길이 정규화)
+    # <@> 음수 점수를 양수로 변환 (abs) — RRF 및 로깅 가독성
     documents: list[dict[str, Any]] = []
     for row in rows:
         metadata = {
@@ -112,7 +115,7 @@ def _execute_bm25_query(
             "id": row.source_id,
             "content": "",
             "metadata": metadata,
-            "similarity": float(row.rank),
+            "similarity": abs(float(row.rank)),
             "score_type": "bm25",
         })
 
