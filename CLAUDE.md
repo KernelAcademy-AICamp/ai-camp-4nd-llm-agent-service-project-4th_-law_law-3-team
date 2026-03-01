@@ -81,6 +81,7 @@ Frontend: `modules.ts`에서 `enabled: false`
 - `backend/app/core/database.py` - DB 연결 (SQLAlchemy)
 - `backend/app/core/registry.py` - 모듈 자동 등록
 - `frontend/src/lib/modules.ts` - 프론트엔드 모듈 정의
+- `backend/app/core/session.py` - 쿠키 기반 세션 관리 (HttpOnly)
 - `frontend/src/lib/api.ts` - API 클라이언트 및 endpoints
 - `scripts/add_module.py` - 모듈 생성 스크립트
 
@@ -95,17 +96,18 @@ Frontend: `modules.ts`에서 `enabled: false`
 | `storyboard` | `/api/storyboard` | `storyboard` | `storyboard` |
 | `law_study` | `/api/law-study` | `law-study` | `lawStudy` |
 | `mock_trial` | `/api/mock-trial` | `mock-trial` | `mockTrial` |
+| `workspace` | `/api/workspace` | `workspace` | `workspace` |
 
 ## Backend Architecture
 
-통합 채팅 API (`POST /api/chat`)와 8개 에이전트 기반 멀티에이전트 시스템 (LangGraph).
+통합 채팅 API (`POST /api/chat`)와 9개 에이전트 기반 멀티에이전트 시스템 (LangGraph).
 → 상세: `backend/CLAUDE.md`
 
 ## DB / 인프라 요약
 
 | 인프라 | 용도 | Feature Flag | 상세 문서 |
 |--------|------|-------------|----------|
-| **PostgreSQL** | 변호사(17,326건), 법률용어(72,700건), 재판통계, 법령/판례 원본, 인제스트 21개 타입 원본 | `USE_DB_LAWYERS`, `USE_LEGAL_TERM_DICT` | `backend/CLAUDE.md` |
+| **PostgreSQL** | 변호사(17,326건), 법률용어(72,700건), 재판통계, 법령/판례 원본, 인제스트 21개 타입 원본, 워크스페이스(사건·대화·태그·타임라인·활동로그·구조화요약) | `USE_DB_LAWYERS`, `USE_LEGAL_TERM_DICT` | `backend/CLAUDE.md` |
 | **LanceDB** | 법령+판례 등 21개 타입 벡터 임베딩 `legal_chunks`(656,532, `summary_type`/`article_number` 포함), 자치법규 `local_ordinance_chunks`(~240만), FTS | `LANCEDB_MODE`, `LANCEDB_INDEX_TYPE` | `backend/CLAUDE.md` |
 | **PostgreSQL (Graph)** | 법령 계급, 판례 인용 그래프 (Recursive CTE) | - | `backend/CLAUDE.md` |
 | **MeCab userdic** | 법률 복합명사 사전 (37,366+ 엔트리, `scripts/manual_terms.json` 수동 보강 포함) | - | `backend/CLAUDE.md` |

@@ -694,6 +694,21 @@ Neo4j 그래프 데이터를 PostgreSQL로 이관하기 위한 5개 테이블. `
 
 데이터 로드: `uv run python scripts/load_graph_data.py` (법령 계급, 약칭, 판례 인용 관계 일괄 로드)
 
+## 16. 워크스페이스 테이블 (migration 020)
+
+사건 관리, 대화 영속화, 태그 수집, 타임라인, 활동 로그를 위한 7개 테이블. 쿠키 기반 `session_token`으로 사용자 식별.
+
+| 테이블 | 설명 | 주요 컬럼 |
+|--------|------|-----------|
+| `chat_conversations` | 채팅 대화 영속화 | id(UUID PK), session_token, title, last_agent, case_id(FK→workspace_cases, nullable), message_count, tag_count |
+| `workspace_cases` | 워크스페이스 사건 | id(UUID PK), session_token, case_name, case_type, status(open/closed/archived) |
+| `workspace_tagged_items` | 태그 수집 항목 | id(UUID PK), case_id(FK), type(person/date/law/...), label, value, confidence, source_conversation_id |
+| `workspace_timeline_items` | 타임라인 이벤트 | id(UUID PK), case_id(FK), date, title, description, confidence, source_type(ai/user/evidence) |
+| `workspace_activity_logs` | 활동 로그 | id(UUID PK), case_id(FK), action, detail(JSONB) |
+| `workspace_structured_summaries` | 구조화 요약 | id(UUID PK), case_id(FK), conversation_id(FK), category, content |
+
+인덱스: `session_token` B-tree (전 테이블), `case_id` B-tree (FK 참조)
+
 ---
 
-*최종 업데이트: 2026-02-27*
+*최종 업데이트: 2026-03-02*
