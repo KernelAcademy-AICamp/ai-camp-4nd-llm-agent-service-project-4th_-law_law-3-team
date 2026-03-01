@@ -6,7 +6,7 @@ import { BackButton } from '@/components/ui/BackButton'
 import { useUI } from '@/context/UIContext'
 import { TimelineToolbar } from '@/features/storyboard/components/TimelineToolbar'
 import { useTimelineState } from '@/features/storyboard/hooks'
-import type { TimelineItem } from '@/features/storyboard/types'
+import type { TimelineItem, ViewMode } from '@/features/storyboard/types'
 
 // Dynamic imports for heavy components (reduces initial bundle size)
 const MultiInputPanel = dynamic(
@@ -24,6 +24,16 @@ const TimelineItemEditor = dynamic(
   { ssr: false }
 )
 
+const GanttChartView = dynamic(
+  () => import('@/features/storyboard/components/GanttChartView').then(m => m.GanttChartView),
+  { ssr: false, loading: () => <div className="flex h-full items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" /></div> }
+)
+
+const GanttDetailPanel = dynamic(
+  () => import('@/features/storyboard/components/GanttDetailPanel').then(m => m.GanttDetailPanel),
+  { ssr: false }
+)
+
 const VideoGenerationModal = dynamic(
   () => import('@/features/storyboard/components/VideoGenerationModal').then(m => m.VideoGenerationModal),
   { ssr: false }
@@ -31,6 +41,8 @@ const VideoGenerationModal = dynamic(
 
 export default function StoryboardPage() {
   const { isChatOpen, chatMode } = useUI()
+  // 뷰 모드 (카드 / 간트)
+  const [viewMode, setViewMode] = useState<ViewMode>('card')
   // 입력 패널 접기/펼치기 상태
   const [isInputPanelOpen, setIsInputPanelOpen] = useState(true)
   const {
@@ -225,20 +237,43 @@ export default function StoryboardPage() {
                 hasImages={itemsWithImagesCount >= 2}
                 isGeneratingBatch={isGeneratingBatch}
                 batchProgress={batchProgress}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
               />
             </div>
 
             {/* 타임라인 뷰 */}
-            <TimelineView
-              items={items}
-              editMode={editMode}
-              selectedItemId={selectedItemId}
-              onItemSelect={selectItem}
-              onItemEdit={handleEditItem}
-              onItemDelete={deleteItem}
-              onItemGenerateImage={generateItemImage}
-              generatingImageIds={generatingImageIds}
-            />
+            {viewMode === 'gantt' ? (
+              <div className="flex-1 flex overflow-hidden">
+                <div className="flex-1 min-w-0">
+                  <GanttChartView
+                    items={items}
+                    evidenceFiles={[]}
+                    onItemSelect={(item) => selectItem(item.id)}
+                    onEvidenceClick={() => {}}
+                  />
+                </div>
+                {selectedItemId && (
+                  <GanttDetailPanel
+                    selectedItem={items.find(i => i.id === selectedItemId) ?? null}
+                    evidenceFiles={[]}
+                    onClose={() => selectItem('')}
+                    onEvidenceClick={() => {}}
+                  />
+                )}
+              </div>
+            ) : (
+              <TimelineView
+                items={items}
+                editMode={editMode}
+                selectedItemId={selectedItemId}
+                onItemSelect={selectItem}
+                onItemEdit={handleEditItem}
+                onItemDelete={deleteItem}
+                onItemGenerateImage={generateItemImage}
+                generatingImageIds={generatingImageIds}
+              />
+            )}
           </div>
         </div>
       </div>
