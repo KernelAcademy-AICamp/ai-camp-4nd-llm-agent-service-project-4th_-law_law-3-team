@@ -111,7 +111,7 @@ export const modules: Module[] = [
     href: '/workspace',
     icon: '💼',
     enabled: true,
-    roles: ['user', 'lawyer'],
+    roles: ['lawyer'],
   },
 ]
 

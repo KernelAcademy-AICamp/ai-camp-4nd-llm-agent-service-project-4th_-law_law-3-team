@@ -191,6 +191,7 @@ const FLOATING_MODE_PATHS = new Set([
   '/lawyer-stats',
   '/storyboard',
   '/statute-hierarchy',
+  '/workspace',
 ])
 
 // --- Memoized MessageBubble ---
@@ -307,7 +308,7 @@ export default function ChatWidget() {
 
   // Determine if we are on pages that support floating mode
   const isMapPage = pathname === '/lawyer-finder'
-  const supportsFloatingMode = FLOATING_MODE_PATHS.has(pathname)
+  const supportsFloatingMode = FLOATING_MODE_PATHS.has(pathname) || pathname.startsWith('/workspace')
 
   // Global state for view mode is now handled by UIContext
 
