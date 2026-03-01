@@ -49,7 +49,7 @@ backend/app/
 ├── services/       # RAG, 비즈니스 로직
 ├── modules/        # 독립 API 모듈 (9개)
 ├── models/         # SQLAlchemy ORM
-└── tools/          # LLM, VectorStore, Neo4j
+└── tools/          # LLM, VectorStore, Graph
 
 frontend/src/
 ├── app/            # Next.js App Router
@@ -64,9 +64,8 @@ frontend/src/
 |------|------|
 | `DATABASE_URL` | PostgreSQL 연결 문자열 |
 | `UPSTAGE_API_KEY` | Solar LLM API 키 |
-| `NEO4J_URI` | Neo4j bolt 연결 |
 | `USE_LOCAL_EMBEDDING` | 로컬 임베딩 모델 사용 (기본: true) |
-| `USE_PG_GRAPH` | PostgreSQL 그래프 사용 (Neo4j 대체, 기본: false) |
+| `OPENAI_API_KEY` | OpenAI API 키 (스토리보드 타임라인 추출) |
 
 ## API 경로 규칙
 

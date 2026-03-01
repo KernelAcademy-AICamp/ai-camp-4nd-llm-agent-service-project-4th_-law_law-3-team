@@ -502,6 +502,7 @@ uv run pytest -m "not requires_lancedb"  # LanceDB 없이 실행
 uv run pytest -m "not requires_postgres" # PostgreSQL 없이 실행
 uv run pytest -m "not requires_mecab"    # MeCab 없이 실행
 uv run pytest -m "not requires_fts"      # FTS 없이 실행
+uv run pytest -m "not requires_openai"   # OpenAI API 없이 실행
 
 # LanceDB 벡터 DB 테스트만 실행
 uv run pytest tests/unit/test_vectorstore_schema.py tests/unit/test_lancedb_store.py tests/unit/test_mecab_tokenizer.py tests/integration/test_lancedb_integration.py -v

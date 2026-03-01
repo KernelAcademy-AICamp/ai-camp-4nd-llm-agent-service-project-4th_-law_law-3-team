@@ -6,7 +6,7 @@ export const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 60000, // 60초 타임아웃 (AI 요청은 시간이 걸릴 수 있음)
+  timeout: 180000, // 180초 타임아웃 (AI 타임라인 추출 등 장시간 요청 대응)
 })
 
 // API 모듈별 엔드포인트

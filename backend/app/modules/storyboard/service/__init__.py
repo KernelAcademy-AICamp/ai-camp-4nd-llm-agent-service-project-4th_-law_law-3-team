@@ -1,4 +1,5 @@
 """스토리보드 모듈 - 서비스 레이어"""
+
 import json
 import uuid
 from typing import Any
@@ -15,6 +16,46 @@ from ..schema import (
     TimelineData,
     TimelineItem,
 )
+from .doc_type_detector import detect_document_type
+
+# --- 장문 처리 임계값 ---
+LONG_TEXT_THRESHOLD = 15_000
+
+# --- 문서 유형별 추가 프롬프트 ---
+
+CIVIL_EXTRA = """
+## 민사 기록 추가 지시
+- 상담일지는 이슈 중심 서술 → 날짜를 추출하여 시간순 재배열
+- "YYYY. M." 형식은 "YYYY-MM"으로 정규화
+- 계약 체결, 대금 지급, 등기 이전, 소제기 등이 핵심 이벤트
+- 대여, 차용, 보증, 연대보증, 어음 발행, 근저당권 설정/말소도 핵심 이벤트
+- "한편", "그런데", "나." 등으로 시작하는 부수적 서술도 별개 법률관계의 사실이므로 반드시 포함
+- 원고/피고/소외 등 소송 당사자 관계를 역할로 명확히 구분
+"""
+
+CRIMINAL_EXTRA = """
+## 형사 기록 추가 지시
+- 공소사실은 대체로 시간순 기술
+- "YYYY. M. D. HH:MM경" 형식을 정확히 파싱
+- 피고인=perpetrator, 피해자=victim으로 분류
+- 범행일시, 체포일, 기소일, 판결선고일을 핵심 이벤트로 포함
+"""
+
+PUBLIC_EXTRA = """
+## 공법 기록 추가 지시
+- 행정처분 경위를 시간순 재구성
+- 처분청=authority, 처분 대상자=other 또는 victim
+- 사전통지→의견제출→처분→소제기 흐름 추적
+- 인허가, 등록, 취소, 영업정지 등이 핵심 이벤트
+"""
+
+_DOC_TYPE_EXTRA: dict[str, str] = {
+    "civil": CIVIL_EXTRA,
+    "criminal": CRIMINAL_EXTRA,
+    "public": PUBLIC_EXTRA,
+}
+
+# --- 메인 프롬프트 ---
 
 EXTRACTION_SYSTEM_PROMPT = """당신은 법률 사건 분석 전문가이자 영화 스토리보드 작가입니다.
 사용자가 입력한 사건 내용에서 시간순으로 중요한 이벤트들을 **영화 스토리보드 형식**으로 추출합니다.
@@ -24,25 +65,35 @@ EXTRACTION_SYSTEM_PROMPT = """당신은 법률 사건 분석 전문가이자 영
 2. **역할 명확화**: 피해자와 가해자를 명확히 구분하여 표시
 3. **법적 맥락**: 각 장면의 법적 의미와 중요성 포함
 4. **영화적 표현**: 장면의 분위기, 감정, 시각적 요소 표현
+5. **시간순 정렬**: 서술 순서가 시간 순서와 다르면, 날짜 기준으로 재배열할 것
+6. **빠짐없이 추출**: "한편", "그런데", "나." 등으로 시작하는 부수적 서술도 별개 법률관계이므로 반드시 포함. 날짜가 있는 사실은 모두 이벤트로 추출할 것
+7. **날짜 정확성**: 입력 텍스트에 명시된 날짜를 우선 사용. 명시적 날짜가 없지만 문맥상 시점을 추론할 수 있으면("그 사이에", "그 후", "이후" 등), 인접한 알려진 날짜를 date에 사용하고 date_raw에 "추정"을 표기 (예: date="2012", date_raw="2012년 이후 추정"). 시점을 전혀 추론할 수 없는 경우에만 "날짜 미상" 사용. 입력에 없는 날짜를 임의로 만들어내는 것은 금지
 
 ## 각 장면(이벤트)에서 추출할 정보
 
-1. **date**: 날짜 (YYYY-MM-DD 또는 "2024년 초", "약 1개월 전" 등)
-2. **time_of_day**: 시간대 ("아침", "낮", "저녁", "밤", "새벽" 중 하나, 추정 가능 시)
-3. **time**: 구체적 시간 (HH:MM 형식, 예: "14:30", "오후 3시" 등, 언급된 경우에만)
-4. **location**: 장소 (사무실, 회의실, 거리, 카페 등)
-4. **title**: 짧은 이벤트 제목 (20자 이내, 핵심 행위 중심)
-5. **description_short**: 한 줄 요약 (50자 이내)
-6. **description_detailed**: 상세 설명 (300자 이내, 5W1H 포함)
-7. **participants_detailed**: 참여자 배열, 각 참여자는:
+1. **date**: 정렬용 정규화 날짜. 반드시 시간순 오름차순 정렬.
+   - "YYYY. M. D." → "YYYY-MM-DD"
+   - "YYYY. M." → "YYYY-MM"
+   - "YYYY년경" → "YYYY"
+   - "YYYY년 여름" → "YYYY-07" (정렬용 중간값)
+   - "YYYY년 초" → "YYYY-02", "YYYY년 말" → "YYYY-11"
+   - 서술 순서가 시간 순서와 다르면 날짜 기준으로 재배열할 것
+2. **date_raw**: 원본 날짜 표현 그대로 보존 (예: "2000년 여름", "1995년경", "2012. 1. 5.")
+3. **time_of_day**: 시간대 ("아침", "낮", "저녁", "밤", "새벽" 중 하나, 추정 가능 시)
+4. **time**: 구체적 시간 (HH:MM 형식, 예: "14:30", "오후 3시" 등, 언급된 경우에만)
+5. **location**: 장소 (사무실, 회의실, 거리, 카페 등)
+6. **title**: 짧은 이벤트 제목 (20자 이내, 핵심 행위 중심)
+7. **description_short**: 한 줄 요약 (50자 이내)
+8. **description_detailed**: 상세 설명 (300자 이내, 5W1H 포함)
+9. **participants_detailed**: 참여자 배열, 각 참여자는:
    - name: 이름/호칭 (예: "A씨", "B 과장", "경찰관")
    - role: 역할 ("victim", "perpetrator", "witness", "bystander", "authority", "other")
    - action: 해당 장면에서의 행동 (예: "폭언을 함", "맞고 있음")
    - emotion: 감정 상태 (예: "분노", "두려움", "무관심")
-8. **key_dialogue**: 핵심 대사나 발언 (있는 경우, 인용부호 포함)
-9. **legal_significance**: 법적 의미/중요성 (예: "직장 내 괴롭힘 구성 요건", "상해죄 성립 가능")
-10. **evidence_items**: 관련 증거물 배열 (예: ["CCTV 영상", "진단서", "목격자 증언"])
-11. **mood**: 장면 분위기 (예: "긴장감", "두려움", "혼란")
+10. **key_dialogue**: 핵심 대사나 발언 (있는 경우, 인용부호 포함)
+11. **legal_significance**: 법적 의미/중요성 (예: "직장 내 괴롭힘 구성 요건", "상해죄 성립 가능")
+12. **evidence_items**: 관련 증거물 배열 (예: ["CCTV 영상", "진단서", "목격자 증언"])
+13. **mood**: 장면 분위기 (예: "긴장감", "두려움", "혼란")
 
 ## 역할(role) 구분 기준
 - **victim (피해자)**: 불법 행위나 부당한 행위를 당하는 사람
@@ -57,6 +108,7 @@ EXTRACTION_SYSTEM_PROMPT = """당신은 법률 사건 분석 전문가이자 영
   "timeline": [
     {
       "date": "2024-01-15",
+      "date_raw": "2024. 1. 15.",
       "time_of_day": "낮",
       "time": "15:00",
       "location": "사무실 회의실",
@@ -79,6 +131,13 @@ EXTRACTION_SYSTEM_PROMPT = """당신은 법률 사건 분석 전문가이자 영
 
 추가 설명 없이 JSON만 출력합니다. 모든 필드를 가능한 상세하게 채워주세요."""
 
+# --- 장문 1단계 프롬프트: 날짜 문장 추출 ---
+
+_DATE_EXTRACTION_PROMPT = """다음 법률 문서에서 **날짜가 포함된 문장**과 그 전후 2줄을 추출해주세요.
+날짜가 없더라도 시간적 순서를 나타내는 표현("그 뒤에도", "이후", "며칠 후" 등)이 있는 문장도 포함합니다.
+
+출력 형식: 추출된 문장들을 원본 순서대로 나열. 추가 설명 없이 텍스트만 출력합니다."""
+
 
 def _parse_participant(participant_data: dict[str, Any]) -> Participant:
     """참여자 데이터를 Participant 모델로 변환"""
@@ -96,31 +155,33 @@ def _parse_participant(participant_data: dict[str, Any]) -> Participant:
     )
 
 
-async def extract_timeline_from_text(text: str) -> ExtractTimelineResponse:
-    """텍스트에서 타임라인 추출 (OpenAI API 사용)"""
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+def _build_system_prompt(doc_type: str) -> str:
+    """문서 유형에 맞는 시스템 프롬프트를 조합한다."""
+    extra = _DOC_TYPE_EXTRA.get(doc_type, "")
+    if extra:
+        return EXTRACTION_SYSTEM_PROMPT + "\n" + extra
+    return EXTRACTION_SYSTEM_PROMPT
 
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
-            {"role": "user", "content": f"다음 사건 내용에서 타임라인을 추출해주세요:\n\n{text}"},
-        ],
-        temperature=0.3,
-        response_format={"type": "json_object"},
-    )
 
-    if not response.choices:
-        return ExtractTimelineResponse(success=False, timeline=[], summary=None)
-    content = response.choices[0].message.content
-    if not content:
-        return ExtractTimelineResponse(success=False, timeline=[], summary=None)
+def _date_sort_key(date: str) -> str:
+    """date 필드를 정렬 가능한 문자열로 변환한다.
 
-    try:
-        data = json.loads(content)
-    except json.JSONDecodeError:
-        return ExtractTimelineResponse(success=False, timeline=[], summary=None)
+    "YYYY-MM-DD" → "YYYY-MM-DD"
+    "YYYY-MM"    → "YYYY-MM-00"
+    "YYYY"       → "YYYY-00-00"
+    "날짜 미상"   → "9999-99-99" (맨 뒤로)
+    """
+    if not date or date == "날짜 미상":
+        return "9999-99-99"
+    parts = date.split("-")
+    year = parts[0] if len(parts) >= 1 else "9999"
+    month = parts[1] if len(parts) >= 2 else "00"
+    day = parts[2] if len(parts) >= 3 else "00"
+    return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
 
+
+def _parse_timeline_response(data: dict[str, Any]) -> ExtractTimelineResponse:
+    """LLM 응답 JSON을 ExtractTimelineResponse로 변환한다."""
     timeline_items: list[TimelineItem] = []
     raw_timeline = data.get("timeline", [])
 
@@ -128,7 +189,9 @@ async def extract_timeline_from_text(text: str) -> ExtractTimelineResponse:
         participants_detailed_raw = item.get("participants_detailed", [])
 
         # participants_detailed 정규화: None이거나 리스트가 아니면 빈 리스트로
-        if participants_detailed_raw is None or not isinstance(participants_detailed_raw, list):
+        if participants_detailed_raw is None or not isinstance(
+            participants_detailed_raw, list
+        ):
             participants_detailed_raw = []
 
         # 리스트 요소가 문자열이면 {"name": value} 형태로 변환
@@ -159,6 +222,7 @@ async def extract_timeline_from_text(text: str) -> ExtractTimelineResponse:
             TimelineItem(
                 id=str(uuid.uuid4()),
                 date=item.get("date", "날짜 미상"),
+                date_raw=item.get("date_raw"),
                 title=item.get("title", "제목 없음"),
                 description=description,
                 participants=participant_names,
@@ -180,11 +244,126 @@ async def extract_timeline_from_text(text: str) -> ExtractTimelineResponse:
             )
         )
 
+    # date 필드 기준 시간순 정렬 (LLM이 순서를 보장하지 않으므로)
+    timeline_items.sort(key=lambda item: _date_sort_key(item.date))
+
+    # 정렬 후 order, scene_number 재할당
+    for idx, item in enumerate(timeline_items):
+        item.order = idx
+        item.scene_number = idx + 1
+
     return ExtractTimelineResponse(
         success=True,
         timeline=timeline_items,
         summary=data.get("summary"),
     )
+
+
+async def _call_llm(
+    client: AsyncOpenAI,
+    system_prompt: str,
+    user_content: str,
+    *,
+    response_format: dict[str, str] | None = None,
+) -> str | None:
+    """OpenAI LLM 호출 공통 함수"""
+    kwargs: dict[str, Any] = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        "temperature": 0.3,
+    }
+    if response_format:
+        kwargs["response_format"] = response_format
+
+    response = await client.chat.completions.create(**kwargs)
+
+    if not response.choices:
+        return None
+    content: str | None = response.choices[0].message.content
+    return content
+
+
+async def _extract_single_pass(
+    text: str,
+    system_prompt: str,
+) -> ExtractTimelineResponse:
+    """단일 패스 타임라인 추출"""
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+    content = await _call_llm(
+        client,
+        system_prompt,
+        f"다음 사건 내용에서 타임라인을 추출해주세요:\n\n{text}",
+        response_format={"type": "json_object"},
+    )
+
+    if not content:
+        return ExtractTimelineResponse(success=False, timeline=[], summary=None)
+
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        return ExtractTimelineResponse(success=False, timeline=[], summary=None)
+
+    return _parse_timeline_response(data)
+
+
+async def _extract_two_pass(
+    text: str,
+    system_prompt: str,
+) -> ExtractTimelineResponse:
+    """2단계 장문 타임라인 추출
+
+    1단계: 날짜 포함 문장 추출 (컨텍스트 축소)
+    2단계: 축소된 텍스트로 타임라인 추출
+    """
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+    # 1단계: 날짜 문장 추출
+    date_sentences = await _call_llm(
+        client,
+        _DATE_EXTRACTION_PROMPT,
+        text,
+    )
+
+    if not date_sentences:
+        # 1단계 실패 시 원본 텍스트로 단일 패스 시도
+        return await _extract_single_pass(text, system_prompt)
+
+    # 2단계: 축소된 컨텍스트로 타임라인 추출
+    content = await _call_llm(
+        client,
+        system_prompt,
+        f"다음 사건 내용에서 타임라인을 추출해주세요:\n\n{date_sentences}",
+        response_format={"type": "json_object"},
+    )
+
+    if not content:
+        return ExtractTimelineResponse(success=False, timeline=[], summary=None)
+
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        return ExtractTimelineResponse(success=False, timeline=[], summary=None)
+
+    return _parse_timeline_response(data)
+
+
+async def extract_timeline_from_text(text: str) -> ExtractTimelineResponse:
+    """텍스트에서 타임라인 추출 (OpenAI API 사용)
+
+    문서 유형을 감지하여 유형별 프롬프트를 적용하고,
+    장문(15,000자 초과)은 2단계 처리로 컨텍스트를 축소한다.
+    """
+    doc_type = detect_document_type(text)
+    system_prompt = _build_system_prompt(doc_type)
+
+    if len(text) > LONG_TEXT_THRESHOLD:
+        return await _extract_two_pass(text, system_prompt)
+    return await _extract_single_pass(text, system_prompt)
 
 
 def validate_timeline_data(data: dict[str, Any]) -> bool:

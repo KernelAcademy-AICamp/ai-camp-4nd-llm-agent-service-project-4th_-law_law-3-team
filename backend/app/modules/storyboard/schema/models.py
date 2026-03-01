@@ -49,6 +49,7 @@ class TimelineItem(BaseModel):
     """타임라인 개별 항목"""
     id: str = Field(..., description="고유 식별자 (UUID)")
     date: str = Field(..., description="날짜 (YYYY-MM-DD 또는 자유형식)")
+    date_raw: str | None = Field(None, description="원본 날짜 표현 (호버 툴팁용)")
     title: str = Field(..., description="이벤트 제목")
     description: str = Field(..., description="이벤트 상세 설명 (하위 호환용)")
     participants: list[str] = Field(default_factory=list, description="관련자 목록 (하위 호환용)")
