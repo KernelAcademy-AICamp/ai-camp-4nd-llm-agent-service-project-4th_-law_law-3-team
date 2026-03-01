@@ -168,13 +168,17 @@ app/
 │   │   ├── law_study_agent.py        # 로스쿨 학습
 │   │   ├── mock_trial_agent.py       # 모의 법정
 │   │   └── workspace_agent.py       # 워크스페이스 (사건 관리, 태그 수집)
+│   ├── services/        # 에이전트 공통 서비스
+│   │   └── tagger.py                 # 태그 추출 (LLM 기반, 에이전트별 힌트, 사용자+응답 통합)
 │   ├── subgraphs/       # 서브그래프
 │   │   ├── small_claims.py           # 소액소송 서브그래프
+│   │   ├── storyboard.py            # 스토리보드 서브그래프 (태그 수집, 타임라인 생성)
 │   │   ├── mock_trial.py             # 모의 법정 서브그래프 (MockTrialState.emotion 포함)
 │   │   ├── mock_trial_agents.py      # 모의 법정 에이전트 (generate→tuple[str, str], _parse_emotion)
 │   │   └── mock_trial_prompts.py     # 모의 법정 프롬프트 (EMOTION_TAG_INSTRUCTION 포함)
 │   └── schemas/         # 스키마
 │       ├── plan.py      # AgentPlan, AgentResult
+│       ├── tag.py       # TaggedItem (6 tag types, extraction_source)
 │       └── messages.py  # 메시지 타입 (ChatResponse.emotion 포함)
 ├── services/            # 비즈니스 로직
 │   ├── rag/

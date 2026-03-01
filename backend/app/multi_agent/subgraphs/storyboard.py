@@ -46,6 +46,9 @@ _GENERATE_PROMPT = """당신은 법률 사건 타임라인 전문가입니다.
 수집된 정보:
 {collected_narrative}
 
+태그 출처 요약:
+{tag_source_summary}
+
 사용자 최초 요청:
 {original_message}
 
@@ -54,7 +57,9 @@ _GENERATE_PROMPT = """당신은 법률 사건 타임라인 전문가입니다.
 2. 각 이벤트는 "- [시점] 내용" 형식
 3. 법적으로 중요한 시점(계약일, 이행기, 소멸시효 등) 강조
 4. 핵심 쟁점 별도 정리
-5. 마지막에 간단한 법적 조언 추가"""
+5. lawyer 태그가 있으면 "법적 전략" 섹션에 변호사/전문분야 정보 포함
+6. precedent 태그가 있으면 "관련 판례 근거" 섹션에 판례번호와 요지 포함
+7. 마지막에 간단한 법적 조언 추가"""
 
 # 태그 유형별 부족 정보 질문 템플릿
 _MISSING_TAG_QUESTIONS: dict[str, str] = {
@@ -111,6 +116,33 @@ def _summarize_tags(tagged_items: list[dict[str, Any]]) -> str:
         lines.append(f"- [{label}]{date_str} {content}")
 
     return "\n".join(lines)
+
+
+def _summarize_tag_sources(tagged_items: list[dict[str, Any]]) -> str:
+    """태그 출처 에이전트별 요약 (예: '법률 검색(3개), 변호사 찾기(2개)')"""
+    if not tagged_items:
+        return "(태그 출처 없음)"
+
+    agent_label: dict[str, str] = {
+        "legal_search": "법률 검색",
+        "lawyer_finder": "변호사 찾기",
+        "law_study": "법률 학습",
+        "workspace": "워크스페이스",
+        "storyboard": "스토리보드",
+        "general": "일반 대화",
+    }
+
+    agent_counts: dict[str, int] = {}
+    for item in tagged_items:
+        agent = item.get("source_agent", "unknown")
+        agent_counts[agent] = agent_counts.get(agent, 0) + 1
+
+    parts: list[str] = []
+    for agent, count in sorted(agent_counts.items(), key=lambda x: -x[1]):
+        label = agent_label.get(agent, agent)
+        parts.append(f"{label}({count}개)")
+
+    return ", ".join(parts)
 
 
 def _find_missing_tags(tagged_items: list[dict[str, Any]]) -> list[str]:
@@ -187,9 +219,21 @@ def collect_node(state: StoryboardState) -> Command[str]:
     if existing_tags:
         # 기존 대화에서 수집된 정보가 있음
         summary = _summarize_tags(existing_tags)
+        source_summary = _summarize_tag_sources(existing_tags)
+        missing = _find_missing_tags(existing_tags)
+        missing_text = ""
+        if missing:
+            missing_labels = [
+                _MISSING_TAG_QUESTIONS.get(m, m) for m in missing
+            ]
+            missing_text = (
+                "\n\n**아직 부족한 정보:**\n"
+                + "\n".join(f"- {label}" for label in missing_labels)
+            )
         response = (
-            "이전 대화에서 수집된 정보가 있습니다:\n\n"
-            f"{summary}\n\n"
+            f"이전 대화에서 수집된 정보가 있습니다 (출처: {source_summary}):\n\n"
+            f"{summary}"
+            f"{missing_text}\n\n"
             "이 정보를 바탕으로 타임라인을 만들까요? "
             "추가 정보가 있으시면 말씀해주세요."
         )
@@ -395,7 +439,10 @@ def generate_node(state: StoryboardState) -> dict[str, Any]:
     tagged_items = state.get("tagged_items", [])
 
     # LLM으로 타임라인 텍스트 생성
-    timeline_text = _generate_timeline_text(collected_narrative, original_message)
+    tag_source_summary = _summarize_tag_sources(tagged_items)
+    timeline_text = _generate_timeline_text(
+        collected_narrative, original_message, tag_source_summary,
+    )
 
     response = (
         "**사건 타임라인이 생성되었습니다!**\n\n"
@@ -578,6 +625,7 @@ def _generate_question(
 def _generate_timeline_text(
     collected_narrative: str,
     original_message: str,
+    tag_source_summary: str = "",
 ) -> str:
     """LLM으로 타임라인 텍스트 생성 (동기 호출)"""
     try:
@@ -586,6 +634,7 @@ def _generate_timeline_text(
         model = get_chat_model(temperature=0.3)
         prompt = _GENERATE_PROMPT.format(
             collected_narrative=collected_narrative,
+            tag_source_summary=tag_source_summary or "(없음)",
             original_message=original_message[:500],
         )
         response = model.invoke([("user", prompt)])

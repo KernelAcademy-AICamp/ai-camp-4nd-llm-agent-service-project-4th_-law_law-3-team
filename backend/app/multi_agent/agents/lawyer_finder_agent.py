@@ -597,9 +597,15 @@ class LawyerFinderAgent(BaseChatAgent):
         if category_name:
             return (
                 f"**{category_name}** 분야 변호사를 찾지 못했습니다.\n\n"
-                "다른 전문분야로 검색해보시겠어요?"
+                "다른 전문분야로 검색해보시겠어요?\n\n"
+                "혹시 사건에 대해 더 자세히 알려주시면 "
+                "적합한 전문분야를 추천해드릴 수 있어요."
             )
-        return "변호사를 찾지 못했습니다.\n\n다른 조건으로 검색해보시겠어요?"
+        return (
+            "변호사를 찾지 못했습니다.\n\n다른 조건으로 검색해보시겠어요?\n\n"
+            "어떤 법률 문제로 변호사를 찾으시는지 "
+            "말씀해주시면 적합한 전문분야를 추천해드릴 수 있어요."
+        )
 
     def can_handle(self, message: str) -> bool:
         """변호사 찾기 관련 키워드 확인"""
