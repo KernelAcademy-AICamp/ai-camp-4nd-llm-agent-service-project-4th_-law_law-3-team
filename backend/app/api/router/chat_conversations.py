@@ -195,7 +195,7 @@ async def update_conversation(
 async def export_conversation(
     request: Request,
     conversation_id: str,
-    format: str = Query("json", regex="^(json|txt)$"),
+    format: str = Query("json", pattern="^(json|txt)$"),
 ) -> StreamingResponse:
     """대화 내보내기"""
     session_token: str = request.state.session_token

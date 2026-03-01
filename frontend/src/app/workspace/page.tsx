@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { BackButton } from '@/components/ui/BackButton'
 import { useUI } from '@/context/UIContext'
 import { listCases, createCase } from '@/features/workspace/services'
 import type { WorkspaceCase, PaginatedResponse } from '@/features/workspace/types'
@@ -69,18 +70,35 @@ export default function WorkspacePage() {
       {/* 헤더 */}
       <header className="bg-white border-b px-6 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">사건 워크스페이스</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              사건별 대화, 태그, 타임라인을 한곳에서 관리합니다
-            </p>
+          <div className="flex items-center gap-3">
+            <BackButton />
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">사건 워크스페이스</h1>
+              <p className="text-sm text-gray-500 mt-1">
+                사건별 대화, 태그, 타임라인을 한곳에서 관리합니다
+              </p>
+            </div>
           </div>
-          <button
-            onClick={() => setIsCreating(true)}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            + 새 사건
-          </button>
+          <div className="flex items-center gap-2">
+            {process.env.NODE_ENV === 'development' && (
+              <button
+                onClick={() => {
+                  const { getDemoCaseList } = require('@/features/workspace/demo/demo-data')
+                  setData(getDemoCaseList())
+                  setIsLoading(false)
+                }}
+                className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                [DEV] 더미 데이터
+              </button>
+            )}
+            <button
+              onClick={() => setIsCreating(true)}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              + 새 사건
+            </button>
+          </div>
         </div>
       </header>
 
@@ -168,7 +186,11 @@ export default function WorkspacePage() {
             data.items.map((c) => (
               <button
                 key={c.id}
-                onClick={() => router.push(`/workspace/${c.id}`)}
+                onClick={() => router.push(
+                  c.id.startsWith('demo-')
+                    ? `/workspace/${c.id}?demo=1`
+                    : `/workspace/${c.id}`
+                )}
                 className="w-full text-left bg-white rounded-lg border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all"
               >
                 <div className="flex items-start justify-between">

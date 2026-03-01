@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { BackButton } from '@/components/ui/BackButton'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
 import {
@@ -36,6 +37,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 export default function CaseDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { isChatOpen, chatMode } = useUI()
   const { setConversationId, setCaseId: setChatCaseId } = useChat()
 
@@ -48,6 +50,18 @@ export default function CaseDetailPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [isRebuilding, setIsRebuilding] = useState(false)
+  const [isDemoMode, setIsDemoMode] = useState(false)
+
+  const loadDemoData = useCallback(() => {
+    const { getDemoCaseDetail } = require('@/features/workspace/demo/demo-data')
+    const demo = getDemoCaseDetail(caseId)
+    if (demo) {
+      setCaseData(demo)
+      setTimeline(demo.timeline ?? [])
+      setIsDemoMode(true)
+      setIsLoading(false)
+    }
+  }, [caseId])
 
   const fetchCase = useCallback(async () => {
     setIsLoading(true)
@@ -63,8 +77,12 @@ export default function CaseDetailPage() {
   }, [caseId])
 
   useEffect(() => {
-    fetchCase()
-  }, [fetchCase])
+    if (process.env.NODE_ENV === 'development' && searchParams.get('demo') === '1') {
+      loadDemoData()
+    } else {
+      fetchCase()
+    }
+  }, [fetchCase, loadDemoData, searchParams])
 
   const handleSaveName = async () => {
     if (!editName.trim() || !caseData) return
@@ -166,6 +184,7 @@ export default function CaseDetailPage() {
       <header className="bg-white border-b px-6 py-4">
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+            <BackButton />
             <button
               onClick={() => router.push('/workspace')}
               className="hover:text-blue-600 transition-colors"
@@ -240,6 +259,14 @@ export default function CaseDetailPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 ml-4">
+              {process.env.NODE_ENV === 'development' && !isDemoMode && (
+                <button
+                  onClick={loadDemoData}
+                  className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  [DEV] 더미
+                </button>
+              )}
               <select
                 value={caseData.status}
                 onChange={(e) => handleStatusChange(e.target.value)}
