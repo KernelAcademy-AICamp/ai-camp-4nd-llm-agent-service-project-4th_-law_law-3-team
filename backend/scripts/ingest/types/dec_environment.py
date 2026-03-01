@@ -57,7 +57,7 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
     if case_name:
         parts.append(f"[{case_name}]")
 
-    for field in ("주문", "평가의견", "당사자주장", "사실조사결과", "사건의개요"):
+    for field in ("당사자주장", "사실조사결과", "사건의개요"):
         value = item.get(field)
         if value:
             parts.append(value)
@@ -76,10 +76,6 @@ def _orm_fulltext_fn(row: Any) -> str:
 
     if row.case_name:
         parts.append(f"[{row.case_name}]")
-    if row.ruling:
-        parts.append(row.ruling)
-    if row.evaluation_opinion:
-        parts.append(row.evaluation_opinion)
     if row.party_claims:
         parts.append(row.party_claims)
     if row.fact_investigation:

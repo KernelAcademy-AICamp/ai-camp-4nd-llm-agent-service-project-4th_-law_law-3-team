@@ -1,7 +1,7 @@
 """
 인제스트 공통 유틸리티
 
-db_writer / fts_builder 양쪽에서 사용하는 함수를 한 곳에서 관리합니다.
+db_writer에서 사용하는 함수를 한 곳에서 관리합니다.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ def upsert_fts_batch(session: Any, batch: list[dict[str, Any]]) -> int:
             "date": stmt.excluded.date,
             "source_name": stmt.excluded.source_name,
             "case_number": stmt.excluded.case_number,
-            "content_tsvector": stmt.excluded.content_tsvector,
+            "search_text": stmt.excluded.search_text,
         },
     )
     session.execute(stmt)

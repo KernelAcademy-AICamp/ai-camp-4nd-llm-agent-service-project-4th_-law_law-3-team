@@ -133,26 +133,10 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
     if case_name:
         parts.append(f"[{case_name}]")
 
-    case_number = item.get("사건번호")
-    if case_number:
-        parts.append(f"사건번호: {case_number}")
-
-    for field in ("판시사항", "결정요지", "주문", "이유"):
+    for field in ("판시사항", "결정요지"):
         value = _stringify(item.get(field))
         if value:
             parts.append(value)
-
-    ref_provisions = _stringify(item.get("심판대상조문"))
-    if ref_provisions:
-        parts.append(f"심판대상조문: {ref_provisions}")
-
-    ref_statutes = _stringify(item.get("참조조문"))
-    if ref_statutes:
-        parts.append(f"참조조문: {ref_statutes}")
-
-    ref_cases = _stringify(item.get("참조판례"))
-    if ref_cases:
-        parts.append(f"참조판례: {ref_cases}")
 
     return "\n".join(parts)
 
@@ -181,22 +165,10 @@ def _orm_fulltext_fn(row: Any) -> str:
 
     if row.case_name:
         parts.append(f"[{row.case_name}]")
-    if row.case_number:
-        parts.append(f"사건번호: {row.case_number}")
     if row.summary:
         parts.append(row.summary)
     if row.reasoning:
         parts.append(row.reasoning)
-    if row.ruling:
-        parts.append(row.ruling)
-    if row.reason:
-        parts.append(row.reason)
-    if row.reference_provisions:
-        parts.append(f"심판대상조문: {row.reference_provisions}")
-    if row.reference_statutes:
-        parts.append(f"참조조문: {row.reference_statutes}")
-    if row.reference_cases:
-        parts.append(f"참조판례: {row.reference_cases}")
 
     return "\n".join(parts)
 
