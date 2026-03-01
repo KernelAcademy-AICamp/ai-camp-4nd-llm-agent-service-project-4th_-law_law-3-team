@@ -181,14 +181,18 @@ stmt = stmt.order_by(score_expr.desc()).limit(n_results)  # ← BMW 트리거
 
 ---
 
-## 레이어 6: 데이터 재적재 + 인덱스 생성
+## 레이어 6: search_text 채우기 + BM25 인덱스 생성
+
+fts_index 테이블은 이미 579K행이 존재하고 `search_text` 컬럼만 NULL인 상태. JSON 소스 재적재(`--step db`) 없이 **`--step fts`로 ORM 테이블에서 읽어 search_text만 갱신**한다.
 
 | # | 작업 | 상세 |
 |---|------|------|
-| 6-1 | fts_index 579K건에 search_text 채우기 | `scripts/ingest/cli.py` | `--type all --step db` 재실행 — db_writer가 search_text 컬럼에 MeCab 토큰 텍스트 저장. 579K건 배치 upsert (1,000건 단위) |
+| 6-1 | fts_index 579K건에 search_text 채우기 | `uv run python -m scripts.ingest.cli --type all --step fts` (`--reset` 불필요 — 기존 579K행의 PK `(source_id, data_type)`가 동일하므로 `ON CONFLICT DO UPDATE`로 search_text만 제자리 갱신). `search_text_rebuilder.py`가 PostgreSQL ORM 원본에서 `orm_fulltext_fn()` → MeCab 토큰화 → `search_text` 컬럼 upsert. 1,000건 배치. JSON 재처리 없음 |
 | 6-2 | 병렬 빌드 설정 | 인덱스 생성 전 실행: `SET max_parallel_maintenance_workers = 4;` + `SET maintenance_work_mem = '256MB';` (워커당 64MB 미만이면 **조용히 직렬 전환**되므로 최소 256MB 필수. 512MB면 더 빠름) |
 | 6-3 | BM25 인덱스 생성 | 우선 `CREATE INDEX CONCURRENTLY` 시도 → 미지원 시 일반 `CREATE INDEX`로 fallback. `CREATE INDEX [CONCURRENTLY] idx_fts_bm25 ON fts_index USING bm25(search_text) WITH (text_config='simple')` |
 
+> **`--step fts` vs `--step db`**: `--step db`는 JSON 소스 파일부터 파싱하여 ORM + FTS를 동시 적재하는 전체 재적재. `--step fts`는 이미 적재된 ORM 테이블에서 읽어 search_text만 재빌드하므로 훨씬 빠르다.
+>
 > **CONCURRENTLY 주의**: pg_textsearch README에서 명시적 지원을 확인하지 못함. 실행 시 `ERROR: ... does not support building indexes concurrently` 발생 가능 → 일반 `CREATE INDEX`로 전환. 579K건은 병렬 설정(6-2) 시 일반 모드로도 수 분 이내 완료 예상.
 
 ---
@@ -273,3 +277,4 @@ stmt = stmt.order_by(score_expr.desc()).limit(n_results)  # ← BMW 트리거
 | v2 | 2026-03-01 | fts_builder/tsvector_builder 삭제 반영 (11개 수정, 2개 삭제) |
 | v3 | 2026-03-01 | BMW 최적화 상세 반영 (레이어 4: 11개 작업), 병렬 인덱스 빌드 설정 추가 (레이어 6: 3단계), CONCURRENTLY 시도→fallback 전략 |
 | v4 | 2026-03-01 | 코드 교차 검증 반영: (1) 누락 파일 5개 추가 (cli.py, __init__.py, shared.py docstring, test_ingest_pipeline.py, verify_db), (2) pg_textsearch C 확장 설치 구체화 (Dockerfile.postgres 필수), (3) Feature Flag 관계 명시 (USE_BM25_SEARCH vs USE_HYBRID_SEARCH), (4) keyword_search.py 보존/삭제 함수 구분표 추가, (5) 삭제 파일 참조 정리 섹션 신설 (3-4), (6) CLAUDE.md 3곳 + ingest.md 문서 갱신 추가 |
+| v5 | 2026-03-01 | 레이어 6-1 수정: `--step db` (JSON 전체 재적재) → `--step fts` (ORM에서 search_text만 재빌드). fts_index 테이블은 이미 579K행 존재, search_text 컬럼만 NULL이므로 `search_text_rebuilder.py` 경로가 적합 |
