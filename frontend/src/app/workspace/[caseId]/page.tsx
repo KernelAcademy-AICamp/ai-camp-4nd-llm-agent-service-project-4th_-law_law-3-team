@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { BackButton } from '@/components/ui/BackButton'
+import { ArrowLeft } from 'lucide-react'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
 import {
@@ -184,11 +184,11 @@ export default function CaseDetailPage() {
       <header className="bg-white border-b px-6 py-4">
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-            <BackButton />
             <button
-              onClick={() => router.push('/workspace')}
-              className="hover:text-blue-600 transition-colors"
+              onClick={() => router.push(isDemoMode ? '/workspace?demo=1' : '/workspace')}
+              className="flex items-center gap-1 hover:text-blue-600 transition-colors"
             >
+              <ArrowLeft size={14} />
               워크스페이스
             </button>
             <span>/</span>

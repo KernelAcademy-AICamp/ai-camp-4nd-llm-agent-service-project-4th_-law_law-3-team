@@ -44,7 +44,17 @@ export default function WorkspacePage() {
   }, [search, statusFilter, page])
 
   useEffect(() => {
-    fetchData()
+    if (
+      process.env.NODE_ENV === 'development' &&
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('demo') === '1'
+    ) {
+      const { getDemoCaseList } = require('@/features/workspace/demo/demo-data')
+      setData(getDemoCaseList())
+      setIsLoading(false)
+    } else {
+      fetchData()
+    }
   }, [fetchData])
 
   const handleCreate = async () => {

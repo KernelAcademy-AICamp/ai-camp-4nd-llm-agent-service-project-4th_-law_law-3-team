@@ -266,8 +266,8 @@ async def update_timeline_item(
 async def export_case(
     request: Request,
     case_id: str,
-    format: str = Query("json", regex="^(json|txt)$"),
-    include: str = Query("all", regex="^(all|timeline|conversations)$"),
+    format: str = Query("json", pattern="^(json|txt)$"),
+    include: str = Query("all", pattern="^(all|timeline|conversations)$"),
 ) -> StreamingResponse:
     """사건 내보내기"""
     session_token: str = request.state.session_token
