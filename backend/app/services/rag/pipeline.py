@@ -20,6 +20,7 @@ from app.services.rag.embedding import create_query_embedding
 from app.services.rag.query_rewrite import rewrite_query
 from app.services.rag.rerank import rerank_documents
 from app.services.rag.retrieval import (
+    _apply_law_article_content,
     _extract_id_data_type_map,
     _populate_content,
     _populate_rerank_text,
@@ -300,6 +301,7 @@ class RAGPipeline:
                 _extract_id_data_type_map(reranked)
             )
             _populate_content(reranked, contents)
+            _apply_law_article_content(reranked)
 
             # Context 압축 (LLMLingua-2)
             if settings.ENABLE_CONTEXT_COMPRESSION:
@@ -566,6 +568,7 @@ class RAGPipeline:
                 _extract_id_data_type_map(reranked)
             )
             _populate_content(reranked, contents)
+            _apply_law_article_content(reranked)
 
             # Context 압축 (LLMLingua-2)
             if settings.ENABLE_CONTEXT_COMPRESSION:

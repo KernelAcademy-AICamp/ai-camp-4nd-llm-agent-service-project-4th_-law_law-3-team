@@ -26,6 +26,7 @@ from app.models.ingest import (
     SpecialAdminAppealDocument,
     TreatyDocument,
 )
+from app.models.law_article import LawArticle
 from app.models.law_document import LawDocument
 from app.models.lawyer import Lawyer
 from app.models.lawyer_persona import (
@@ -43,6 +44,7 @@ __all__ = [
     "FtsIndex",
     "Lawyer",
     "LegalTerm",
+    "LawArticle",
     "LawDocument",
     "PrecedentDocument",
     "TrialStatistics",

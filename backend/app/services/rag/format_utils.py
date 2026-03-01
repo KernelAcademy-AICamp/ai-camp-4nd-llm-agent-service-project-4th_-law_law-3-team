@@ -62,17 +62,54 @@ def format_precedent_context(
 
 
 def format_law_context(documents: list[dict[str, Any]]) -> str:
-    """법령 문서 → LLM 컨텍스트 문자열."""
+    """법령 문서 → LLM 컨텍스트 문자열.
+
+    article_number가 있는 문서는 조문 단위로 표시하고,
+    없는 문서(키워드 검색 only)는 법령명만 참조로 표시한다.
+    같은 법령의 여러 조문은 그룹핑하여 표시한다.
+    """
     if not documents:
         return ""
 
-    parts: list[str] = ["## 관련 법령"]
-    for i, doc in enumerate(documents, 1):
-        metadata = doc.get("metadata", {})
-        doc_id = metadata.get("doc_id", "")
-        law_name = _get_title(metadata)
+    # 법령별 그룹핑 (doc_id 기준)
+    from collections import OrderedDict
 
-        parts.append(f"[법령 {i}] {law_name} (id: {doc_id})\n{_format_fields(doc)}")
+    law_groups: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+    for doc in documents:
+        doc_id = doc.get("metadata", {}).get("doc_id", "")
+        law_groups.setdefault(doc_id, []).append(doc)
+
+    parts: list[str] = ["## 관련 법령"]
+    law_idx = 0
+
+    for doc_id, group_docs in law_groups.items():
+        law_idx += 1
+        first_meta = group_docs[0].get("metadata", {})
+        law_name = _get_title(first_meta)
+
+        # 조문이 있는 문서와 없는 문서 분리
+        article_docs = [
+            d for d in group_docs if d.get("metadata", {}).get("article_number")
+        ]
+        no_article_docs = [
+            d for d in group_docs if not d.get("metadata", {}).get("article_number")
+        ]
+
+        if article_docs:
+            # 조문 단위 표시
+            header = f"[법령 {law_idx}] {law_name} (id: {doc_id})"
+            article_parts: list[str] = [header]
+            for adoc in article_docs:
+                article_num = adoc.get("metadata", {}).get("article_number", "")
+                content = adoc.get("content", "")
+                if content:
+                    article_parts.append(f"  [제{article_num}조]\n  {content}")
+                else:
+                    article_parts.append(f"  [제{article_num}조]")
+            parts.append("\n".join(article_parts))
+        elif no_article_docs:
+            # 키워드 only: 법령명만 참조
+            parts.append(f"[법령 {law_idx}] {law_name} (id: {doc_id})")
 
     return "\n\n".join(parts)
 

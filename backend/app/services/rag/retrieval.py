@@ -18,6 +18,7 @@ from sqlalchemy import select, text
 from app.core.config import settings
 from app.core.database import sync_session_factory
 from app.models.fts_index import FtsIndex
+from app.models.law_article import LawArticle
 from app.services.rag.embedding import create_query_embedding
 from app.tools.vectorstore import get_vector_store
 
@@ -300,8 +301,9 @@ def _search_vector_ids(
     if not results or not results.get("ids") or not results["ids"][0]:
         return []
 
-    # source_id 단위 deduplicate (최고 유사도 유지)
-    best: dict[str, dict[str, Any]] = {}
+    # (source_id, article_number) 복합키로 deduplicate (최고 유사도 유지)
+    # 같은 법령이라도 다른 조문이면 별도 결과로 유지
+    best: dict[tuple[str, str], dict[str, Any]] = {}
 
     for i, _chunk_id in enumerate(results["ids"][0]):
         raw_meta = results["metadatas"][0][i] if results.get("metadatas") else {}
@@ -313,11 +315,16 @@ def _search_vector_ids(
             1 - results["distances"][0][i] if results.get("distances") else 0.0
         )
         data_type_val = raw_meta.get("data_type", "")
+        article_number = str(raw_meta.get("article_number") or "")
+        summary_type = str(raw_meta.get("summary_type") or "")
 
-        if source_id in best and similarity <= best[source_id].get("similarity", 0):
+        dedup_key = (source_id, article_number)
+        if dedup_key in best and similarity <= best[dedup_key].get(
+            "similarity", 0
+        ):
             continue
 
-        best[source_id] = {
+        best[dedup_key] = {
             "id": source_id,
             "content": "",
             "metadata": {
@@ -328,6 +335,8 @@ def _search_vector_ids(
                 "court_name": raw_meta.get("source_name", ""),
                 "doc_id": source_id,
                 "date": raw_meta.get("date", ""),
+                "article_number": article_number,
+                "summary_type": summary_type,
             },
             "similarity": similarity,
             "score_type": "cosine",
@@ -440,6 +449,67 @@ def _populate_content(
             doc["content"] = "\n\n".join(fields.values())
 
 
+def _apply_law_article_content(docs: list[dict[str, Any]]) -> None:
+    """법령 문서의 content를 조문 단위로 교체 (in-place).
+
+    벡터 검색에서 article_number가 전파된 법령 문서:
+        → law_articles 테이블에서 해당 조문만 조회하여 content 교체
+    키워드 검색 only (article_number 없음):
+        → content 비움 (법령명만 참조, 전체 텍스트 주입 방지)
+    """
+    # article_number가 있는 법령 문서 수집
+    article_queries: list[tuple[int, str, str]] = []  # (doc_idx, source_id, article_number)
+    for idx, doc in enumerate(docs):
+        meta = doc.get("metadata", {})
+        if meta.get("data_type") != "법령":
+            continue
+
+        article_number = meta.get("article_number", "")
+        source_id = meta.get("doc_id", "")
+
+        if article_number and source_id:
+            article_queries.append((idx, source_id, article_number))
+        else:
+            # 키워드 only: content 비움 (법령명만 참조)
+            doc["content"] = ""
+            doc["content_fields"] = {}
+
+    if not article_queries:
+        return
+
+    # law_articles 배치 조회
+    from sqlalchemy import and_, or_
+
+    conditions = [
+        and_(
+            LawArticle.law_id == source_id,
+            LawArticle.article_number == article_num,
+        )
+        for _, source_id, article_num in article_queries
+    ]
+
+    row_map: dict[tuple[str, str], LawArticle] = {}
+    with sync_session_factory() as session:
+        rows = session.execute(
+            select(LawArticle).where(or_(*conditions))
+        ).scalars().all()
+        for row in rows:
+            row_map[(str(row.law_id), str(row.article_number))] = row
+
+    # content 교체
+    for doc_idx, source_id, article_num in article_queries:
+        article = row_map.get((source_id, article_num))
+        if article:
+            docs[doc_idx]["content"] = article.article_content
+            docs[doc_idx]["content_fields"] = {"content": article.article_content}
+        else:
+            # law_articles에 없으면 기존 content 유지
+            logger.debug(
+                "law_articles 미발견: law_id=%s, article_number=%s",
+                source_id, article_num,
+            )
+
+
 def _populate_rerank_text(
     docs: list[dict[str, Any]],
     summaries: dict[str, str],
@@ -532,6 +602,7 @@ def search_relevant_documents(
     docs = search_without_content(query, n_results, doc_type, exclude_doc_types)
     contents = fetch_document_contents(_extract_id_data_type_map(docs))
     _populate_content(docs, contents)
+    _apply_law_article_content(docs)
     return docs
 
 
