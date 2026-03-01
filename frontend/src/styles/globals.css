@@ -3,10 +3,15 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    color-scheme: light only;
+  }
+
   body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     color: #1D1D1F;
+    background-color: #ffffff;
   }
 }
 

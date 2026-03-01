@@ -13,6 +13,7 @@ export interface VisItem {
   type: 'range' | 'point'
   className: string
   title: string
+  style?: string
 }
 
 // vis-timeline 그룹 형태
@@ -32,6 +33,27 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#39;')
 }
 
+// topic별 색상 팔레트 (최대 8개 topic, HSL 값)
+const TOPIC_COLORS = [
+  'hsl(220, 70%, 50%)',   // blue
+  'hsl(160, 60%, 42%)',   // emerald
+  'hsl(38, 80%, 50%)',    // amber
+  'hsl(350, 65%, 52%)',   // rose
+  'hsl(270, 55%, 52%)',   // violet
+  'hsl(190, 65%, 45%)',   // cyan
+  'hsl(25, 75%, 50%)',    // orange
+  'hsl(85, 55%, 45%)',    // lime
+] as const
+
+const UNCATEGORIZED_COLOR = 'hsl(220, 10%, 60%)' // 회색
+
+// topic → 배경색 (inline style용)
+function getTopicBgColor(topic: string | undefined, topicIndex: Map<string, number>): string {
+  if (!topic) return UNCATEGORIZED_COLOR
+  const idx = topicIndex.get(topic) ?? 0
+  return TOPIC_COLORS[idx % TOPIC_COLORS.length]
+}
+
 // 신뢰도 레벨 분류
 function getConfidenceLevel(confidence: number | undefined): 'high' | 'medium' | 'low' {
   if (confidence === undefined || confidence >= 0.8) return 'high'
@@ -41,11 +63,21 @@ function getConfidenceLevel(confidence: number | undefined): 'high' | 'medium' |
 
 // TimelineItem[] → VisItem[] 변환
 export function timelineItemsToVisItems(items: TimelineItem[]): VisItem[] {
+  // topic 등장 순서 인덱스 (색상 안정 할당)
+  const topicIndex = new Map<string, number>()
+  let idx = 0
+  for (const item of items) {
+    if (item.topic && !topicIndex.has(item.topic)) {
+      topicIndex.set(item.topic, idx++)
+    }
+  }
+
   return items.map((item) => {
     const start = item.dateStart ?? item.date
     const end = item.dateEnd ?? item.dateStart ?? item.date
     const isRange = item.dateStart && item.dateEnd && item.dateStart !== item.dateEnd
     const confidenceLevel = getConfidenceLevel(item.confidence)
+    const bgColor = getTopicBgColor(item.topic, topicIndex)
 
     return {
       id: item.id,
@@ -56,6 +88,7 @@ export function timelineItemsToVisItems(items: TimelineItem[]): VisItem[] {
       type: isRange ? 'range' : 'point',
       className: `gantt-item confidence-${confidenceLevel}`,
       title: escapeHtml(item.descriptionShort ?? item.description),
+      style: `background-color: ${bgColor}; color: #fff; border-radius: 6px; border: none;`,
     }
   })
 }

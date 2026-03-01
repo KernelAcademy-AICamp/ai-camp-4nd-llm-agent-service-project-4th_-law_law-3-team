@@ -46,6 +46,7 @@ function toDataItems(visItems: VisItem[]): DataItem[] {
     type: v.type,
     className: v.className,
     title: v.title,
+    ...(v.style ? { style: v.style } : {}),
   }))
 }
 
