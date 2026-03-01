@@ -115,6 +115,38 @@ src/features/<module-name>/
 **타입:**
 - `CourtDemandMarker` - 법원 단위 수요 데이터 (좌표, 사건 수, 변호사 수, 부담지수, 관할 지역)
 
+### storyboard (사건 타임라인)
+
+**경로:** `src/features/storyboard/`
+
+**컴포넌트:**
+- `GanttChartView` - vis-timeline 간트차트 래퍼 (SSR 제외, next/dynamic ssr:false)
+- `GanttChartViewInner` - vis-timeline Timeline 인스턴스 직접 관리 (DataSet 증분 업데이트)
+- `GanttDetailPanel` - 선택 항목 상세 패널 (신뢰도 배지, 연결 증거, 법적 의미)
+- `EvidenceUploadPanel` - 드래그앤드롭 증거 업로드 (SSE 진행률, 병합 모드)
+- `TimelineToolbar` - 카드↔간트 뷰 토글 포함
+
+**훅:**
+- `useGanttChart` - VisItem/VisGroup/VisMarker 변환 (useMemo)
+- `useEvidenceUpload` - FormData 업로드 + SSE(`progress` named event) 구독
+
+**스타일:** `src/styles/gantt.css` - 신뢰도별 opacity, 충돌 pulse 애니메이션, 다크모드
+
+**타입 (`types/index.ts`):**
+- `EvidenceFile` - 증거 파일 메타데이터 (evidenceId, evidenceType, extractedTimelineIds)
+- `MergeConflict` - 병합 충돌 (existingItemId, newItemId, conflictType, description)
+- `BatchJobProgress` - SSE 진행 상태 (jobId, status, progress, currentFile)
+- `ViewMode` - 'card' | 'gantt'
+
+**API 엔드포인트:**
+- `POST /api/storyboard/analyze-batch` - 다중 파일 배치 분석 (job_id 반환)
+- `GET /api/storyboard/jobs/{job_id}/status` - SSE 진행 상태 (`event: "progress"`)
+- `POST /api/storyboard/merge` - 증분 병합 (existing_timeline JSON + files multipart)
+
+**주의사항:**
+- SSE는 named event(`progress`)이므로 `addEventListener('progress', ...)` 필수 (`onmessage` 불가)
+- 병합 요청 시 `existing_timeline`에 `{ existing_items, existing_evidence }` 객체 전송
+
 ### mock-trial (모의 법정)
 
 **경로:** `src/features/mock-trial/`
