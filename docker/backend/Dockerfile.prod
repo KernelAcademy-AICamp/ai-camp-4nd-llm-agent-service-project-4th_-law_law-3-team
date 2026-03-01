@@ -1,63 +1,96 @@
-# Backend Dockerfile - Production (Multi-stage build)
+# Backend Dockerfile - Production (Multi-stage, ARM/x86 compatible)
+# MeCab-ko 소스 빌드로 aarch64(Graviton) 지원
 
-# Stage 1: Build
-FROM python:3.11-slim AS builder
+# ============================================================
+# Stage 1: MeCab 빌드 (소스 컴파일)
+# ============================================================
+FROM python:3.11-slim AS mecab-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget build-essential autoconf automake libtool \
+    && rm -rf /var/lib/apt/lists/*
+
+# mecab-ko 소스 빌드 (config.guess/sub 교체로 aarch64 지원)
+RUN wget -q -O - https://bitbucket.org/eunjeon/mecab-ko/downloads/mecab-0.996-ko-0.9.2.tar.gz \
+    | tar zxf - \
+    && cd mecab-0.996-ko-0.9.2 \
+    && cp /usr/share/misc/config.guess . \
+    && cp /usr/share/misc/config.sub . \
+    && ./configure && make -j$(nproc) && make install && ldconfig \
+    && cd / && rm -rf mecab-0.996-ko-0.9.2
+
+# mecab-ko-dic 소스 빌드
+RUN wget -q -O - https://bitbucket.org/eunjeon/mecab-ko-dic/downloads/mecab-ko-dic-2.1.1-20180720.tar.gz \
+    | tar zxf - \
+    && cd mecab-ko-dic-2.1.1-20180720 \
+    && autoreconf -fi && ./configure && make -j$(nproc) && make install && ldconfig \
+    && cd / && rm -rf mecab-ko-dic-2.1.1-20180720
+
+# ============================================================
+# Stage 2: Python 의존성 설치
+# ============================================================
+FROM python:3.11-slim AS deps
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
+# uv 설치
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
 
-# Copy dependency files
+# 의존성 파일 복사 및 설치
 COPY pyproject.toml uv.lock ./
-
-# Install dependencies (production only)
 RUN uv sync --frozen --no-dev
 
-# Stage 2: Runtime
+# ============================================================
+# Stage 3: Runtime
+# ============================================================
 FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Install runtime system dependencies (ffmpeg required for moviepy)
-RUN apt-get update && apt-get install -y \
+# 런타임 시스템 의존성 (ffmpeg: moviepy, curl: healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
+# MeCab 라이브러리 및 사전 복사 (mecab-dict-index 등 빌드 도구는 런타임 불필요)
+COPY --from=mecab-builder /usr/local/lib/libmecab* /usr/local/lib/
+COPY --from=mecab-builder /usr/local/bin/mecab /usr/local/bin/
+COPY --from=mecab-builder /usr/local/etc/mecabrc /usr/local/etc/
+COPY --from=mecab-builder /usr/local/lib/mecab/ /usr/local/lib/mecab/
+RUN ldconfig
+
+# 비루트 사용자 생성
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-# Copy uv from builder
-COPY --from=builder /root/.local/bin/uv /usr/local/bin/uv
+# uv 복사
+COPY --from=deps /root/.local/bin/uv /usr/local/bin/uv
 
-# Copy virtual environment from builder
-COPY --from=builder /app/.venv /app/.venv
+# 가상환경 복사
+COPY --from=deps /app/.venv /app/.venv
 
-# Copy application code
+# 애플리케이션 코드 복사
 COPY --chown=appuser:appuser . .
 
-# Set environment variables
+# 환경변수 설정
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV ENVIRONMENT=production
 
-# Switch to non-root user
+# 비루트 사용자로 전환
 USER appuser
 
-# Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+# 헬스체크
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run production server with multiple workers
+# 프로덕션 서버 실행
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
