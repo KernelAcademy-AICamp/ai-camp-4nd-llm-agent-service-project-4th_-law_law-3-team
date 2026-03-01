@@ -16,11 +16,12 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 
-from app.api.router import chat_router
+from app.api.router import chat_conversations_router, chat_router
 from app.core.auth import verify_api_key
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.core.registry import ModuleRegistry
+from app.core.session import SessionMiddleware
 
 # 미디어 디렉토리 경로
 MEDIA_DIR = Path(__file__).parent.parent / "data" / "media"
@@ -188,6 +189,9 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONRe
     )
 
 
+# 세션 미들웨어 (HttpOnly 쿠키 기반 세션 토큰)
+app.add_middleware(SessionMiddleware)
+
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
@@ -203,6 +207,7 @@ registry.register_all_modules()
 
 # API 라우터 수동 등록 (모듈 시스템과 별도)
 app.include_router(chat_router, prefix="/api")
+app.include_router(chat_conversations_router, prefix="/api")
 
 # 미디어 정적 파일 마운트
 app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")

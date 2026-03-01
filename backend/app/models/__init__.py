@@ -4,6 +4,7 @@ SQLAlchemy 모델 정의
 
 from app.models.case_case_citation import CaseCaseCitation
 from app.models.case_statute_citation import CaseStatuteCitation
+from app.models.chat_conversation import ChatConversation, ChatMessage
 from app.models.fts_index import FtsIndex
 from app.models.ingest import (
     AdministrationDocument,
@@ -38,9 +39,18 @@ from app.models.statute_alias import StatuteAlias
 from app.models.statute_hierarchy import StatuteHierarchy
 from app.models.statute_relation import StatuteRelation
 from app.models.trial_statistics import TrialStatistics
+from app.models.workspace_case import (
+    IdentityLink,
+    WorkspaceActivityLog,
+    WorkspaceCase,
+    WorkspaceCaseTimelineItem,
+)
 
 __all__ = [
+    "ChatConversation",
+    "ChatMessage",
     "FtsIndex",
+    "IdentityLink",
     "Lawyer",
     "LegalTerm",
     "LawDocument",
@@ -75,4 +85,8 @@ __all__ = [
     "InterpretationMinistryDocument",
     "LocalOrdinanceDocument",
     "SpecialAdminAppealDocument",
+    # 워크스페이스 MVP
+    "WorkspaceActivityLog",
+    "WorkspaceCase",
+    "WorkspaceCaseTimelineItem",
 ]

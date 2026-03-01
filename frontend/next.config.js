@@ -42,6 +42,18 @@ const nextConfig = {
         source: '/api/content-marketing/:path*',
         destination: 'http://127.0.0.1:8000/api/content-marketing/:path*',
       },
+      {
+        source: '/api/workspace/:path*',
+        destination: `${BACKEND_URL}/api/workspace/:path*`,
+      },
+      {
+        source: '/api/chat/conversations/:path*',
+        destination: `${BACKEND_URL}/api/chat/conversations/:path*`,
+      },
+      {
+        source: '/api/chat/conversations',
+        destination: `${BACKEND_URL}/api/chat/conversations`,
+      },
       // /api/chat/stream은 Next.js API Route에서 SSE 프록시 처리
       // (rewrites는 SSE 스트리밍을 버퍼링하므로 API Route 사용)
       {

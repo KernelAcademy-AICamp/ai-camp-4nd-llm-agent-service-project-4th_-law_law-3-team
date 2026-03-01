@@ -21,6 +21,8 @@ from app.models import (  # noqa: F401  # 모델 임포트 (테이블 등록)
     AdminRuleDocument,
     CaseCaseCitation,
     CaseStatuteCitation,
+    ChatConversation,
+    ChatMessage,
     ConstitutionalDocument,
     DecCivilRightsDocument,
     DecEmploymentDocument,
@@ -34,6 +36,7 @@ from app.models import (  # noqa: F401  # 모델 임포트 (테이블 등록)
     DecPrivacyDocument,
     DecSecuritiesDocument,
     FtsIndex,
+    IdentityLink,
     InterpretationMinistryDocument,
     LawDocument,
     Lawyer,
@@ -49,6 +52,9 @@ from app.models import (  # noqa: F401  # 모델 임포트 (테이블 등록)
     StatuteRelation,
     TreatyDocument,
     TrialStatistics,
+    WorkspaceActivityLog,
+    WorkspaceCase,
+    WorkspaceCaseTimelineItem,
 )
 
 # Alembic Config 객체

@@ -31,6 +31,10 @@ class ChatState(TypedDict, total=False):
     # Session security (set by chat.py)
     session_secret: str
 
+    # Conversation tracking (set by chat.py)
+    conversation_id: Optional[str]
+    case_id: Optional[str]
+
     # Output (set by agent nodes)
     response: str
     sources: list[dict[str, Any]]
@@ -67,6 +71,8 @@ def request_to_state(request: ChatRequest) -> dict[str, Any]:
         "routing_confidence": 0.0,
         "routing_reason": "",
         "session_secret": "",
+        "conversation_id": None,
+        "case_id": None,
         "response": "",
         "sources": [],
         "actions": [],

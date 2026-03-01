@@ -10,5 +10,11 @@
     "startedAt": "2026-03-01T00:00:00Z",
     "matchRate": 100,
     "iterationCount": 2
+  },
+  "workspace-mvp": {
+    "phase": "do",
+    "startedAt": "2026-03-01T00:00:00Z",
+    "matchRate": null,
+    "iterationCount": 0
   }
 }

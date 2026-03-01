@@ -7,6 +7,7 @@ export const api = axios.create({
     'Content-Type': 'application/json',
   },
   timeout: 180000, // 180초 타임아웃 (AI 타임라인 추출 등 장시간 요청 대응)
+  withCredentials: true, // 쿠키 기반 세션 토큰 전송
 })
 
 // API 모듈별 엔드포인트
@@ -20,4 +21,6 @@ export const endpoints = {
   multiAgent: '/multi-agent',
   mockTrial: '/mock-trial',
   contentMarketing: '/content-marketing',
+  workspace: '/workspace',
+  chatConversations: '/chat/conversations',
 }

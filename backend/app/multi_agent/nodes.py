@@ -44,6 +44,8 @@ AGENT_NODE_MAP: dict[str, str] = {
     "mock_trial": "mock_trial_subgraph",
     # 콘텐츠 마케팅
     "content_marketing": "content_marketing_node",
+    # 워크스페이스
+    "workspace": "workspace_node",
     # 폴백
     "general": "simple_chat_node",
     # 하위호환 (기존 agent_override 지원)
@@ -428,6 +430,15 @@ async def content_marketing_node(
     from app.multi_agent.agents.content_marketing_agent import ContentMarketingAgent
 
     return await _run_nonstreaming_node(ContentMarketingAgent(), state, writer)
+
+
+async def workspace_node(
+    state: ChatState, writer: StreamWriter
+) -> dict[str, Any]:
+    """워크스페이스 노드 (사건 조회, 타임라인 재생성)"""
+    from app.multi_agent.agents.workspace_agent import WorkspaceAgent
+
+    return await _run_nonstreaming_node(WorkspaceAgent(), state, writer)
 
 
 async def simple_chat_node(

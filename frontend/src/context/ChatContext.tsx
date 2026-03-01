@@ -27,6 +27,11 @@ interface ChatContextType {
   // 챗봇-카드 연결용 (판례번호로 하이라이트)
   highlightedCaseNumber: string | null
   setHighlightedCaseNumber: (caseNumber: string | null) => void
+  // 워크스페이스 대화 연결
+  conversationId: string | null
+  setConversationId: (id: string | null) => void
+  caseId: string | null
+  setCaseId: (id: string | null) => void
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
@@ -36,10 +41,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [sessionData, setSessionData] = useState<SessionData>({})
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null)
   const [highlightedCaseNumber, setHighlightedCaseNumber] = useState<string | null>(null)
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [caseId, setCaseId] = useState<string | null>(null)
 
   const resetSession = useCallback(() => {
     setSessionData({})
     setHighlightedCaseNumber(null)
+    setConversationId(null)
+    setCaseId(null)
   }, [])
 
   const requestUserLocation = useCallback(async (): Promise<UserLocation | null> => {
@@ -84,6 +93,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         requestUserLocation,
         highlightedCaseNumber,
         setHighlightedCaseNumber,
+        conversationId,
+        setConversationId,
+        caseId,
+        setCaseId,
       }}
     >
       {children}

@@ -104,6 +104,15 @@ export const modules: Module[] = [
     enabled: true,
     roles: ['lawyer'],
   },
+  {
+    id: 'workspace',
+    name: '사건 워크스페이스',
+    description: '사건별 대화/태그/타임라인 관리',
+    href: '/workspace',
+    icon: '💼',
+    enabled: true,
+    roles: ['user', 'lawyer'],
+  },
 ]
 
 export const getEnabledModules = (role?: 'lawyer' | 'user') => 
