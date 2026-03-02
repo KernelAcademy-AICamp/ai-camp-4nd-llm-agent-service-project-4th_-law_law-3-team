@@ -55,6 +55,21 @@ _MECAB_SYS_DICT_CANDIDATES = [
     "/opt/homebrew/lib/mecab/dic/mecab-ko-dic",
 ]
 
+# mecabrc 경로 후보
+_MECABRC_CANDIDATES = [
+    "/usr/local/etc/mecabrc",
+    "/opt/homebrew/etc/mecabrc",
+    "/etc/mecabrc",
+]
+
+
+def _find_mecabrc() -> Optional[str]:
+    """mecabrc 경로 자동 탐지"""
+    for candidate in _MECABRC_CANDIDATES:
+        if Path(candidate).is_file():
+            return candidate
+    return None
+
 
 def _find_mecab_sys_dict() -> Optional[str]:
     """MeCab 시스템 사전 경로 자동 탐지 (mecab-config 우선, 하드코딩 fallback)"""
@@ -93,8 +108,10 @@ def is_mecab_available() -> bool:
         return False
     try:
         sys_dict = _find_mecab_sys_dict()
+        mecabrc = _find_mecabrc()
+        rc_flag = f"-r {mecabrc} " if mecabrc else ""
         if sys_dict:
-            _MeCab.Tagger(f"-d {sys_dict}")  # type: ignore[union-attr,unused-ignore]
+            _MeCab.Tagger(f"{rc_flag}-d {sys_dict}")  # type: ignore[union-attr,unused-ignore]
         else:
             _MeCab.Tagger()  # type: ignore[union-attr,unused-ignore]
         return True
@@ -148,13 +165,15 @@ class MeCabTokenizer:
             raise FileNotFoundError(msg)
 
         try:
+            mecabrc = _find_mecabrc()
+            rc_flag = f"-r {mecabrc} " if mecabrc else ""
             self._tagger = _MeCab.Tagger(
-                f"-d {sys_dict} -u {userdic_path}"
+                f"{rc_flag}-d {sys_dict} -u {userdic_path}"
             )
         except RuntimeError as e:
             msg = (
                 f"MeCab Tagger 초기화 실패: {e}\n"
-                "  시스템 사전: {sys_dict}\n"
+                f"  시스템 사전: {sys_dict}\n"
                 f"  userdic: {userdic_path}"
             )
             raise RuntimeError(msg) from e
