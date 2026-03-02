@@ -354,7 +354,10 @@ async def legal_search_node(
     if focus not in ("precedent", "law"):
         focus = "precedent"
 
-    return await _run_streaming_node(LegalSearchAgent(focus=focus), state, writer)
+    user_role = state.get("user_role", "user")
+    return await _run_streaming_node(
+        LegalSearchAgent(focus=focus, user_role=user_role), state, writer
+    )
 
 
 async def lawyer_finder_node(
