@@ -30,3 +30,7 @@ dec_media: ingest_source/decisions_committee/dec_comm_방송미디어통신위�
 
 # 자치법규
 local_ordinance: ingest_source/local_rules_v1.json
+
+# 그래프 데이터 소스 (--step graph 전용)
+graph_hierarchy: law_hierarchy.json
+graph_abbreviations: law_abbreviations.json
