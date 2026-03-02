@@ -517,11 +517,19 @@ docker-compose down -v            # 중지 및 볼륨까지 삭제
 
 ### 방법 2: 로컬 PostgreSQL 설치
 
+> **⚠ 주의**: 이 프로젝트는 **PostgreSQL 17 + pg_textsearch** 확장이 필요합니다.
+> pg_textsearch는 BM25 키워드 검색에 사용되며, C 소스 빌드가 필요한 확장입니다.
+> 로컬 설치 시 pg_textsearch를 별도로 빌드해야 하므로 **방법 1 (Docker)을 강력히 권장**합니다.
+> Docker 이미지(`docker/postgres/Dockerfile`)에는 pg_textsearch가 포함되어 있습니다.
+
 #### PostgreSQL 설치 및 데이터베이스 생성
 ```bash
 # macOS (Homebrew)
 brew install postgresql@17
 brew services start postgresql@17
+
+# ⚠ pg_textsearch 확장은 별도 소스 빌드 필요
+# 상세: docker/postgres/Dockerfile 참조
 
 # 데이터베이스 생성
 createdb lawdb

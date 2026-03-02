@@ -60,6 +60,34 @@ PostgreSQL, Neo4j, LanceDB 3개 DB를 Google Drive에 백업/복원합니다.
 | `secrets/` | 서비스 계정 키 등 (.gitignored) |
 | `rclone.conf` | rclone 설정 (.gitignored) |
 
+## 복원 후 BM25 인덱스 + law_articles 재생성
+
+PostgreSQL 백업을 복원하면 테이블 데이터는 복원되지만, **BM25 인덱스**는 별도로 재생성해야 할 수 있습니다.
+
+```bash
+cd backend
+
+# 1. BM25 인덱스 상태 확인
+uv run python scripts/create_bm25_index.py --check
+
+# 2-a. 인덱스가 없는 경우 → 생성
+uv run python scripts/create_bm25_index.py
+
+# 2-b. 인덱스가 손상된 경우 → 삭제 후 재생성
+uv run python scripts/create_bm25_index.py --drop
+
+# 3. search_text가 비어 있는 경우 (복원 데이터에 search_text가 NULL일 때)
+uv run python -m scripts.ingest.cli --type all --step fts
+uv run python scripts/create_bm25_index.py
+
+# 4. law_articles 테이블이 비어 있는 경우
+uv run python scripts/load_law_articles_data.py
+uv run python scripts/load_law_articles_data.py --verify
+```
+
+> **참고**: `search_text` 컬럼 데이터가 있어야 BM25 인덱스 생성이 가능합니다.
+> `--step fts`는 ORM 원본 테이블에서 `search_text`만 재빌드하므로 JSON 재처리 없이 빠르게 완료됩니다.
+
 ## data/ 동기화 (원본 데이터 + backend 데이터)
 
 `gdrive:data/`에는 원본 JSON 파일과 backend 전용 데이터가 함께 저장되어 있습니다.

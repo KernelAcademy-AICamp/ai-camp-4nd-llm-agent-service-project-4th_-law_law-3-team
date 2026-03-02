@@ -70,6 +70,34 @@ uv run alembic upgrade head
 uv run python -m scripts.ingest.cli --type all --step db
 ```
 
+### 6-1. BM25 인덱스 생성 (키워드 검색)
+
+```bash
+# search_text 데이터가 Step 6에서 함께 적재됨 (--step db 시 자동)
+# 적재 확인 후 BM25 인덱스 생성
+uv run python scripts/create_bm25_index.py
+
+# 인덱스 상태만 확인
+uv run python scripts/create_bm25_index.py --check
+```
+
+> **순서 중요**: search_text 데이터가 먼저 적재되어야 BM25 인덱스 생성이 가능합니다.
+> `--step db`로 데이터를 로드하면 search_text가 자동으로 함께 적재됩니다.
+> 토크나이저(MeCab userdic) 변경 후에는 search_text만 재빌드할 수 있습니다:
+> `uv run python -m scripts.ingest.cli --type all --step fts`
+
+### 6-2. law_articles 데이터 로드 (조문 단위 RAG 컨텍스트)
+
+```bash
+# law_v3.json에서 조문 단위로 분리하여 law_articles 테이블에 적재
+uv run python scripts/load_law_articles_data.py
+
+# 검증
+uv run python scripts/load_law_articles_data.py --verify
+```
+
+> law_articles 테이블은 RAG 검색 시 벡터 매칭된 조문만 선별적으로 LLM 컨텍스트에 포함시키기 위해 사용됩니다.
+
 ### 7. LanceDB 데이터
 
 ```bash
