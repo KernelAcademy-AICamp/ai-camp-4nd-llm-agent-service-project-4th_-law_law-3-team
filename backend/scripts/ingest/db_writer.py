@@ -1,7 +1,7 @@
 """
 PostgreSQL 적재 + FTS 동시 생성
 
-1패스로 JSON → PostgreSQL ORM 인스턴스 + fts_index tsvector를 동시 처리합니다.
+1패스로 JSON → PostgreSQL ORM 인스턴스 + fts_index search_text를 동시 처리합니다.
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.core.database import sync_session_factory
 from app.models.fts_index import FtsIndex
-from app.services.rag.tsvector_builder import build_tsvector_string
 from scripts.common.json_loader import (  # noqa: E402
     load_json_directory,
     load_json_file,
@@ -34,8 +33,7 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 1000
 
-# PostgreSQL tsvector 최대 1MB (1,048,575 bytes)
-# 한글 1자 ≈ 3 bytes UTF-8, 안전 마진 고려하여 300,000자 제한
+# BM25 search_text 최대 길이 (한글 1자 ≈ 3 bytes UTF-8, 안전 마진)
 _MAX_FULLTEXT_CHARS = 300_000
 
 # auto-increment PK와 타임스탬프는 upsert SET 대상에서 제외
@@ -190,18 +188,17 @@ def run_db_ingest(
                 stats["errors"] += 1
                 continue
 
-            # 2. FTS 데이터 생성
+            # 2. FTS 데이터 생성 (BM25 search_text)
             try:
                 fulltext = config.fulltext_fn(item)
                 if fulltext.strip():
-                    # PostgreSQL tsvector 1MB 제한 방지
                     if len(fulltext) > _MAX_FULLTEXT_CHARS:
                         fulltext = fulltext[:_MAX_FULLTEXT_CHARS]
                     tokens = tokenizer.morphs(fulltext)
-                    tsvector_str = build_tsvector_string(tokens)
+                    search_text = " ".join(tokens)
 
                     fts_meta = config.fts_metadata_fn(item)
-                    fts_meta["content_tsvector"] = tsvector_str or None
+                    fts_meta["search_text"] = search_text or None
                     fts_batch.append(fts_meta)
             except Exception as e:
                 logger.error("FTS 생성 실패 (id=%s): %s", doc_id, e)
@@ -272,23 +269,23 @@ def verify_db(config: IngestConfig) -> dict[str, Any]:
         ).scalar_one()
         result["fts_count"] = fts_count
 
-        # tsvector 보유 비율
-        fts_with_tsvector = session.execute(
+        # search_text 보유 비율
+        fts_with_search_text = session.execute(
             select(func.count())
             .select_from(FtsIndex)
             .where(FtsIndex.data_type == config.data_type_label)
-            .where(FtsIndex.content_tsvector.isnot(None))
+            .where(FtsIndex.search_text.isnot(None))
         ).scalar_one()
-        result["fts_with_tsvector"] = fts_with_tsvector
+        result["fts_with_search_text"] = fts_with_search_text
 
     logger.info("=== %s DB 검증 ===", config.data_type_label)
     logger.info("  ORM 테이블: %d건", result["orm_count"])
     logger.info("  FTS 인덱스: %d건", result["fts_count"])
     logger.info(
-        "  tsvector 보유: %d/%d (%.1f%%)",
-        result["fts_with_tsvector"],
+        "  search_text 보유: %d/%d (%.1f%%)",
+        result["fts_with_search_text"],
         result["fts_count"],
-        (result["fts_with_tsvector"] / result["fts_count"] * 100)
+        (result["fts_with_search_text"] / result["fts_count"] * 100)
         if result["fts_count"]
         else 0,
     )

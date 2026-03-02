@@ -1,8 +1,8 @@
 """
-FTS 독립 재빌드
+BM25 search_text 독립 재빌드
 
-토크나이저 설정(userdic 등) 변경 후 tsvector만 재빌드합니다.
-데이터 재적재 없이 PostgreSQL 원본에서 읽어 fts_index만 갱신합니다.
+토크나이저 설정(userdic 등) 변경 후 search_text만 재빌드합니다.
+데이터 재적재 없이 PostgreSQL 원본에서 읽어 fts_index.search_text만 갱신합니다.
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ from sqlalchemy import delete, func, select
 
 from app.core.database import sync_session_factory
 from app.models.fts_index import FtsIndex
-from app.services.rag.tsvector_builder import build_tsvector_string
 from scripts.ingest.config import IngestConfig
 from scripts.ingest.shared import get_tokenizer, upsert_fts_batch
 
@@ -30,19 +29,18 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 1000
 
-# PostgreSQL tsvector 최대 1MB (1,048,575 bytes)
-# 한글 1자 ≈ 3 bytes UTF-8, 안전 마진 고려하여 300,000자 제한
+# BM25 search_text 최대 길이 (한글 1자 ≈ 3 bytes UTF-8, 안전 마진)
 _MAX_FULLTEXT_CHARS = 300_000
 
 
-def run_fts_rebuild(
+def run_search_text_rebuild(
     config: IngestConfig,
     reset: bool = False,
 ) -> dict[str, int]:
     """
-    PostgreSQL 원본 → MeCab → tsvector → fts_index 재빌드
+    PostgreSQL 원본 → MeCab → search_text → fts_index 재빌드
 
-    데이터 재적재 없이 인덱스만 갱신합니다.
+    데이터 재적재 없이 search_text만 갱신합니다.
 
     Args:
         config: 인제스트 설정
@@ -129,11 +127,11 @@ def run_fts_rebuild(
                         fulltext = fulltext[:_MAX_FULLTEXT_CHARS]
 
                     tokens = tokenizer.morphs(fulltext)
-                    tsvector_str = build_tsvector_string(tokens)
+                    search_text = " ".join(tokens)
 
                     fts_meta = config.orm_fts_metadata_fn(row)
                     fts_meta["data_type"] = config.data_type_label
-                    fts_meta["content_tsvector"] = tsvector_str or None
+                    fts_meta["search_text"] = search_text or None
                     batch.append(fts_meta)
                 except Exception as e:
                     logger.error("FTS 생성 실패 (id=%s): %s", row_id, e)
@@ -146,7 +144,7 @@ def run_fts_rebuild(
                     batch = []
 
                     logger.info(
-                        "FTS 진행: %d/%d 문서",
+                        "search_text 진행: %d/%d 문서",
                         min(offset + BATCH_SIZE, total),
                         total,
                     )
@@ -160,7 +158,7 @@ def run_fts_rebuild(
 
     elapsed = time.time() - start_time
     logger.info(
-        "FTS 재빌드 완료: %d건, %.1f초",
+        "search_text 재빌드 완료: %d건, %.1f초",
         stats["indexed"],
         elapsed,
     )

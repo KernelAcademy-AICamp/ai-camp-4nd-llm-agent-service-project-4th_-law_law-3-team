@@ -80,11 +80,7 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
     if case_name:
         parts.append(f"[{case_name}]")
 
-    case_number = _stringify(item.get("사건번호"))
-    if case_number:
-        parts.append(case_number)
-
-    for field in ("결정요지", "주문", "이유"):
+    for field in ("결정요지", "주문"):
         value = _stringify(item.get(field))
         if value:
             parts.append(value)
@@ -103,14 +99,10 @@ def _orm_fulltext_fn(row: Any) -> str:
 
     if row.case_name:
         parts.append(f"[{row.case_name}]")
-    if row.case_number:
-        parts.append(row.case_number)
     if row.decision_summary:
         parts.append(row.decision_summary)
     if row.ruling:
         parts.append(row.ruling)
-    if row.reason:
-        parts.append(row.reason)
 
     return "\n".join(parts)
 

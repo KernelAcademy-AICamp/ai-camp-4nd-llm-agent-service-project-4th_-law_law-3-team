@@ -38,6 +38,7 @@ from app.models import (  # noqa: F401  # 모델 임포트 (테이블 등록)
     FtsIndex,
     IdentityLink,
     InterpretationMinistryDocument,
+    LawArticle,
     LawDocument,
     Lawyer,
     LawyerPersonaFeedbackModel,

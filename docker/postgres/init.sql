@@ -4,6 +4,7 @@
 -- 확장 기능 활성화
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";  -- 텍스트 유사도 검색
+CREATE EXTENSION IF NOT EXISTS "pg_textsearch";  -- BM25 전문 검색
 
 -- 한국어 전문 검색을 위한 설정 (선택사항)
 -- CREATE TEXT SEARCH CONFIGURATION korean (COPY = simple);

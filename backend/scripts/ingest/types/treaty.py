@@ -126,14 +126,6 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
     if name_kr:
         parts.append(f"[{name_kr}]")
 
-    name_en = item.get("조약명_영문")
-    if name_en:
-        parts.append(name_en)
-
-    country = item.get("체결대상국가한글")
-    if country:
-        parts.append(f"체결국: {country}")
-
     content = item.get("조약내용")
     if content:
         parts.append(content)
@@ -165,10 +157,6 @@ def _orm_fulltext_fn(row: Any) -> str:
 
     if row.treaty_name_kr:
         parts.append(f"[{row.treaty_name_kr}]")
-    if row.treaty_name_en:
-        parts.append(row.treaty_name_en)
-    if row.counterpart_country_kr:
-        parts.append(f"체결국: {row.counterpart_country_kr}")
     if row.content:
         parts.append(row.content)
 

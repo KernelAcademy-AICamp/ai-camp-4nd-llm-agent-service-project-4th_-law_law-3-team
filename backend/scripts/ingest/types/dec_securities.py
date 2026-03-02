@@ -58,10 +58,6 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
     if action_reason:
         parts.append(action_reason)
 
-    action_content = item.get("조치내용")
-    if action_content:
-        parts.append(action_content)
-
     return "\n".join(parts)
 
 
@@ -78,8 +74,6 @@ def _orm_fulltext_fn(row: Any) -> str:
         parts.append(f"[{row.case_name}]")
     if row.action_reason:
         parts.append(row.action_reason)
-    if row.action_content:
-        parts.append(row.action_content)
 
     return "\n".join(parts)
 

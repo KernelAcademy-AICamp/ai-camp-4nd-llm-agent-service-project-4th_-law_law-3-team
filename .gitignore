@@ -88,4 +88,5 @@ eda_output/
 # bkit local state files
 docs/.bkit-memory.json
 docs/.pdca-status.json
+.pdca-status.json
 docs/.pdca-snapshots/

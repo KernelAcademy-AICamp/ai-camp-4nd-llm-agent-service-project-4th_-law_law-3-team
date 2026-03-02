@@ -182,7 +182,7 @@ app/
 │   │   ├── retrieval.py  # 벡터 검색 + 원문/요약문 배치 조회
 │   │   ├── rerank.py     # 리랭킹
 │   │   ├── query_rewrite.py  # 쿼리 리라이팅
-│   │   ├── keyword_search.py  # FTS 키워드 검색
+│   │   ├── keyword_search.py  # BM25 키워드 검색 (pg_textsearch)
 │   │   ├── pipeline.py   # 검색 파이프라인 (동기 + async)
 │   │   ├── format_utils.py     # LLM 컨텍스트 + 프론트엔드 소스 포맷팅
 │   │   ├── onnx_session.py       # ONNX 세션 싱글턴 관리
@@ -379,7 +379,7 @@ config = PipelineConfig(
     enable_rerank=True, rerank_top_k=5,
 )
 result = await search_with_pipeline_async(query, config)
-# result.documents, result.metrics, result.rewritten_queries
+# result.documents, result.metrics, result.rewritten_query
 ```
 
 **async 파이프라인 내부 병렬화:**
@@ -629,7 +629,7 @@ app/models/
 | `legal_terms` | 법률 용어 사전 (~72,700건) | term(UNIQUE), definition, source_code, source_count, term_length, is_korean_only |
 | `trial_statistics` | 재판 통계 | category, court_name, court_type, parent_court, year, case_count |
 | `local_ordinance_documents` | 자치법규 원본 (160,276건) | ordinance_id, ordinance_name, local_government, overall_summary, content |
-| `fts_index` | FTS 전문 검색 인덱스 (579,498건) | **PK: (source_id, data_type)**, title, date, tsvector. dec_* source_id는 `{name}:{serial_number}` 형식. tsvector는 명사만 저장 (NNG+NNP, 2자 이상) |
+| `fts_index` | BM25 전문 검색 인덱스 (425,209건) | **PK: (source_id, data_type)**, title, date, search_text (MeCab 명사 공백 구분), BM25 인덱스 `idx_fts_bm25` (pg_textsearch). dec_* source_id는 `{name}:{serial_number}` 형식 |
 | `statute_hierarchy` | 법령 계급 관계 | child_id(FK→law_documents), parent_id(FK→law_documents), relation_type |
 | `statute_aliases` | 법령 약칭 | law_id(FK→law_documents), alias, alias_type |
 | `statute_relations` | 법령 관련 관계 | source_id(FK), target_id(FK), relation_type, weight |
@@ -723,7 +723,7 @@ uv run python scripts/build_mecab_userdic.py --dry-run  # 통계만
 - `_FTS_POS_TAGS = frozenset({"NNG", "NNP"})` — 일반명사 + 고유명사만 허용 (내부 상수)
 - `_MIN_TOKEN_LENGTH = 2` — 1자 명사("시", "때" 등) 노이즈 제거
 - `morphs()` 호출 시 항상 명사 필터 + 2자 이상 필터 적용 (옵션 없음)
-- FTS 생성(`db_writer`, `fts_builder`)과 검색(`keyword_search`) 양쪽에 적용
+- FTS 생성(`db_writer`, `search_text_rebuilder`)과 검색(`keyword_search`) 양쪽에 적용
 - MeCab 미설치 시 에러 발생 (silent fallback 없음)
 
 **수동 용어 추가 (`scripts/manual_terms.json`):**

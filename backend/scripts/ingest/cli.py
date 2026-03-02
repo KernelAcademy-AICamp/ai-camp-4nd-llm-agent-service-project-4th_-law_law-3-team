@@ -41,7 +41,7 @@ import scripts.ingest.types  # noqa: F401
 from scripts.common.logging_config import setup_logging
 from scripts.ingest.config import IngestConfig, get_config, list_configs
 from scripts.ingest.db_writer import run_db_ingest, verify_db
-from scripts.ingest.fts_builder import run_fts_rebuild
+from scripts.ingest.search_text_rebuilder import run_search_text_rebuild
 from scripts.ingest.validation import (
     SourceValidationSummary,
     format_validation_summary,
@@ -70,10 +70,10 @@ def _print_stats(config_name: str) -> None:
         print(f"    ORM 테이블: {result['orm_count']:,}건")
         print(f"    FTS 인덱스: {result['fts_count']:,}건")
         print(
-            f"    tsvector 보유: {result['fts_with_tsvector']:,}/{result['fts_count']:,}"
-            f" ({result['fts_with_tsvector'] / result['fts_count'] * 100:.1f}%)"
+            f"    search_text 보유: {result['fts_with_search_text']:,}/{result['fts_count']:,}"
+            f" ({result['fts_with_search_text'] / result['fts_count'] * 100:.1f}%)"
             if result["fts_count"]
-            else "    tsvector 보유: 0/0"
+            else "    search_text 보유: 0/0"
         )
     except Exception as e:
         print(f"\n  [PostgreSQL] 조회 실패: {e}")
@@ -185,10 +185,10 @@ def _run_single_type(
                 backend=backend,
             )
 
-    # Step: FTS 재빌드
+    # Step: search_text 재빌드 (BM25 인덱스 대상)
     if step == "fts":
-        logger.info("=== FTS 재빌드 시작 ===")
-        results["fts"] = run_fts_rebuild(
+        logger.info("=== search_text 재빌드 시작 ===")
+        results["fts"] = run_search_text_rebuild(
             config=config,
             reset=reset,
         )

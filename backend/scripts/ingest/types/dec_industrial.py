@@ -63,12 +63,19 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
     """JSON item -> FTS용 원문 텍스트 concat"""
     parts: list[str] = []
 
-    # 사건명 없음 -- 사건번호를 제목 대체로 사용
+    # 사건명칭 우선, 없으면 사건번호를 제목 대체로 사용
+    case_label = item.get("사건명칭")
     case_number = item.get("사건번호")
-    if case_number:
-        parts.append(f"[{case_number}]")
+    title = case_label or case_number
+    if title:
+        parts.append(f"[{title}]")
 
-    for field in ("주문", "이유", "쟁점", "청구취지"):
+    for field in ("사건대분류명", "사건중분류명", "사건소분류명"):
+        value = item.get(field)
+        if value:
+            parts.append(value)
+
+    for field in ("쟁점", "청구취지"):
         value = item.get(field)
         if value:
             parts.append(value)
@@ -88,10 +95,12 @@ def _orm_fulltext_fn(row: Any) -> str:
     title = row.case_label or row.case_number or ""
     if title:
         parts.append(f"[{title}]")
-    if row.ruling:
-        parts.append(row.ruling)
-    if row.reason:
-        parts.append(row.reason)
+    if row.case_major_category:
+        parts.append(row.case_major_category)
+    if row.case_mid_category:
+        parts.append(row.case_mid_category)
+    if row.case_sub_category:
+        parts.append(row.case_sub_category)
     if row.issue:
         parts.append(row.issue)
     if row.claim:
