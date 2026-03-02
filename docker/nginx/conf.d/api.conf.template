@@ -1,37 +1,92 @@
 upstream backend_upstream {
-    server backend:8000;
+    server backend:8000 max_fails=3 fail_timeout=30s;
     keepalive 32;
 }
 
+# HTTP server — ACME challenge + HTTPS redirect
 server {
     listen 80;
     server_name ${API_DOMAIN};
+
+    # Let's Encrypt ACME challenge
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # HTTPS가 설정된 경우 리다이렉트 (인증서 미발급 시 이 블록은 무시됨)
+    location / {
+        return 301 https://$host$request_uri;
+    }
+
+    # 헬스체크는 HTTP에서도 허용 (내부 모니터링)
+    location = /health {
+        proxy_pass http://backend_upstream/health;
+        proxy_read_timeout 30s;
+    }
+}
+
+# HTTPS server — 인증서 발급 후 활성화
+# 초기 설정: scripts/deploy/init-letsencrypt.sh 실행 후 docker compose restart nginx
+server {
+    listen 443 ssl;
+    server_name ${API_DOMAIN};
+
+    # SSL 인증서 경로 (Let's Encrypt)
+    ssl_certificate /etc/nginx/certs/live/${API_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/live/${API_DOMAIN}/privkey.pem;
+
+    # SSL 보안 설정
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # OCSP Stapling (Let's Encrypt 인증서 적용 후 활성화)
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    resolver 8.8.8.8 8.8.4.4 valid=300s;
+    resolver_timeout 5s;
+
+    # HSTS (HTTPS 강제)
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
 
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
 
-    # Health and docs
+    # Health check
     location = /health {
         proxy_pass http://backend_upstream/health;
         proxy_read_timeout 30s;
     }
 
+    # API docs — 로컬호스트만 허용 (프로덕션 보안)
     location = /docs {
+        allow 127.0.0.1;
+        deny all;
         proxy_pass http://backend_upstream/docs;
     }
 
     location = /redoc {
+        allow 127.0.0.1;
+        deny all;
         proxy_pass http://backend_upstream/redoc;
     }
 
     location = /openapi.json {
+        allow 127.0.0.1;
+        deny all;
         proxy_pass http://backend_upstream/openapi.json;
     }
 
-    # API routes (disable buffering for streaming/SSE compatibility)
-    location /api/ {
+    # Chat API (낮은 rate limit — LLM 호출 비용 보호)
+    location /api/chat {
+        limit_req zone=chat_limit burst=3 nodelay;
+        limit_req_status 429;
+
         proxy_pass http://backend_upstream;
         proxy_http_version 1.1;
         proxy_buffering off;
@@ -40,13 +95,26 @@ server {
         proxy_send_timeout 3600s;
     }
 
+    # API routes (disable buffering for streaming/SSE compatibility)
+    location /api/ {
+        limit_req zone=api_limit burst=20 nodelay;
+        limit_req_status 429;
+
+        proxy_pass http://backend_upstream;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
     # Backend media files
     location /media/ {
         proxy_pass http://backend_upstream;
         proxy_read_timeout 300s;
     }
 
-    # Default deny to avoid exposing unexpected backend paths on root
+    # Default deny
     location / {
         return 404;
     }

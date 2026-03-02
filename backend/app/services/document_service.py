@@ -26,7 +26,7 @@ class DocumentService:
             font_paths = [
                 Path("C:/Windows/Fonts/malgun.ttf"),  # Windows
                 Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),  # Linux
-                Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),  # Mac
+                Path("/System/Library/Fonts/Supplemental/AppleGothic.ttf"),  # Mac
             ]
             for path in font_paths:
                 if path.exists():

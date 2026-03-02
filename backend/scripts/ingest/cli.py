@@ -51,7 +51,7 @@ from scripts.ingest.vector_writer import build_ann_index, run_vector_ingest
 
 logger = setup_logging(__name__)
 
-VALID_STEPS = ("all", "db", "vector", "fts", "index", "onnx-export")
+VALID_STEPS = ("all", "db", "graph", "vector", "fts", "index", "onnx-export")
 BATCH_SIZE_DB = 1000
 
 
@@ -259,6 +259,11 @@ def main() -> None:
 
   # ANN 인덱스만 재빌드
   uv run python -m scripts.ingest.cli --type precedent --step index
+
+  # 그래프 데이터 적재 (law + precedent DB 적재 완료 후)
+  uv run python -m scripts.ingest.cli --step graph
+  uv run python -m scripts.ingest.cli --step graph --reset
+  uv run python -m scripts.ingest.cli --step graph --verify
         """,
     )
 
@@ -361,9 +366,39 @@ def main() -> None:
         print(f"{'=' * 60}")
         return
 
-    # --type 필수 검증 (onnx-export 외)
+    # 그래프 데이터 적재 (--type 불필요)
+    if args.step == "graph":
+        from scripts.ingest.graph_writer import run_graph_ingest, verify_graph
+
+        if args.verify:
+            results = verify_graph()
+            for key, count in results.items():
+                print(f"  {key}: {count:,}")
+            return
+
+        print(f"\n{'=' * 60}")
+        print("  그래프 데이터 적재")
+        print(f"{'=' * 60}")
+        print(f"  리셋: {args.reset}")
+        print(f"{'=' * 60}\n")
+
+        start = time.time()
+        batch_size = args.batch_size or 1000
+        stats = run_graph_ingest(reset=args.reset, batch_size=batch_size)
+
+        print(f"\n{'=' * 60}")
+        print("  그래프 적재 결과")
+        print(f"{'=' * 60}")
+        for key, count in stats.items():
+            print(f"  {key}: {count:,}")
+        elapsed = time.time() - start
+        print(f"\n  완료: {elapsed:.1f}초")
+        print(f"{'=' * 60}")
+        return
+
+    # --type 필수 검증 (graph, onnx-export 제외)
     if args.type is None:
-        parser.error("--type은 필수입니다 (onnx-export 제외)")
+        parser.error("--type은 필수입니다 (graph, onnx-export 제외)")
 
     # --type all + --source 조합 차단
     if args.type == "all" and args.source:

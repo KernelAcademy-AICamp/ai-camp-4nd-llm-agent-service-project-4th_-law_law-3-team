@@ -9,12 +9,11 @@
 
 | 구성요소 | 설명 | 리소스 요구 |
 |----------|------|------------|
-| **Backend (FastAPI)** | 4 workers + 임베딩 모델(2.3GB) | RAM 8~16GB |
-| **PostgreSQL** | 법령/판례/사용자 데이터 | 500MB~5GB 스토리지 |
-| **Neo4j** | 그래프 DB (70K+ 노드, 163K+ 관계) | 2GB heap (Docker 내장) |
-| **LanceDB** | 벡터 DB (임베딩 25만 청크) | 1.6GB 디스크 (백엔드 내장) |
+| **Backend (FastAPI)** | 2 workers + 임베딩 모델(2.3GB) + 리랭커(2.1GB) | RAM 4~8GB |
+| **PostgreSQL** | 법령/판례/사용자 데이터, 그래프(Recursive CTE) | 500MB~5GB 스토리지 |
+| **LanceDB** | 벡터 DB (임베딩 65만+ 청크) | 5.5GB 디스크 (백엔드 내장) |
 | **Frontend (Next.js)** | 정적 + SSR | Vercel Free 호스팅 |
-| **디스크** | 모델 + 데이터 + DB | 최소 15GB |
+| **디스크** | 모델 + 데이터 + DB | 최소 20GB |
 
 ---
 
@@ -22,14 +21,14 @@
 
 > 모든 서비스를 **단일 EC2 인스턴스**에서 Docker로 운영, 프론트엔드는 Vercel Free
 
-### 서버 비용 (EC2 t3.xlarge)
+### 서버 비용 (EC2 t4g.large — ARM Graviton)
 
 | 항목 | 시간 단가 | 1주 (168h) | 2주 (336h) | 1개월 (720h) |
 |------|----------|-----------|-----------|-------------|
-| **EC2 t3.xlarge** (4 vCPU / 16GB) | $0.1664/hr | $27.96 | $55.90 | $121.47 |
+| **EC2 t4g.large** (2 vCPU / 8GB ARM) | $0.0672/hr | $11.29 | $22.58 | $48.38 |
 | **EBS gp3 50GB** | $4.00/mo | $1.00 | $2.00 | $4.00 |
-| **서버 소계 (USD)** | | **$28.96** | **$57.90** | **$125.47** |
-| **서버 소계 (KRW)** | | **42,280원** | **84,530원** | **183,190원** |
+| **서버 소계 (USD)** | | **$12.29** | **$24.58** | **$52.38** |
+| **서버 소계 (KRW)** | | **17,940원** | **35,890원** | **76,470원** |
 
 > EBS는 월정액이므로 기간에 비례하여 산정
 
@@ -53,18 +52,17 @@
 | **Kakao Maps API** | 일 30만건 무료 (충분) |
 | **Vercel Hobby** | Next.js 호스팅 (비상업 개인용) |
 | **Let's Encrypt SSL** | 무료 SSL 인증서 |
-| **Neo4j** | Docker 자체 호스팅 (EC2 내 포함) |
 | **PostgreSQL** | Docker 자체 호스팅 (EC2 내 포함) |
 
 ### 기간별 총 비용 합산 (AWS EC2 기준)
 
 | 항목 | 1주 | 2주 | 1개월 |
 |------|-----|-----|-------|
-| 서버 (EC2 + EBS) | 42,280원 | 84,530원 | 183,190원 |
+| 서버 (EC2 + EBS) | 17,940원 | 35,890원 | 76,470원 |
 | OpenAI API | 1,150원 | 2,310원 | 5,110원 |
 | Solar API | 0원 | 0원 | 0원 |
 | 프론트엔드 (Vercel) | 0원 | 0원 | 0원 |
-| **합계** | **~43,400원** | **~86,800원** | **~188,300원** |
+| **합계** | **~19,100원** | **~38,200원** | **~81,600원** |
 
 ---
 
@@ -123,13 +121,10 @@
 
 ---
 
-### 4. Neo4j 자체 호스팅 (추가 비용 없음)
+### 4. 그래프 기능은 PostgreSQL에 통합 (추가 비용 없음)
 
-AuraDB Pro($65/mo) 대신 같은 EC2에서 Docker로 Neo4j 직접 운영.
-
-- 이미 시나리오에서 Docker로 운영 중이므로 **추가 비용 0원**
-- Neo4j AuraDB Free는 50K 노드 제한으로 이 프로젝트(70K+ 노드) 부적합
-- 데모 기간 동안 백업/모니터링 부담 최소
+법령 계급, 판례 인용 그래프는 PostgreSQL Recursive CTE (PgGraphService)로 완전 지원.
+별도 그래프 DB 비용이 발생하지 않습니다.
 
 ---
 
@@ -160,13 +155,13 @@ AuraDB Pro($65/mo) 대신 같은 EC2에서 Docker로 Neo4j 직접 운영.
 
 ## 결론: 데모 기간별 총 비용 요약
 
-| 기간 | AWS EC2 사용 시 | Oracle Free 활용 시 |
-|------|----------------|-------------------|
-| **1주** | **~43,400원** | **~1,150원** (API 비용만) |
-| **2주** | **~86,800원** | **~2,310원** (API 비용만) |
-| **1개월** | **~188,300원** | **~5,110원** (API 비용만) |
+| 기간 | AWS EC2 (t4g.large ARM) | Oracle Free 활용 시 |
+|------|------------------------|-------------------|
+| **1주** | **~19,100원** | **~1,150원** (API 비용만) |
+| **2주** | **~38,200원** | **~2,310원** (API 비용만) |
+| **1개월** | **~81,600원** | **~5,110원** (API 비용만) |
 
-> **가장 큰 비용 요인**: 서버(EC2) 비용. Oracle Free 확보 시 API 비용만으로 운영 가능.
+> **가장 큰 비용 요인**: 서버(EC2) 비용. ARM Graviton(t4g) 사용으로 x86 대비 ~40% 절감. Oracle Free 확보 시 API 비용만으로 운영 가능.
 
 ---
 
@@ -174,7 +169,7 @@ AuraDB Pro($65/mo) 대신 같은 EC2에서 Docker로 Neo4j 직접 운영.
 
 - [OpenAI API Pricing](https://openai.com/api/pricing/)
 - [AWS EC2 Pricing](https://aws.amazon.com/ec2/pricing/on-demand/)
-- [Neo4j AuraDB Pricing](https://neo4j.com/pricing/)
+
 - [Vercel Pricing](https://vercel.com/pricing)
 - [Upstage AI Pricing](https://www.upstage.ai/pricing/api)
 - [Kakao Developers 쿼터](https://developers.kakao.com/docs/latest/ko/getting-started/quota)

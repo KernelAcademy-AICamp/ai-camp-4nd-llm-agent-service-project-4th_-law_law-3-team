@@ -29,3 +29,7 @@ class TaggedItem(BaseModel):
     turn_index: int = Field(ge=0, description="대화 턴 번호")
     date_hint: str | None = Field(default=None, description="날짜 힌트 (YYYY-MM-DD)")
     confidence: float = Field(ge=0.0, le=1.0, default=0.5, description="신뢰도")
+    extraction_source: str = Field(
+        default="user_message",
+        description="user_message | agent_response",
+    )

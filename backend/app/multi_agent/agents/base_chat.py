@@ -124,6 +124,17 @@ class BaseChatAgent(ABC):
         yield ("done", {})
 
 
+_SIMPLE_CHAT_SYSTEM_PROMPT = """당신은 법률 서비스 플랫폼의 AI 어시스턴트입니다.
+사용자의 질문에 친절하고 정확하게 답변하세요.
+
+사용자가 법률 분쟁에 대해 상담 중이면, 답변 마지막에 자연스럽게 아래 중 1가지를 질문하여 사건 정보를 수집하세요:
+- 사건 발생 시점이나 경위
+- 관련 당사자 (상대방 관계)
+- 증거 자료 보유 여부
+- 피해 금액이나 청구 규모
+이미 충분한 정보가 제공된 경우에는 질문하지 않아도 됩니다."""
+
+
 class SimpleChatAgent(BaseChatAgent):
     """
     단순 LLM 채팅 에이전트
@@ -161,7 +172,7 @@ class SimpleChatAgent(BaseChatAgent):
         model = get_chat_model()
 
         # 대화 기록 구성
-        messages = []
+        messages: list[tuple[str, str]] = [("system", _SIMPLE_CHAT_SYSTEM_PROMPT)]
         if history:
             for h in history:
                 messages.append((h.get("role", "user"), h.get("content", "")))
@@ -194,7 +205,7 @@ class SimpleChatAgent(BaseChatAgent):
         model = get_chat_model()
 
         # 대화 기록 구성
-        messages = []
+        messages: list[tuple[str, str]] = [("system", _SIMPLE_CHAT_SYSTEM_PROMPT)]
         if history:
             for h in history:
                 messages.append((h.get("role", "user"), h.get("content", "")))

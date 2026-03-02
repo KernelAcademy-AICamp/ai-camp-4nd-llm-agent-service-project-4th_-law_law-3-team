@@ -40,7 +40,7 @@ const nextConfig = {
       },
       {
         source: '/api/content-marketing/:path*',
-        destination: 'http://127.0.0.1:8000/api/content-marketing/:path*',
+        destination: `${BACKEND_URL}/api/content-marketing/:path*`,
       },
       {
         source: '/api/workspace/:path*',
