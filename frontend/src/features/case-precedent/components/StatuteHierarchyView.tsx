@@ -35,8 +35,8 @@ export function StatuteHierarchyView() {
         try {
           const detail = await casePrecedentService.getStatuteHierarchy(statuteId)
           const normalizedTargetName = normalizeName(statuteName)
-          const normalizeRootName = normalizeName(detail.root.name)
-          const normalizedAbbreviation = detail.root.abbreviation
+          const normalizeRootName = normalizeName(detail.root?.name ?? '')
+          const normalizedAbbreviation = detail.root?.abbreviation
             ? normalizeName(detail.root.abbreviation)
             : ''
 
@@ -44,7 +44,7 @@ export function StatuteHierarchyView() {
             normalizeRootName === normalizedTargetName ||
             (normalizedAbbreviation && normalizedAbbreviation === normalizedTargetName)
           ) {
-            if (!isCancelled) {
+            if (!isCancelled && detail.root) {
               setSelectedStatute({
                 id: detail.root.id || statuteId,
                 name: detail.root.name,

@@ -44,6 +44,7 @@ class TimeRange(str, Enum):
 
     HOURS_48 = "48h"
     DAYS_7 = "7d"
+    DAYS_14 = "14d"
     DAYS_30 = "30d"
 
 
@@ -176,6 +177,44 @@ class PersonaFeedbackRequest(BaseModel):
     feedback_text: str | None = None
 
 
+# ── Persona Analysis Response (v3.0 NEW, persona-ux-redesign) ──
+
+
+class EvidenceSnippet(BaseModel):
+    """분석 근거 대화 발췌"""
+
+    text: str
+    category: TrendCategory
+    date: datetime
+
+
+class AnalysisInsights(BaseModel):
+    """AI 분석 인사이트 (persona/analyze 응답 확장)"""
+
+    area_scores: dict[str, float]  # { "criminal": 0.78, "civil": 0.62 }
+    summary: str
+    total_conversations_analyzed: int
+    analysis_period_days: int
+    evidence_snippets: list[EvidenceSnippet] = Field(
+        default_factory=list, max_length=3
+    )
+
+
+class PersonaAnalysisResponse(BaseModel):
+    """Track 1 분석 응답 (기존 LawyerPersona + insights)"""
+
+    persona: LawyerPersona
+    analysis_insights: AnalysisInsights
+
+
+class ChatHistoryCountResponse(BaseModel):
+    """대화 이력 건수 응답"""
+
+    count: int
+    has_sufficient_history: bool = False  # count >= 5
+    oldest_date: datetime | None = None
+
+
 # ── Scoring Schema (v2.0 ENHANCED, §3.2) ──
 
 
@@ -281,11 +320,20 @@ class TrendDetailResponse(BaseModel):
 # ── Script Request / Response ──
 
 
+class NewsArticleForScript(BaseModel):
+    """대본 생성용 경량 뉴스 기사"""
+
+    title: str
+    snippet: str = ""
+    source: str = ""
+    published_at: datetime | None = None
+
+
 class ScriptRequest(BaseModel):
     """대본 생성 요청 (v2.0: persona_id 추가, persona 필드는 하위호환 유지)"""
 
     topic: str = Field(
-        min_length=5,
+        min_length=2,
         max_length=500,
         description="주제 (직접 입력 또는 트렌드 요약)",
     )
@@ -301,6 +349,20 @@ class ScriptRequest(BaseModel):
     duration: ScriptDuration = ScriptDuration.MEDIUM
     related_laws: list[str] = Field(default_factory=list)
     related_cases: list[str] = Field(default_factory=list)
+    news_articles: list[NewsArticleForScript] | None = Field(
+        default=None,
+        description="선택된 뉴스 기사 (최대 10개)",
+        max_length=10,
+    )
+
+    @model_validator(mode="after")
+    def strip_topic(self) -> "ScriptRequest":
+        """topic 공백 제거 후 min_length 재검증 (API 직접 호출 시 공백-only 방어)"""
+        self.topic = self.topic.strip()
+        if len(self.topic) < 2:
+            msg = "topic은 공백 제거 후 최소 2자 이상이어야 합니다."
+            raise ValueError(msg)
+        return self
 
 
 class MetadataRequest(BaseModel):
@@ -399,16 +461,17 @@ class KeywordCollectRequest(BaseModel):
 
 
 class KeywordScoreSchema(BaseModel):
-    """키워드 4차원 점수"""
+    """키워드 점수 (v3: convergence 추가)"""
 
     virality: float = Field(ge=0, le=1)
     social_impact: float = Field(ge=0, le=1)
     legal_relevance: float = Field(ge=0, le=1)
     content_fitness: float = Field(ge=0, le=1)
+    convergence: float = Field(default=0.0, ge=0, le=1)
 
 
 class KeywordItem(BaseModel):
-    """키워드 단일 항목"""
+    """키워드 단일 항목 (v3: convergence_score, is_early_signal 추가)"""
 
     id: str
     keyword: str
@@ -418,6 +481,16 @@ class KeywordItem(BaseModel):
     rank: int
     score_reason: str = ""
     confidence: float = Field(default=0.0, ge=0, le=1)
+    convergence_score: float | None = None
+    is_early_signal: bool = False
+
+
+class SourceFailInfo(BaseModel):
+    """소스 실패 정보 (사용자 친화적 메시지만 포함, FR-09)"""
+
+    source_name: str  # "youtube", "google_trends", etc.
+    error_type: str  # "timeout", "auth", "rate_limit", "network", "parse", "unknown"
+    error_message: str | None = None  # sanitize된 메시지 (기술 스택 미노출)
 
 
 class KeywordCollectResponse(BaseModel):
@@ -427,6 +500,7 @@ class KeywordCollectResponse(BaseModel):
     total_count: int
     collected_at: datetime
     sources_used: list[str]
+    sources_failed: list[SourceFailInfo] = Field(default_factory=list)
     cache_hit: bool = False
     prompt_version: str = "1.0"
     model_version: str = ""
@@ -435,7 +509,7 @@ class KeywordCollectResponse(BaseModel):
 class KeywordStreamEvent(BaseModel):
     """키워드 수집 SSE 스트리밍 이벤트 (§7.4)"""
 
-    step: str  # tavily_start, tavily_done, llm_start, llm_done, scoring, done, error
+    step: str  # tavily_start, tavily_done, llm_start, llm_done, scoring, cache_hit, done, error
     progress: int = 0  # 0~100
     message: str = ""
     count: int | None = None
@@ -450,7 +524,7 @@ class KeywordNewsRequest(BaseModel):
 
 
 class NewsArticle(BaseModel):
-    """뉴스 기사"""
+    """뉴스 기사 (v2: engagement/convergence 5차원 스코어링)"""
 
     title: str
     url: str
@@ -459,6 +533,21 @@ class NewsArticle(BaseModel):
     snippet: str = ""
     related_laws: list[str] = Field(default_factory=list)
     legal_issue_label: str | None = None
+    relevance_score: float = Field(default=0.0, ge=0.0, le=1.0, description="키워드 관련도")
+    legal_score: float = Field(default=0.0, ge=0.0, le=1.0, description="법적 관련도")
+    recency_score: float = Field(default=0.0, ge=0.0, le=1.0, description="최신성")
+    total_score: float = Field(default=0.0, ge=0.0, le=100.0, description="종합 점수")
+    # v2 engagement 메트릭
+    engagement_score: float = Field(default=0.0, ge=0.0, le=1.0, description="참여도 점수")
+    convergence_score: float = Field(default=0.0, ge=0.0, le=1.0, description="수렴 점수")
+    view_count: int | None = None
+    comment_count: int | None = None
+    is_early_signal: bool = False
+    source_weight: float = Field(default=0.5, ge=0.0, le=2.0, description="소스 권위도 가중치")
+    score_breakdown: dict[str, float] = Field(
+        default_factory=dict,
+        description="차원별 점수 분해 (예: relevance, legal, recency, engagement, convergence)",
+    )
 
 
 class RelatedLawBrief(BaseModel):
@@ -477,4 +566,121 @@ class KeywordNewsResponse(BaseModel):
     related_laws: list[RelatedLawBrief] = Field(default_factory=list)
     total_count: int
     sources_used: list[str] = Field(default_factory=list)
+    sources_failed: list[SourceFailInfo] = Field(default_factory=list)
     searched_at: datetime
+
+
+# ── Webtoon Storyboard Schema (스토리보드 자동 생성) ──
+
+
+class WebtoonSceneType(str, Enum):
+    """웹툰 씬 타입 (8종)"""
+
+    HOOK_SHOCK = "hook_shock"
+    HOOK_QUESTION = "hook_question"
+    LEGAL_EXPLANATION = "legal_explanation"
+    CASE_EXAMPLE = "case_example"
+    CONFLICT_DRAMA = "conflict_drama"
+    DOCUMENT_CLOSEUP = "document_closeup"
+    LAWYER_ADVICE = "lawyer_advice"
+    CTA_SUBSCRIBE = "cta_subscribe"
+
+
+class ImageStatus(str, Enum):
+    """이미지 생성 상태"""
+
+    PENDING = "pending"
+    GENERATING = "generating"
+    RETRYING = "retrying"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+
+class WebtoonPanel(BaseModel):
+    """웹툰 패널 (장면 분할 결과 + 이미지 생성 결과)"""
+
+    panel_number: int = Field(ge=1, le=14)
+    section: SectionType
+    scene_type: WebtoonSceneType
+    script_excerpt: str = Field(max_length=500)
+    scene_description: str = Field(max_length=300)
+    location: str = Field(max_length=100)
+    time_of_day: str = Field(max_length=50)
+    characters: list[str] = Field(default_factory=list, max_length=5)
+    emotion: str = Field(max_length=50)
+    visual_focus: str = Field(max_length=100)
+    camera_angle: str = Field(max_length=50)
+    legal_keyword: str = Field(max_length=100)
+    image_prompt: str | None = None
+    image_url: str | None = None
+    image_status: ImageStatus = ImageStatus.PENDING
+    error_message: str | None = None
+    model_version: str | None = None
+    prompt_version: str | None = None
+    generation_cost_ms: int | None = None
+    safety_flags: list[str] = Field(default_factory=list)
+
+
+class WebtoonGenerateRequest(BaseModel):
+    """웹툰 스토리보드 생성 요청"""
+
+    topic: str = Field(min_length=2, max_length=500)
+    sections: dict[str, str]
+    persona: PersonaType = PersonaType.PROFESSIONAL
+    persona_id: str | None = None
+    panel_count: int | None = Field(default=None, ge=4, le=14)
+
+    @model_validator(mode="after")
+    def validate_topic_and_sections(self) -> "WebtoonGenerateRequest":
+        """topic 공백 제거 + 필수 섹션 키 검증"""
+        self.topic = self.topic.strip()
+        if len(self.topic) < 2:
+            msg = "topic은 공백 제거 후 최소 2자 이상이어야 합니다."
+            raise ValueError(msg)
+        required = {"hooking", "analysis", "advice_cta"}
+        if not required.issubset(self.sections.keys()):
+            missing = required - self.sections.keys()
+            msg = f"필수 섹션 누락: {missing}"
+            raise ValueError(msg)
+        for key in required:
+            if not self.sections[key].strip():
+                msg = f"섹션 '{key}'의 내용이 비어있습니다."
+                raise ValueError(msg)
+        return self
+
+
+class WebtoonJobResponse(BaseModel):
+    """웹툰 Job 생성 응답"""
+
+    job_id: str
+    status: str = "accepted"
+    estimated_panels: int
+
+
+class WebtoonStreamEvent(BaseModel):
+    """SSE 스트리밍 이벤트"""
+
+    event: str
+    panel_number: int | None = None
+    total_panels: int | None = None
+    section: str | None = None
+    caption: str | None = None
+    scene_description: str | None = None
+    image_url: str | None = None
+    error: str | None = None
+
+
+class WebtoonJobStatusResponse(BaseModel):
+    """웹툰 Job 상태 폴링 응답"""
+
+    job_id: str
+    status: str
+    progress: int
+    panels: list[WebtoonPanel] = Field(default_factory=list)
+    error: str | None = None
+
+
+class WebtoonRegenerateRequest(BaseModel):
+    """개별 패널 재생성 요청"""
+
+    panel_number: int = Field(ge=1, le=14)

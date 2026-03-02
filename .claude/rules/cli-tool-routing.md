@@ -97,11 +97,45 @@ Codex CLI의 대화형 모드는 TUI 렌더링을 위해 TTY가 필수이므로,
 
 | 사용 가능 (비대화형) | 사용 금지 (대화형, TTY 필수) |
 |---------------------|---------------------------|
-| `codex exec "prompt"` | `codex "prompt"` |
-| `codex exec --full-auto "prompt"` | `codex -a on-failure "prompt"` |
-| `codex review --uncommitted` | `codex /review` |
+| `codex exec "prompt" --ephemeral -s read-only` | `codex "prompt"` |
+| `codex review --uncommitted` | `codex -a on-failure "prompt"` |
 | `codex review --base main` | `codex --full-auto "prompt"` |
-| `stdin \| codex exec -` | `stdin \| codex "prompt"` |
+| `stdin \| codex exec - --ephemeral -s read-only` | `stdin \| codex "prompt"` |
+
+## Codex CLI 안전 실행 규칙 (2026-02-27 추가)
+
+> 근거: `.claude/FAILURE_LOG.md` FAIL-001, `docs/03-analysis/codex-cli-error-investigation.report.md`
+
+### 필수 플래그
+
+- **`--ephemeral` 필수** — 세션을 디스크에 저장하지 않아 병렬 실행 시 세션 충돌 방지 ([#11435](https://github.com/openai/codex/issues/11435))
+- **`-s read-only` 기본** — 파일 수정이 불필요한 리뷰/검토 작업
+
+### 금지 조합 (알려진 Codex CLI 버그)
+
+| 금지 패턴 | 이유 | GitHub 이슈 |
+|-----------|------|------------|
+| `codex exec --full-auto` | 무한 대기 + 좀비 프로세스 | [#7852](https://github.com/openai/codex/issues/7852) |
+| 200줄 초과 프롬프트 | 출력 형식 붕괴 | [#11122](https://github.com/openai/codex/issues/11122) |
+| 병렬 `codex exec` 동시 실행 | 세션 파일 오염 | [#11435](https://github.com/openai/codex/issues/11435) |
+| `codex review --base main` | 작업 트리 전체 포함 + 환각 | [#8404](https://github.com/openai/codex/issues/8404) |
+
+### 프롬프트 준비 규칙
+
+- 기획서/코드 전체 대신 **핵심 섹션만 추출** (200줄 이하)
+- 프롬프트 간소화는 **이 규칙에 명시된 방법**으로만 수행
+- **PM이 임의로 프롬프트를 변경/간소화하는 것은 금지** — 반드시 사용자에게 보고 후 승인
+- 프롬프트 추출 예: `sed -n '1,200p' docs/01-plan/features/{feature}.plan.md`
+
+### 순차 실행 보장
+
+에이전트 팀에서 Codex CLI를 호출할 때 **동시 호출을 금지**합니다.
+이전 Codex 세션이 완전히 종료된 후 다음 호출을 시작합니다.
+
+### 실패 시 Failure Log 기록 (필수)
+
+CLI 실행 실패 시 `.claude/FAILURE_LOG.md`에 즉시 기록합니다.
+상세: `.claude/rules/failure-log-protocol.md`
 
 ## CLI 실행 실패 시 필수 절차 (절대 건너뛰기 금지)
 

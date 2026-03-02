@@ -8,7 +8,7 @@ import { PersonaGate } from '@/features/content-marketing/components/PersonaGate
 import { ScriptGenerator } from '@/features/content-marketing/components/ScriptGenerator'
 import { TrendDashboard } from '@/features/content-marketing/components/TrendDashboard'
 import { submitPersonaFeedback } from '@/features/content-marketing/services'
-import type { TrendIssue } from '@/features/content-marketing/types'
+import type { NewsArticleForScript, TrendIssue } from '@/features/content-marketing/types'
 
 type Tab = 'trends' | 'script'
 
@@ -16,10 +16,19 @@ export default function ContentMarketingPage() {
   const [activeTab, setActiveTab] = useState<Tab>('trends')
   const [scriptTopic, setScriptTopic] = useState('')
   const [scriptTrend, setScriptTrend] = useState<TrendIssue | null>(null)
+  const [scriptNewsArticles, setScriptNewsArticles] = useState<NewsArticleForScript[] | null>(null)
 
   const handleGenerateFromTrend = useCallback((issue: TrendIssue) => {
     setScriptTopic(issue.title)
     setScriptTrend(issue)
+    setScriptNewsArticles(null)
+    setActiveTab('script')
+  }, [])
+
+  const handleGenerateScriptWithNews = useCallback((keyword: string, articles: NewsArticleForScript[]) => {
+    setScriptTopic(keyword)
+    setScriptTrend(null)
+    setScriptNewsArticles(articles)
     setActiveTab('script')
   }, [])
 
@@ -77,13 +86,15 @@ export default function ContentMarketingPage() {
             {/* 탭 콘텐츠 */}
             <main className="max-w-6xl mx-auto px-6 py-6">
               {activeTab === 'trends' ? (
-                <TrendDashboard onGenerateScript={handleGenerateFromTrend} />
+                <TrendDashboard onGenerateScript={handleGenerateFromTrend} onGenerateScriptWithNews={handleGenerateScriptWithNews} personaId={personaId} persona={persona} />
               ) : (
                 <ScriptGenerator
-                  key={scriptTrend?.id ?? 'manual'}
+                  key={`${scriptTrend?.id ?? 'manual'}-${scriptNewsArticles?.length ?? 0}`}
                   initialTopic={scriptTopic}
                   initialTrend={scriptTrend}
+                  initialNewsArticles={scriptNewsArticles}
                   personaId={personaId}
+                  savedPersona={persona}
                   onFeedback={submitPersonaFeedback}
                 />
               )}

@@ -1,4 +1,5 @@
 import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -26,9 +27,12 @@ from app.core.registry import ModuleRegistry
 MEDIA_DIR = Path(__file__).parent.parent / "data" / "media"
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
+# 웹툰 스토리보드 이미지 디렉토리
+(MEDIA_DIR / "webtoon" / "images").mkdir(parents=True, exist_ok=True)
+
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """애플리케이션 생명주기 관리"""
     import logging
 

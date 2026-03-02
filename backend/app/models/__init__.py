@@ -33,6 +33,8 @@ from app.models.lawyer_persona import (
     LawyerPersonaModel,
 )
 from app.models.legal_term import LegalTerm
+from app.models.news_article import NewsArticle
+from app.models.news_article_dlq import NewsArticleDLQ
 from app.models.precedent_document import PrecedentDocument
 from app.models.statute_alias import StatuteAlias
 from app.models.statute_hierarchy import StatuteHierarchy
@@ -55,6 +57,9 @@ __all__ = [
     "StatuteRelation",
     "CaseStatuteCitation",
     "CaseCaseCitation",
+    # 뉴스 파이프라인
+    "NewsArticle",
+    "NewsArticleDLQ",
     # ingest 모델
     "AdminRuleDocument",
     "ConstitutionalDocument",

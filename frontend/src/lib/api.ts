@@ -20,4 +20,5 @@ export const endpoints = {
   multiAgent: '/multi-agent',
   mockTrial: '/mock-trial',
   contentMarketing: '/content-marketing',
+  legalNews: '/legal-news',
 }

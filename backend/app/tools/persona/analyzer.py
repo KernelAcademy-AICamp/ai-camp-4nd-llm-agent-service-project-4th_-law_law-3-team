@@ -13,13 +13,18 @@ from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.modules.content_marketing.schema import (
+    AnalysisInsights,
     LawyerPersona,
     PersonaTone,
     TargetAudience,
     TrendCategory,
 )
 from app.tools.persona.metadata_extractor import MetadataExtractor
-from app.tools.persona.models import ChatMetadata, PersonaExtractionResult
+from app.tools.persona.models import (
+    AnalysisResult,
+    ChatMetadata,
+    PersonaExtractionResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +68,12 @@ class PersonaAnalyzer:
         messages: list[dict[str, str]],
         max_history: int = 100,
         days_back: int = 30,
-    ) -> LawyerPersona:
-        """대화 이력 메타데이터에서 페르소나 추출 + 4중 검증"""
+    ) -> AnalysisResult:
+        """대화 이력 메타데이터에서 페르소나 추출 + 4중 검증
+
+        Returns:
+            AnalysisResult(persona=LawyerPersona, insights=AnalysisInsights)
+        """
         minimum = settings.PERSONA_MIN_HISTORY
         if len(messages) < minimum:
             raise InsufficientHistoryError(
@@ -91,7 +100,10 @@ class PersonaAnalyzer:
         if validated.confidence < threshold:
             raise LowConfidenceError(confidence=validated.confidence)
 
-        return self._build_persona(user_id, validated)
+        persona = self._build_persona(user_id, validated)
+        insights = self._build_insights(metadata, validated, days_back)
+
+        return AnalysisResult(persona=persona, insights=insights)
 
     async def _extract_persona_from_metadata(
         self,
@@ -193,4 +205,36 @@ class PersonaAnalyzer:
             confidence=extraction.confidence,
             created_at=now,
             updated_at=now,
+        )
+
+    def _build_insights(
+        self,
+        metadata: ChatMetadata,
+        extraction: PersonaExtractionResult,
+        days_back: int,
+    ) -> AnalysisInsights:
+        """메타데이터 + 추출 결과 → AnalysisInsights 생성"""
+        # 카테고리 분포를 area_scores로 변환
+        area_scores: dict[str, float] = {}
+        for area, score in metadata.category_distribution.items():
+            if area in VALID_SPECIALTIES:
+                area_scores[area] = round(score, 3)
+
+        # 요약 생성
+        top_areas = sorted(
+            area_scores.items(), key=lambda x: x[1], reverse=True,
+        )[:3]
+        area_names = [a for a, _ in top_areas]
+        summary = (
+            f"최근 {days_back}일간 {metadata.total_conversations}건의 "
+            f"상담 내역을 분석한 결과, "
+            f"{', '.join(area_names)} 분야에 전문성이 집중되어 있습니다."
+        )
+
+        return AnalysisInsights(
+            area_scores=area_scores,
+            summary=summary,
+            total_conversations_analyzed=metadata.total_conversations,
+            analysis_period_days=days_back,
+            evidence_snippets=[],  # TODO: 실제 대화 발췌 구현
         )

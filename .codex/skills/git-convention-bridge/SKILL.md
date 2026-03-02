@@ -1,3 +1,7 @@
+---
+name: git-convention-bridge
+description: "Git convention bridge for Codex CLI - maps .claude rules to Codex runtime"
+---
 # Git Convention Bridge (Codex)
 
 Codex가 이 저장소에서 Git 작업을 수행할 때 `.claude` 규칙을 안전하게 적용하기 위한 브리지 스킬입니다.

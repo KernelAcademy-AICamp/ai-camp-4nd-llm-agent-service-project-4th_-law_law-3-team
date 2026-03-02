@@ -55,15 +55,16 @@
       "Bash(seq:*)",
       "Bash(for:*)",
       "Bash(test:*)",
-      "Bash([:*)"
+      "Bash([:*)",
+      "Bash(kill:*)",
+      "Bash(pkill:*)",
+      "Bash(lsof:*)"
     ],
     "deny": [
       "Bash(rm:*)",
       "Bash(rmdir:*)",
       "Bash(chmod:*)",
       "Bash(chown:*)",
-      "Bash(kill:*)",
-      "Bash(pkill:*)",
       "Bash(shutdown:*)",
       "Bash(reboot:*)"
     ]

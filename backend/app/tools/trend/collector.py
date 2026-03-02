@@ -7,6 +7,11 @@ Stage 3: Naver/YouTube/Perplexity → 키워드 기반 병렬 뉴스 검색
 v2.1: Keyword Flow 전용 메서드 추가
   - collect_community_keywords(): 커뮤니티 수집 + 4차원 스코어링 키워드 반환
   - search_news_for_keyword(): 특정 키워드로 뉴스 병렬 검색
+
+v3: Phase 3 통합
+  - CircuitBreaker: 소스별 장애 감지 + 점증 backoff
+  - URL Canonicalization: 정규화된 URL로 중복 제거 정확도 향상
+  - Engagement passthrough: RawTrendItem → NewsArticle 변환 시 engagement 필드 전달
 """
 
 from __future__ import annotations
@@ -19,10 +24,12 @@ from app.core.config import settings
 from app.modules.content_marketing.schema import (
     LawyerPersona,
     NewsArticle,
+    SourceFailInfo,
     TrendRequest,
     TrendResponse,
     TrendSource,
 )
+from app.tools.trend.circuit_breaker import CircuitBreaker
 from app.tools.trend.exceptions import TrendSourceError
 from app.tools.trend.keyword_blacklist import sanitize_keyword
 from app.tools.trend.keyword_extractor import CommunityKeywordExtractor
@@ -32,7 +39,8 @@ from app.tools.trend.models import (
     ScoredKeyword,
     TrendCacheEntry,
 )
-from app.tools.trend.sources import BaseTrendSource, SourceConfig
+from app.tools.trend.rrf import SOURCE_AUTHORITY_WEIGHTS
+from app.tools.trend.sources import BaseTrendSource, SourceConfig, SourceFetchResult
 from app.tools.trend.sources.google_source import GoogleSource
 from app.tools.trend.sources.naver_source import NaverSource
 from app.tools.trend.sources.newsapi_source import NewsAPISource
@@ -40,8 +48,47 @@ from app.tools.trend.sources.newsdata_source import NewsDataSource
 from app.tools.trend.sources.perplexity_source import PerplexitySource
 from app.tools.trend.sources.tavily_source import TavilySource
 from app.tools.trend.sources.youtube_source import YouTubeSource
+from app.tools.trend.url_canonicalizer import canonicalize_url
 
 logger = logging.getLogger(__name__)
+
+# ── 카테고리별 동적 쿼리 맵 (Phase 1: 하드코딩 쿼리 → 카테고리 관통) ──
+
+_CATEGORY_KEYWORD_QUERIES: dict[str, list[str]] = {
+    "all": ["사건 사고 논란 이슈", "법률 사건 사고 논란", "법률 이슈 판결"],
+    "criminal": ["형사 사건 판결 논란", "형사 범죄 수사 이슈", "형법 판결 사건"],
+    "civil": ["민사 소송 판결 논란", "민사 분쟁 손해배상 이슈", "민법 판결 사건"],
+    "labor": ["노동 근로 분쟁 이슈", "부당해고 임금체불 논란", "노동법 판결 사건"],
+    "family": ["가족 이혼 상속 분쟁", "가사 양육권 논란 이슈", "가정법원 판결 사건"],
+    "administrative": ["행정 소송 규제 논란", "행정법 처분 취소 이슈", "공법 규제 판결 사건"],
+    "corporate": ["기업 법무 분쟁 이슈", "상법 회사 경영권 논란", "기업법 판결 사건"],
+    "ip": ["지식재산 특허 저작권 분쟁", "상표권 침해 논란 이슈", "지재권 판결 사건"],
+}
+
+_CATEGORY_NEWS_QUERIES: dict[str, str] = {
+    "all": "법률",
+    "criminal": "형사 범죄",
+    "civil": "민사 소송",
+    "labor": "노동 근로",
+    "family": "가사 이혼 상속",
+    "administrative": "행정 소송 규제",
+    "corporate": "기업 상법",
+    "ip": "지식재산 특허 저작권",
+}
+
+
+def _build_keyword_query(category: str) -> list[str]:
+    """카테고리 기반 키워드 수집용 동적 쿼리 생성"""
+    return _CATEGORY_KEYWORD_QUERIES.get(category, _CATEGORY_KEYWORD_QUERIES["all"])
+
+
+def _build_news_query(keyword: str, category: str) -> str:
+    """카테고리 기반 뉴스 검색용 동적 쿼리 생성"""
+    category_context = _CATEGORY_NEWS_QUERIES.get(category, _CATEGORY_NEWS_QUERIES["all"])
+    return f"{keyword} {category_context}"
+
+
+MAX_CONCURRENT_SOURCES: int = 4
 
 
 class TrendCollector:
@@ -63,6 +110,8 @@ class TrendCollector:
         ]
         self._keyword_extractor = CommunityKeywordExtractor()
         self._cache: dict[str, TrendCacheEntry] = {}
+        self._circuit_breaker = CircuitBreaker(failure_threshold=3, half_open_max_requests=2)
+        self._source_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SOURCES)
 
     def _get_available_sources(self) -> list[BaseTrendSource]:
         """API 키가 설정된 소스만 반환"""
@@ -220,7 +269,11 @@ class TrendCollector:
         return deduplicated
 
     def _deduplicate(self, items: list[RawTrendItem]) -> list[RawTrendItem]:
-        """URL 유효성 검증 + 중복 제거"""
+        """URL 유효성 검증 + 정규화 중복 제거
+
+        Phase 3: canonicalize_url()로 UTM 파라미터 제거, 모바일 도메인 통일 등
+        정규화된 URL 기준 중복 제거로 정확도 향상.
+        """
         from app.tools.trend.url_filter import is_article_url
 
         seen_urls: set[str] = set()
@@ -230,9 +283,9 @@ class TrendCollector:
             if not is_article_url(item.url):
                 filtered_count += 1
                 continue
-            normalized_url = item.url.rstrip("/").lower()
-            if normalized_url not in seen_urls:
-                seen_urls.add(normalized_url)
+            canonical = canonicalize_url(item.url)
+            if canonical not in seen_urls:
+                seen_urls.add(canonical)
                 unique.append(item)
         if filtered_count:
             logger.info("URL 필터링: %d건 제거 (홈페이지/무효 URL)", filtered_count)
@@ -244,27 +297,32 @@ class TrendCollector:
         self,
         community_domains: list[str] | None = None,
         max_keywords: int = 10,
+        category: str = "all",
     ) -> list[ScoredKeyword]:
         """커뮤니티 수집 + 4차원 스코어링 키워드 반환
 
         Args:
             community_domains: 수집 대상 도메인 (None이면 config 기본값)
             max_keywords: 최대 키워드 수
+            category: 법률 카테고리 (동적 쿼리 생성에 사용)
 
         Returns:
             ScoredKeyword 리스트 (total_score 내림차순)
         """
         domains = community_domains or settings.KEYWORD_COMMUNITY_DOMAINS
+        queries = _build_keyword_query(category)
 
         if not self._community_source.is_available:
             raise TrendSourceError("Tavily API 키가 설정되지 않았습니다.")
 
         # Tavily 커뮤니티 수집 (include_domains 사용)
+        primary_query = queries[0]
         config = SourceConfig(
             time_range="48h",
             max_results=max_keywords * 3,
-            search_query="사건 사고 논란 이슈",
+            search_query=primary_query,
             include_domains=domains,
+            category=category,
         )
 
         # Tavily + Naver 뉴스 병렬 수집 (하이브리드)
@@ -273,14 +331,16 @@ class TrendCollector:
             None,
         )
 
-        tasks = [self._community_source.safe_fetch("사건 사고 논란 이슈", config)]
+        tasks = [self._community_source.safe_fetch(primary_query, config)]
         if naver_source:
+            secondary_query = queries[1] if len(queries) > 1 else primary_query
             naver_config = SourceConfig(
                 time_range="48h",
                 max_results=max_keywords * 2,
-                search_query="사건 사고 논란 법률",
+                search_query=secondary_query,
+                category=category,
             )
-            tasks.append(naver_source.safe_fetch("사건 사고 논란 법률", naver_config))
+            tasks.append(naver_source.safe_fetch(secondary_query, naver_config))
 
         results = await asyncio.gather(*tasks)
         community_items: list[RawTrendItem] = []
@@ -299,33 +359,121 @@ class TrendCollector:
 
         return scored_keywords
 
+    async def collect_community_keywords_with_status(
+        self,
+        community_domains: list[str] | None = None,
+        max_keywords: int = 10,
+        time_range: str = "48h",
+        category: str = "all",
+    ) -> tuple[list[ScoredKeyword], list[str], list[SourceFailInfo]]:
+        """커뮤니티 수집 + 4차원 스코어링 키워드 반환 (소스 상태 포함)
+
+        Args:
+            community_domains: 수집 대상 도메인 (None이면 config 기본값)
+            max_keywords: 최대 키워드 수
+            time_range: 수집 기간
+            category: 법률 카테고리 (동적 쿼리 생성에 사용)
+
+        Returns:
+            (ScoredKeyword 리스트, 성공 소스명 리스트, 실패 소스 정보 리스트) 튜플
+        """
+        domains = community_domains or settings.KEYWORD_COMMUNITY_DOMAINS
+        queries = _build_keyword_query(category)
+
+        if not self._community_source.is_available:
+            raise TrendSourceError("Tavily API 키가 설정되지 않았습니다.")
+
+        primary_query = queries[0]
+        config = SourceConfig(
+            time_range=time_range,
+            max_results=max_keywords * 3,
+            search_query=primary_query,
+            include_domains=domains,
+            category=category,
+        )
+
+        # Tavily + Naver 병렬 수집 (safe_fetch_with_status 사용)
+        naver_source = next(
+            (s for s in self._news_sources if s.name == TrendSource.NAVER and s.is_available),
+            None,
+        )
+
+        secondary_query = queries[1] if len(queries) > 1 else primary_query
+        tasks = [self._community_source.safe_fetch_with_status(primary_query, config)]
+        if naver_source:
+            naver_config = SourceConfig(
+                time_range=time_range,
+                max_results=max_keywords * 2,
+                search_query=secondary_query,
+                category=category,
+            )
+            tasks.append(naver_source.safe_fetch_with_status(secondary_query, naver_config))
+
+        fetch_results: list[SourceFetchResult] = await asyncio.gather(*tasks)
+
+        # 소스 상태 분류 + 아이템 합산
+        community_items: list[RawTrendItem] = []
+        sources_used: list[str] = []
+        sources_failed: list[SourceFailInfo] = []
+
+        for result in fetch_results:
+            community_items.extend(result.items)
+            if result.is_success:
+                sources_used.append(result.source_name)
+            else:
+                sources_failed.append(SourceFailInfo(
+                    source_name=result.source_name,
+                    error_type=result.error_type or "unknown",
+                    error_message=result.error_message,
+                ))
+
+        logger.info(
+            "커뮤니티 키워드 수집: %d건 (성공 %d개, 실패 %d개)",
+            len(community_items), len(sources_used), len(sources_failed),
+        )
+
+        if not community_items:
+            return [], sources_used, sources_failed
+
+        scored_keywords = await self._keyword_extractor.extract_with_scores(
+            community_items, max_keywords=max_keywords,
+        )
+
+        return scored_keywords, sources_used, sources_failed
+
     async def search_news_for_keyword(
         self,
         keyword: str,
         max_results: int = 10,
-    ) -> tuple[list[NewsArticle], list[str]]:
+        category: str = "all",
+    ) -> tuple[list[NewsArticle], list[str], list[SourceFailInfo]]:
         """특정 키워드로 뉴스 소스 병렬 검색
 
         Args:
             keyword: 검색 키워드 (Sanitize 완료)
             max_results: 최대 결과 수
+            category: 법률 카테고리 (쿼리 보강에 사용)
 
         Returns:
-            (NewsArticle 리스트, 사용된 소스명 리스트) 튜플
+            (NewsArticle 리스트, 사용된 소스명 리스트, 실패 소스 정보 리스트) 튜플
         """
         sanitized = sanitize_keyword(keyword)
         if not sanitized:
             logger.warning("키워드 Sanitize 실패: %s", keyword[:30])
-            return [], []
+            return [], [], []
 
         available_news = [s for s in self._news_sources if s.is_available]
         if not available_news:
             raise TrendSourceError("사용 가능한 뉴스 소스가 없습니다.")
 
+        # 카테고리 기반 쿼리 보강
+        search_query = _build_news_query(sanitized, category)
+
         config = SourceConfig(
             time_range="7d",
             max_results=max_results,
-            search_query=sanitized,
+            search_query=search_query,
+            category=category,
         )
 
         # 소스별 차등 타임아웃 (§8.6)
@@ -335,51 +483,97 @@ class TrendCollector:
             "newsdata": 10,
             "newsapi": 8,
             "youtube": 10,
-            "perplexity": 10,
+            "perplexity": 15,
             "tavily": 15,
         }
 
-        async def _fetch_with_timeout(source: BaseTrendSource) -> list[RawTrendItem]:
-            timeout = source_timeouts.get(source.name.value, 15)
+        async def _fetch_with_status(source: BaseTrendSource) -> SourceFetchResult:
+            """safe_fetch_with_status() + 소스별 타임아웃 + CircuitBreaker"""
+            source_key = source.name.value
+
+            # CircuitBreaker: OPEN 상태면 즉시 스킵
+            if self._circuit_breaker.is_open(source_key):
+                status = self._circuit_breaker.get_status(source_key)
+                logger.info("CircuitBreaker %s: 소스 '%s' 스킵", status, source_key)
+                return SourceFetchResult(
+                    items=[],
+                    source_name=source_key,
+                    is_success=False,
+                    error_type="circuit_open",
+                    error_message=f"서킷 브레이커 {status} 상태",
+                )
+
+            timeout = source_timeouts.get(source_key, 15)
             try:
-                return await asyncio.wait_for(
-                    source.safe_fetch(sanitized, config),
+                result = await asyncio.wait_for(
+                    source.safe_fetch_with_status(sanitized, config),
                     timeout=timeout,
                 )
+                if result.is_success:
+                    self._circuit_breaker.record_success(source_key)
+                else:
+                    self._circuit_breaker.record_failure(source_key)
+                return result
             except asyncio.TimeoutError:
-                logger.warning("소스 %s 타임아웃 (%ds)", source.name.value, timeout)
-                return []
+                self._circuit_breaker.record_failure(source_key)
+                logger.warning("소스 %s 타임아웃 (%ds)", source_key, timeout)
+                return SourceFetchResult(
+                    items=[],
+                    source_name=source_key,
+                    is_success=False,
+                    error_type="timeout",
+                    error_message=f"응답 시간 초과 ({timeout}s)",
+                )
 
-        results = await asyncio.gather(
-            *[_fetch_with_timeout(s) for s in available_news],
+        async def _fetch_with_semaphore(source: BaseTrendSource) -> SourceFetchResult:
+            async with self._source_semaphore:
+                return await _fetch_with_status(source)
+
+        fetch_results: list[SourceFetchResult] = await asyncio.gather(
+            *[_fetch_with_semaphore(s) for s in available_news],
         )
 
         # 결과 합산 + 중복 제거
         all_items: list[RawTrendItem] = []
-        for items in results:
-            all_items.extend(items)
+        for result in fetch_results:
+            all_items.extend(result.items)
 
         deduplicated = self._deduplicate(all_items)
 
-        # RawTrendItem → NewsArticle 변환
+        # RawTrendItem → NewsArticle 변환 (v3: engagement 필드 패스스루)
         articles: list[NewsArticle] = []
         for item in deduplicated[:max_results]:
+            source_key = item.source.value
             articles.append(NewsArticle(
                 title=item.title,
                 url=item.url,
-                source=item.source.value,
+                source=source_key,
                 published_at=item.published_at,
                 snippet=item.snippet,
+                view_count=item.view_count,
+                comment_count=item.comment_count,
+                is_early_signal=item.is_early_signal,
+                source_weight=SOURCE_AUTHORITY_WEIGHTS.get(source_key, 0.5),
             ))
 
-        # 실제 결과를 반환한 소스 목록
+        # SourceFetchResult로부터 성공/실패 소스 분류
         sources_used: list[str] = []
-        for source, result in zip(available_news, results):
-            if result:
-                sources_used.append(source.name.value)
+        sources_failed: list[SourceFailInfo] = []
+        for result in fetch_results:
+            if result.is_success and result.items:
+                sources_used.append(result.source_name)
+            elif not result.is_success:
+                sources_failed.append(SourceFailInfo(
+                    source_name=result.source_name,
+                    error_type=result.error_type or "unknown",
+                    error_message=result.error_message,
+                ))
+            else:
+                # 성공했지만 결과 0건 (빈 결과)
+                sources_used.append(result.source_name)
 
         logger.info(
-            "키워드 뉴스 검색 '%s': %d건 (소스 %d개)",
-            sanitized, len(articles), len(available_news),
+            "키워드 뉴스 검색 '%s': %d건 (성공 %d개, 실패 %d개)",
+            sanitized, len(articles), len(sources_used), len(sources_failed),
         )
-        return articles, sources_used
+        return articles, sources_used, sources_failed

@@ -45,10 +45,10 @@ export function usePersona() {
     setIsAnalyzing(true)
     setError(null)
     try {
-      const result = await analyzePersona(request ?? {})
-      setPersona(result)
+      const response = await analyzePersona(request ?? {})
+      setPersona(response.persona)
       setLoadState('loaded')
-      return result
+      return response
     } catch (err) {
       const message = err instanceof Error ? err.message : '페르소나 분석 실패'
       setError(message)
