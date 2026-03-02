@@ -26,16 +26,11 @@ class DocumentService:
             font_paths = [
                 Path("C:/Windows/Fonts/malgun.ttf"),  # Windows
                 Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),  # Linux
-                Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),  # Mac
+                Path("/System/Library/Fonts/Supplemental/AppleGothic.ttf"),  # Mac
             ]
             for path in font_paths:
                 if path.exists():
-                    if path.suffix.lower() == ".ttc":
-                        pdfmetrics.registerFont(
-                            TTFont("KoreanFont", str(path), subfontIndex=0)
-                        )
-                    else:
-                        pdfmetrics.registerFont(TTFont("KoreanFont", str(path)))
+                    pdfmetrics.registerFont(TTFont("KoreanFont", str(path)))
                     font_name = "KoreanFont"
                     break
         except Exception as e:
