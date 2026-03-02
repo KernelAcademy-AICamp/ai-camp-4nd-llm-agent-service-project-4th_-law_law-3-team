@@ -353,7 +353,7 @@ cd backend
 rm -rf lancedb_data/
 
 # 재생성 (IVF 인덱스 포함)
-uv run python scripts/load_lancedb_data.py --type all --reset
+uv run python -m scripts.ingest.cli --type all --step vector --reset
 ```
 
 **예상 개선:** 50-150ms 단축 (벡터 검색 50% 개선)
