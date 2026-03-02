@@ -42,7 +42,7 @@ docker.exe run -d \
   -e POSTGRES_USER=lawuser \
   -e POSTGRES_PASSWORD=lawpassword \
   -e POSTGRES_DB=lawdb \
-  postgres:15-alpine
+  postgres:17-alpine
 ```
 
 > **주의**: 이 방식은 `init.sql` 볼륨과 `postgres_data` named volume을 사용하지 않으므로
@@ -107,7 +107,7 @@ docker.exe rm -f law-platform-db && docker.exe run -d ...
 
 | 컨테이너 | 이미지 | 포트 |
 |----------|--------|------|
-| `law-platform-db` | `postgres:15-alpine` | 5432 |
+| `law-platform-db` | 커스텀 빌드 (`docker/postgres/Dockerfile`, PG 17 + pg_textsearch) | 5432 |
 | `neo4j-law-graph` | `neo4j:5.15.0` | 7474, 7687 |
 
 ---

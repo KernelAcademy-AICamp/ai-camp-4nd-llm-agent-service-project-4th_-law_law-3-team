@@ -78,6 +78,10 @@ COPY --from=deps --chown=appuser:appuser /app/.venv /app/.venv
 # 애플리케이션 코드 복사
 COPY --chown=appuser:appuser . .
 
+# entrypoint 스크립트 생성 (서버 시작 전 ML 모델 자동 다운로드)
+RUN printf '#!/bin/sh\nset -e\necho "=== ML 모델 캐시 확인 ==="\npython scripts/download_models.py\necho "=== 서버 시작 ==="\nexec "$@"\n' > /app/entrypoint.sh \
+    && chmod +x /app/entrypoint.sh
+
 # 환경변수 설정
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
@@ -93,5 +97,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=5 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# 프로덕션 서버 실행 (2vCPU + ML 모델 4.4GB → workers=2로 제한)
+# ML 모델 자동 다운로드 후 서버 실행
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

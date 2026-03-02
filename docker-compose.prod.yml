@@ -6,12 +6,14 @@
 # Notes:
 # - Frontend is deployed on Vercel (not included in this compose file)
 # - Default stack: postgres + backend + nginx
-# - Optional LanceDB service is disabled by default via profile `lancedb`
+# - LanceDB runs locally inside the backend container (LANCEDB_MODE=local)
 # - Graph features use PostgreSQL (Neo4j removed)
 
 services:
   postgres:
-    image: postgres:15-alpine
+    build:
+      context: ./docker/postgres
+      dockerfile: Dockerfile
     container_name: law-platform-db-prod
     logging:
       driver: "json-file"
@@ -22,6 +24,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-lawuser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB:-lawdb}
+    command: postgres -c shared_preload_libraries=pg_textsearch
     volumes:
       # PostgreSQL data (persistent)
       - postgres_data:/var/lib/postgresql/data
@@ -31,6 +34,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    shm_size: "1gb"
     restart: unless-stopped
     networks:
       - law-network
@@ -65,10 +69,9 @@ services:
       # Use redis://... for multi-instance deployment
       RATE_LIMIT_STORAGE_URI: ${RATE_LIMIT_STORAGE_URI:-memory://}
 
-      # Vector DB options (LanceDB local/remote)
+      # Vector DB options (LanceDB local)
       VECTOR_DB: ${VECTOR_DB:-lancedb}
-      LANCEDB_MODE: ${LANCEDB_MODE:-local}
-      LANCEDB_SERVICE_URL: ${LANCEDB_SERVICE_URL:-http://lancedb:8100}
+      LANCEDB_MODE: local
       LANCEDB_URI: ${LANCEDB_URI:-/app/lancedb_data}
       LANCEDB_TABLE_NAME: ${LANCEDB_TABLE_NAME:-legal_chunks}
       USE_LEGAL_TERM_DICT: ${USE_LEGAL_TERM_DICT:-false}
@@ -152,30 +155,6 @@ services:
       - certbot_www:/var/www/certbot
       - certbot_certs:/etc/letsencrypt
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-    restart: unless-stopped
-    networks:
-      - law-network
-
-  # Optional LanceDB microservice (disabled by default)
-  # Enable with: docker compose --profile lancedb --env-file .env.prod -f docker-compose.prod.yml up -d --build
-  lancedb:
-    profiles: ["lancedb"]
-    build:
-      context: ./services/lancedb
-      dockerfile: Dockerfile
-    container_name: lancedb-service-prod
-    environment:
-      LANCEDB_URI: /app/lancedb_data
-      LANCEDB_TABLE_NAME: ${LANCEDB_TABLE_NAME:-legal_chunks}
-      USE_LEGAL_TERM_DICT: ${USE_LEGAL_TERM_DICT:-false}
-    volumes:
-      - lancedb_data:/app/lancedb_data
-      - ./backend/data/mecab_userdic:/app/mecab_userdic:ro
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8100/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     restart: unless-stopped
     networks:
       - law-network

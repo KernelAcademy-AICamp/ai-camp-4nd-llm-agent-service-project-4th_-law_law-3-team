@@ -520,8 +520,8 @@ docker-compose down -v            # 중지 및 볼륨까지 삭제
 #### PostgreSQL 설치 및 데이터베이스 생성
 ```bash
 # macOS (Homebrew)
-brew install postgresql@15
-brew services start postgresql@15
+brew install postgresql@17
+brew services start postgresql@17
 
 # 데이터베이스 생성
 createdb lawdb

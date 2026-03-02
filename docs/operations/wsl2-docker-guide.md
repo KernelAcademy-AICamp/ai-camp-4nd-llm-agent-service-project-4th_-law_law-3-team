@@ -17,7 +17,7 @@ docker.exe run -d \
   -e POSTGRES_USER=lawuser \
   -e POSTGRES_PASSWORD=lawpassword \
   -e POSTGRES_DB=lawdb \
-  postgres:15-alpine
+  postgres:17-alpine
 ```
 
 > **주의**: 이 방식은 `init.sql` 볼륨과 `postgres_data` named volume을 사용하지 않으므로

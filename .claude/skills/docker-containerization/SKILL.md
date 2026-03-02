@@ -89,7 +89,7 @@ docker compose logs -f postgres
 
 | 서비스 | 컨테이너명 | 이미지 | 포트 |
 |--------|-----------|--------|------|
-| PostgreSQL | `law-platform-db` | `postgres:15-alpine` | `127.0.0.1:5432` |
+| PostgreSQL | `law-platform-db` | 커스텀 빌드 (`docker/postgres/Dockerfile`, PG 17 + pg_textsearch) | `127.0.0.1:5432` |
 | LanceDB | `lancedb-service` | 커스텀 빌드 | `127.0.0.1:8100` |
 
 ### 준비 대기
@@ -285,7 +285,7 @@ docker.exe run -d \
   -e POSTGRES_USER=lawuser \
   -e POSTGRES_PASSWORD=<password> \
   -e POSTGRES_DB=lawdb \
-  postgres:15-alpine
+  postgres:17-alpine
 ```
 
 ---
