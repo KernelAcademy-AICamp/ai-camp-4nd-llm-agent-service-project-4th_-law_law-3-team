@@ -71,7 +71,7 @@ export function StatuteHierarchyView() {
             normalizeRootName === normalizedTargetName ||
             (normalizedAbbreviation && normalizedAbbreviation === normalizedTargetName)
           ) {
-            if (!isCancelled) {
+            if (!isCancelled && detail.root) {
               setSelectedStatute({
                 id: detail.root.id || statuteId,
                 name: detail.root.name,

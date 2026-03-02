@@ -1,8 +1,10 @@
 """3단 구조 대본 생성기 (SSE 스트리밍)
 
 v2.0: PromptChainExecutor 연동, PersonaTone 지원, stage_update 이벤트
+v2.1: SSE heartbeat, 비동기 RAG 폴백, 타임아웃 안전장치
 """
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncGenerator
@@ -67,6 +69,7 @@ class ScriptGenerator:
         """대본을 섹션별로 SSE 스트리밍 생성
 
         v2.0: persona_tone 우선, PromptChainExecutor로 RAG 심화 검색
+        v2.1: RAG 검색 중 heartbeat 전송으로 SSE 연결 유지
         """
         # PersonaTone 결정: 인자 > PERSONA_TYPE_TO_TONE 매핑
         resolved_tone = persona_tone or PERSONA_TYPE_TO_TONE.get(request.persona)
@@ -85,7 +88,23 @@ class ScriptGenerator:
             detail="법령/판례 RAG 심화 검색 중...",
         )
 
-        rag_context = await self._build_rag_context(request)
+        # RAG 검색을 백그라운드로 실행하면서 3초마다 heartbeat 전송
+        rag_task: asyncio.Task[dict[str, Any]] = asyncio.create_task(
+            self._build_rag_context(request)
+        )
+        while not rag_task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(rag_task), timeout=3.0)
+            except TimeoutError:
+                # 아직 진행 중 → heartbeat 전송
+                yield ScriptStreamEvent(
+                    event="stage_update",
+                    stage="rag_search",
+                    status="in_progress",
+                    detail="법령/판례 검색 진행 중...",
+                )
+
+        rag_context = rag_task.result()
 
         yield ScriptStreamEvent(
             event="stage_update",
@@ -127,27 +146,51 @@ class ScriptGenerator:
                 section=section_type,
             )
 
-        full_script = "".join(accumulated_content)
-        metadata = await self._generate_metadata_from_request(request, full_script)
-        yield ScriptStreamEvent(
-            event="metadata",
-            metadata=metadata,
-        )
-
+        # done을 먼저 전송하여 프론트엔드 UI 즉시 해제
         yield ScriptStreamEvent(event="done")
+
+        # 메타데이터는 done 이후 비동기 생성 (SSE 스트림은 아직 열려 있음)
+        full_script = "".join(accumulated_content)
+        try:
+            metadata = await self._generate_metadata_from_request(request, full_script)
+            yield ScriptStreamEvent(
+                event="metadata",
+                metadata=metadata,
+            )
+        except Exception:
+            logger.warning("메타데이터 생성 실패 (done 이후), 무시", exc_info=True)
 
     # ── RAG 컨텍스트 구성 ──
 
+    def _build_trend_context_from_news(self, request: ScriptRequest) -> str:
+        """선택된 뉴스 기사를 트렌드 컨텍스트 문자열로 변환"""
+        if not request.news_articles:
+            return ""
+
+        parts: list[str] = []
+        for i, article in enumerate(request.news_articles, 1):
+            snippet = article.snippet[:200] if article.snippet else ""
+            source_info = f" ({article.source})" if article.source else ""
+            parts.append(f"[뉴스 {i}] {article.title}{source_info}\n{snippet}")
+
+        return "\n\n".join(parts)
+
     async def _build_rag_context(self, request: ScriptRequest) -> dict[str, Any]:
-        """v2.0: PromptChainExecutor로 심화 RAG 검색, 실패 시 기존 방식 폴백"""
+        """v2.0: PromptChainExecutor로 심화 RAG 검색, 실패 시 기존 방식 폴백
+        v2.1: 폴백도 비동기로 실행 (이벤트 루프 블로킹 방지)
+        """
+        trend_context = self._build_trend_context_from_news(request)
         try:
-            context = await self._chain_executor.execute(topic=request.topic)
+            context = await self._chain_executor.execute(
+                topic=request.topic,
+                trend_context=trend_context,
+            )
             return self._script_context_to_rag_dict(context)
         except Exception:
             logger.warning(
                 "PromptChainExecutor 실패, 기존 RAG 검색으로 폴백", exc_info=True
             )
-            return self._search_legal_context(request)
+            return await asyncio.to_thread(self._search_legal_context, request)
 
     def _script_context_to_rag_dict(
         self,
@@ -190,12 +233,47 @@ class ScriptGenerator:
 
     # ── LLM / 메타데이터 ──
 
+    # 청크 간 최대 대기 시간 (LLM API 무응답 감지)
+    _CHUNK_TIMEOUT: int = 45
+    # 섹션별 최대 생성 시간
+    _SECTION_TIMEOUT: int = 150
+
     async def _llm_stream(self, prompt: str) -> AsyncGenerator[str, None]:
-        """LLM 스트리밍 생성 (Upstage Solar Pro2)"""
+        """LLM 스트리밍 생성 (Upstage Solar Pro2)
+
+        v2.1: 청크별 타임아웃 + 섹션별 타임아웃으로 무한 대기 방지
+        """
         llm = get_chat_model(provider="upstage", temperature=0.7)
-        async for chunk in llm.astream([HumanMessage(content=prompt)]):
-            if hasattr(chunk, "content") and chunk.content:
-                yield str(chunk.content)
+        stream = llm.astream([HumanMessage(content=prompt)])
+        aiter = stream.__aiter__()
+        deadline = asyncio.get_event_loop().time() + self._SECTION_TIMEOUT
+        chunk_count = 0
+
+        while True:
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                logger.warning(
+                    "LLM 섹션 타임아웃 (%ds), %d 청크 생성 후 중단",
+                    self._SECTION_TIMEOUT, chunk_count,
+                )
+                break
+
+            try:
+                chunk = await asyncio.wait_for(
+                    aiter.__anext__(),
+                    timeout=min(self._CHUNK_TIMEOUT, remaining),
+                )
+                if hasattr(chunk, "content") and chunk.content:
+                    chunk_count += 1
+                    yield str(chunk.content)
+            except StopAsyncIteration:
+                break
+            except TimeoutError:
+                logger.warning(
+                    "LLM 청크 타임아웃 (%ds), %d 청크 생성 후 중단",
+                    self._CHUNK_TIMEOUT, chunk_count,
+                )
+                break
 
     async def _generate_metadata_from_request(
         self,

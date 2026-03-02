@@ -174,6 +174,33 @@ class Settings(BaseSettings):
     # API 인증 (빈 문자열이면 인증 비활성화)
     API_KEY: str = ""
 
+    # News Pipeline
+    NEWS_PIPELINE_ENABLED: bool = True
+    NEWS_PIPELINE_SUMMARY_PROVIDER: str = "upstage"
+    NEWS_PIPELINE_SUMMARY_MODEL: str = "solar-pro2"
+    NEWS_PIPELINE_MIN_ARTICLE_LENGTH: int = 500
+    NEWS_PIPELINE_CHUNK_SIZE: int = 1500
+    NEWS_PIPELINE_CHUNK_OVERLAP: int = 200
+    NEWS_PIPELINE_MAX_ARTICLES_PER_RUN: int = 200
+    NEWS_PIPELINE_RATE_LIMIT_CRAWL: float = 2.0
+    NEWS_PIPELINE_LAWTIMES_ENABLED: bool = True
+    NEWS_PIPELINE_NAVER_ENABLED: bool = True
+    NEWS_PIPELINE_LANCEDB_TABLE: str = "news_chunks"
+    NEWS_PIPELINE_RETENTION_DAYS: int = 90
+    NEWS_PIPELINE_LLM_FALLBACK_PROVIDER: str = "openai"
+    NEWS_PIPELINE_SLACK_WEBHOOK_URL: str = ""
+    NEWS_PIPELINE_OTEL_ENDPOINT: str = ""
+    NEWS_PIPELINE_LINEAGE_URL: str = ""
+    NEWS_PIPELINE_REDIS_URL: str = ""
+    NEWS_PIPELINE_SIMHASH_THRESHOLD: int = 3
+
+    # Webtoon Storyboard (콘텐츠 마케팅)
+    STORYBOARD_IMAGE_MODEL: str = "gemini-3-pro-image-preview"
+    STORYBOARD_MAX_PANELS: int = 14
+    STORYBOARD_IMAGE_FORMAT: str = "webp"
+    STORYBOARD_CACHE_TTL: int = 604800  # 7일 (초)
+    STORYBOARD_MAX_CONCURRENT: int = 3
+
     # Rate Limiting (분당 요청 수)
     RATE_LIMIT_PER_MINUTE: int = 30
     RATE_LIMIT_AI_PER_MINUTE: int = 10

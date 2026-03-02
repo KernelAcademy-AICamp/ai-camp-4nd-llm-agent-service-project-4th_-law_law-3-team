@@ -113,6 +113,15 @@ export const modules: Module[] = [
     enabled: true,
     roles: ['lawyer'],
   },
+  {
+    id: 'legal-news',
+    name: '법률 뉴스',
+    description: '법률 뉴스 수집·요약 및 하이브리드 검색',
+    href: '/legal-news',
+    icon: '📰',
+    enabled: true,
+    roles: ['lawyer', 'user'],
+  },
 ]
 
 export const getEnabledModules = (role?: 'lawyer' | 'user') => 

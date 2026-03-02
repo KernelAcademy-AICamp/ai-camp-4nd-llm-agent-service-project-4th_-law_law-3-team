@@ -15,7 +15,10 @@ from app.modules.content_marketing.schema import (
 
 @dataclass
 class RawTrendItem:
-    """소스별 수집된 원시 트렌드 항목"""
+    """소스별 수집된 원시 트렌드 항목
+
+    v3: engagement 메트릭, 수렴 점수, 초기 신호 감지 필드 추가
+    """
 
     title: str
     url: str
@@ -24,6 +27,17 @@ class RawTrendItem:
     published_at: datetime | None = None
     mention_count: int = 0
     raw_data: dict[str, object] = field(default_factory=dict)
+    # v3 engagement 메트릭
+    view_count: int | None = None
+    comment_count: int | None = None
+    like_count: int | None = None
+    engagement_velocity: float | None = None
+    is_shorts: bool = False
+    # v3 수렴/신호 분석
+    convergence_score: float = 0.0
+    z_score: float | None = None
+    is_early_signal: bool = False
+    merged_sources: list[TrendSource] = field(default_factory=list)
 
 
 @dataclass

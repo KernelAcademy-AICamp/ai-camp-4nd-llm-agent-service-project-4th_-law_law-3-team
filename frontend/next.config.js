@@ -38,6 +38,11 @@ const nextConfig = {
         source: '/api/mock-trial/:path*',
         destination: `${BACKEND_URL}/api/mock-trial/:path*`,
       },
+      // /api/content-marketing/keywords/collect/stream 은 Next.js API Route에서 SSE 프록시 처리
+      // /api/content-marketing/script/generate 도 API Route에서 SSE 프록시 처리
+      // /api/content-marketing/script/webtoon/{jobId}/stream 도 API Route에서 SSE 프록시 처리
+      // (rewrites는 SSE 스트리밍을 버퍼링하므로 API Route 사용)
+      // Next.js는 API Route가 rewrites보다 우선이므로 아래 rewrites는 나머지 경로에만 적용됨
       {
         source: '/api/content-marketing/:path*',
         destination: `${BACKEND_URL}/api/content-marketing/:path*`,
@@ -53,6 +58,10 @@ const nextConfig = {
       {
         source: '/api/chat/conversations',
         destination: `${BACKEND_URL}/api/chat/conversations`,
+      },
+      {
+        source: '/api/legal-news/:path*',
+        destination: `${BACKEND_URL}/api/legal-news/:path*`,
       },
       // /api/chat/stream은 Next.js API Route에서 SSE 프록시 처리
       // (rewrites는 SSE 스트리밍을 버퍼링하므로 API Route 사용)

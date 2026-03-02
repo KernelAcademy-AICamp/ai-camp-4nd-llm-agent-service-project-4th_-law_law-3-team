@@ -1,0 +1,788 @@
+- generic [ref=e2]:
+  - generic [ref=e3]: 변호사 회원 95.2%가 추천한 이유! - 슈퍼로이어 무료 체험
+  - generic [ref=e4]:
+    - link "최상단배너-260206" [ref=e8] [cursor=pointer]:
+      - /url: https://superlawyer.co.kr/?utm_source=lawtimes.co.kr&utm_medium=ad&utm_campaign=longform_smart&utm_content=main-top-wide&utm_term=260201
+      - img "최상단배너-260206" [ref=e735]
+    - button "" [ref=e9] [cursor=pointer]:
+      - generic [ref=e10]: 
+  - banner [ref=e11]:
+    - article [ref=e12]:
+      - generic [ref=e14]:
+        - list [ref=e15]:
+          - listitem [ref=e16]: 2026-02-26 (목)
+          - listitem [ref=e17]:
+            - link "오늘의 법조" [ref=e18] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN36&view_type=sm
+          - listitem [ref=e19]:
+            - link "구독신청" [ref=e20] [cursor=pointer]:
+              - /url: https://member.lawtimes.co.kr/?p=subscribeRequest
+          - listitem [ref=e21]:
+            - link "지면보기" [ref=e22] [cursor=pointer]:
+              - /url: https://member.lawtimes.co.kr/?p=login&pdfView=wigoview
+              - strong [ref=e23]: 지면보기
+          - listitem [ref=e24]:
+            - link "로그인" [ref=e25] [cursor=pointer]:
+              - /url: https://member.lawtimes.co.kr/API/login.php?returnUrl=https://www.lawtimes.co.kr/member/ssoLoginCheck.php
+          - listitem [ref=e26]:
+            - link "회원가입" [ref=e27] [cursor=pointer]:
+              - /url: https://member.lawtimes.co.kr/API/memberJoin.php?returnUrl=https://www.lawtimes.co.kr/member/ssoLoginCheck.php
+        - generic [ref=e28]:
+          - text: 
+          - generic [ref=e30]:
+            - generic [ref=e31]: 기사검색
+            - textbox "기사검색" [ref=e32]:
+              - /placeholder: 검색어를 입력하세요
+            - button "기사검색" [ref=e33] [cursor=pointer]:
+              - generic [ref=e34]: 
+    - article [ref=e35]:
+      - heading "toplogo" [level=1] [ref=e36]:
+        - link "toplogo" [ref=e37] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr
+          - img "toplogo" [ref=e38]
+    - navigation [ref=e39]:
+      - generic [ref=e40]:
+        - button "전체메뉴" [ref=e41] [cursor=pointer]:
+          - generic [ref=e42]: 
+        - list [ref=e43]:
+          - listitem [ref=e44]:
+            - link "뉴스" [ref=e45] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&view_type=sm
+          - listitem [ref=e46]:
+            - link "오피니언" [ref=e47] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/index.html?editcode=MOBILE_13
+          - listitem [ref=e48]:
+            - link "판결큐레이션" [ref=e49] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N3&view_type=sm
+          - listitem [ref=e50]:
+            - link "기획·행사" [ref=e51] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N2&view_type=sm
+          - listitem [ref=e52]:
+            - link "로캣센터" [ref=e53] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N7&view_type=sm
+          - listitem [ref=e54]:
+            - link "굿모닝로캣" [ref=e55] [cursor=pointer]:
+              - /url: https://gmlawcat.stibee.com
+          - listitem [ref=e56]:
+            - link "법조인대관" [ref=e57] [cursor=pointer]:
+              - /url: https://lawpeople.lawtimes.co.kr/
+        - list [ref=e58]:
+          - listitem [ref=e59]:
+            - link "리걸에듀" [ref=e60] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/member/eduLogin.html
+          - listitem [ref=e61]:
+            - link "법신서점" [ref=e62] [cursor=pointer]:
+              - /url: https://smartstore.naver.com/lawtimes
+          - listitem [ref=e63]:
+            - link "아카이브" [ref=e64] [cursor=pointer]:
+              - /url: https://archive.lawtimes.co.kr
+    - navigation [ref=e65]:
+      - button "close" [ref=e66] [cursor=pointer]:
+        - generic [ref=e67]: 
+      - link "법률신문" [ref=e69] [cursor=pointer]:
+        - /url: https://www.lawtimes.co.kr
+        - img "법률신문" [ref=e70]
+      - list [ref=e71]:
+        - listitem [ref=e72]:
+          - link "전체기사" [ref=e73] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleList.html?view_type=sm
+        - listitem [ref=e74]:
+          - link "뉴스 " [ref=e75] [cursor=pointer]:
+            - /url: "#sidenav0"
+        - listitem [ref=e76]:
+          - link "오피니언 " [ref=e77] [cursor=pointer]:
+            - /url: "#sidenav1"
+        - listitem [ref=e78]:
+          - link "판결큐레이션 " [ref=e79] [cursor=pointer]:
+            - /url: "#sidenav2"
+        - listitem [ref=e80]:
+          - link "기획·행사 " [ref=e81] [cursor=pointer]:
+            - /url: "#sidenav3"
+        - listitem [ref=e82]:
+          - link "로캣센터 " [ref=e83] [cursor=pointer]:
+            - /url: "#sidenav4"
+      - list [ref=e85]:
+        - listitem [ref=e86]:
+          - link "로그인" [ref=e87] [cursor=pointer]:
+            - /url: https://member.lawtimes.co.kr/API/login.php?returnUrl=https://www.lawtimes.co.kr/member/ssoLoginCheck.php
+        - listitem [ref=e88]:
+          - link "회원가입" [ref=e89] [cursor=pointer]:
+            - /url: https://member.lawtimes.co.kr/API/memberJoin.php?returnUrl=https://www.lawtimes.co.kr/member/ssoLoginCheck.php
+        - listitem [ref=e90]:
+          - link "매체소개" [ref=e91] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/com/com-1.html
+  - generic [ref=e93]:
+    - article [ref=e98]:
+      - listbox "slide" [ref=e100]:
+        - option "[속보] 법원, '북 무인기' 대학원생 구속영장 발부" [ref=e101]:
+          - link "[속보] 법원, '북 무인기' 대학원생 구속영장 발부" [ref=e103] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216961
+            - heading "[속보] 법원, '북 무인기' 대학원생 구속영장 발부" [level=2] [ref=e104]
+    - article [ref=e109]:
+      - generic [ref=e112]:
+        - generic [ref=e113]:
+          - link "'법왜곡죄 신설' 형법 개정안 국회 본회의 통과" [ref=e114] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216940
+            - heading "'법왜곡죄 신설' 형법 개정안 국회 본회의 통과" [level=2] [ref=e115]:
+              - text: "'법왜곡죄 신설' 형법 개정안"
+              - text: 국회 본회의 통과
+          - link "간첩 처벌 대상 '적국' → '외국 또는 이에 준하는 단체' 확대" [ref=e116] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216940
+          - generic [ref=e117]: 이른바 '법왜곡죄'를 신설하는 내용의 형법 개정안이 2월 26일 더불어민주당 주도로 국회 본회의를 통과했다. 개정안은 재석 의원 170명 중 찬성 163명, 반대 3명, 기권 4명으로 가결됐다. 원안 고수를 주장했던 법제사법위원들 중 추미애·김용민 민주당 의원은 표결에 불참했고 곽상언 의원 민주당 의원은 반대표를 던졌다. 법안 상정에 반발해 필리버스터(무제...
+        - link "'법왜곡죄 신설' 형법 개정안 국회 본회의 통과" [ref=e118] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216940
+          - img "'법왜곡죄 신설' 형법 개정안 국회 본회의 통과" [ref=e120]
+    - article [ref=e125]:
+      - generic [ref=e127]:
+        - generic [ref=e128]:
+          - link "어제의 적이 오늘은 동지… 기업소송 빅매치, 로펌 합종연횡" [ref=e129] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216732
+            - img "어제의 적이 오늘은 동지… 기업소송 빅매치, 로펌 합종연횡" [ref=e131]
+          - link "어제의 적이 오늘은 동지… 기업소송 빅매치, 로펌 합종연횡" [ref=e133] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216732
+            - heading "어제의 적이 오늘은 동지… 기업소송 빅매치, 로펌 합종연횡" [level=2] [ref=e134]
+        - generic [ref=e135]:
+          - link "[단독] 법관 AI 활용 지침서 나왔다" [ref=e136] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216744
+            - img "[단독] 법관 AI 활용 지침서 나왔다" [ref=e138]
+          - link "[단독] 법관 AI 활용 지침서 나왔다" [ref=e140] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216744
+            - heading "[단독] 법관 AI 활용 지침서 나왔다" [level=2] [ref=e141]
+        - generic [ref=e142]:
+          - link "[단독] 부장판사를 재판연구관실 평 연구관으로 첫 발령" [ref=e143] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216711
+            - img "[단독] 부장판사를 재판연구관실 평 연구관으로 첫 발령" [ref=e145]
+          - link "[단독] 부장판사를 재판연구관실 평 연구관으로 첫 발령" [ref=e147] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216711
+            - heading "[단독] 부장판사를 재판연구관실 평 연구관으로 첫 발령" [level=2] [ref=e148]
+        - generic [ref=e149]:
+          - link "[판결][단독] 청소앱 통해 도우미 불렀더니 '반클리프' '티파니' 쓸어갔네" [ref=e150] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216695
+            - img "[판결][단독] 청소앱 통해 도우미 불렀더니 '반클리프' '티파니' 쓸어갔네" [ref=e152]
+          - link "[판결][단독] 청소앱 통해 도우미 불렀더니 '반클리프' '티파니' 쓸어갔네" [ref=e154] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216695
+            - heading "[판결][단독] 청소앱 통해 도우미 불렀더니 '반클리프' '티파니' 쓸어갔네" [level=2] [ref=e155]
+    - generic [ref=e158]:
+      - generic [ref=e159]:
+        - article [ref=e160]:
+          - link "최신기사" [ref=e162] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleList.html?view_type=sm
+          - generic [ref=e164]:
+            - link "'법왜곡죄 신설' 형법 개정안 국회 본회의 통과" [ref=e166] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216940
+              - heading "'법왜곡죄 신설' 형법 개정안 국회 본회의 통과" [level=2] [ref=e167]
+            - link "법무부, '변호인 스마트접견' 4월부터 12개 교정시설로 확대" [ref=e169] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216921
+              - heading "법무부, '변호인 스마트접견' 4월부터 12개 교정시설로 확대" [level=2] [ref=e170]
+            - link "천하람 \"'법왜곡죄'는 악법 중 악법…정치인 재판 고소·고발 판 칠 것\"" [ref=e172] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216930
+              - heading "천하람 \"'법왜곡죄'는 악법 중 악법…정치인 재판 고소·고발 판 칠 것\"" [level=2] [ref=e173]
+            - link "법원, \"MBC '뉴스 하이킥' 제재 위법\"…방통위 항소 기각" [ref=e175] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216916
+              - heading "법원, \"MBC '뉴스 하이킥' 제재 위법\"…방통위 항소 기각" [level=2] [ref=e176]
+        - link "엘리_260224_메인P" [ref=e178] [cursor=pointer]:
+          - /url: https://www.allibee.ai/event/promotion-agent-100?utm_source=lawtimes&utm_medium=da&utm_campaign=landing&utm_content=forlegal_campaign_b
+          - img "엘리_260224_메인P" [ref=e179]
+      - generic [ref=e180]:
+        - article [ref=e181]:
+          - link "판결·결정" [ref=e183] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_sub_section_code=S2N46&view_type=sm
+          - generic [ref=e185]:
+            - link "[결정] 헌재 '출입국 심사 생체 정보 기업에 이전' 헌법소원 각하" [ref=e187] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216931
+              - heading "[결정] 헌재 '출입국 심사 생체 정보 기업에 이전' 헌법소원 각하" [level=2] [ref=e188]
+            - link "[결정] 헌재 \"방송광고 결합판매제도는 합헌\"" [ref=e190] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216925
+              - heading "[결정] 헌재 \"방송광고 결합판매제도는 합헌\"" [level=2] [ref=e191]
+            - link "[판결] 돈봉투·정치자금 혐의 송영길, 2심 전부 무죄" [ref=e193] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216287
+              - heading "[판결] 돈봉투·정치자금 혐의 송영길, 2심 전부 무죄" [level=2] [ref=e194]
+            - link "[판결] '언론사 단전·단수 지시' 이상민 내란 혐의 1심 징역 7년" [ref=e196] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216241
+              - heading "[판결] '언론사 단전·단수 지시' 이상민 내란 혐의 1심 징역 7년" [level=2] [ref=e197]
+        - link "아이렉스-260209" [ref=e199] [cursor=pointer]:
+          - /url: https://ailex.co.kr/
+          - img "아이렉스-260209" [ref=e200]
+    - generic [ref=e203]:
+      - article [ref=e205]:
+        - strong [ref=e207]: 포토
+        - generic [ref=e210]:
+          - link "내 마음의 풍경" [ref=e211] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216748
+            - img "내 마음의 풍경" [ref=e213]
+          - generic [ref=e214]:
+            - link "내 마음의 풍경" [ref=e215] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216748
+              - heading "내 마음의 풍경" [level=2] [ref=e216]
+            - generic [ref=e217]: 봄기운이 완연한 23일 강원 강릉시 경포동에서 농민이 밭에 비닐을 덮으며 농사준비를 하고 있다.
+      - article [ref=e219]:
+        - link "오피니언" [ref=e221] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N5&view_type=sm
+        - generic [ref=e223]:
+          - generic [ref=e224]:
+            - link "쓸모없는 법왜곡죄 도입" [ref=e225] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216746
+              - img "쓸모없는 법왜곡죄 도입" [ref=e227]
+            - generic [ref=e228]:
+              - link "법신논단" [ref=e229] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N5&sc_sub_section_code=S2N23&sc_serial_code=SRN101&view_type=sm
+              - link "쓸모없는 법왜곡죄 도입" [ref=e230] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216746
+                - heading "쓸모없는 법왜곡죄 도입" [level=2] [ref=e231]
+              - generic [ref=e232]: 임재성 변호사(법무법인 해마루)·연세대 겸임교수
+          - generic [ref=e233]:
+            - link "(16) 쓰지 않은 책들" [ref=e234] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216682
+              - img "(16) 쓰지 않은 책들" [ref=e236]
+            - generic [ref=e237]:
+              - link "김영란의 말년의 독서" [ref=e238] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N5&sc_sub_section_code=S2N24&sc_serial_code=SRN185&view_type=sm
+              - link "(16) 쓰지 않은 책들" [ref=e239] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216682
+                - heading "(16) 쓰지 않은 책들" [level=2] [ref=e240]
+              - generic [ref=e241]: 김영란 전 대법관·아주대 로스쿨 석좌교수
+          - generic [ref=e242]:
+            - link "(6) 일터에 묶여있는 사람" [ref=e243] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216727
+              - img "(6) 일터에 묶여있는 사람" [ref=e245]
+            - generic [ref=e246]:
+              - link "공존의 온도" [ref=e247] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N5&sc_sub_section_code=S2N23&sc_serial_code=SRN249&view_type=sm
+              - link "(6) 일터에 묶여있는 사람" [ref=e248] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216727
+                - heading "(6) 일터에 묶여있는 사람" [level=2] [ref=e249]
+              - generic [ref=e250]: 조영관 변호사(이주민센터 친구 부대표)
+          - generic [ref=e251]:
+            - link "(2) 농민은 왜 개를 쐈나" [ref=e252] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216676
+              - img "(2) 농민은 왜 개를 쐈나" [ref=e254]
+            - generic [ref=e255]:
+              - link "영국법 이야기" [ref=e256] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N5&sc_sub_section_code=S2N23&sc_serial_code=SRN250&view_type=sm
+              - link "(2) 농민은 왜 개를 쐈나" [ref=e257] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216676
+                - heading "(2) 농민은 왜 개를 쐈나" [level=2] [ref=e258]
+              - generic [ref=e259]: 김한아 변호사
+      - article [ref=e261]:
+        - link "포럼" [ref=e263] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_sub_section_code=S2N36&view_type=sm
+        - generic [ref=e265]:
+          - generic [ref=e266]:
+            - link "동성결혼 허용 않는 일본 민법 및 호적법 위헌 여부" [ref=e267] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216579
+              - img "동성결혼 허용 않는 일본 민법 및 호적법 위헌 여부" [ref=e269]
+            - generic [ref=e270]:
+              - link "해외판례" [ref=e271] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N3&sc_sub_section_code=S2N36&sc_serial_code=SRN248&view_type=sm
+              - link "동성결혼 허용 않는 일본 민법 및 호적법 위헌 여부" [ref=e272] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216579
+                - heading "동성결혼 허용 않는 일본 민법 및 호적법 위헌 여부" [level=2] [ref=e273]
+              - generic [ref=e274]: 윤동현 판사(사법정책연구원 연구위원)
+          - generic [ref=e275]:
+            - link "이른바 승낙형 분묘기지권에서 사후적 지료청구의 허용" [ref=e276] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216471
+              - img "이른바 승낙형 분묘기지권에서 사후적 지료청구의 허용" [ref=e278]
+            - generic [ref=e279]:
+              - link "판례평석" [ref=e280] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N3&sc_sub_section_code=S2N36&sc_serial_code=SRN246&view_type=sm
+              - link "이른바 승낙형 분묘기지권에서 사후적 지료청구의 허용" [ref=e281] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216471
+                - heading "이른바 승낙형 분묘기지권에서 사후적 지료청구의 허용" [level=2] [ref=e282]
+              - generic [ref=e283]: 양창수 전 대법관·명예교수(서울대 로스쿨)
+          - generic [ref=e284]:
+            - link "형사사건 성공보수 약정이 유효한 경우" [ref=e285] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=215989
+              - img "형사사건 성공보수 약정이 유효한 경우" [ref=e287]
+            - generic [ref=e288]:
+              - link "판례평석" [ref=e289] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N3&sc_sub_section_code=S2N36&sc_serial_code=SRN246&view_type=sm
+              - link "형사사건 성공보수 약정이 유효한 경우" [ref=e290] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=215989
+                - heading "형사사건 성공보수 약정이 유효한 경우" [level=2] [ref=e291]
+              - generic [ref=e292]: 윤진수 명예교수(서울대 로스쿨)
+          - generic [ref=e293]:
+            - link "AI기본법 시행에 따른 쟁점과 과제" [ref=e294] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=215368
+              - img "AI기본법 시행에 따른 쟁점과 과제" [ref=e296]
+            - generic [ref=e297]:
+              - link "연구논단" [ref=e298] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N3&sc_sub_section_code=S2N36&sc_serial_code=SRN247&view_type=sm
+              - link "AI기본법 시행에 따른 쟁점과 과제" [ref=e299] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=215368
+                - heading "AI기본법 시행에 따른 쟁점과 과제" [level=2] [ref=e300]
+              - generic [ref=e301]: 이성엽 고려대 교수·한국정보통신법학회장
+    - generic [ref=e304]:
+      - generic [ref=e305]:
+        - link "후참잘-260205" [ref=e307] [cursor=pointer]:
+          - /url: http://chorokbaemenm.com/
+          - img "후참잘-260205" [ref=e308]
+        - article [ref=e309]:
+          - link "법원" [ref=e311] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_sub_section_code=S2N1&view_type=sm
+          - generic [ref=e313]:
+            - generic [ref=e314]:
+              - link "법원, \"MBC '뉴스 하이킥' 제재 위법\"…방통위 항소 기각" [ref=e315] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216916
+                - img "법원, \"MBC '뉴스 하이킥' 제재 위법\"…방통위 항소 기각" [ref=e317]
+              - link "법원, \"MBC '뉴스 하이킥' 제재 위법\"…방통위 항소 기각" [ref=e319] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216916
+                - heading "법원, \"MBC '뉴스 하이킥' 제재 위법\"…방통위 항소 기각" [level=2] [ref=e320]
+            - generic [ref=e321]:
+              - link "천대엽 대법관 중앙선거관리위원회 위원 내정" [ref=e322] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216912
+                - img "천대엽 대법관 중앙선거관리위원회 위원 내정" [ref=e324]
+              - link "천대엽 대법관 중앙선거관리위원회 위원 내정" [ref=e326] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216912
+                - heading "천대엽 대법관 중앙선거관리위원회 위원 내정" [level=2] [ref=e327]
+            - generic [ref=e328]:
+              - link "전국 법원장 \"사법개혁 3법에 깊은 우려\"" [ref=e329] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216836
+                - img "전국 법원장 \"사법개혁 3법에 깊은 우려\"" [ref=e331]
+              - link "전국 법원장 \"사법개혁 3법에 깊은 우려\"" [ref=e333] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216836
+                - heading "전국 법원장 \"사법개혁 3법에 깊은 우려\"" [level=2] [ref=e334]
+        - article [ref=e336]:
+          - link "법무부" [ref=e338] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_sub_section_code=S2N4&view_type=sm
+          - generic [ref=e340]:
+            - generic [ref=e341]:
+              - link "법무부, '변호인 스마트접견' 4월부터 12개 교정시설로 확대" [ref=e342] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216921
+                - img "법무부, '변호인 스마트접견' 4월부터 12개 교정시설로 확대" [ref=e344]
+              - link "법무부, '변호인 스마트접견' 4월부터 12개 교정시설로 확대" [ref=e346] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216921
+                - heading "법무부, '변호인 스마트접견' 4월부터 12개 교정시설로 확대" [level=2] [ref=e347]
+            - generic [ref=e348]:
+              - link "'자사주 의무 소각' 상법개정안 통과…정성호 \"코리아 디스카운트 해소 기대\"" [ref=e349] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216829
+                - img "'자사주 의무 소각' 상법개정안 통과…정성호 \"코리아 디스카운트 해소 기대\"" [ref=e351]
+              - link "'자사주 의무 소각' 상법개정안 통과…정성호 \"코리아 디스카운트 해소 기대\"" [ref=e353] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216829
+                - heading "'자사주 의무 소각' 상법개정안 통과…정성호 \"코리아 디스카운트 해소 기대\"" [level=2] [ref=e354]
+            - generic [ref=e355]:
+              - link "3% 확률 뚫고 엘리엇 ISDS 승소…승부처는 \"국민연금은 국가기관 아니다\"" [ref=e356] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216757
+                - img "3% 확률 뚫고 엘리엇 ISDS 승소…승부처는 \"국민연금은 국가기관 아니다\"" [ref=e358]
+              - link "3% 확률 뚫고 엘리엇 ISDS 승소…승부처는 \"국민연금은 국가기관 아니다\"" [ref=e360] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216757
+                - heading "3% 확률 뚫고 엘리엇 ISDS 승소…승부처는 \"국민연금은 국가기관 아니다\"" [level=2] [ref=e361]
+        - article [ref=e363]:
+          - link "검찰·공수처" [ref=e365] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_sub_section_code=S2N5&view_type=sm
+          - generic [ref=e367]:
+            - generic [ref=e368]:
+              - link "특검, 윤석열 내란 '무기징역' 1심 판결에 항소" [ref=e369] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216837
+                - img "특검, 윤석열 내란 '무기징역' 1심 판결에 항소" [ref=e371]
+              - link "특검, 윤석열 내란 '무기징역' 1심 판결에 항소" [ref=e373] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216837
+                - heading "특검, 윤석열 내란 '무기징역' 1심 판결에 항소" [level=2] [ref=e374]
+            - generic [ref=e375]:
+              - link "검찰 미제 사건 5년 새 3배 증가" [ref=e376] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216741
+                - img "검찰 미제 사건 5년 새 3배 증가" [ref=e378]
+              - link "검찰 미제 사건 5년 새 3배 증가" [ref=e380] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216741
+                - heading "검찰 미제 사건 5년 새 3배 증가" [level=2] [ref=e381]
+            - generic [ref=e382]:
+              - link "공소청·중수청법 재입법예고…'수사관' 직역 일원화" [ref=e383] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216749
+                - img "공소청·중수청법 재입법예고…'수사관' 직역 일원화" [ref=e385]
+              - link "공소청·중수청법 재입법예고…'수사관' 직역 일원화" [ref=e387] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216749
+                - heading "공소청·중수청법 재입법예고…'수사관' 직역 일원화" [level=2] [ref=e388]
+        - article [ref=e390]:
+          - link "로펌" [ref=e392] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_sub_section_code=S2N6&view_type=sm
+          - generic [ref=e394]:
+            - generic [ref=e395]:
+              - link "피자헛이 쏘아 올린 줄소송" [ref=e396] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216594
+                - img "피자헛이 쏘아 올린 줄소송" [ref=e398]
+              - link "피자헛이 쏘아 올린 줄소송" [ref=e400] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216594
+                - heading "피자헛이 쏘아 올린 줄소송" [level=2] [ref=e401]
+            - generic [ref=e402]:
+              - link "율촌 '회장님 사건' 2연승" [ref=e403] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216297
+                - img "율촌 '회장님 사건' 2연승" [ref=e405]
+              - link "율촌 '회장님 사건' 2연승" [ref=e407] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216297
+                - heading "율촌 '회장님 사건' 2연승" [level=2] [ref=e408]
+            - generic [ref=e409]:
+              - link "금융·과기·의약·환경 전문가 선호… 금감원 출신 0순위" [ref=e410] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216270
+                - img "금융·과기·의약·환경 전문가 선호… 금감원 출신 0순위" [ref=e412]
+              - link "금융·과기·의약·환경 전문가 선호… 금감원 출신 0순위" [ref=e414] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216270
+                - heading "금융·과기·의약·환경 전문가 선호… 금감원 출신 0순위" [level=2] [ref=e415]
+        - article [ref=e417]:
+          - link "기업" [ref=e419] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_sub_section_code=S2N13&view_type=sm
+          - generic [ref=e421]:
+            - generic [ref=e422]:
+              - link "LG화학·재세능원 가처분, 첫 심문서 결론 안 나" [ref=e423] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216831
+                - img "LG화학·재세능원 가처분, 첫 심문서 결론 안 나" [ref=e425]
+              - link "LG화학·재세능원 가처분, 첫 심문서 결론 안 나" [ref=e427] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216831
+                - heading "LG화학·재세능원 가처분, 첫 심문서 결론 안 나" [level=2] [ref=e428]
+            - generic [ref=e429]:
+              - link "민희진 \"분쟁 끝내자\" 하이브 \"입장 없다\"" [ref=e430] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216824
+                - img "민희진 \"분쟁 끝내자\" 하이브 \"입장 없다\"" [ref=e432]
+              - link "민희진 \"분쟁 끝내자\" 하이브 \"입장 없다\"" [ref=e434] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216824
+                - heading "민희진 \"분쟁 끝내자\" 하이브 \"입장 없다\"" [level=2] [ref=e435]
+            - generic [ref=e436]:
+              - link "막오른 6700억대 한전 입찰 담합 재판" [ref=e437] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216810
+                - img "막오른 6700억대 한전 입찰 담합 재판" [ref=e439]
+              - link "막오른 6700억대 한전 입찰 담합 재판" [ref=e441] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216810
+                - heading "막오른 6700억대 한전 입찰 담합 재판" [level=2] [ref=e442]
+        - generic [ref=e443]:
+          - link "하나금융-260209" [ref=e446] [cursor=pointer]:
+            - /url: https://www.hanafn.com/main/index.do
+            - img "하나금융-260209"
+          - link "윤재윤-260205" [ref=e449] [cursor=pointer]:
+            - /url: https://www.legaledu.co.kr/course/course_view.jsp?id=195686&cid=119357#course-view-195686
+            - img "윤재윤-260205"
+      - generic [ref=e450]:
+        - link "카카오-260205" [ref=e452] [cursor=pointer]:
+          - /url: https://www.kakaocorp.com/page/
+          - img "카카오-260205" [ref=e453]
+        - article [ref=e454]:
+          - link "법조인 소식" [ref=e456] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_multi_code=S1&view_type=sm
+          - generic [ref=e458]:
+            - generic [ref=e460]:
+              - link "결혼" [ref=e461] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&sc_sub_section_code=S2N8&sc_serial_code=SRN31&view_type=sm
+              - link "이현우(변시11회) 법무법인 대륙아주 변호사 결혼" [ref=e462] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216962
+                - heading "이현우(변시11회) 법무법인 대륙아주 변호사 결혼" [level=2] [ref=e463]
+            - generic [ref=e465]:
+              - link "결혼" [ref=e466] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&sc_sub_section_code=S2N8&sc_serial_code=SRN31&view_type=sm
+              - link "김종영(연13기) 법무법인 동서남북 변호사 자녀 결혼" [ref=e467] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216960
+                - heading "김종영(연13기) 법무법인 동서남북 변호사 자녀 결혼" [level=2] [ref=e468]
+            - generic [ref=e470]:
+              - link "결혼" [ref=e471] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&sc_sub_section_code=S2N8&sc_serial_code=SRN31&view_type=sm
+              - link "이혜윤(변시11회) 법무법인 대륙아주 변호사 결혼" [ref=e472] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216959
+                - heading "이혜윤(변시11회) 법무법인 대륙아주 변호사 결혼" [level=2] [ref=e473]
+            - generic [ref=e475]:
+              - link "결혼" [ref=e476] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&sc_sub_section_code=S2N8&sc_serial_code=SRN31&view_type=sm
+              - link "이일염(연27기) 법무법인 로고스 변호사 자녀 결혼" [ref=e477] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216958
+                - heading "이일염(연27기) 법무법인 로고스 변호사 자녀 결혼" [level=2] [ref=e478]
+            - generic [ref=e480]:
+              - link "결혼" [ref=e481] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&sc_sub_section_code=S2N8&sc_serial_code=SRN31&view_type=sm
+              - link "허영수(연28기) 변호사 자녀 결혼" [ref=e482] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216957
+                - heading "허영수(연28기) 변호사 자녀 결혼" [level=2] [ref=e483]
+            - generic [ref=e485]:
+              - link "결혼" [ref=e486] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&sc_sub_section_code=S2N8&sc_serial_code=SRN31&view_type=sm
+              - link "김영기(연27기) 법무법인 통 변호사 자녀 결혼" [ref=e487] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216956
+                - heading "김영기(연27기) 법무법인 통 변호사 자녀 결혼" [level=2] [ref=e488]
+        - article [ref=e489]:
+          - link "채용·모집" [ref=e491] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_multi_code=S2&view_type=sm
+          - generic [ref=e493]:
+            - generic [ref=e495]:
+              - link "채용" [ref=e496] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&sc_sub_section_code=S2N8&sc_serial_code=SRN34&view_type=sm
+              - link "연세대 로스쿨 전임교원 채용" [ref=e497] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=215909
+                - heading "연세대 로스쿨 전임교원 채용" [level=2] [ref=e498]
+            - generic [ref=e500]:
+              - link "채용" [ref=e501] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&sc_sub_section_code=S2N8&sc_serial_code=SRN34&view_type=sm
+              - link "대한법률구조공단 일반직 7급" [ref=e502] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=215641
+                - heading "대한법률구조공단 일반직 7급" [level=2] [ref=e503]
+            - generic [ref=e505]:
+              - link "채용" [ref=e506] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&sc_sub_section_code=S2N8&sc_serial_code=SRN34&view_type=sm
+              - link "법원행정처, 상임 조정위원 위촉" [ref=e507] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=215089
+                - heading "법원행정처, 상임 조정위원 위촉" [level=2] [ref=e508]
+            - generic [ref=e510]:
+              - link "채용" [ref=e511] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&sc_sub_section_code=S2N8&sc_serial_code=SRN34&view_type=sm
+              - link "대법원 재판연구관(전문임기제공무원) 채용" [ref=e512] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=214951
+                - heading "대법원 재판연구관(전문임기제공무원) 채용" [level=2] [ref=e513]
+            - generic [ref=e515]:
+              - link "채용" [ref=e516] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&sc_sub_section_code=S2N8&sc_serial_code=SRN34&view_type=sm
+              - link "개인회생사건 전임회생위원 위촉" [ref=e517] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=214950
+                - heading "개인회생사건 전임회생위원 위촉" [level=2] [ref=e518]
+            - generic [ref=e520]:
+              - link "채용" [ref=e521] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N1&sc_sub_section_code=S2N8&sc_serial_code=SRN34&view_type=sm
+              - link "일반 법조경력자 법관 임용" [ref=e522] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=214949
+                - heading "일반 법조경력자 법관 임용" [level=2] [ref=e523]
+        - article [ref=e525]:
+          - link "신간" [ref=e527] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN33&view_type=sm
+          - generic [ref=e529]:
+            - generic [ref=e531]:
+              - link "이창현 한국외대 교수, '사례형사소송법' 제9판 출간" [ref=e532] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216784
+                - img "이창현 한국외대 교수, '사례형사소송법' 제9판 출간" [ref=e534]
+              - generic [ref=e535]:
+                - link "이창현 한국외대 교수, '사례형사소송법' 제9판 출간" [ref=e536] [cursor=pointer]:
+                  - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216784
+                  - heading "이창현 한국외대 교수, '사례형사소송법' 제9판 출간" [level=2] [ref=e537]
+                - generic [ref=e538]: 이창현(사법연수원 19기) 한국외대 로스쿨 교수가 변호사시험 사례형 대비 교재인 '사례형사소송법' 제9판을 출간했다.'사례형사소송법'은 형사소송법의 기본 이론을 토대로 사례 해결 ...
+            - generic [ref=e540]:
+              - link "한국적 맥락으로 살핀 독일 법학 대중서의 고전" [ref=e541] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216602
+                - img "한국적 맥락으로 살핀 독일 법학 대중서의 고전" [ref=e543]
+              - generic [ref=e544]:
+                - link "한국적 맥락으로 살핀 독일 법학 대중서의 고전" [ref=e545] [cursor=pointer]:
+                  - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216602
+                  - heading "한국적 맥락으로 살핀 독일 법학 대중서의 고전" [level=2] [ref=e546]
+                - generic [ref=e547]: 연세대 로스쿨에서 헌법학을 가르치는 이종수 교수가 2월 15일, 독일 법사학의 권위자 우베 베젤(Uwe Wesel)의 저작 《거의 모든 법 - 시민들을 위한 법 안내서》(푸블리우스...
+            - generic [ref=e549]:
+              - link "법은 불편한 존재 아닌 당연한 일상의 환경" [ref=e550] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216603
+                - img "법은 불편한 존재 아닌 당연한 일상의 환경" [ref=e552]
+              - generic [ref=e553]:
+                - link "법은 불편한 존재 아닌 당연한 일상의 환경" [ref=e554] [cursor=pointer]:
+                  - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216603
+                  - heading "법은 불편한 존재 아닌 당연한 일상의 환경" [level=2] [ref=e555]
+                - generic [ref=e556]: 참여연대 창설 멤버이자 현 법률신문 편집인인 차병직(사법연수원 15기) 변호사가 신간 《경계에 서는 법 - 사실과 믿음 사이, 삶은 어디에 있는가》(김영사 펴냄)를 펴냈다. 이번 ...
+        - article [ref=e557]:
+          - link "로캣센터" [ref=e559] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_section_code=S1N7&view_type=sm
+          - generic [ref=e561]:
+            - link "국민의 사법 접근성과 재판의 효율성을 높이는 방향" [ref=e563] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216892
+              - heading "국민의 사법 접근성과 재판의 효율성을 높이는 방향" [level=2] [ref=e564]
+            - link "3차 상법 개정 – 자기주식 지각변동에 대비할 때" [ref=e566] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216910
+              - heading "3차 상법 개정 – 자기주식 지각변동에 대비할 때" [level=2] [ref=e567]
+            - link "美 하원, SELF DRIVE Act of 2026 법안 심사 개시 등" [ref=e569] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216908
+              - heading "美 하원, SELF DRIVE Act of 2026 법안 심사 개시 등" [level=2] [ref=e570]
+            - 'link "공정거래위원회: 물가 안정을 위한 담합 등 집중 점검 추진" [ref=e572] [cursor=pointer]':
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216905
+              - 'heading "공정거래위원회: 물가 안정을 위한 담합 등 집중 점검 추진" [level=2] [ref=e573]'
+            - link "美國 대법원의 \"트럼프 상호관세 위법\" 판결이 가져오는 파장" [ref=e575] [cursor=pointer]:
+              - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=216904
+              - heading "美國 대법원의 \"트럼프 상호관세 위법\" 판결이 가져오는 파장" [level=2] [ref=e576]
+    - generic [ref=e580]:
+      - link "검가드-260205" [ref=e582] [cursor=pointer]:
+        - /url: https://brand.naver.com/dapharm/products/5411863684
+        - img "검가드-260205"
+      - article [ref=e584]:
+        - link "로펌 속으로" [ref=e586] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_sub_section_code=S2N31&view_type=sm
+    - link "김장-251023" [ref=e592] [cursor=pointer]:
+      - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN221&view_type=sm
+      - img "김장-251023"
+    - generic [ref=e599]:
+      - generic [ref=e600]:
+        - link "광장-251023" [ref=e602] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN220&view_type=sm
+          - img "광장-251023"
+        - link "대륙아주-251023" [ref=e604] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN222&view_type=sm
+          - img "대륙아주-251023"
+        - link "로엘-251023" [ref=e606] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN237&view_type=sm
+          - img "로엘-251023"
+        - link "법무법인원-251023" [ref=e608] [cursor=pointer]:
+          - /url: https://www.onelawpartners.com/ko/news/media/
+          - img "법무법인원-251023"
+        - link "정세-251023" [ref=e610] [cursor=pointer]:
+          - /url: https://www.jslaw.co.kr//index.php
+          - img "정세-251023"
+        - link "신원-251023" [ref=e612] [cursor=pointer]:
+          - /url: https://lawsw.co.kr/
+          - img "신원-251023"
+        - link "남산-251023" [ref=e614] [cursor=pointer]:
+          - /url: https://namsanlaw.com/ko/
+          - img "남산-251023"
+        - link "엘에이비-251023" [ref=e616] [cursor=pointer]:
+          - /url: https://labpartners.co.kr/
+          - img "엘에이비-251023"
+      - generic [ref=e617]:
+        - link "태평양-251023" [ref=e619] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN228&view_type=sm
+          - img "태평양-251023"
+        - link "바른-251023" [ref=e621] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN224&view_type=sm
+          - img "바른-251023"
+        - link "린-251023" [ref=e623] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN230&view_type=sm
+          - img "린-251023"
+        - link "한결-251023" [ref=e625] [cursor=pointer]:
+          - /url: https://classhklaw.com/
+          - img "한결-251023"
+        - link "에이팩스-251023" [ref=e627] [cursor=pointer]:
+          - /url: http://apexlaw.co.kr/
+          - img "에이팩스-251023"
+        - link "화현-251023" [ref=e629] [cursor=pointer]:
+          - /url: https://lawhh.com/
+          - img "화현-251023"
+        - link "에스엔엘-251023" [ref=e631] [cursor=pointer]:
+          - /url: http://snlplaw.com/apps/
+          - img "에스엔엘-251023"
+        - link "지음-251023" [ref=e633] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN232&view_type=sm
+          - img "지음-251023"
+      - generic [ref=e634]:
+        - link "율촌-251023" [ref=e636] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN226&view_type=sm
+          - img "율촌-251023"
+        - link "지평-251023" [ref=e638] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN227&view_type=sm
+          - img "지평-251023"
+        - link "법무법인현-251023" [ref=e640] [cursor=pointer]:
+          - /url: http://www.hyunlaw.co.kr/renew/kor/main/main.asp
+          - img "법무법인현-251023"
+        - link "법승-251023" [ref=e642] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN233&view_type=sm
+          - img "법승-251023"
+        - link "dentons-251023" [ref=e644] [cursor=pointer]:
+          - /url: https://www.dentonslee.com/
+          - img "dentons-251023"
+        - link "KL파트너스-251023" [ref=e646] [cursor=pointer]:
+          - /url: https://www.klpartners.com/
+          - img "KL파트너스-251023"
+        - link "화온-251023" [ref=e648] [cursor=pointer]:
+          - /url: https://www.hwaon.com/
+          - img "화온-251023"
+        - link "에스엘-251023" [ref=e650] [cursor=pointer]:
+          - /url: https://www.slpartners.kr/
+          - img "에스엘-251023"
+      - generic [ref=e651]:
+        - link "화우-251023" [ref=e653] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN229&view_type=sm
+          - img "화우-251023"
+        - link "와이케이-251023" [ref=e655] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN231&view_type=sm
+          - img "와이케이-251023"
+        - link "로고스-251023" [ref=e657] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN223&view_type=sm
+          - img "로고스-251023"
+        - link "충청-251023" [ref=e659] [cursor=pointer]:
+          - /url: https://hmplaw.com/html/dh_board/lists/notice01
+          - img "충청-251023"
+        - link "디엘지-251023" [ref=e661] [cursor=pointer]:
+          - /url: https://dlglaw.co.kr/
+          - img "디엘지-251023"
+        - link "가온-251023" [ref=e663] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN235&view_type=sm
+          - img "가온-251023"
+        - link "민후-251023" [ref=e665] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN236&view_type=sm
+          - img "민후-251023"
+        - link "케이엔엘-251023" [ref=e667] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleView.html?idxno=203953
+          - img "케이엔엘-251023"
+      - generic [ref=e668]:
+        - link "세종-251023" [ref=e670] [cursor=pointer]:
+          - /url: https://www.lawtimes.co.kr/news/articleList.html?sc_serial_code=SRN225&view_type=sm
+          - img "세종-251023"
+        - link "동인-251023" [ref=e672] [cursor=pointer]:
+          - /url: https://web.donginlaw.co.kr/
+          - img "동인-251023"
+        - link "LKB-251023" [ref=e674] [cursor=pointer]:
+          - /url: https://lkbps.com/bbs/board.php?bo_table=news
+          - img "LKB-251023"
+        - link "케이씨엘-251023" [ref=e676] [cursor=pointer]:
+          - /url: https://www.kcllaw.com/
+          - img "케이씨엘-251023"
+        - link "해광-251023" [ref=e678] [cursor=pointer]:
+          - /url: https://www.lawlsc.co.kr/
+          - img "해광-251023"
+        - link "백송-251023" [ref=e680] [cursor=pointer]:
+          - /url: http://www.baeksonglaw.com/default/
+          - img "백송-251023"
+        - link "로백스-251023" [ref=e682] [cursor=pointer]:
+          - /url: https://lawvax.co.kr/
+          - img "로백스-251023"
+  - contentinfo [ref=e683]:
+    - article [ref=e686]:
+      - img "foot-logo" [ref=e687]
+      - paragraph [ref=e688]: 1950년 창간 법조 유일의 정론지
+    - generic [ref=e690]:
+      - list [ref=e691]:
+        - listitem [ref=e692]:
+          - link "매체소개" [ref=e693] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/com/com-1.html
+        - listitem [ref=e694]:
+          - link "문의하기" [ref=e695] [cursor=pointer]:
+            - /url: https://member.lawtimes.co.kr/?p=myQnA
+        - listitem [ref=e696]:
+          - link "알립니다" [ref=e697] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/bbs/list.html?table=bbs_1
+        - listitem [ref=e698]:
+          - link "기사제보" [ref=e699] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/com/jb.html
+        - listitem [ref=e700]:
+          - link "광고문의" [ref=e701] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/com/com-8.html
+        - listitem [ref=e702]:
+          - link "업무별 연락처" [ref=e703] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/com/com-5.html
+        - listitem [ref=e704]:
+          - link "이용약관" [ref=e705] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/com/service.html
+        - listitem [ref=e706]:
+          - link "개인정보처리방침" [ref=e707] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/com/privacy.html
+        - listitem [ref=e708]:
+          - link "청소년보호정책" [ref=e709] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/com/youthpolicy.html
+        - listitem [ref=e710]:
+          - link "윤리강령" [ref=e711] [cursor=pointer]:
+            - /url: https://www.lawtimes.co.kr/com/cfethics.html
+      - generic [ref=e712]:
+        - generic [ref=e713]:
+          - list [ref=e714]:
+            - listitem [ref=e715]: "법인명: (주)법률신문사"
+            - listitem [ref=e716]: "주소: 서울특별시 서초구 서초대로 396, 14층(강남빌딩)"
+            - listitem [ref=e717]: "대표전화: 02-3472-0601"
+            - listitem [ref=e718]: "팩스: 02-3472-0606"
+            - listitem [ref=e719]: "청소년보호책임자: 김순신"
+            - listitem
+            - listitem [ref=e720]: "제호: 법률신문"
+            - listitem [ref=e721]: "등록번호: 서울 아 00027"
+            - listitem [ref=e722]: "등록일: 2005-08-24"
+            - listitem [ref=e723]: "최초발행일: 1950-12-01"
+            - listitem [ref=e724]: "발행인: 이수형"
+            - listitem [ref=e725]: "편집인: 차병직, 이수형"
+            - listitem
+            - listitem [ref=e726]:
+              - text: C
+              - link "o" [ref=e727] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/admin/adminLoginForm.html
+              - text: pyright by 법률신문
+              - link "All" [ref=e728] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/index.html
+              - link "rights" [ref=e729] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/member/index.html
+              - link "reserved" [ref=e730] [cursor=pointer]:
+                - /url: https://www.lawtimes.co.kr/member/login.html
+              - text: .
+          - generic [ref=e731]:
+            - link "ND소프트":
+              - /url: https://www.ndsoft.co.kr/
+              - img "ND소프트"
+        - link "isw" [ref=e733] [cursor=pointer]:
+          - /url: https://inec.or.kr/
+          - img "isw" [ref=e734]

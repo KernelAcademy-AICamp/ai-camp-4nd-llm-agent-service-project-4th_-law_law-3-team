@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react'
 import type {
+  NewsArticleForScript,
   PersonaType,
   ScriptDuration,
   ScriptMetadata,
@@ -53,6 +54,7 @@ export function useScript() {
       duration: ScriptDuration
       related_laws: string[]
       related_cases: string[]
+      news_articles?: NewsArticleForScript[] | null
     }) => {
       // 이전 스트리밍 중단
       controllerRef.current?.abort()

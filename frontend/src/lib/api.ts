@@ -23,4 +23,5 @@ export const endpoints = {
   contentMarketing: '/content-marketing',
   workspace: '/workspace',
   chatConversations: '/chat/conversations',
+  legalNews: '/legal-news',
 }

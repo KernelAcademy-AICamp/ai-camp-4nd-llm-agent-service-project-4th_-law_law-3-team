@@ -63,7 +63,34 @@ async def create_persona(
     db: AsyncSession,
     persona: LawyerPersona,
 ) -> LawyerPersona:
-    """페르소나 생성 (DB 저장)"""
+    """페르소나 생성 또는 갱신 (upsert)
+
+    user_id UNIQUE 제약조건으로 인해 동일 사용자에 대해
+    INSERT 실패 시 기존 행을 UPDATE한다.
+    """
+    existing = await db.execute(
+        select(LawyerPersonaModel).where(
+            LawyerPersonaModel.user_id == persona.user_id,
+        ),
+    )
+    row = existing.scalar_one_or_none()
+
+    if row is not None:
+        row.specialty_areas = [area.value for area in persona.specialty_areas]
+        row.focus_topics = persona.focus_topics
+        row.preferred_tone = persona.preferred_tone.value
+        row.target_audience = persona.target_audience.value
+        row.channel_style = (
+            persona.channel_style.value if persona.channel_style else None
+        )
+        row.source = persona.source
+        row.confidence = persona.confidence
+        row.updated_at = datetime.now(tz=timezone.utc)
+        await db.commit()
+        await db.refresh(row)
+        logger.info("페르소나 갱신: user_id=%s, id=%s", persona.user_id, row.id)
+        return _model_to_schema(row)
+
     model = LawyerPersonaModel(
         id=persona.id,
         user_id=persona.user_id,

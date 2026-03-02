@@ -23,7 +23,7 @@ _TIME_RANGE_HOURS: dict[str, int] = {
 
 
 def _parse_newsapi_date(date_str: str | None) -> datetime | None:
-    """NewsAPI.org 날짜 파싱 (ISO 8601)"""
+    """NewsAPI.org 날짜 파싱 (ISO 8601, timezone-aware)"""
     if not date_str:
         return None
     for fmt in (
@@ -32,7 +32,10 @@ def _parse_newsapi_date(date_str: str | None) -> datetime | None:
         "%Y-%m-%dT%H:%M:%S%z",
     ):
         try:
-            return datetime.strptime(date_str, fmt)
+            parsed = datetime.strptime(date_str, fmt)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
         except ValueError:
             continue
     return None
