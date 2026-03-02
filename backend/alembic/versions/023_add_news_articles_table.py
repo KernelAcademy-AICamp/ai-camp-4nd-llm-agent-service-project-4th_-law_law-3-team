@@ -3,8 +3,8 @@
 news_articles + news_article_dlq 테이블 생성.
 법률 뉴스 파이프라인 v0.3.0.
 
-Revision ID: 018
-Revises: 017
+Revision ID: 023
+Revises: 022
 Create Date: 2026-02-26
 
 """
@@ -17,8 +17,8 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "018"
-down_revision: Union[str, None] = "017"
+revision: str = "023"
+down_revision: Union[str, None] = "022"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

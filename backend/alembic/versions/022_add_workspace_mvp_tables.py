@@ -1,7 +1,7 @@
 """workspace_cases, chat_conversations, chat_messages 등 6개 테이블 추가
 
-Revision ID: 020
-Revises: 019
+Revision ID: 022
+Revises: 021
 Create Date: 2026-03-01
 
 수정 내용:
@@ -19,8 +19,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "020"
-down_revision = "019"
+revision = "022"
+down_revision = "021"
 branch_labels = None
 depends_on = None
 
