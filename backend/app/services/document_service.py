@@ -30,7 +30,12 @@ class DocumentService:
             ]
             for path in font_paths:
                 if path.exists():
-                    pdfmetrics.registerFont(TTFont("KoreanFont", str(path)))
+                    if path.suffix.lower() == ".ttc":
+                        pdfmetrics.registerFont(
+                            TTFont("KoreanFont", str(path), subfontIndex=0)
+                        )
+                    else:
+                        pdfmetrics.registerFont(TTFont("KoreanFont", str(path)))
                     font_name = "KoreanFont"
                     break
         except Exception as e:
