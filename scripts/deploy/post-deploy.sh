@@ -212,7 +212,7 @@ if [ "$SKIP_DB_LOAD" = false ]; then
         local desc="$1"
         shift
         echo "  [$desc] 시작..."
-        if docker exec -u appuser "$BACKEND_CONTAINER" "$@" 2>&1 | tail -5; then
+        if docker exec -u appuser -e UV_CACHE_DIR=/tmp/uv-cache "$BACKEND_CONTAINER" "$@" 2>&1 | tail -5; then
             echo "  [$desc] 완료"
             db_load_ok=$((db_load_ok + 1))
         else
@@ -239,7 +239,7 @@ if [ "$SKIP_DB_LOAD" = false ]; then
 
     # 6-4. 법률 용어 사전 (USE_LEGAL_TERM_DICT=true인 경우만 필요)
     #      소스: data/lawterms_v1.json (S3 다운로드 포함)
-    if docker exec -u appuser "$BACKEND_CONTAINER" \
+    if docker exec -u appuser -e UV_CACHE_DIR=/tmp/uv-cache "$BACKEND_CONTAINER" \
         python -c "from app.core.config import settings; exit(0 if settings.USE_LEGAL_TERM_DICT else 1)" 2>/dev/null; then
         run_in_backend "법률 용어 사전 (72,700건)" \
             uv run python scripts/load_legal_terms_data.py
