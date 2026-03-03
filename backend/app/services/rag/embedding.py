@@ -23,8 +23,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# 모델 캐시 디렉토리
-MODEL_CACHE_DIR = Path(__file__).parent.parent.parent.parent / "data" / "models"
+# 모델 캐시 디렉토리 (settings.MODEL_CACHE_DIR: 절대경로는 그대로, 상대경로는 backend/ 기준)
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+MODEL_CACHE_DIR = (
+    Path(settings.MODEL_CACHE_DIR)
+    if Path(settings.MODEL_CACHE_DIR).is_absolute()
+    else _BACKEND_ROOT / settings.MODEL_CACHE_DIR
+)
 
 # 모델 가용성 상태 (모듈 레벨 캐싱)
 _embedding_model_available: Optional[bool] = None

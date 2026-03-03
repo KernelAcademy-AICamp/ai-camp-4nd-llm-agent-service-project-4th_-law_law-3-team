@@ -13,6 +13,7 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -26,8 +27,12 @@ DEFAULT_RERANKER_MODEL = "dragonkue/bge-reranker-v2-m3-ko"
 
 
 def get_cache_dir() -> Path:
-    """모델 캐시 디렉토리 반환"""
-    return PROJECT_ROOT / "data" / "models"
+    """모델 캐시 디렉토리 반환 (MODEL_CACHE_DIR 환경변수 우선, 절대경로는 그대로 사용)"""
+    env_val = os.environ.get("MODEL_CACHE_DIR", "data/models")
+    p = Path(env_val)
+    if p.is_absolute():
+        return p
+    return PROJECT_ROOT / p
 
 
 def check_model_cached(model_name: str, cache_dir: Path) -> bool:

@@ -91,6 +91,9 @@ services:
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
       GOOGLE_MODEL: ${GOOGLE_MODEL:-gemini-3-flash-preview}
 
+      # ML 모델 캐시 디렉토리 (read-only /app/data 외부)
+      MODEL_CACHE_DIR: ${MODEL_CACHE_DIR:-/app/models}
+
       # Runtime tuning
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
       AGENT_TIMEOUT_SECONDS: ${AGENT_TIMEOUT_SECONDS:-120}
@@ -104,8 +107,8 @@ services:
       - ./data:/app/data:ro
       # LanceDB local mode data (persistent)
       - lancedb_data:/app/lancedb_data
-      # ML models (writable - 컨테이너 내부에서 다운로드 가능)
-      - ./backend/data/models:/app/data/models
+      # ML models (writable - 컨테이너 내부에서 다운로드 가능, /app/data:ro 외부)
+      - ./backend/data/models:/app/models
       # MeCab userdic (readonly, host에서 사전 빌드)
       - ./backend/data/mecab_userdic:/app/data/mecab_userdic:ro
     depends_on:

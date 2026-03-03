@@ -97,6 +97,9 @@ class Settings(BaseSettings):
     # BM25 검색 (pg_textsearch). True: BM25 인덱스 사용, False: FTS 비활성화
     USE_BM25_SEARCH: bool = True
 
+    # ML 모델 캐시 디렉토리 (임베딩/리랭커, 상대경로는 backend/ 기준)
+    MODEL_CACHE_DIR: str = "data/models"
+
     # MeCab 사용자 사전 경로 (법률 복합명사 인식)
     MECAB_USERDIC_PATH: str = "data/mecab_userdic/legal_terms.dic"
 
