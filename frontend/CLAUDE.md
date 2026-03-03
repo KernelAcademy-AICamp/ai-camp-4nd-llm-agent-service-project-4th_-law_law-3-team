@@ -136,6 +136,7 @@ src/features/<module-name>/
 **훅:**
 - `useGanttChart` - VisItem/VisGroup/VisMarker 변환 (useMemo)
 - `useEvidenceUpload` - FormData 업로드 + SSE(`progress` named event) 구독
+- `useTimelinePersistence` - sessionStorage 영속화 (500ms 디바운스 자동 저장, 페이지 이동 시 타임라인 복원)
 
 **스타일:** `src/styles/gantt.css` - 신뢰도별 opacity, 충돌 pulse 애니메이션, 다크모드
 

@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { BackButton } from '@/components/ui/BackButton'
 import { useUI } from '@/context/UIContext'
+import { useChat } from '@/context/ChatContext'
 import { TimelineToolbar } from '@/features/storyboard/components/TimelineToolbar'
 import { useTimelineState } from '@/features/storyboard/hooks'
 import type { TimelineItem, ViewMode } from '@/features/storyboard/types'
@@ -41,6 +42,7 @@ const VideoGenerationModal = dynamic(
 
 export default function StoryboardPage() {
   const { isChatOpen, chatMode } = useUI()
+  const { resetSession } = useChat()
   // 뷰 모드 (카드 / 간트)
   const [viewMode, setViewMode] = useState<ViewMode>('card')
   // 입력 패널 접기/펼치기 상태
@@ -123,6 +125,12 @@ export default function StoryboardPage() {
     setEditingItem(null)
   }, [])
 
+  // 새 사건 타임라인 만들기 (타임라인 초기화 + 채팅 새 대화)
+  const handleNewTimeline = useCallback(() => {
+    resetTimeline()
+    resetSession()
+  }, [resetTimeline, resetSession])
+
   // 영상 생성 모달 열기
   const handleOpenVideoModal = useCallback(() => {
     setShowVideoModal(true)
@@ -149,12 +157,23 @@ export default function StoryboardPage() {
               </p>
             </div>
           </div>
-          {summary && (
-            <div className="text-right hidden md:block">
-              <span className="text-xs font-bold text-[#007AFF] uppercase tracking-wider">Case Summary</span>
-              <p className="text-sm font-medium text-[#3C3C43] max-w-xl truncate">{summary}</p>
-            </div>
-          )}
+          <div className="flex items-center gap-4">
+            {summary && (
+              <div className="text-right hidden md:block">
+                <span className="text-xs font-bold text-[#007AFF] uppercase tracking-wider">Case Summary</span>
+                <p className="text-sm font-medium text-[#3C3C43] max-w-xl truncate">{summary}</p>
+              </div>
+            )}
+            {items.length > 0 && (
+              <button
+                type="button"
+                onClick={handleNewTimeline}
+                className="flex-shrink-0 px-4 py-2 bg-white border border-black/[0.08] rounded-xl text-sm font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] transition-colors shadow-sm"
+              >
+                새 사건 타임라인 만들기
+              </button>
+            )}
+          </div>
         </div>
       </header>
 

@@ -6,17 +6,25 @@ import { storyboardService } from '../services'
 import { useImageGeneration } from './useImageGeneration'
 import { useVideoGeneration } from './useVideoGeneration'
 import { generateId } from '../utils/generateId'
+import { loadPersistedState, clearPersistedState, useTimelinePersistence } from './useTimelinePersistence'
 
 export function useTimelineState() {
+  // 마운트 시 1회만 sessionStorage에서 복원
+  const [initial] = useState(() => loadPersistedState())
+
   // 타임라인 데이터
-  const [items, setItems] = useState<TimelineItem[]>([])
+  const [items, setItems] = useState<TimelineItem[]>(initial?.items ?? [])
   const itemsRef = useRef<TimelineItem[]>(items)
   useEffect(() => {
     itemsRef.current = items
   }, [items])
-  const [title, setTitle] = useState('새 타임라인')
-  const [originalText, setOriginalText] = useState<string | undefined>()
-  const [summary, setSummary] = useState<string | undefined>()
+  const [title, setTitle] = useState(initial?.title ?? '새 타임라인')
+  const [originalText, setOriginalText] = useState<string | undefined>(initial?.originalText)
+  const [summary, setSummary] = useState<string | undefined>(initial?.summary)
+
+  // sessionStorage 자동 저장 (디바운스 500ms)
+  const isActive = items.length > 0 || title !== '새 타임라인'
+  useTimelinePersistence({ items, title, originalText, summary, savedAt: 0 }, isActive)
 
   // UI 상태
   const [editMode, setEditMode] = useState<EditMode>('view')
@@ -233,6 +241,7 @@ export function useTimelineState() {
     setSelectedItemId(null)
     setEditMode('view')
     setExtractError(null)
+    clearPersistedState()
   }, [])
 
   // 이미지가 있는 항목 수
