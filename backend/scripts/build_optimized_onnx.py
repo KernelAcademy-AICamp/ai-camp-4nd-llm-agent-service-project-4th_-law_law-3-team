@@ -298,6 +298,37 @@ def _cleanup_dir(directory: Path) -> None:
         print(f"    임시 디렉토리 삭제: {directory.name}")
 
 
+def _resolve_cached_model_snapshot(model_name: str) -> Path | None:
+    """프로젝트 캐시에서 최신 모델 스냅샷 경로를 찾는다."""
+    cache_root = DATA_MODELS_DIR / f"models--{model_name.replace('/', '--')}"
+    snapshots_dir = cache_root / "snapshots"
+    if not snapshots_dir.exists():
+        return None
+
+    refs_main = cache_root / "refs" / "main"
+    if refs_main.exists():
+        revision = refs_main.read_text(encoding="utf-8").strip()
+        if revision:
+            revision_snapshot = snapshots_dir / revision
+            if revision_snapshot.exists():
+                return revision_snapshot
+
+    snapshots = [path for path in snapshots_dir.iterdir() if path.is_dir()]
+    if not snapshots:
+        return None
+    snapshots.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return snapshots[0]
+
+
+def _resolve_model_source(model_name: str) -> str:
+    """ONNX export 입력 모델 경로를 결정한다."""
+    snapshot_path = _resolve_cached_model_snapshot(model_name)
+    if snapshot_path is not None:
+        print(f"    로컬 캐시 스냅샷 사용: {snapshot_path}")
+        return str(snapshot_path)
+    return model_name
+
+
 # ============================================================
 # Step 1: ONNX 내보내기
 # ============================================================
@@ -319,9 +350,10 @@ def export_embedding_onnx(
         from optimum.exporters.onnx import main_export
 
         output_dir.mkdir(parents=True, exist_ok=True)
+        model_source = _resolve_model_source(EMB_MODEL_NAME)
 
         main_export(
-            model_name_or_path=EMB_MODEL_NAME,
+            model_name_or_path=model_source,
             output=str(output_dir),
             task="feature-extraction",
             opset=EMB_OPSET,
@@ -358,9 +390,10 @@ def export_reranker_onnx(
         from optimum.exporters.onnx import main_export
 
         output_dir.mkdir(parents=True, exist_ok=True)
+        model_source = _resolve_model_source(RR_MODEL_NAME)
 
         main_export(
-            model_name_or_path=RR_MODEL_NAME,
+            model_name_or_path=model_source,
             output=str(output_dir),
             task="text-classification",
             opset=RR_OPSET,

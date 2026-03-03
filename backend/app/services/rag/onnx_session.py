@@ -27,16 +27,23 @@ logger = logging.getLogger(__name__)
 # 모델 저장 기본 디렉토리
 _MODELS_DIR = Path(__file__).parent.parent.parent.parent / "data" / "models"
 
-# Variant → 디렉토리 이름 매핑
+# Variant → 디렉토리 이름 매핑 (build_optimized_onnx.py 출력 기준)
 _EMB_VARIANT_MAP: dict[str, str] = {
-    "ort-opt": "kure-v1-onnx",
-    "ort-opt-qdq": "kure-v1-onnx-int8",
-    "onnx-fp16": "kure-v1-onnx-fp16",
+    "ort-opt": "kure-v1-ort-opt",
+    "ort-opt-qdq": "kure-v1-ort-opt-qdq",
+    "onnx-fp16": "kure-v1-ort-opt-fp16",
 }
 _RR_VARIANT_MAP: dict[str, str] = {
     "ort-opt": "reranker-ort-opt",
     "ort-opt-qdq": "reranker-ort-opt-qdq",
     "ort-opt-qdq-6fp32": "reranker-ort-opt-qdq-6fp32",
+}
+
+# 임베딩 레거시 출력 디렉토리 fallback (구버전 빌드 호환)
+_EMB_LEGACY_VARIANT_MAP: dict[str, str] = {
+    "ort-opt": "kure-v1-onnx",
+    "ort-opt-qdq": "kure-v1-onnx-int8",
+    "onnx-fp16": "kure-v1-onnx-fp16",
 }
 
 # ONNX 모델 파일명 후보 (우선순위순)
@@ -270,7 +277,11 @@ def _find_model_file(model_dir: Path) -> Optional[Path]:
     return None
 
 
-def _resolve_model_dir(variant: str, variant_map: dict[str, str]) -> Optional[Path]:
+def _resolve_model_dir(
+    variant: str,
+    variant_map: dict[str, str],
+    legacy_variant_map: Optional[dict[str, str]] = None,
+) -> Optional[Path]:
     """variant 문자열을 실제 디렉토리 경로로 변환한다."""
     dir_name = variant_map.get(variant)
     if dir_name is None:
@@ -284,17 +295,31 @@ def _resolve_model_dir(variant: str, variant_map: dict[str, str]) -> Optional[Pa
             supported,
         )
         return None
+
     model_dir = _MODELS_DIR / dir_name
-    if not model_dir.exists():
-        logger.error(
-            "ONNX 모델 디렉토리 없음: %s\n"
-            "  해결: scripts/build_optimized_onnx.py를 실행하여 모델을 빌드하거나, "
-            "data/models/%s 디렉토리를 수동 배치하세요.",
-            model_dir,
-            dir_name,
-        )
-        return None
-    return model_dir
+    if model_dir.exists():
+        return model_dir
+
+    if legacy_variant_map is not None:
+        legacy_dir_name = legacy_variant_map.get(variant)
+        if legacy_dir_name is not None:
+            legacy_model_dir = _MODELS_DIR / legacy_dir_name
+            if legacy_model_dir.exists():
+                logger.warning(
+                    "ONNX 레거시 모델 디렉토리 사용: %s (권장: %s)",
+                    legacy_model_dir,
+                    model_dir,
+                )
+                return legacy_model_dir
+
+    logger.error(
+        "ONNX 모델 디렉토리 없음: %s\n"
+        "  해결: scripts/build_optimized_onnx.py를 실행하여 모델을 빌드하거나, "
+        "data/models/%s 디렉토리를 수동 배치하세요.",
+        model_dir,
+        dir_name,
+    )
+    return None
 
 
 def _verify_model_integrity(model_dir: Path, variant_key: str) -> bool:
@@ -419,7 +444,11 @@ def load_embedding_session() -> bool:
         if _embedding_holder.is_loaded:
             return True
 
-        model_dir = _resolve_model_dir(settings.ONNX_EMBEDDING_VARIANT, _EMB_VARIANT_MAP)
+        model_dir = _resolve_model_dir(
+            settings.ONNX_EMBEDDING_VARIANT,
+            _EMB_VARIANT_MAP,
+            _EMB_LEGACY_VARIANT_MAP,
+        )
         if model_dir is None:
             return False
 
