@@ -24,7 +24,6 @@ cd "$(dirname "$0")/../.."
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 ENV_FILE="${ENV_FILE:-.env.prod}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-900}"
-BACKEND_CONTAINER="law-platform-backend"
 
 DO_SSL=false
 SKIP_S3=false
@@ -72,6 +71,14 @@ if ! $DC ps backend 2>/dev/null | grep -qE "running|Up|healthy"; then
     echo "  먼저 deploy.sh를 실행하세요: bash scripts/deploy/deploy.sh"
     exit 1
 fi
+
+# 컨테이너 ID를 동적 조회 (이름 충돌로 접두사가 붙는 경우 대비)
+BACKEND_CONTAINER=$($DC ps -q backend)
+if [ -z "$BACKEND_CONTAINER" ]; then
+    echo "ERROR: backend 컨테이너 ID를 조회할 수 없습니다."
+    exit 1
+fi
+echo "Backend 컨테이너: $BACKEND_CONTAINER"
 
 # ──────────────────────────────────────────────
 # 1. S3 데이터 다운로드 (data/, MeCab CSV/JSON)
