@@ -8,7 +8,7 @@ set -euo pipefail
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 ENV_FILE="${ENV_FILE:-.env.prod}"
 BRANCH="${BRANCH:-deploy/aws-arm}"
-WAIT_TIMEOUT="${WAIT_TIMEOUT:-300}"
+WAIT_TIMEOUT="${WAIT_TIMEOUT:-900}"
 BACKEND_CONTAINER="law-platform-backend"
 
 SKIP_PULL=false

@@ -118,8 +118,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
       timeout: 10s
-      start_period: 180s
-      retries: 10
+      start_period: 600s
+      retries: 15
     depends_on:
       postgres:
         condition: service_healthy
