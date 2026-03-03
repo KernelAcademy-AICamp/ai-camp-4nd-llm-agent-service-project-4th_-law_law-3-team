@@ -36,10 +36,10 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 from app.models.legal_term import LegalTerm  # noqa: E402
 from scripts.common.db import create_sync_session_factory  # noqa: E402
 from scripts.common.logging_config import setup_logging  # noqa: E402
+from scripts.common.paths import DATA_DIR  # noqa: E402
 
 logger = setup_logging(__name__)
 
-DATA_DIR = PROJECT_ROOT.parent / "data"
 LAWTERMS_FILE = DATA_DIR / "lawterms_v1.json"
 LAWTERMS_FALLBACK = DATA_DIR / "law_data" / "lawterms_full.json"
 

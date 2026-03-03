@@ -31,10 +31,10 @@ from app.services.service_function.lawyer_stats_service import (
 )
 from scripts.common.db import create_sync_session_factory
 from scripts.common.logging_config import setup_logging
+from scripts.common.paths import DATA_DIR
 
 logger = setup_logging(__name__)
 
-DATA_DIR = PROJECT_ROOT.parent / "data"
 LAWYERS_FILE = DATA_DIR / "lawyers.json"
 
 BATCH_SIZE = 1000

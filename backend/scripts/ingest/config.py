@@ -21,7 +21,11 @@ BACKEND_ROOT = Path(__file__).parent.parent.parent
 PROJECT_ROOT = BACKEND_ROOT.parent
 
 # 기본 데이터 디렉토리
-DATA_DIR = PROJECT_ROOT / "data"
+# Docker 환경: WORKDIR=/app → PROJECT_ROOT=/ → data는 /app/data에 마운트
+if PROJECT_ROOT == Path("/"):
+    DATA_DIR = BACKEND_ROOT / "data"
+else:
+    DATA_DIR = PROJECT_ROOT / "data"
 
 # sources.yaml 경로
 _SOURCES_YAML = Path(__file__).parent / "sources.yaml"

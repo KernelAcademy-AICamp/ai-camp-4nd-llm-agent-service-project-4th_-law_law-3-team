@@ -234,8 +234,24 @@ if [ "$SKIP_DB_LOAD" = false ]; then
 
     # 6-3. 법령 체계도 그래프 (statute_hierarchy + 관련 테이블)
     #      소스: data/law_hierarchy.json, data/law_abbreviations.json (S3 다운로드 포함)
-    run_in_backend "법령 체계도 그래프" \
-        uv run python -m scripts.ingest.cli --step graph
+    #      전제: law_documents + precedent_documents 테이블에 데이터 있어야 함
+    #            (ingest_source/ 데이터로 --type all --step db 실행 후)
+    if docker exec -u appuser -e UV_CACHE_DIR=/tmp/uv-cache "$BACKEND_CONTAINER" \
+        python -c "
+from sqlalchemy import create_engine, text
+import os
+e = create_engine(os.environ['DATABASE_URL'].replace('+asyncpg',''))
+with e.connect() as c:
+    law = c.execute(text('SELECT count(*) FROM law_documents')).scalar()
+    prec = c.execute(text('SELECT count(*) FROM precedent_documents')).scalar()
+    exit(0 if law > 0 and prec > 0 else 1)
+" 2>/dev/null; then
+        run_in_backend "법령 체계도 그래프" \
+            uv run python -m scripts.ingest.cli --step graph
+    else
+        echo "  [법령 체계도 그래프] law_documents/precedent_documents 비어있음 → 건너뜀"
+        echo "    먼저 법령/판례 DB 적재 후 실행: docker exec $BACKEND_CONTAINER uv run python -m scripts.ingest.cli --step graph"
+    fi
 
     # 6-4. 법률 용어 사전 (USE_LEGAL_TERM_DICT=true인 경우만 필요)
     #      소스: data/lawterms_v1.json (S3 다운로드 포함)
