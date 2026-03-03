@@ -48,7 +48,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     model_available = check_embedding_model_availability()
 
     # 로컬 임베딩 사용 시 미리 로드 + JIT warm-up
-    if model_available and settings.USE_LOCAL_EMBEDDING:
+    # ONNX 임베딩 활성화 시 PyTorch warmup 건너뜀 (ONNX 세션에서 별도 warmup)
+    if model_available and settings.USE_LOCAL_EMBEDDING and not settings.USE_ONNX_EMBEDDING:
         logger.info("임베딩 모델을 미리 로드합니다...")
         try:
             model = get_local_model()
