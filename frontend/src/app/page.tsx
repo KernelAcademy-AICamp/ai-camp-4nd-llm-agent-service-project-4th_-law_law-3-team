@@ -7,7 +7,24 @@ import { getEnabledModules, getModuleCategory, CATEGORY_NAMES } from '@/lib/modu
 import { useUI } from '@/context/UIContext'
 import { useChat, UserRole } from '@/context/ChatContext'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send } from 'lucide-react'
+import {
+  Send,
+  Search,
+  BarChart,
+  MapPin,
+  Video,
+  Scale,
+  Gavel
+} from 'lucide-react'
+
+const MODULE_ICONS: Record<string, any> = {
+  'lawyer-finder': MapPin,
+  'lawyer-stats': BarChart,
+  'case-precedent': Search,
+  'storyboard': Video,
+  'small-claims': Scale,
+  'mock-trial': Gavel,
+}
 
 function HomeContent() {
   const router = useRouter()
@@ -131,20 +148,21 @@ function HomeContent() {
       >
         {/* Header Section */}
         <header className="mb-20 shrink-0">
-          <div className="mb-6">
-            <div className="space-y-1">
-              <h1 className="text-4xl font-bold text-[#1D1D1F] tracking-tight">
-                반갑습니다, <span className="text-blue-600">{role === 'lawyer' ? '변호사님' : '의뢰인님'}</span>
-              </h1>
-            </div>
-          </div>
-
           <div className="space-y-4">
-            <h2 className="text-5xl font-extrabold text-[#1D1D1F] leading-tight tracking-tighter max-w-2xl">
-              어느 단계를 <span className="relative inline-block">
-                도와드릴까요?
-                <span className="absolute -bottom-2 left-0 w-full h-1.5 bg-blue-600/10 rounded-full" />
-              </span>
+            <h2 className="text-5xl font-extrabold text-[#1D1D1F] leading-[1.15] tracking-tighter max-w-2xl">
+              {role === 'lawyer' ? (
+                <><span className="block mb-2 text-[#1D1D1F]">
+                  안녕하세요, <span className="relative inline-block text-blue-600">
+                    변호사님
+                    <span className="absolute -bottom-1 left-0 w-full h-1 bg-blue-600/10 rounded-full" />
+                  </span>
+                </span>어떤 업무를 도와드릴까요?</>
+              ) : (
+                <><span className="block mb-2">안녕하세요.</span>어떤 <span className="relative inline-block text-blue-600">
+                  법률 도움
+                  <span className="absolute -bottom-2 left-0 w-full h-1.5 bg-blue-600/10 rounded-full" />
+                </span>이 필요하신가요?</>
+              )}
             </h2>
           </div>
         </header>
@@ -230,25 +248,33 @@ function HomeContent() {
                 {/* Action / Icon Indicator (Top Right) */}
                 <div className="absolute top-2 right-2 pointer-events-none">
                   {/* Default Icon Background */}
-                  <div className="opacity-[0.03] group-hover:opacity-0 transition-opacity">
-                    <span className="text-4xl">{module.icon}</span>
+                  <div className="opacity-[0.05] group-hover:opacity-0 transition-opacity">
+                    {(() => {
+                      const Icon = MODULE_ICONS[module.id] || Search
+                      return <Icon size={48} strokeWidth={1} />
+                    })()}
                   </div>
                 </div>
 
                 {/* Hover Action Text (Horizontal) */}
-                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all pointer-events-none">
+                <div className="absolute top-[18px] right-3 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all pointer-events-none">
                   <div className="text-[10px] font-bold text-blue-600 whitespace-nowrap bg-blue-50/80 backdrop-blur-sm px-2 py-1.5 rounded-lg flex items-center gap-1 shadow-sm border border-blue-100">
                     시작하기 <span className="text-xs">→</span>
                   </div>
                 </div>
 
-                <div className="relative z-10 flex flex-col">
-                  <div className="text-2xl mb-2 opacity-70 group-hover:opacity-100 group-hover:scale-110 transition-all inline-block">
-                    {module.icon}
+                <div className="relative z-10 flex flex-col h-full">
+                  <div className="flex items-center gap-2.5 mb-2.5">
+                    <div className="p-2 bg-blue-600/5 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-all duration-300 text-blue-600">
+                      {(() => {
+                        const Icon = MODULE_ICONS[module.id] || Search
+                        return <Icon size={18} />
+                      })()}
+                    </div>
+                    <h4 className="text-sm font-bold text-[#1D1D1F]/90 group-hover:text-blue-600 transition-colors line-clamp-1">
+                      {module.name}
+                    </h4>
                   </div>
-                  <h4 className="text-sm font-bold text-[#1D1D1F]/80 mb-1 group-hover:text-blue-600 transition-colors line-clamp-1">
-                    {module.name}
-                  </h4>
                   <p className="text-[#86868B]/70 group-hover:text-[#86868B] text-[10px] leading-snug line-clamp-2 transition-colors">
                     {(() => {
                       const overrides: Record<string, string> = role === 'lawyer'
