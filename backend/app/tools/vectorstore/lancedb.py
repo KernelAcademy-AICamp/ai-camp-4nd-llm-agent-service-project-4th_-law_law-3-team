@@ -12,9 +12,9 @@ FTS는 PostgreSQL fts_index 테이블에서 수행 (keyword_search.py 참조)
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
-import lancedb
+import lancedb  # type: ignore[import-untyped]
 
 from app.core.config import settings
 from app.tools.vectorstore.base import SearchResult, VectorStoreBase
@@ -22,6 +22,9 @@ from app.tools.vectorstore.schema_v2 import (
     LEGAL_CHUNKS_SCHEMA,
     create_chunk,
 )
+
+if TYPE_CHECKING:
+    from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,7 @@ _thread_local = threading.local()
 
 def _load_decomposition_map() -> dict[str, list[str]]:
     """decomposition_map.json 로드 (프로세스 내 1회)"""
-    cached = getattr(_load_decomposition_map, "_cache", None)
+    cached: dict[str, list[str]] | None = getattr(_load_decomposition_map, "_cache", None)
     if cached is not None:
         return cached
 
@@ -43,7 +46,7 @@ def _load_decomposition_map() -> dict[str, list[str]]:
         return {}
 
     with open(path, encoding="utf-8") as f:
-        data = json.load(f)
+        data: dict[str, list[str]] = json.load(f)
 
     _load_decomposition_map._cache = data  # type: ignore[attr-defined]
     return data
@@ -55,17 +58,17 @@ def _get_thread_tokenizer() -> "MeCabTokenizer":  # noqa: F821
     MeCab Tagger는 thread-safe하지 않으므로 threading.local()로
     스레드별 독립 인스턴스를 유지한다.
     """
-    tokenizer = getattr(_thread_local, "tokenizer", None)
+    from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
+
+    tokenizer: MeCabTokenizer | None = getattr(_thread_local, "tokenizer", None)
     if tokenizer is not None:
         return tokenizer
-
-    from app.tools.vectorstore.mecab_tokenizer import MeCabTokenizer
 
     _thread_local.tokenizer = MeCabTokenizer(
         userdic_path=str(Path(settings.MECAB_USERDIC_PATH)),
         decomposition_map=_load_decomposition_map(),
     )
-    return _thread_local.tokenizer
+    return cast(MeCabTokenizer, _thread_local.tokenizer)
 
 
 class LanceDBStore(VectorStoreBase):

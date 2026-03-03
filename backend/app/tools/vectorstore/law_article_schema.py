@@ -12,7 +12,7 @@ ID 체계:
 
 from typing import Optional
 
-import pyarrow as pa
+import pyarrow as pa  # type: ignore[import-untyped]
 from pydantic import BaseModel
 
 # =============================================================================

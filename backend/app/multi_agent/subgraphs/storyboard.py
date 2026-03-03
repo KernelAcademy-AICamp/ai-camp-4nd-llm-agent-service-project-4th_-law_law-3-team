@@ -649,7 +649,7 @@ def _generate_timeline_text(
 # ──────────────────────────────────────────────
 
 
-def build_storyboard_subgraph() -> CompiledStateGraph:
+def build_storyboard_subgraph() -> CompiledStateGraph[Any, Any, Any, Any]:
     """스토리보드 subgraph 빌드 및 컴파일
 
     Returns:

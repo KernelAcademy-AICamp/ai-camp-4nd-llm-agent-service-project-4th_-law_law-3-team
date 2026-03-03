@@ -19,7 +19,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class TreatyDocument(Base):
+class TreatyDocument(Base):  # type: ignore[misc]
     """
     조약 테이블
 

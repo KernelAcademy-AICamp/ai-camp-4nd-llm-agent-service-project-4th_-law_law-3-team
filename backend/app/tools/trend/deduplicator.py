@@ -9,7 +9,7 @@ KURE-v1 임베딩 모델은 기존 RAG 서비스의 get_local_model()을 lazy lo
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -47,7 +47,7 @@ def _get_embeddings(texts: list[str]) -> "NDArray[np.float32]":
 def _cosine_similarity_matrix(embeddings: "NDArray[np.float32]") -> "NDArray[np.float32]":
     """정규화된 임베딩의 코사인 유사도 행렬 계산"""
     # 이미 normalize_embeddings=True이므로 dot product = cosine similarity
-    return np.dot(embeddings, embeddings.T)
+    return cast("NDArray[np.float32]", np.dot(embeddings, embeddings.T))
 
 
 class SemanticDeduplicator:

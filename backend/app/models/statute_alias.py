@@ -11,7 +11,7 @@ from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String
 from app.core.database import Base
 
 
-class StatuteAlias(Base):
+class StatuteAlias(Base):  # type: ignore[misc]
     """
     법령 비공식 약칭 테이블
 

@@ -20,7 +20,7 @@ from sqlalchemy.dialects.postgresql import TSVECTOR
 from app.core.database import Base
 
 
-class FtsIndex(Base):
+class FtsIndex(Base):  # type: ignore[misc]
     """
     FTS 인덱스 테이블 (문서 단위)
 

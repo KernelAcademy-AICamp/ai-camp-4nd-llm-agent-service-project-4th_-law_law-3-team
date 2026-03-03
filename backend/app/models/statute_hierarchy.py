@@ -12,7 +12,7 @@ from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, UniqueConst
 from app.core.database import Base
 
 
-class StatuteHierarchy(Base):
+class StatuteHierarchy(Base):  # type: ignore[misc]
     """
     법령 계급 관계 테이블
 

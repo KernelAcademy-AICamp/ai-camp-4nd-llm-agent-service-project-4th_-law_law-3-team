@@ -79,7 +79,7 @@ class LawStudyAgent(BaseChatAgent):
         sources = self._format_sources(law_results)
 
         return AgentResult(
-            message=response.content,
+            message=str(response.content),
             sources=sources,
             actions=[],
             session_data={"active_agent": self.name},

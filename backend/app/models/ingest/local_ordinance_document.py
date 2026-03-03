@@ -18,7 +18,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class LocalOrdinanceDocument(Base):
+class LocalOrdinanceDocument(Base):  # type: ignore[misc]
     """
     자치법규 문서 테이블
 

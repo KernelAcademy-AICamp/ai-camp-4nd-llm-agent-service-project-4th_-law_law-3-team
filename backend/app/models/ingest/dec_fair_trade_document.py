@@ -18,7 +18,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class DecFairTradeDocument(Base):
+class DecFairTradeDocument(Base):  # type: ignore[misc]
     """공정거래위원회 결정례 테이블"""
 
     __tablename__ = "dec_fair_trade_documents"

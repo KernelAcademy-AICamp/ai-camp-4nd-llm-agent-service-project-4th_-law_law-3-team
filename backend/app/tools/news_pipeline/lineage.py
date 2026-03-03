@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from app.core.config import settings
 
@@ -59,6 +59,7 @@ class LineageEmitter:
             return
 
         from openlineage.client.run import (
+            Dataset,
             InputDataset,
             Job,
             Run,
@@ -76,7 +77,8 @@ class LineageEmitter:
             eventTime=datetime.now(timezone.utc).isoformat(),
             run=Run(runId=run_id),
             job=Job(namespace="news_pipeline", name=job_name),
-            inputs=input_datasets,
+            producer="news_pipeline",
+            inputs=cast(list[Dataset], input_datasets),
             outputs=[],
         )
 
@@ -105,6 +107,7 @@ class LineageEmitter:
             return
 
         from openlineage.client.run import (
+            Dataset,
             Job,
             OutputDataset,
             Run,
@@ -122,8 +125,9 @@ class LineageEmitter:
             eventTime=datetime.now(timezone.utc).isoformat(),
             run=Run(runId=run_id),
             job=Job(namespace="news_pipeline", name=job_name),
+            producer="news_pipeline",
             inputs=[],
-            outputs=output_datasets,
+            outputs=cast(list[Dataset], output_datasets),
         )
 
         try:
@@ -149,6 +153,7 @@ class LineageEmitter:
             eventTime=datetime.now(timezone.utc).isoformat(),
             run=Run(runId=run_id),
             job=Job(namespace="news_pipeline", name=job_name),
+            producer="news_pipeline",
             inputs=[],
             outputs=[],
         )

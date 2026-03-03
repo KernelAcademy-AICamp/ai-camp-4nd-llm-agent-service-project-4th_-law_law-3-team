@@ -18,7 +18,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class DecMediaDocument(Base):
+class DecMediaDocument(Base):  # type: ignore[misc]
     """방송미디어통신위원회 결정례 테이블"""
 
     __tablename__ = "dec_media_documents"

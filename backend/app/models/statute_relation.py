@@ -19,7 +19,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class StatuteRelation(Base):
+class StatuteRelation(Base):  # type: ignore[misc]
     """
     법령 관련 관계 테이블
 

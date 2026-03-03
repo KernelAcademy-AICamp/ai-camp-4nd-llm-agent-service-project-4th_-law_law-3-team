@@ -119,7 +119,7 @@ def get_population_data(year: int | str = "current") -> dict[str, int]:
 def get_population_meta() -> dict[str, Any]:
     """인구 데이터 메타 정보 반환."""
     data = _load_population_json()
-    return data.get("meta", {})
+    return data.get("meta", {})  # type: ignore[no-any-return]
 
 
 # =============================================================================

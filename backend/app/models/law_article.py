@@ -24,7 +24,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class LawArticle(Base):
+class LawArticle(Base):  # type: ignore[misc]
     """법령 조문 테이블
 
     law_documents.content(전체 텍스트)를 조문 단위로 분리 저장.

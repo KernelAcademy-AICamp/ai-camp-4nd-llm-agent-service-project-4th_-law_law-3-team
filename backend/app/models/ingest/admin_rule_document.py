@@ -18,7 +18,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class AdminRuleDocument(Base):
+class AdminRuleDocument(Base):  # type: ignore[misc]
     """
     행정규칙 문서 테이블
 

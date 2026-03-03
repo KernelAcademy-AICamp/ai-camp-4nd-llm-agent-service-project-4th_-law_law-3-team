@@ -18,7 +18,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class TrialStatistics(Base):
+class TrialStatistics(Base):  # type: ignore[misc]
     """재판 통계 테이블"""
 
     __tablename__ = "trial_statistics"

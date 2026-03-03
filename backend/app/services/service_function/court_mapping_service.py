@@ -11,6 +11,7 @@ import json
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from app.services.service_function.lawyer_stats_service import (
     DISTRICT_NORMALIZE_MAP,
@@ -127,8 +128,8 @@ def _normalize_region(address1: str, address2: str) -> str | None:
 def _load_scourt_data() -> list[dict[str, str]]:
     """scourt_region_courts.json 로드 및 캐싱."""
     with open(SCOURT_JSON_PATH, encoding="utf-8") as f:
-        data = json.load(f)
-    return data["records"]
+        data: dict[str, Any] = json.load(f)
+    return data["records"]  # type: ignore[no-any-return]
 
 
 @lru_cache(maxsize=16)

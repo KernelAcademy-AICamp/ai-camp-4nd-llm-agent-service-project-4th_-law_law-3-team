@@ -41,7 +41,7 @@ def _extract_legal_nouns(text: str) -> list[str]:
     from app.tools.vectorstore.lancedb import _get_thread_tokenizer
 
     tokenizer = _get_thread_tokenizer()
-    return tokenizer.morphs(text)
+    return list(tokenizer.morphs(text))
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +123,7 @@ class ContextCompressor:
     def _get_compressor(self) -> Any:
         """PromptCompressor lazy initialization."""
         if self._compressor is None:
-            from llmlingua import PromptCompressor
+            from llmlingua import PromptCompressor  # type: ignore[import-untyped]
 
             logger.info(
                 "LLMLingua-2 모델 로딩: %s (device=%s)",

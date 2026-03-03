@@ -18,7 +18,7 @@ LanceDB 스키마 v2 - 단일 테이블, 12컬럼
 
 from typing import Optional
 
-import pyarrow as pa
+import pyarrow as pa  # type: ignore[import-untyped]
 from pydantic import BaseModel
 
 # =============================================================================

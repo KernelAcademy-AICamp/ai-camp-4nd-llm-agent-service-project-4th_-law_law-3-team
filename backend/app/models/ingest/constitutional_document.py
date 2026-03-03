@@ -19,7 +19,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class ConstitutionalDocument(Base):
+class ConstitutionalDocument(Base):  # type: ignore[misc]
     """
     헌법재판소 결정례 테이블
 

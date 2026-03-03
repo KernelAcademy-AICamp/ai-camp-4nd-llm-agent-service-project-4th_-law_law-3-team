@@ -38,10 +38,10 @@ logger = logging.getLogger(__name__)
 # 체크포인터 및 컴파일된 그래프 싱글톤
 _checkpointer: BaseCheckpointSaver[Any] | None = None
 _checkpointer_context: Any = None  # async context manager 참조 유지
-_compiled_graph: CompiledStateGraph | None = None
+_compiled_graph: CompiledStateGraph[Any, Any, Any, Any] | None = None
 
 
-def build_graph() -> StateGraph:
+def build_graph() -> StateGraph[Any]:
     """메인 채팅 그래프 빌드
 
     Returns:
@@ -129,7 +129,7 @@ async def shutdown_checkpointer() -> None:
             _compiled_graph = None
 
 
-def get_graph() -> CompiledStateGraph:
+def get_graph() -> CompiledStateGraph[Any, Any, Any, Any]:
     """컴파일된 그래프 싱글톤 반환
 
     체크포인터가 init_checkpointer()로 초기화되었으면 사용하고,

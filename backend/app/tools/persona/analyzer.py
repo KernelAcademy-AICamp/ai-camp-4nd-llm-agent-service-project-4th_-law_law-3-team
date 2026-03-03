@@ -123,10 +123,13 @@ class PersonaAnalyzer:
             '"confidence": 0.0~1.0}'
         )
         try:
-            from app.tools.llm.client import get_llm_client
+            from langchain_core.messages import HumanMessage
 
-            client = get_llm_client()
-            response = await client.agenerate(prompt)
+            from app.tools.llm import get_chat_model
+
+            llm = get_chat_model()
+            result = await llm.ainvoke([HumanMessage(content=prompt)])
+            response = str(result.content)
             parsed = json.loads(response)
             return PersonaExtractionResult(
                 specialty_areas=parsed.get("specialty_areas", []),

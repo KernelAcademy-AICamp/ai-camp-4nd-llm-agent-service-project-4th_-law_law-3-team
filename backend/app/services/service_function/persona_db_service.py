@@ -76,16 +76,15 @@ async def create_persona(
     row = existing.scalar_one_or_none()
 
     if row is not None:
-        row.specialty_areas = [area.value for area in persona.specialty_areas]
-        row.focus_topics = persona.focus_topics
-        row.preferred_tone = persona.preferred_tone.value
-        row.target_audience = persona.target_audience.value
-        row.channel_style = (
-            persona.channel_style.value if persona.channel_style else None
-        )
-        row.source = persona.source
-        row.confidence = persona.confidence
-        row.updated_at = datetime.now(tz=timezone.utc)
+        row.specialty_areas = [area.value for area in persona.specialty_areas]  # type: ignore[assignment]
+        row.focus_topics = persona.focus_topics  # type: ignore[assignment]
+        row.preferred_tone = persona.preferred_tone.value  # type: ignore[assignment]
+        row.target_audience = persona.target_audience.value  # type: ignore[assignment]
+        channel_style_val: str | None = persona.channel_style.value if persona.channel_style else None
+        row.channel_style = channel_style_val  # type: ignore[assignment]
+        row.source = persona.source  # type: ignore[assignment]
+        row.confidence = persona.confidence  # type: ignore[assignment]
+        row.updated_at = datetime.now(tz=timezone.utc)  # type: ignore[assignment]
         await db.commit()
         await db.refresh(row)
         logger.info("페르소나 갱신: user_id=%s, id=%s", persona.user_id, row.id)

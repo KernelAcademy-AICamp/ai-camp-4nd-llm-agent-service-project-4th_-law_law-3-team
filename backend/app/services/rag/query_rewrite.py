@@ -61,7 +61,7 @@ def rewrite_query(
 
         response = model.invoke([("user", prompt)])
         content = response.content if hasattr(response, "content") else str(response)
-        rewritten = content.strip().lstrip("1.-) ").strip()
+        rewritten = str(content).strip().lstrip("1.-) ").strip()
 
         if rewritten:
             return rewritten

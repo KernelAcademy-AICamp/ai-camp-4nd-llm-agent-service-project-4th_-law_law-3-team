@@ -19,7 +19,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class AdministrationDocument(Base):
+class AdministrationDocument(Base):  # type: ignore[misc]
     """
     행정심판례 테이블
 

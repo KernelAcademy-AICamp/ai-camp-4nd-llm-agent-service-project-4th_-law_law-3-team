@@ -21,7 +21,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class LawDocument(Base):
+class LawDocument(Base):  # type: ignore[misc]
     """
     법령 문서 테이블 (LanceDB 전용)
 

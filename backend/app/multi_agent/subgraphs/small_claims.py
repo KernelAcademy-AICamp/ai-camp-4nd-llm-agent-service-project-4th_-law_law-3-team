@@ -410,7 +410,7 @@ def court_node(state: SmallClaimsState) -> dict[str, Any]:
     }
 
 
-def build_small_claims_subgraph() -> CompiledStateGraph:
+def build_small_claims_subgraph() -> CompiledStateGraph[Any, Any, Any, Any]:
     """소액소송 subgraph 빌드 및 컴파일
 
     Returns:

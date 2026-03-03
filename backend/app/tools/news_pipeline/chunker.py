@@ -86,7 +86,7 @@ class Chunker:
 
         v0.3.0: FTS 인덱스 자동 생성 → 하이브리드 검색 지원
         """
-        import lancedb
+        import lancedb  # type: ignore[import-untyped]  # noqa: PLC0415
 
         from app.core.config import settings
 
@@ -157,7 +157,7 @@ class Chunker:
         Returns:
             정렬된 검색 결과 목록
         """
-        import lancedb
+        import lancedb  # noqa: PLC0415
 
         from app.core.config import settings
 

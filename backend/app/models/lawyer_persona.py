@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from app.core.database import Base
 
 
-class LawyerPersonaModel(Base):
+class LawyerPersonaModel(Base):  # type: ignore[misc]
     """변호사 페르소나 ORM 모델"""
 
     __tablename__ = "lawyer_personas"
@@ -48,7 +48,7 @@ class LawyerPersonaModel(Base):
     )
 
 
-class LawyerPersonaFeedbackModel(Base):
+class LawyerPersonaFeedbackModel(Base):  # type: ignore[misc]
     """페르소나 피드백 ORM 모델"""
 
     __tablename__ = "lawyer_persona_feedback"

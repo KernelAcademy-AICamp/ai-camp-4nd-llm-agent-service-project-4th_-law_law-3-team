@@ -21,7 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 
-class WorkspaceCase(Base):
+class WorkspaceCase(Base):  # type: ignore[misc]
     """사건 워크스페이스"""
 
     __tablename__ = "workspace_cases"
@@ -33,8 +33,8 @@ class WorkspaceCase(Base):
     case_name: Mapped[str] = mapped_column(String(200), nullable=False)
     case_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
-    summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    tagged_items: Mapped[list] = mapped_column(JSONB, default=list)
+    summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # type: ignore[type-arg]
+    tagged_items: Mapped[list] = mapped_column(JSONB, default=list)  # type: ignore[type-arg]
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -56,7 +56,7 @@ class WorkspaceCase(Base):
     )
 
 
-class WorkspaceCaseTimelineItem(Base):
+class WorkspaceCaseTimelineItem(Base):  # type: ignore[misc]
     """타임라인 항목"""
 
     __tablename__ = "workspace_case_timeline_items"
@@ -73,7 +73,7 @@ class WorkspaceCaseTimelineItem(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str | None] = mapped_column(String(50), nullable=True)
     source_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    source_ref: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    source_ref: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # type: ignore[type-arg]
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -89,7 +89,7 @@ class WorkspaceCaseTimelineItem(Base):
     )
 
 
-class WorkspaceActivityLog(Base):
+class WorkspaceActivityLog(Base):  # type: ignore[misc]
     """활동 로그"""
 
     __tablename__ = "workspace_activity_logs"
@@ -105,7 +105,7 @@ class WorkspaceActivityLog(Base):
     )
     session_token: Mapped[str] = mapped_column(String(100), nullable=False)
     action: Mapped[str] = mapped_column(String(50), nullable=False)
-    detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    detail: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -115,7 +115,7 @@ class WorkspaceActivityLog(Base):
     )
 
 
-class IdentityLink(Base):
+class IdentityLink(Base):  # type: ignore[misc]
     """세션-계정 연결 (향후 로그인 연동 대비)"""
 
     __tablename__ = "identity_links"

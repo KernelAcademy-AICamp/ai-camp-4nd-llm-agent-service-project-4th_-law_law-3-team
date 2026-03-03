@@ -21,7 +21,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class PrecedentDocument(Base):
+class PrecedentDocument(Base):  # type: ignore[misc]
     """
     판례 문서 테이블 (LanceDB 전용)
 

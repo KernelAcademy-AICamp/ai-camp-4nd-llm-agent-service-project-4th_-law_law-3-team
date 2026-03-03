@@ -11,7 +11,7 @@ from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, UniqueConst
 from app.core.database import Base
 
 
-class CaseCaseCitation(Base):
+class CaseCaseCitation(Base):  # type: ignore[misc]
     """
     판례→판례 인용 관계 테이블
 

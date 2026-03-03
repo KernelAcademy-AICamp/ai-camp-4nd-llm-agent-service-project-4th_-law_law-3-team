@@ -19,7 +19,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class SpecialAdminAppealDocument(Base):
+class SpecialAdminAppealDocument(Base):  # type: ignore[misc]
     """
     특별행정심판 재결례 테이블
 

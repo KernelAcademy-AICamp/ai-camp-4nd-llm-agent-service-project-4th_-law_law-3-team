@@ -36,7 +36,7 @@ def _tokenize(query: str) -> list[str]:
     from app.tools.vectorstore.lancedb import _get_thread_tokenizer
 
     tokenizer = _get_thread_tokenizer()
-    return tokenizer.morphs(query)
+    return list(tokenizer.morphs(query))
 
 
 def _map_doc_type_to_data_type(doc_type: str) -> str:

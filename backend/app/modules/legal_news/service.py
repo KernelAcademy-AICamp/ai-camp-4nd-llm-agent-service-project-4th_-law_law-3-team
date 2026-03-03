@@ -345,7 +345,7 @@ def _get_model_class(table_name: str) -> type:
         "dec_employment_documents": "DecEmploymentDocument",
     }
     class_name = _table_to_model[table_name]
-    return getattr(models, class_name)
+    return getattr(models, class_name)  # type: ignore[no-any-return]
 
 
 async def get_rag_contribution_stats(

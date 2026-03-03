@@ -61,7 +61,7 @@ class StoryboardAgent(BaseChatAgent):
         response = model.invoke(messages)
 
         return AgentResult(
-            message=response.content,
+            message=str(response.content),
             sources=[],
             actions=[],
             session_data={"active_agent": self.name},

@@ -12,7 +12,7 @@ from app.tools.trend.models import RawTrendItem
 from app.tools.trend.sources import BaseTrendSource, SourceConfig
 
 if TYPE_CHECKING:
-    from tavily import AsyncTavilyClient
+    from tavily import AsyncTavilyClient  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 

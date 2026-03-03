@@ -27,7 +27,7 @@ from app.core.database import Base
 _KOREAN_ONLY_PATTERN = re.compile(r"^[가-힣]+$")
 
 
-class LegalTerm(Base):
+class LegalTerm(Base):  # type: ignore[misc]
     """법률 용어 테이블"""
 
     __tablename__ = "legal_terms"

@@ -38,20 +38,20 @@ async def fetch_precedent_details(source_ids: List[str]) -> Dict[str, Dict[str, 
             precedents = result.scalars().all()
 
             return {
-                p.serial_number: {
-                    "ruling": p.ruling or "",
-                    "claim": p.claim or "",
-                    "reasoning": p.reasoning or "",
-                    "full_reason": p.full_reason or "",
-                    "full_text": p.full_text or "",  # 판례내용 전문
+                str(p.serial_number): {
+                    "ruling": str(p.ruling or ""),
+                    "claim": str(p.claim or ""),
+                    "reasoning": str(p.reasoning or ""),
+                    "full_reason": str(p.full_reason or ""),
+                    "full_text": str(p.full_text or ""),  # 판례내용 전문
                     "decision_date": str(p.decision_date) if p.decision_date else "",
-                    "case_type": p.case_type or "",
-                    "summary": p.summary or "",  # 판시사항
-                    "reference_provisions": p.reference_provisions or "",  # 참조조문
-                    "reference_cases": p.reference_cases or "",  # 참조판례
-                    "court_name": p.court_name or "",  # 법원명
-                    "case_name": p.case_name or "",  # 사건명
-                    "case_number": p.case_number or "",  # 사건번호
+                    "case_type": str(p.case_type or ""),
+                    "summary": str(p.summary or ""),  # 판시사항
+                    "reference_provisions": str(p.reference_provisions or ""),  # 참조조문
+                    "reference_cases": str(p.reference_cases or ""),  # 참조판례
+                    "court_name": str(p.court_name or ""),  # 법원명
+                    "case_name": str(p.case_name or ""),  # 사건명
+                    "case_number": str(p.case_number or ""),  # 사건번호
                 }
                 for p in precedents
             }

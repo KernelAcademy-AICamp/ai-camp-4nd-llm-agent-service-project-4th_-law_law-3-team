@@ -352,7 +352,7 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
         result = store.get_by_id(precedent_id)
 
         # RAG 검색 결과는 source_id를 id로 사용하므로, 청크 id로 못 찾으면 source_id로 폴백
-        if not result:
+        if not result and hasattr(store, "get_by_source_id"):
             source_result = store.get_by_source_id(precedent_id)
             if source_result and source_result.get("ids"):
                 result = {

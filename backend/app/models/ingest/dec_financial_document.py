@@ -18,7 +18,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class DecFinancialDocument(Base):
+class DecFinancialDocument(Base):  # type: ignore[misc]
     """금융위원회 결정례 테이블"""
 
     __tablename__ = "dec_financial_documents"

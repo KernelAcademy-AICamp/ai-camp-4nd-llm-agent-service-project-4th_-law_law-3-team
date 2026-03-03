@@ -19,7 +19,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class InterpretationMinistryDocument(Base):
+class InterpretationMinistryDocument(Base):  # type: ignore[misc]
     """
     부처 유권해석 테이블
 

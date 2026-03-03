@@ -21,7 +21,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from app.core.database import Base
 
 
-class Lawyer(Base):
+class Lawyer(Base):  # type: ignore[misc]
     """변호사 정보 테이블"""
 
     __tablename__ = "lawyers"

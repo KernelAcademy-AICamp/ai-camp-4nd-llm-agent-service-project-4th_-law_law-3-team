@@ -18,7 +18,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class DecCivilRightsDocument(Base):
+class DecCivilRightsDocument(Base):  # type: ignore[misc]
     """국민권익위원회 결정례 테이블"""
 
     __tablename__ = "dec_civil_rights_documents"

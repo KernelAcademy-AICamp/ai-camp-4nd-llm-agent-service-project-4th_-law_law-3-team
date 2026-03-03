@@ -137,7 +137,7 @@ class DocumentService:
 
     def generate_hwpx_from_text(self, text: str, output_path: str) -> str:
         """텍스트 내용을 HWPX(한글) 파일로 생성"""
-        from hwpx.document import HwpxDocument
+        from hwpx.document import HwpxDocument  # type: ignore[import-untyped]
 
         # 빈 문서 생성 (HwpxDocument.new() 사용)
         doc = HwpxDocument.new()

@@ -40,7 +40,7 @@ _MIN_TOKEN_LENGTH = 2
 # MeCab 설치 여부 확인
 _MECAB_AVAILABLE = False
 try:
-    import MeCab as _MeCab  # noqa: N811
+    import MeCab as _MeCab  # type: ignore[import-untyped]  # noqa: N811
 
     _MECAB_AVAILABLE = True
 except ImportError:

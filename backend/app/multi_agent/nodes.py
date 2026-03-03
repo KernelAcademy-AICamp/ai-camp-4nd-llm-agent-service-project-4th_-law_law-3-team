@@ -8,7 +8,7 @@ SmallClaims는 별도 subgraph로 분리
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Literal, cast
 
 from langgraph.types import Command, StreamWriter
 
@@ -358,7 +358,7 @@ async def legal_search_node(
 
     user_role = state.get("user_role", "user")
     return await _run_streaming_node(
-        LegalSearchAgent(focus=focus, user_role=user_role), state, writer
+        LegalSearchAgent(focus=cast(Literal["precedent", "law"], focus), user_role=user_role), state, writer
     )
 
 

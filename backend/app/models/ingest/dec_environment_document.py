@@ -18,7 +18,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 
-class DecEnvironmentDocument(Base):
+class DecEnvironmentDocument(Base):  # type: ignore[misc]
     """중앙환경분쟁조정위원회 결정례 테이블"""
 
     __tablename__ = "dec_environment_documents"
