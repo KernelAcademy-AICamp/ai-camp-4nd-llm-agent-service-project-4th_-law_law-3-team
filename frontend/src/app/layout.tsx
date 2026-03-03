@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import dynamic from 'next/dynamic'
 import '../styles/globals.css'
 import { Providers } from './providers'
+import Sidebar from '@/components/Sidebar'
+import LayoutWrapper from '@/components/LayoutWrapper'
 
 const ChatWidget = dynamic(() => import('@/components/ChatWidget'), {
   ssr: false,
@@ -29,7 +31,12 @@ export default function RootLayout({
       </head>
       <body>
         <Providers>
-          {children}
+          <div className="flex min-h-screen relative">
+            <Sidebar />
+            <LayoutWrapper>
+              {children}
+            </LayoutWrapper>
+          </div>
           <ChatWidget />
         </Providers>
       </body>

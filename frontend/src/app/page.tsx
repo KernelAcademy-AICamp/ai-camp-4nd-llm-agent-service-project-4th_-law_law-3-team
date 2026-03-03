@@ -3,7 +3,7 @@
 import { useEffect, Suspense, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { getEnabledModules } from '@/lib/modules'
+import { getEnabledModules, getModuleCategory, CATEGORY_NAMES } from '@/lib/modules'
 import { useUI } from '@/context/UIContext'
 import { useChat, UserRole } from '@/context/ChatContext'
 
@@ -15,6 +15,17 @@ function HomeContent() {
   const { isChatOpen, setChatOpen } = useUI()
   const { setUserRole } = useChat()
   const enabledModules = useMemo(() => getEnabledModules(role || undefined), [role])
+
+  const modulesByCategory = useMemo(() => {
+    if (!role) return {}
+    const grouped: Record<string, typeof enabledModules> = {}
+    enabledModules.forEach(mod => {
+      const cat = getModuleCategory(mod, role)
+      if (!grouped[cat]) grouped[cat] = []
+      grouped[cat].push(mod)
+    })
+    return grouped
+  }, [enabledModules, role])
 
   useEffect(() => {
     if (!role) {
@@ -109,11 +120,10 @@ function HomeContent() {
   }
 
   return (
-    <main className="min-h-screen bg-white p-8 relative overflow-hidden transition-all duration-500 ease-in-out">
+    <div className="min-h-screen bg-white p-8 relative overflow-x-hidden transition-all duration-500 ease-in-out">
       <div
-        className={`relative z-10 transition-all duration-500 ease-in-out ${
-          isChatOpen ? 'w-1/2 pr-8' : 'w-full max-w-6xl mx-auto'
-        }`}
+        className={`relative z-10 transition-all duration-500 ease-in-out ${isChatOpen ? 'w-1/2 pr-8' : 'w-full max-w-6xl mx-auto'
+          }`}
       >
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
           <div>
@@ -132,38 +142,49 @@ function HomeContent() {
           </button>
         </div>
 
-        <div className={`grid gap-5 ${isChatOpen ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
-          {enabledModules.map((module) => (
-            <Link
-              key={module.id}
-              href={module.href}
-              className="group relative block p-6 bg-[#F5F5F7] border border-black/[0.06] rounded-2xl hover:bg-blue-50 hover:border-blue-200 transition-all duration-300 overflow-hidden cursor-pointer"
-            >
-              {/* Subtle card glow on hover */}
-              <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <div className="space-y-12">
+          {Object.entries(modulesByCategory).map(([catId, catModules]) => (
+            <section key={catId}>
+              <h2 className="text-sm font-bold text-[#86868B] uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                {CATEGORY_NAMES[catId]?.[role] || catId}
+              </h2>
+              <div className={`grid gap-5 ${isChatOpen ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+                {catModules.map((module) => (
+                  <Link
+                    key={module.id}
+                    href={module.href}
+                    className="group relative block p-6 bg-[#F5F5F7] border border-black/[0.06] rounded-2xl hover:bg-white hover:shadow-apple-hover transition-all duration-300 overflow-hidden cursor-pointer"
+                  >
+                    {/* Subtle card glow on hover */}
+                    <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-              <div className="relative z-10">
-                <div className="text-4xl mb-4 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300">
-                  {module.icon}
-                </div>
-                <h2 className="text-xl font-bold text-[#1D1D1F] mb-2 group-hover:text-blue-500 transition-colors">
-                  {module.name}
-                </h2>
-                <p className="text-[#86868B] text-sm leading-relaxed group-hover:text-[#3C3C43] transition-colors">
-                  {module.description}
-                </p>
+                    <div className="relative z-10">
+                      <div className="text-4xl mb-4 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300">
+                        {module.icon}
+                      </div>
+                      <h2 className="text-xl font-bold text-[#1D1D1F] mb-2 group-hover:text-blue-500 transition-colors">
+                        {module.name}
+                      </h2>
+                      <p className="text-[#86868B] text-sm leading-relaxed group-hover:text-[#3C3C43] transition-colors">
+                        {module.description}
+                      </p>
 
-                <div className="mt-4 flex items-center text-xs font-bold uppercase tracking-wider text-blue-500/70 group-hover:text-blue-500">
-                  Explore <span className="ml-1 group-hover:translate-x-1 transition-transform">→</span>
-                </div>
+                      <div className="mt-4 flex items-center text-xs font-bold uppercase tracking-wider text-blue-500/70 group-hover:text-blue-500">
+                        Explore <span className="ml-1 group-hover:translate-x-1 transition-transform">→</span>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
               </div>
-            </Link>
+            </section>
           ))}
         </div>
       </div>
-    </main>
+    </div>
   )
 }
+
 
 export default function Home() {
   return (
