@@ -57,7 +57,7 @@ const MODULE_ICONS: Record<string, any> = {
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { userRole, setUserRole } = useChat()
+  const { userRole, setUserRole, sessionData } = useChat()
   const { setChatOpen } = useUI()
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -113,6 +113,36 @@ export default function Sidebar() {
           isActive={pathname === '/'}
           isExpanded={isExpanded}
         />
+
+        {/* Live Agent Status (New) */}
+        {sessionData.active_agent && (
+          <div className="px-3 py-2 bg-blue-600/5 rounded-xl border border-blue-600/10 mx-1">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <span className={cn(
+                "text-[10px] font-bold text-blue-600 uppercase tracking-wider transition-opacity",
+                !isExpanded && "opacity-0 invisible h-0"
+              )}>
+                Active Agent
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center shrink-0 border border-blue-100">
+                <span className="text-sm">🤖</span>
+              </div>
+              {isExpanded && (
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-[#1D1D1F] truncate">
+                    {sessionData.active_agent.replace('_', ' ').toUpperCase()}
+                  </p>
+                  <p className="text-[10px] text-[#86868B]">
+                    {sessionData.step || '대기 중...'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {categories.map(cat => (
           <div key={cat} className="space-y-1">

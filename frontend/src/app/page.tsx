@@ -74,7 +74,7 @@ function HomeContent() {
                 <h2 className="text-2xl font-bold text-apple-text mb-4 tracking-tight">법 관련 종사자입니다</h2>
                 <p className="text-apple-secondary mb-8 leading-relaxed text-base">의뢰인과 연결되고, 전문성을 발휘하여 업무를 관리하세요.</p>
                 <div className="inline-flex items-center text-apple-blue font-bold group-hover:gap-4 gap-2 transition-all text-base">
-                  대시보드 입장 <span className="text-xl">→</span>
+                  전문가 모드 시작 <span className="text-xl">→</span>
                 </div>
               </div>
             </button>
@@ -109,7 +109,7 @@ function HomeContent() {
                 <h2 className="text-2xl font-bold text-apple-text mb-4 tracking-tight">일반인입니다</h2>
                 <p className="text-apple-secondary mb-8 leading-relaxed text-base">나에게 딱 맞는 법률 전문가를 찾고 사건을 해결하세요.</p>
                 <div className="inline-flex items-center text-apple-blue font-bold group-hover:gap-4 gap-2 transition-all text-base">
-                  도움 받기 <span className="text-xl">→</span>
+                  일반인 모드 시작 <span className="text-xl">→</span>
                 </div>
               </div>
             </button>
@@ -119,66 +119,101 @@ function HomeContent() {
     )
   }
 
+  // AI Command Center Layout (when role is selected)
   return (
-    <div className="min-h-screen bg-white p-8 relative overflow-x-hidden transition-all duration-500 ease-in-out">
+    <div className="min-h-screen bg-[#F5F5F7] p-6 md:p-12 relative overflow-x-hidden transition-all duration-500 ease-in-out">
       <div
-        className={`relative z-10 transition-all duration-500 ease-in-out ${isChatOpen ? 'w-1/2 pr-8' : 'w-full max-w-6xl mx-auto'
+        className={`relative z-10 transition-all duration-500 ease-in-out ${isChatOpen ? 'w-1/2 pr-12' : 'w-full max-w-5xl mx-auto'
           }`}
       >
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
-          <div>
-            <h1 className="text-3xl font-bold text-[#1D1D1F] mb-2 tracking-tight">
-              LEGAL <span className="text-blue-500">PRESIDENT AI</span>
-            </h1>
-            <p className="text-blue-500/80 font-medium">
-              {role === 'lawyer' ? '변호사님 전용 대시보드' : '사용자 맞춤형 도움 서비스'}
-            </p>
+        {/* Header Section */}
+        <header className="mb-16">
+          <div className="flex justify-between items-start mb-12">
+            <div className="space-y-1">
+              <h1 className="text-4xl font-bold text-[#1D1D1F] tracking-tight">
+                반갑습니다, <span className="text-blue-600">{role === 'lawyer' ? '변호사님' : '의뢰인님'}</span>
+              </h1>
+              <p className="text-xl text-[#86868B] font-medium">
+                오늘도 당신의 법률 파트너 AI가 대기하고 있습니다.
+              </p>
+            </div>
+            <button
+              onClick={handleResetRole}
+              className="px-4 py-2 text-sm font-semibold text-[#86868B] hover:text-[#1D1D1F] bg-white border border-[#D2D2D7] rounded-full shadow-sm transition-all active:scale-95"
+            >
+              역할 변경
+            </button>
           </div>
-          <button
-            onClick={handleResetRole}
-            className="px-5 py-2.5 text-sm font-semibold text-[#86868B] hover:text-[#1D1D1F] bg-[#F5F5F7] hover:bg-gray-200 border border-black/[0.06] rounded-xl transition-all duration-300 cursor-pointer"
-          >
-            ← 역할 변경
-          </button>
-        </div>
 
-        <div className="space-y-12">
-          {Object.entries(modulesByCategory).map(([catId, catModules]) => (
-            <section key={catId}>
-              <h2 className="text-sm font-bold text-[#86868B] uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                {CATEGORY_NAMES[catId]?.[role] || catId}
-              </h2>
-              <div className={`grid gap-5 ${isChatOpen ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
-                {catModules.map((module) => (
-                  <Link
-                    key={module.id}
-                    href={module.href}
-                    className="group relative block p-6 bg-[#F5F5F7] border border-black/[0.06] rounded-2xl hover:bg-white hover:shadow-apple-hover transition-all duration-300 overflow-hidden cursor-pointer"
-                  >
-                    {/* Subtle card glow on hover */}
-                    <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="space-y-2">
+            <div className="inline-block px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-bold uppercase tracking-widest mb-4">
+              AI Command Center
+            </div>
+            <h2 className="text-5xl font-extrabold text-[#1D1D1F] leading-tight max-w-2xl">
+              어떤 업무를 <br />도와드릴까요?
+            </h2>
+          </div>
+        </header>
 
-                    <div className="relative z-10">
-                      <div className="text-4xl mb-4 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300">
-                        {module.icon}
-                      </div>
-                      <h2 className="text-xl font-bold text-[#1D1D1F] mb-2 group-hover:text-blue-500 transition-colors">
-                        {module.name}
-                      </h2>
-                      <p className="text-[#86868B] text-sm leading-relaxed group-hover:text-[#3C3C43] transition-colors">
-                        {module.description}
-                      </p>
+        {/* Quick Recommendations Section */}
+        <section>
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-sm font-bold text-[#86868B] uppercase tracking-widest flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              추천 작업
+            </h3>
+            <span className="text-xs text-[#86868B]">메뉴의 모든 기능은 대화로 실행 가능합니다</span>
+          </div>
 
-                      <div className="mt-4 flex items-center text-xs font-bold uppercase tracking-wider text-blue-500/70 group-hover:text-blue-500">
-                        Explore <span className="ml-1 group-hover:translate-x-1 transition-transform">→</span>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </section>
-          ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {enabledModules.slice(0, 4).map((module) => (
+              <Link
+                key={module.id}
+                href={module.href}
+                className="group relative block p-8 bg-white border border-[#D2D2D7]/50 rounded-[2rem] hover:shadow-apple-hover hover:border-blue-200 transition-all duration-300 overflow-hidden"
+              >
+                {/* Background Decoration */}
+                <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
+                  <span className="text-7xl">{module.icon}</span>
+                </div>
+
+                <div className="relative z-10 h-full flex flex-col">
+                  <div className="text-3xl mb-6 group-hover:scale-110 transition-transform inline-block">
+                    {module.icon}
+                  </div>
+                  <h4 className="text-xl font-bold text-[#1D1D1F] mb-3 group-hover:text-blue-600 transition-colors">
+                    {module.name}
+                  </h4>
+                  <p className="text-[#86868B] text-sm leading-relaxed mb-6 flex-1">
+                    {module.description}
+                  </p>
+
+                  <div className="flex items-center text-sm font-bold text-blue-600 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all">
+                    업무 시작 <span className="ml-2">→</span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        {/* Floating Guide */}
+        <div className="mt-20 p-8 bg-blue-600 rounded-[2.5rem] text-white shadow-xl shadow-blue-500/20 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-12 opacity-10 transform rotate-12 group-hover:rotate-0 transition-transform duration-700">
+            <span className="text-9xl">💡</span>
+          </div>
+          <div className="relative z-10 max-w-lg">
+            <h4 className="text-2xl font-bold mb-3">AI 인턴 활용 팁</h4>
+            <p className="text-blue-50/80 leading-relaxed mb-6">
+              "현재 위치 주변에 가사 전문 변호사 찾아줘" 또는 "어제 작업하던 소액소송 서류 다시 열어줘"라고 말해보세요. 우측 채팅창이 당신의 모든 명령을 수행합니다.
+            </p>
+            <button
+              onClick={() => setChatOpen(true)}
+              className="px-6 py-3 bg-white text-blue-600 rounded-full font-bold shadow-soft hover:bg-blue-50 transition-colors"
+            >
+              대화 시작하기
+            </button>
+          </div>
         </div>
       </div>
     </div>

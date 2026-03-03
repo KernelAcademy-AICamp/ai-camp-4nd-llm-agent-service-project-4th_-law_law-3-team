@@ -41,11 +41,10 @@ function CaseNumberLink({
                 e.stopPropagation()
                 onCaseClick(part)
               }}
-              className={`inline px-1 py-0.5 mx-0.5 rounded text-sm font-mono font-bold transition-all hover:scale-105 ${
-                isLightTheme
-                  ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                  : 'bg-blue-500/30 text-blue-300 hover:bg-blue-500/50'
-              }`}
+              className={`inline px-1 py-0.5 mx-0.5 rounded text-sm font-mono font-bold transition-all hover:scale-105 ${isLightTheme
+                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                : 'bg-blue-500/30 text-blue-300 hover:bg-blue-500/50'
+                }`}
               title={`${part} 판례 보기`}
             >
               {part}
@@ -224,11 +223,10 @@ const MessageBubble = memo(function MessageBubble({
   return (
     <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] p-4 rounded-2xl text-base leading-relaxed ${
-          msg.role === 'user'
-            ? `${messageUserClass} rounded-tr-none`
-            : `${messageBotClass} rounded-tl-none`
-        }`}
+        className={`max-w-[85%] p-4 rounded-2xl text-base leading-relaxed ${msg.role === 'user'
+          ? `${messageUserClass} rounded-tr-none`
+          : `${messageBotClass} rounded-tl-none`
+          }`}
       >
         {msg.role === 'assistant' ? (
           isStreamingMessage && !msg.content.trim() ? (
@@ -288,7 +286,7 @@ export default function ChatWidget() {
   const searchParams = useSearchParams()
   const agentFromUrl = searchParams.get('agent')
   const effectiveAgent = agentFromUrl || PATHNAME_AGENT_MAP[pathname] || null
-  const { isChatOpen, toggleChat, setChatOpen, chatMode, setChatMode } = useUI()
+  const { isChatOpen, toggleChat, setChatOpen, chatMode, setChatMode, activePanel, setActivePanel } = useUI()
   const {
     userRole,
     setUserRole,
@@ -400,35 +398,42 @@ export default function ChatWidget() {
 
     if (hasReceivedFirstToken) {
       return {
-        title: '답변을 작성하고 있습니다...',
-        detail: elapsedText,
+        title: '답변을 완성하는 중입니다...',
+        detail: 'AI가 정보를 정리하여 출력하고 있습니다.',
       }
     }
 
-    if (loadingElapsedSeconds < 6) {
+    if (loadingElapsedSeconds < 3) {
       return {
-        title: '질문을 분석하고 있습니다...',
-        detail: elapsedText,
+        title: '질문 의도를 분석하고 있습니다...',
+        detail: '에이전트가 최적의 도구를 선택하는 중입니다.',
       }
     }
 
-    if (loadingElapsedSeconds < 14) {
+    if (loadingElapsedSeconds < 8) {
       return {
-        title: 'AI 모델을 호출하고 있습니다...',
-        detail: `${elapsedText} · 응답 준비에 시간이 걸릴 수 있습니다`,
+        title: '관련 데이터를 검색하고 있습니다...',
+        detail: '법령 및 판례 데이터베이스에서 정보를 찾는 중입니다.',
+      }
+    }
+
+    if (loadingElapsedSeconds < 15) {
+      return {
+        title: '검색된 결과를 정제하고 있습니다...',
+        detail: '수집된 정보를 바탕으로 답변을 구성하는 중입니다.',
       }
     }
 
     if (loadingElapsedSeconds < 25) {
       return {
-        title: '서버 응답이 지연되고 있습니다...',
-        detail: `${elapsedText} · 연결 재시도를 진행 중일 수 있습니다`,
+        title: '심층 분석을 진행하고 있습니다...',
+        detail: '복잡한 법률 관계를 검토하고 있습니다. 잠시만 기다려주세요.',
       }
     }
 
     return {
-      title: '응답을 계속 기다리는 중입니다...',
-      detail: `${elapsedText} · 잠시만 더 기다려 주세요`,
+      title: '응답 준비가 거의 완료되었습니다...',
+      detail: '최종 답변을 생성하기 위한 마무리 과정입니다.',
     }
   }, [hasReceivedFirstToken, loadingElapsedSeconds])
 
@@ -574,7 +579,12 @@ export default function ChatWidget() {
             agentUsed = metadata.agent_used
             receivedActions = metadata.actions
             receivedSessionData = metadata.session_data
-            
+
+            // Proactive UI Trigger: lawyer_finder 자동으로 패널 열기
+            if (metadata.agent_used === 'lawyer_finder' && activePanel !== 'lawyer-finder') {
+              setActivePanel('lawyer-finder')
+            }
+
             // 소액소송 에이전트 응답 시 UI 동기화
             if (metadata.agent_used === 'small_claims' && metadata.session_data) {
               const sessionDataTyped = metadata.session_data as Record<string, unknown>
@@ -591,7 +601,7 @@ export default function ChatWidget() {
                 setChatStep(sessionDataTyped.step as string)
               }
             }
-            
+
             // 메타데이터 업데이트
             setMessages((prev) =>
               prev.map((msg) =>
@@ -943,21 +953,19 @@ export default function ChatWidget() {
           >
             <button
               onClick={() => setUserRole('user')}
-              className={`px-2 py-1 rounded-l-md transition-colors ${
-                userRole === 'user'
-                  ? themeClasses.roleActive
-                  : themeClasses.roleInactive
-              }`}
+              className={`px-2 py-1 rounded-l-md transition-colors ${userRole === 'user'
+                ? themeClasses.roleActive
+                : themeClasses.roleInactive
+                }`}
             >
               일반인
             </button>
             <button
               onClick={() => setUserRole('lawyer')}
-              className={`px-2 py-1 rounded-r-md transition-colors ${
-                userRole === 'lawyer'
-                  ? themeClasses.roleActive
-                  : themeClasses.roleInactive
-              }`}
+              className={`px-2 py-1 rounded-r-md transition-colors ${userRole === 'lawyer'
+                ? themeClasses.roleActive
+                : themeClasses.roleInactive
+                }`}
             >
               변호사
             </button>
