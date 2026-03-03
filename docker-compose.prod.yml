@@ -93,6 +93,9 @@ services:
       MODEL_CACHE_DIR: ${MODEL_CACHE_DIR:-/app/models}
       HF_HOME: /app/models
 
+      # 미디어 디렉토리 (read-only /app/data 외부)
+      MEDIA_DIR: /app/media
+
       # Runtime tuning
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
       AGENT_TIMEOUT_SECONDS: ${AGENT_TIMEOUT_SECONDS:-120}

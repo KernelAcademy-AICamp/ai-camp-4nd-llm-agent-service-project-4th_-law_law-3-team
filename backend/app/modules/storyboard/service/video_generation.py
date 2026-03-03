@@ -2,6 +2,7 @@
 import asyncio
 import ipaddress
 import logging
+import os
 import shutil
 import socket
 import subprocess
@@ -47,8 +48,10 @@ if not _check_ffmpeg_available():
         "  - Windows: https://ffmpeg.org/download.html 에서 다운로드 후 PATH에 추가"
     )
 
-# 미디어 디렉토리 경로
-MEDIA_DIR = Path(__file__).parent.parent.parent.parent.parent / "data" / "media"
+# 미디어 디렉토리 경로 (프로덕션: MEDIA_DIR 환경변수, 개발: data/media)
+MEDIA_DIR = Path(
+    os.environ.get("MEDIA_DIR", Path(__file__).parent.parent.parent.parent.parent / "data" / "media")
+)
 IMAGES_DIR = MEDIA_DIR / "storyboard" / "images"
 VIDEOS_DIR = MEDIA_DIR / "storyboard" / "videos"
 

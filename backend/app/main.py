@@ -24,8 +24,8 @@ from app.core.rate_limit import limiter
 from app.core.registry import ModuleRegistry
 from app.core.session import SessionMiddleware
 
-# 미디어 디렉토리 경로
-MEDIA_DIR = Path(__file__).parent.parent / "data" / "media"
+# 미디어 디렉토리 경로 (프로덕션: /app/media, 개발: data/media)
+MEDIA_DIR = Path(os.environ.get("MEDIA_DIR", Path(__file__).parent.parent / "data" / "media"))
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
 # 웹툰 스토리보드 이미지 디렉토리
