@@ -13,10 +13,11 @@
 id, source_id, data_type, title, content, vector(1024), source_name, chunk_index, total_chunks, date
 ```
 
-### FTS (fts_index) — 모든 타입 동일: 6개 메타 + content_tsvector
+### FTS (fts_index) — 모든 타입 동일: 6개 메타 + search_text (BM25)
 
 ```
-source_id, data_type, title, date, source_name, case_number + content_tsvector
+source_id, data_type, title, date, source_name, case_number + search_text
+BM25 인덱스: idx_fts_bm25 (pg_textsearch, text_config='simple')
 ```
 
 ### PostgreSQL — 타입마다 다름 (아래 상세)
@@ -27,7 +28,7 @@ source_id, data_type, title, date, source_name, case_number + content_tsvector
 
 | 타입 | PostgreSQL | Vector DB | FTS |
 |------|-----------|-----------|-----|
-| admin_rule | **8개** | 9+vector (공통) | 6+tsvector (공통) |
+| admin_rule | **8개** | 9+vector (공통) | 6+search_text (공통) |
 | constitutional | **16개** | " | " |
 | administration | **14개** | " | " |
 | legislation | **14개** | " | " |
@@ -394,14 +395,13 @@ source_id, data_type, title, date, source_name, case_number + content_tsvector
 - `data_type`은 여전히 `위원회결정례`로 통합 검색 유지
 - 벡터 DB의 source_id는 변경하지 않음 (LanceDB에 PK 제약 없음)
 
-##### 3. fts_builder.py tsvector 1MB 초과 (truncate 추가로 해결)
+##### 3. search_text_rebuilder.py fulltext 길이 초과 (truncate 추가로 해결)
 
-**증상**: `--step fts` 실행 시 `ProgramLimitExceeded` 오류로 특정 문서 FTS 생성 실패.
+**증상**: `--step fts` 실행 시 특정 문서의 fulltext가 과도하게 길어 처리 지연.
 
-**원인**: `db_writer.py`에는 `_MAX_FULLTEXT_CHARS = 300,000` truncate가 있었으나, `fts_builder.py`에는 없었음.
-PostgreSQL tsvector 최대 크기 1,048,575 바이트 제한.
+**원인**: `db_writer.py`에는 `_MAX_FULLTEXT_CHARS = 300,000` truncate가 있었으나, 이전 `fts_builder.py`에는 없었음.
 
-**해결**: `fts_builder.py`에도 동일한 `_MAX_FULLTEXT_CHARS = 300_000` 상수 + truncate 로직 추가.
+**해결**: `search_text_rebuilder.py`에도 동일한 `_MAX_FULLTEXT_CHARS = 300_000` 상수 + truncate 로직 추가.
 
 ##### 4. dec_* 병렬 `--reset` 연쇄 삭제
 
@@ -416,7 +416,7 @@ PostgreSQL tsvector 최대 크기 1,048,575 바이트 제한.
 
 ##### 빈 fulltext (원본 텍스트 부재)
 
-`fulltext.strip()`이 빈 문자열이면 FTS 레코드를 생성하지 않습니다 (`db_writer.py:191`, `fts_builder.py:113`).
+`fulltext.strip()`이 빈 문자열이면 FTS 레코드를 생성하지 않습니다 (`db_writer.py:191`, `search_text_rebuilder.py:123`).
 원본 JSON에 본문 텍스트 필드가 없는 문서에 해당합니다.
 현재 모든 타입 100% 적재 → 해당 케이스 없음 (fulltext 구성 함수 개선으로 해결됨).
 
@@ -433,10 +433,10 @@ WHERE NOT EXISTS (SELECT 1 FROM fts_index f WHERE f.source_id = p.<id_col> AND f
 
 **해결**: `--step fts --reset`으로 ORM에서 FTS 재빌드.
 
-#### 3. PostgreSQL tsvector 1MB 제한
+#### 3. PostgreSQL search_text 크기 제한
 
-단일 문서의 tsvector가 1,048,575 바이트를 초과하면 `ProgramLimitExceeded` 오류가 발생합니다.
-`db_writer.py`와 `fts_builder.py` 모두 `_MAX_FULLTEXT_CHARS = 300,000`으로 truncate합니다.
+BM25 인덱싱에서도 과도하게 긴 search_text는 성능 문제를 유발할 수 있습니다.
+`db_writer.py`와 `search_text_rebuilder.py` 모두 `_MAX_FULLTEXT_CHARS = 300,000`으로 truncate합니다.
 
 **영향 타입**: dec_fair_trade (공정거래위원회 일부 결정문)
 

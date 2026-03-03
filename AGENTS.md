@@ -5,7 +5,7 @@
 ## 프로젝트 개요
 
 모듈형 법률 서비스 플랫폼. Backend(FastAPI + Python), Frontend(Next.js + TypeScript).
-8개 AI 에이전트 기반 멀티에이전트 시스템 (LangGraph).
+9개 AI 에이전트 기반 멀티에이전트 시스템 (LangGraph).
 
 ## 빌드 & 테스트
 
@@ -47,9 +47,9 @@ backend/app/
 ├── core/           # config, database, registry
 ├── multi_agent/    # LangGraph 에이전트 시스템
 ├── services/       # RAG, 비즈니스 로직
-├── modules/        # 독립 API 모듈 (9개)
+├── modules/        # 독립 API 모듈 (10개)
 ├── models/         # SQLAlchemy ORM
-└── tools/          # LLM, VectorStore, Neo4j
+└── tools/          # LLM, VectorStore, Graph
 
 frontend/src/
 ├── app/            # Next.js App Router
@@ -64,9 +64,8 @@ frontend/src/
 |------|------|
 | `DATABASE_URL` | PostgreSQL 연결 문자열 |
 | `UPSTAGE_API_KEY` | Solar LLM API 키 |
-| `NEO4J_URI` | Neo4j bolt 연결 |
 | `USE_LOCAL_EMBEDDING` | 로컬 임베딩 모델 사용 (기본: true) |
-| `USE_PG_GRAPH` | PostgreSQL 그래프 사용 (Neo4j 대체, 기본: false) |
+| `OPENAI_API_KEY` | OpenAI API 키 (스토리보드 타임라인 추출) |
 
 ## API 경로 규칙
 

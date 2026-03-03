@@ -158,6 +158,10 @@ def pytest_configure(config):
         "markers",
         "requires_mecab_userdic: marks tests that require MeCab userdic build"
     )
+    config.addinivalue_line(
+        "markers",
+        "requires_openai: marks tests that require OpenAI API key"
+    )
 
 
 # ============================================================================

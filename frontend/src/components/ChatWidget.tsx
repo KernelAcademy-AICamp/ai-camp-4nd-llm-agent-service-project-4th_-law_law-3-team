@@ -191,6 +191,7 @@ const FLOATING_MODE_PATHS = new Set([
   '/lawyer-stats',
   '/storyboard',
   '/statute-hierarchy',
+  '/workspace',
 ])
 
 // --- Memoized MessageBubble ---
@@ -297,6 +298,9 @@ export default function ChatWidget() {
     requestUserLocation,
     resetSession,
     setHighlightedCaseNumber,
+    conversationId,
+    setConversationId,
+    caseId,
   } = useChat()
 
   // 소액소송 UI 동기화 훅
@@ -304,7 +308,7 @@ export default function ChatWidget() {
 
   // Determine if we are on pages that support floating mode
   const isMapPage = pathname === '/lawyer-finder'
-  const supportsFloatingMode = FLOATING_MODE_PATHS.has(pathname)
+  const supportsFloatingMode = FLOATING_MODE_PATHS.has(pathname) || pathname.startsWith('/workspace')
 
   // Global state for view mode is now handled by UIContext
 
@@ -531,6 +535,8 @@ export default function ChatWidget() {
           session_data: finalSessionData,
           user_location: locationToSend,
           agent: effectiveAgent || undefined,
+          conversation_id: conversationId || undefined,
+          case_id: caseId || undefined,
         },
         {
           onToken: (content) => {
@@ -618,6 +624,11 @@ export default function ChatWidget() {
             setLoadingElapsedSeconds(0)
             setHasReceivedFirstToken(false)
             hasReceivedFirstTokenRef.current = false
+
+            // conversation_id 추적 (이어가기 지원)
+            if (doneData?.conversation_id) {
+              setConversationId(doneData.conversation_id as string)
+            }
 
             // 세션 데이터 업데이트 (metadata + done 이벤트 병합)
             const newSessionData = { ...receivedSessionData }

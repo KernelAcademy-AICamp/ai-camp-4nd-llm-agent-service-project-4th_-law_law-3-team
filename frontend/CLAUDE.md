@@ -19,6 +19,9 @@ npm run lint         # ESLint 실행
 `src/app/` 폴더 구조가 URL 라우팅과 직접 매핑됩니다.
 - `src/app/page.tsx` → `/`
 - `src/app/lawyer-finder/page.tsx` → `/lawyer-finder`
+- `src/app/workspace/page.tsx` → `/workspace` (사건 목록 대시보드)
+- `src/app/workspace/[caseId]/page.tsx` → `/workspace/:caseId` (사건 상세)
+- `src/app/chat-history/page.tsx` → `/chat-history` (대화 기록)
 
 ### 모듈 시스템
 
@@ -26,7 +29,7 @@ npm run lint         # ESLint 실행
 ```typescript
 // 현재 등록 모듈: lawyer-finder, lawyer-stats, case-precedent,
 // law-search, storyboard, law-study, statute-hierarchy,
-// small-claims, mock-trial
+// small-claims, mock-trial, workspace, content-marketing
 export const modules: Module[] = [
   { id: 'lawyer-finder', name: '...', enabled: true, ... },
 ]
@@ -37,6 +40,8 @@ export const getEnabledModules = (role?) => modules.filter((m) => m.enabled && .
 ```typescript
 export const endpoints = {
   lawyerFinder: '/lawyer-finder',
+  workspace: '/workspace',
+  chatConversations: '/chat/conversations',
   // 모듈 추가 시 여기에 endpoint 추가
 }
 ```
@@ -55,6 +60,8 @@ src/features/<module-name>/
 ### ChatWidget (통합 채팅 위젯)
 
 `src/components/ChatWidget.tsx` — SSE 스트리밍 채팅, 에이전트 응답 후 자동 네비게이션.
+
+**세션 관리:** 쿠키 기반 `session_token` (HttpOnly). `conversation_id`와 `case_id`를 ChatContext에서 관리하여 대화 이어가기 및 워크스페이스 연동 지원.
 
 **네비게이션 우선순위:** NAVIGATE 액션 (좌표/파라미터 포함) > AGENT_PAGE_MAP (기본 페이지 이동)
 - NAVIGATE 액션: 에이전트가 `nav_params` (lat, lng, radius, zoom, category, sigungu)를 포함하여 URL 생성
@@ -114,6 +121,39 @@ src/features/<module-name>/
 
 **타입:**
 - `CourtDemandMarker` - 법원 단위 수요 데이터 (좌표, 사건 수, 변호사 수, 부담지수, 관할 지역)
+
+### storyboard (사건 타임라인)
+
+**경로:** `src/features/storyboard/`
+
+**컴포넌트:**
+- `GanttChartView` - vis-timeline 간트차트 래퍼 (SSR 제외, next/dynamic ssr:false)
+- `GanttChartViewInner` - vis-timeline Timeline 인스턴스 직접 관리 (DataSet 증분 업데이트)
+- `GanttDetailPanel` - 선택 항목 상세 패널 (신뢰도 배지, 연결 증거, 법적 의미)
+- `EvidenceUploadPanel` - 드래그앤드롭 증거 업로드 (SSE 진행률, 병합 모드)
+- `TimelineToolbar` - 카드↔간트 뷰 토글 포함
+
+**훅:**
+- `useGanttChart` - VisItem/VisGroup/VisMarker 변환 (useMemo)
+- `useEvidenceUpload` - FormData 업로드 + SSE(`progress` named event) 구독
+
+**스타일:** `src/styles/gantt.css` - 신뢰도별 opacity, 충돌 pulse 애니메이션, 다크모드
+
+**타입 (`types/index.ts`):**
+- `EvidenceFile` - 증거 파일 메타데이터 (evidenceId, evidenceType, extractedTimelineIds)
+- `MergeConflict` - 병합 충돌 (existingItemId, newItemId, conflictType, description)
+- `BatchJobProgress` - SSE 진행 상태 (jobId, status, progress, currentFile)
+- `ViewMode` - 'card' | 'gantt'
+
+**API 엔드포인트:**
+- `POST /api/storyboard/analyze-batch` - 다중 파일 배치 분석 (job_id 반환)
+- `GET /api/storyboard/jobs/{job_id}/status` - SSE 진행 상태 (`event: "progress"`)
+- `POST /api/storyboard/merge` - 증분 병합 (existing_timeline JSON + files multipart)
+- `GET /api/storyboard/evidence/{evidence_id}` - 증거 메타데이터 조회
+
+**주의사항:**
+- SSE는 named event(`progress`)이므로 `addEventListener('progress', ...)` 필수 (`onmessage` 불가)
+- 병합 요청 시 `existing_timeline`에 `{ existing_items, existing_evidence }` 객체 전송
 
 ### mock-trial (모의 법정)
 
@@ -176,6 +216,26 @@ src/features/<module-name>/
 - `CharacterBase.setEmotion/clearEmotion` - 감정 아이콘 스프라이트시트 또는 Graphics 도트 렌더링
 
 **의존성:** `phaser` (package.json)
+
+### workspace (사건 워크스페이스)
+
+**경로:** `src/features/workspace/`
+
+**페이지:**
+- `/workspace` - 사건 목록 (검색, 상태 필터, 페이지네이션, 사건 생성)
+- `/workspace/[caseId]` - 사건 상세 (4탭: 요약/태그/타임라인/대화)
+- `/chat-history` - 전체 대화 기록 (검색, 이어가기)
+
+**서비스 (`services/index.ts`):**
+- Case CRUD: `createCase`, `listCases`, `getCase`, `updateCase`, `deleteCase`
+- Timeline: `getTimeline`, `rebuildTimeline`, `updateTimelineItem`
+- Conversations: `listConversations`, `getConversation`
+
+**타입 (`types/index.ts`):**
+- `WorkspaceCase`, `WorkspaceCaseDetail`, `TimelineItem`, `TaggedItem`
+- `ConversationListItem`, `PaginatedResponse<T>`, `TAG_TYPE_COLORS`
+
+**스토리보드 연동:** 타임라인 탭에서 "스토리보드 AI로 생성" 버튼 → ChatContext에 caseId 설정 후 `/storyboard`로 이동
 
 ## Conventions
 

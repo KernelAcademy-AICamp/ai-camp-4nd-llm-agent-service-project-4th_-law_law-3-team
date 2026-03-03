@@ -1,6 +1,7 @@
 """이미지 생성 서비스 - Google Gemini 2.0 Flash 사용"""
 import logging
 import uuid
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
@@ -14,8 +15,26 @@ from ..schema import Participant, ParticipantRole
 
 logger = logging.getLogger(__name__)
 
-# 미디어 디렉토리 경로
-MEDIA_DIR = Path(__file__).parent.parent.parent.parent.parent / "data" / "media"
+
+@lru_cache(maxsize=1)
+def _get_genai_client() -> genai.Client:
+    """Gemini 클라이언트 싱글톤 반환 (지연 초기화)"""
+    return genai.Client(api_key=settings.GOOGLE_API_KEY)
+
+# 미디어 디렉토리 경로 (settings에서 우선 사용, fallback: backend 루트 기준)
+def _resolve_media_dir() -> Path:
+    media_dir_setting = getattr(settings, "MEDIA_DIR", None)
+    if media_dir_setting:
+        path = Path(str(media_dir_setting))
+    else:
+        # backend/app/modules/storyboard/service/ → backend 루트 → data/media
+        path = Path(__file__).resolve().parent.parent.parent.parent.parent / "data" / "media"
+    if not path.exists():
+        logger.warning("미디어 디렉토리가 존재하지 않습니다 (자동 생성 예정): %s", path)
+    return path
+
+
+MEDIA_DIR = _resolve_media_dir()
 IMAGES_DIR = MEDIA_DIR / "storyboard" / "images"
 
 # 역할별 한글 라벨
@@ -145,8 +164,8 @@ async def generate_image(
     )
 
     try:
-        # Gemini 클라이언트 초기화
-        client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+        # Gemini 클라이언트 싱글톤 사용
+        client = _get_genai_client()
 
         # Gemini 2.0 Flash 이미지 생성 (비동기 API 사용)
         response = await client.aio.models.generate_content(
@@ -157,13 +176,13 @@ async def generate_image(
             ),
         )
 
-        if not response.candidates or not response.candidates[0].content or not response.candidates[0].content.parts:
+        candidate = response.candidates[0] if response.candidates else None
+        content = candidate.content if candidate else None
+        if not content or not content.parts:
             raise ValueError("이미지 생성 결과가 없습니다")
 
         # 이미지 데이터 추출
         image_data = None
-        content = response.candidates[0].content
-        assert content is not None and content.parts is not None  # Already checked above
         for part in content.parts:
             if part.inline_data:
                 image_data = part.inline_data.data
@@ -176,8 +195,18 @@ async def generate_image(
         image_filename = f"{item_id}_{uuid.uuid4().hex[:8]}.png"
         image_path = IMAGES_DIR / image_filename
 
-        with open(image_path, "wb") as f:
-            f.write(image_data)
+        try:
+            with open(image_path, "wb") as f:
+                f.write(image_data)
+        except OSError as e:
+            logger.error(f"이미지 파일 저장 실패 (path={image_path}): {e}")
+            placeholder_url = f"/media/storyboard/images/placeholder_{item_id}.png"
+            return {
+                "success": True,
+                "image_url": placeholder_url,
+                "image_prompt": prompt,
+                "is_placeholder": True,
+            }
 
         local_url = f"/media/storyboard/images/{image_filename}"
 

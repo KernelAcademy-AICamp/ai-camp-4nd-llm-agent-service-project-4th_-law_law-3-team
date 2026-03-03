@@ -122,10 +122,6 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
     elif isinstance(content_list, str) and content_list:
         parts.append(content_list)
 
-    supplementary = _join_if_list(item.get("부칙내용"))
-    if supplementary:
-        parts.append(supplementary)
-
     return "\n".join(parts)
 
 
@@ -154,8 +150,6 @@ def _orm_fulltext_fn(row: Any) -> str:
         parts.append(f"[{row.admin_rule_name}]")
     if row.content:
         parts.append(row.content)
-    if row.supplementary:
-        parts.append(row.supplementary)
 
     return "\n".join(parts)
 

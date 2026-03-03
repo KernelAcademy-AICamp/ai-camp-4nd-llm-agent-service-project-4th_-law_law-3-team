@@ -5,13 +5,17 @@
 """
 
 import logging
-import re
 from typing import Any
 
 from app.multi_agent.agents.base_chat import ActionType, BaseChatAgent, ChatAction
 from app.multi_agent.schemas.plan import AgentResult
 from app.services.rag import search_relevant_documents_async
 from app.services.service_function import get_precedent_service
+from app.services.service_function.small_claims_service import (
+    SMALL_CLAIMS_LIMIT,
+    detect_dispute_type,
+    extract_amount,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,44 +114,6 @@ STEP_MESSAGES = {
 자세한 소장 작성 방법을 안내해드릴까요?
 """,
 }
-
-# 소액소송 한도
-SMALL_CLAIMS_LIMIT = 30_000_000
-
-
-def extract_amount(message: str) -> int | None:
-    """메시지에서 금액 추출"""
-    patterns = [
-        r"(\d+)\s*만\s*원",
-        r"(\d{1,3}(?:,\d{3})*)\s*원",
-        r"(\d+)\s*원",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, message)
-        if match:
-            amount_str = match.group(1).replace(",", "")
-            amount = int(amount_str)
-            if "만" in pattern:
-                amount *= 10000
-            return amount
-    return None
-
-
-def detect_dispute_type(message: str) -> str | None:
-    """분쟁 유형 감지"""
-    type_keywords = {
-        "물품대금": ["물건", "물품", "상품", "대금"],
-        "중고거래": ["중고", "당근", "번개", "거래", "사기"],
-        "임대차": ["보증금", "월세", "전세", "임대", "집주인", "세입자"],
-        "용역대금": ["용역", "서비스", "작업", "수리"],
-        "대여금": ["빌려", "빌린", "대여", "꿔"],
-    }
-
-    for dispute_type, keywords in type_keywords.items():
-        if any(kw in message for kw in keywords):
-            return dispute_type
-    return None
 
 
 class SmallClaimsAgent(BaseChatAgent):

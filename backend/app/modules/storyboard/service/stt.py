@@ -1,4 +1,5 @@
 """STT (Speech-to-Text) 서비스 - OpenAI Whisper API 사용"""
+import shutil
 import tempfile
 from pathlib import Path
 from typing import BinaryIO
@@ -34,10 +35,9 @@ async def transcribe_audio(
     if extension not in SUPPORTED_AUDIO_FORMATS:
         raise ValueError(f"지원하지 않는 오디오 포맷입니다: {extension}")
 
-    # 임시 파일로 저장 후 Whisper API 호출
+    # 임시 파일로 저장 후 Whisper API 호출 (스트리밍 복사로 메모리 최적화)
     with tempfile.NamedTemporaryFile(suffix=f".{extension}", delete=True) as temp_file:
-        content = audio_file.read()
-        temp_file.write(content)
+        shutil.copyfileobj(audio_file, temp_file)
         temp_file.flush()
 
         try:

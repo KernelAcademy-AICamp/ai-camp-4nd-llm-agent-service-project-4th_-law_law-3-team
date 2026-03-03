@@ -49,10 +49,14 @@ export async function POST(request: NextRequest) {
 
     console.log('[SSE Proxy] Forwarding request to backend:', `${BACKEND_URL}/api/chat/stream`)
 
+    // 클라이언트 쿠키를 백엔드로 전달 (세션 토큰)
+    const cookieHeader = request.headers.get('cookie') || ''
+
     const backendResponse = await fetchWithRetry(`${BACKEND_URL}/api/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       },
       body: JSON.stringify(body),
     })
@@ -100,14 +104,19 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      },
-    })
+    // 백엔드 Set-Cookie 헤더를 클라이언트에 전달 (세션 토큰)
+    const responseHeaders: Record<string, string> = {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    }
+    const setCookie = backendResponse.headers.get('set-cookie')
+    if (setCookie) {
+      responseHeaders['Set-Cookie'] = setCookie
+    }
+
+    return new Response(stream, { headers: responseHeaders })
   } catch (error) {
     console.error('[SSE Proxy] Error:', error)
     const isConnErr = isConnectionError(error)

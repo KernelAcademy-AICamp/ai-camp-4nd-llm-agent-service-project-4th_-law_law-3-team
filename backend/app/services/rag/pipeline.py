@@ -17,15 +17,13 @@ from langsmith.run_helpers import get_current_run_tree
 
 from app.core.config import settings
 from app.services.rag.embedding import create_query_embedding
-from app.services.rag.keyword_search import (
-    _build_concept_and_tsquery,
-    _build_or_tsquery,
-)
 from app.services.rag.query_rewrite import rewrite_query
 from app.services.rag.rerank import rerank_documents
 from app.services.rag.retrieval import (
+    _apply_law_article_content,
     _extract_id_data_type_map,
     _populate_content,
+    _populate_precedent_metadata,
     _populate_rerank_text,
     fetch_ai_summaries,
     fetch_ai_summaries_async,
@@ -103,7 +101,7 @@ class PipelineResult:
     Attributes:
         documents: 검색된 문서 목록
         original_query: 원본 쿼리
-        rewritten_queries: 리라이팅된 쿼리 목록 (활성화 시)
+        rewritten_query: 리라이팅된 쿼리 (활성화 시)
         reranked: 리랭킹 적용 여부
         total_retrieved: 리랭킹 전 검색 결과 수
         hybrid_search_used: 하이브리드 검색 사용 여부
@@ -112,7 +110,7 @@ class PipelineResult:
 
     documents: list[dict[str, Any]] = field(default_factory=list)
     original_query: str = ""
-    rewritten_queries: list[str] = field(default_factory=list)
+    rewritten_query: str = ""
     reranked: bool = False
     total_retrieved: int = 0
     hybrid_search_used: bool = field(
@@ -126,12 +124,10 @@ class PipelineResult:
 class _PrecomputedInputs:
     """쿼리별 사전 계산된 검색 입력 (focus 모드 전용).
 
-    임베딩·tsquery를 1회만 계산하여 focus/supplementary 양쪽에 공유.
+    임베딩을 1회만 계산하여 focus/supplementary 양쪽에 공유.
     """
 
     embeddings: dict[str, list[float]]
-    concept_tsqueries: dict[str, str]
-    or_tsqueries: dict[str, str]
 
 
 # ---------------------------------------------------------------------------
@@ -222,38 +218,18 @@ class RAGPipeline:
         metrics = result.metrics
 
         # Step 1: 쿼리 리라이팅 (선택)
-        queries = [query]
+        rewritten_query = query
         if config.enable_rewrite:
-            queries = rewrite_query(
+            rewritten_query = rewrite_query(
                 query=query,
                 use_llm=config.use_llm_rewrite,
             )
-            result.rewritten_queries = queries
+            result.rewritten_query = rewritten_query
 
-        # LangSmith extra에 쿼리 + 파이프라인 설정 기록
-        run_tree = get_current_run_tree()
-        if run_tree is not None:
-            run_tree.extra = {
-                **(run_tree.extra or {}),
-                "metadata": {
-                    **(run_tree.extra or {}).get("metadata", {}),
-                    "original_query": query,
-                    "rewritten_queries": queries,
-                    "[config] doc_type": config.doc_type,
-                    "[config] exclude_doc_types": config.exclude_doc_types,
-                    "[config] n_results": config.n_results,
-                    "[config] enable_rewrite": config.enable_rewrite,
-                    "[config] enable_rerank": config.enable_rerank,
-                    "[config] rerank_top_k": config.rerank_top_k,
-                    "[config] use_llm_rewrite": config.use_llm_rewrite,
-                },
-            }
+        self._record_langsmith_metadata(query, rewritten_query, config)
 
         # Step 2: 검색
         search_start = time.monotonic()
-
-        all_documents: list[dict[str, Any]] = []
-        seen_ids: set[str] = set()
 
         search_fn = (
             search_without_content if config.enable_rerank
@@ -267,18 +243,16 @@ class RAGPipeline:
             else None
         )
 
-        for q in queries:
-            docs = search_fn(
-                query=q,
-                n_results=config.n_results,
-                doc_type=config.doc_type,
-                exclude_doc_types=exclude,
-            )
-            for doc in docs:
-                doc_id = doc.get("metadata", {}).get("doc_id", "")
-                if doc_id and doc_id not in seen_ids:
-                    seen_ids.add(doc_id)
-                    all_documents.append(doc)
+        all_documents: list[dict[str, Any]] = []
+        for doc in search_fn(
+            query=rewritten_query,
+            n_results=config.n_results,
+            doc_type=config.doc_type,
+            exclude_doc_types=exclude,
+        ):
+            doc_id = doc.get("metadata", {}).get("doc_id", "")
+            if doc_id:
+                all_documents.append(doc)
 
         metrics.search_time_ms = (time.monotonic() - search_start) * 1000
         metrics.total_searched = len(all_documents)
@@ -286,14 +260,14 @@ class RAGPipeline:
 
         # Step 3: 리랭킹 (선택)
         if config.enable_rerank and all_documents:
-            # ai_summary 조회 (PostgreSQL) → 리랭킹용 rerank_text 주입
+            # ai_summary 조회 → rerank_text 주입
             id_type_map = _extract_id_data_type_map(all_documents)
             summaries = fetch_ai_summaries(id_type_map)
             _populate_rerank_text(all_documents, summaries)
 
             rerank_start = time.monotonic()
             reranked = rerank_documents(
-                query=query,
+                query=rewritten_query,
                 documents=all_documents,
                 top_k=config.rerank_top_k,
             )
@@ -301,11 +275,12 @@ class RAGPipeline:
             metrics.total_reranked = len(reranked)
             result.reranked = True
 
-            # top-k만 원본 조회 (PostgreSQL)
-            contents = fetch_document_contents(
-                _extract_id_data_type_map(reranked)
-            )
+            # top-k만 원문 조회
+            reranked_id_type_map = _extract_id_data_type_map(reranked)
+            contents = fetch_document_contents(reranked_id_type_map)
             _populate_content(reranked, contents)
+            _populate_precedent_metadata(reranked)
+            _apply_law_article_content(reranked)
 
             # Context 압축 (LLMLingua-2)
             if settings.ENABLE_CONTEXT_COMPRESSION:
@@ -342,9 +317,8 @@ class RAGPipeline:
         """파이프라인 실행 (비동기, 내부 병렬화).
 
         동기 execute()와 동일한 로직이지만 검색/조회를 병렬로 수행한다.
-        - 다중 리라이팅 쿼리를 asyncio.gather로 병렬 검색
         - 각 검색 내부에서 벡터 + FTS를 병렬 실행
-        - 요약문/원문 조회를 data_type별 병렬 실행
+        - 원문 조회를 data_type별 병렬 실행
 
         focus 모드에서는 리라이팅 1회 → focus/supplementary 병렬 검색.
         """
@@ -367,28 +341,30 @@ class RAGPipeline:
         metrics = result.metrics
 
         # Step 1: 쿼리 리라이팅 (CPU-bound → to_thread)
-        queries = [query]
+        rewritten_query = query
         if config.enable_rewrite:
-            queries = await asyncio.to_thread(
+            rewritten_query = await asyncio.to_thread(
                 rewrite_query,
                 query=query,
                 use_llm=config.use_llm_rewrite,
             )
-            result.rewritten_queries = queries
+            result.rewritten_query = rewritten_query
 
-        self._record_langsmith_metadata(query, queries, config)
+        self._record_langsmith_metadata(query, rewritten_query, config)
 
-        # Step 2: 다중 쿼리 병렬 검색
+        # Step 2: 검색
         search_start = time.monotonic()
-        all_documents = await self._search_and_deduplicate(queries, config)
+        all_documents = await self._search_and_deduplicate(
+            rewritten_query, config,
+        )
 
         metrics.search_time_ms = (time.monotonic() - search_start) * 1000
         metrics.total_searched = len(all_documents)
         result.total_retrieved = len(all_documents)
 
-        # Step 3: 리랭킹 + 원문 조회
+        # Step 3: 리랭킹 + 원문 조회 (리라이팅된 쿼리로 리랭킹)
         result.documents = await self._rerank_and_fetch(
-            query, all_documents, config, metrics
+            rewritten_query, all_documents, config, metrics
         )
         result.reranked = config.enable_rerank and bool(all_documents)
 
@@ -415,36 +391,44 @@ class RAGPipeline:
         metrics = result.metrics
 
         # Step 1: 쿼리 리라이팅 1회 (상위 config에서만 실행)
-        queries = [query]
+        rewritten_query = query
         if config.enable_rewrite:
-            queries = await asyncio.to_thread(
+            rewritten_query = await asyncio.to_thread(
                 rewrite_query,
                 query=query,
                 use_llm=config.use_llm_rewrite,
             )
-            result.rewritten_queries = queries
+            result.rewritten_query = rewritten_query
 
-        self._record_langsmith_metadata(query, queries, config)
+        self._record_langsmith_metadata(query, rewritten_query, config)
 
-        # Step 2: 임베딩 + tsquery 1회 사전 계산 (focus/supplementary 공유)
-        precomputed = await self._precompute_inputs(queries)
+        # Step 2: 임베딩 1회 사전 계산 (focus/supplementary 공유)
+        precomputed = await self._precompute_inputs(rewritten_query)
 
         # Step 3: focus + supplementary 병렬 검색 (사전 계산된 입력 공유)
         search_start = time.monotonic()
         focus_docs, sup_docs = await asyncio.gather(
-            self._search_and_deduplicate(queries, config, precomputed),
-            self._search_and_deduplicate(queries, sup_config, precomputed),
+            self._search_and_deduplicate(
+                rewritten_query, config, precomputed,
+            ),
+            self._search_and_deduplicate(
+                rewritten_query, sup_config, precomputed,
+            ),
         )
 
         metrics.search_time_ms = (time.monotonic() - search_start) * 1000
         metrics.total_searched = len(focus_docs) + len(sup_docs)
         result.total_retrieved = metrics.total_searched
 
-        # Step 4: focus/supplementary 각각 리랭킹 + 원문 조회 (병렬)
+        # Step 4: focus/supplementary 각각 리랭킹 + 원문 조회 (병렬, 리라이팅된 쿼리)
         sup_metrics = PipelineMetrics()
         focus_final, sup_final = await asyncio.gather(
-            self._rerank_and_fetch(query, focus_docs, config, metrics),
-            self._rerank_and_fetch(query, sup_docs, sup_config, sup_metrics),
+            self._rerank_and_fetch(
+                rewritten_query, focus_docs, config, metrics,
+            ),
+            self._rerank_and_fetch(
+                rewritten_query, sup_docs, sup_config, sup_metrics,
+            ),
         )
 
         result.documents = focus_final
@@ -471,47 +455,30 @@ class RAGPipeline:
 
     @staticmethod
     async def _precompute_inputs(
-        queries: list[str],
+        query: str,
     ) -> _PrecomputedInputs:
-        """리라이팅된 쿼리들의 임베딩·tsquery를 1회 사전 계산.
+        """리라이팅된 쿼리의 임베딩을 1회 사전 계산.
 
-        focus 모드에서 focus/supplementary 양쪽이 동일한 임베딩·tsquery를
-        공유하도록 한다. 각 쿼리에 대해 (임베딩, concept_tsq, or_tsq)를
-        to_thread로 병렬 계산.
+        focus 모드에서 focus/supplementary 양쪽이 동일한 임베딩을
+        공유하도록 한다.
         """
-
-        async def _compute_for_query(
-            q: str,
-        ) -> tuple[str, list[float], str, str]:
-            emb, concept_tsq, or_tsq = await asyncio.gather(
-                asyncio.to_thread(create_query_embedding, q),
-                asyncio.to_thread(_build_concept_and_tsquery, q),
-                asyncio.to_thread(_build_or_tsquery, q),
-            )
-            return q, emb, concept_tsq, or_tsq
-
-        results = await asyncio.gather(
-            *[_compute_for_query(q) for q in queries]
-        )
-
+        embedding = await asyncio.to_thread(create_query_embedding, query)
         return _PrecomputedInputs(
-            embeddings={q: emb for q, emb, _, _ in results},
-            concept_tsqueries={q: tsq for q, _, tsq, _ in results},
-            or_tsqueries={q: tsq for q, _, _, tsq in results},
+            embeddings={query: embedding},
         )
 
     async def _search_and_deduplicate(
         self,
-        queries: list[str],
+        query: str,
         config: PipelineConfig,
         precomputed: _PrecomputedInputs | None = None,
     ) -> list[dict[str, Any]]:
-        """다중 쿼리 병렬 검색 + 중복 제거.
+        """검색 + 중복 제거.
 
         Args:
-            queries: 검색할 쿼리 목록
+            query: 검색 쿼리 (리라이팅 적용 후)
             config: 파이프라인 설정
-            precomputed: 사전 계산된 임베딩·tsquery (focus 모드 공유용)
+            precomputed: 사전 계산된 임베딩 (focus 모드 공유용)
         """
         exclude = (
             config.exclude_doc_types
@@ -520,52 +487,33 @@ class RAGPipeline:
         )
 
         if config.enable_rerank:
-            search_tasks = [
-                search_without_content_async(
-                    query=q,
-                    n_results=config.n_results,
-                    doc_type=config.doc_type,
-                    exclude_doc_types=exclude,
-                    query_embedding=(
-                        precomputed.embeddings.get(q)
-                        if precomputed
-                        else None
-                    ),
-                    precomputed_concept_tsq=(
-                        precomputed.concept_tsqueries.get(q)
-                        if precomputed
-                        else None
-                    ),
-                    precomputed_or_tsq=(
-                        precomputed.or_tsqueries.get(q)
-                        if precomputed
-                        else None
-                    ),
-                )
-                for q in queries
-            ]
+            docs = await search_without_content_async(
+                query=query,
+                n_results=config.n_results,
+                doc_type=config.doc_type,
+                exclude_doc_types=exclude,
+                query_embedding=(
+                    precomputed.embeddings.get(query)
+                    if precomputed
+                    else None
+                ),
+            )
         else:
-            search_tasks = [
-                asyncio.to_thread(
-                    search_relevant_documents,
-                    query=q,
-                    n_results=config.n_results,
-                    doc_type=config.doc_type,
-                    exclude_doc_types=exclude,
-                )
-                for q in queries
-            ]
-
-        query_results = await asyncio.gather(*search_tasks)
+            docs = await asyncio.to_thread(
+                search_relevant_documents,
+                query=query,
+                n_results=config.n_results,
+                doc_type=config.doc_type,
+                exclude_doc_types=exclude,
+            )
 
         all_documents: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
-        for docs in query_results:
-            for doc in docs:
-                doc_id = doc.get("metadata", {}).get("doc_id", "")
-                if doc_id and doc_id not in seen_ids:
-                    seen_ids.add(doc_id)
-                    all_documents.append(doc)
+        for doc in docs:
+            doc_id = doc.get("metadata", {}).get("doc_id", "")
+            if doc_id and doc_id not in seen_ids:
+                seen_ids.add(doc_id)
+                all_documents.append(doc)
 
         return all_documents
 
@@ -578,6 +526,7 @@ class RAGPipeline:
     ) -> list[dict[str, Any]]:
         """리랭킹 + 원문 조회. 리랭킹 미사용 시 similarity 정렬."""
         if config.enable_rerank and documents:
+            # ai_summary 조회 → rerank_text 주입
             id_type_map = _extract_id_data_type_map(documents)
             summaries = await fetch_ai_summaries_async(id_type_map)
             _populate_rerank_text(documents, summaries)
@@ -592,10 +541,12 @@ class RAGPipeline:
             metrics.rerank_time_ms = (time.monotonic() - rerank_start) * 1000
             metrics.total_reranked = len(reranked)
 
-            contents = await fetch_document_contents_async(
-                _extract_id_data_type_map(reranked)
-            )
+            # top-k만 원문 조회
+            reranked_id_type_map = _extract_id_data_type_map(reranked)
+            contents = await fetch_document_contents_async(reranked_id_type_map)
             _populate_content(reranked, contents)
+            _populate_precedent_metadata(reranked)
+            _apply_law_article_content(reranked)
 
             # Context 압축 (LLMLingua-2)
             if settings.ENABLE_CONTEXT_COMPRESSION:
@@ -613,8 +564,8 @@ class RAGPipeline:
 
     @staticmethod
     def _record_langsmith_metadata(
-        query: str,
-        queries: list[str],
+        original_query: str,
+        rewritten_query: str,
         config: PipelineConfig,
     ) -> None:
         """LangSmith extra에 메타데이터 기록."""
@@ -625,8 +576,8 @@ class RAGPipeline:
             **(run_tree.extra or {}),
             "metadata": {
                 **(run_tree.extra or {}).get("metadata", {}),
-                "original_query": query,
-                "rewritten_queries": queries,
+                "original_query": original_query,
+                "rewritten_query": rewritten_query,
                 "[config] search_type": config.search_type,
                 "[config] doc_type": config.doc_type,
                 "[config] exclude_doc_types": config.exclude_doc_types,

@@ -116,7 +116,7 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
     if case_name:
         parts.append(f"[{case_name}]")
 
-    for field in ("질의요지", "회답", "이유"):
+    for field in ("질의요지", "회답"):
         value = item.get(field)
         if value:
             parts.append(value)
@@ -152,8 +152,6 @@ def _orm_fulltext_fn(row: Any) -> str:
         parts.append(row.inquiry)
     if row.answer:
         parts.append(row.answer)
-    if row.reason:
-        parts.append(row.reason)
 
     return "\n".join(parts)
 

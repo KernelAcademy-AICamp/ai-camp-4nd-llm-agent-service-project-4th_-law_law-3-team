@@ -26,6 +26,7 @@ from app.multi_agent.nodes import (
     legal_search_node,
     router_node,
     simple_chat_node,
+    workspace_node,
 )
 from app.multi_agent.state import ChatState
 from app.multi_agent.subgraphs.mock_trial import build_mock_trial_subgraph
@@ -58,6 +59,7 @@ def build_graph() -> StateGraph:
     builder.add_node("lawyer_stats_node", lawyer_stats_node)
     builder.add_node("law_study_node", law_study_node)
     builder.add_node("content_marketing_node", content_marketing_node)
+    builder.add_node("workspace_node", workspace_node)
     builder.add_node("simple_chat_node", simple_chat_node)
 
     # 엣지: START -> router_node
@@ -74,6 +76,7 @@ def build_graph() -> StateGraph:
         "lawyer_stats_node",
         "law_study_node",
         "content_marketing_node",
+        "workspace_node",
         "simple_chat_node",
     ):
         builder.add_edge(node_name, END)

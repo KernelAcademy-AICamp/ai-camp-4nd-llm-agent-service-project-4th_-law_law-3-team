@@ -29,6 +29,8 @@ interface StreamingChatRequest {
   session_data?: Record<string, unknown>
   user_location?: { latitude: number; longitude: number } | null
   agent?: string
+  conversation_id?: string
+  case_id?: string
 }
 
 interface UseStreamingChatReturn {
@@ -69,6 +71,7 @@ export function useStreamingChat(): UseStreamingChatReturn {
           },
           body: JSON.stringify(request),
           signal: controller.signal,
+          credentials: 'include',
         })
 
         if (!response.ok) {

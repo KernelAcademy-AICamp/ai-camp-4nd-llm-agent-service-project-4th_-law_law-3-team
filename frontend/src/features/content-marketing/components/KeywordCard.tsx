@@ -39,8 +39,21 @@ export function KeywordCard({ keyword, onSearchNews }: KeywordCardProps) {
             {keyword.rank}
           </span>
           <h3 className="font-semibold text-gray-900">{keyword.keyword}</h3>
+          {keyword.is_early_signal && (
+            <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-300 rounded">
+              Early Signal
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
+          {keyword.convergence_score != null && keyword.convergence_score >= 0.5 && (
+            <span
+              className="px-1.5 py-0.5 text-[10px] font-medium bg-purple-50 text-purple-600 border border-purple-200 rounded"
+              title={`수렴도 ${Math.round(keyword.convergence_score * 100)}%`}
+            >
+              수렴 {Math.round(keyword.convergence_score * 100)}%
+            </span>
+          )}
           <span className="text-lg font-bold text-blue-600">
             {keyword.total_score.toFixed(1)}
           </span>
@@ -53,12 +66,15 @@ export function KeywordCard({ keyword, onSearchNews }: KeywordCardProps) {
         <p className="text-sm text-gray-600 mb-3 line-clamp-2">{keyword.context}</p>
       )}
 
-      {/* 4차원 점수 바 */}
+      {/* 점수 바 (v3: convergence 추가) */}
       <div className="space-y-1.5 mb-3">
         <ScoreBar label="바이럴" value={keyword.scores.virality} color="bg-orange-400" />
         <ScoreBar label="사회영향" value={keyword.scores.social_impact} color="bg-red-400" />
         <ScoreBar label="법적연관" value={keyword.scores.legal_relevance} color="bg-blue-500" />
         <ScoreBar label="콘텐츠" value={keyword.scores.content_fitness} color="bg-green-400" />
+        {keyword.scores.convergence > 0 && (
+          <ScoreBar label="수렴도" value={keyword.scores.convergence} color="bg-purple-400" />
+        )}
       </div>
 
       {/* 점수 근거 */}

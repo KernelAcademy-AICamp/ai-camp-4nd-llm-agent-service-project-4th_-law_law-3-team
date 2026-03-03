@@ -3,6 +3,8 @@ import type {
   EvidenceChecklistResponse,
   CaseInfo,
   DocumentResponse,
+  DocumentRegenerateRequest,
+  DocumentRegenerateResponse,
   RelatedCasesResponse,
   DocumentType,
   DisputeType,
@@ -87,6 +89,13 @@ export const smallClaimsService = {
 
   getRelatedCases: async (disputeType: DisputeType): Promise<RelatedCasesResponse> => {
     const response = await api.get(`${endpoints.smallClaims}/related-cases/${disputeType}`)
+    return response.data
+  },
+
+  regenerateDocument: async (
+    request: DocumentRegenerateRequest
+  ): Promise<DocumentRegenerateResponse> => {
+    const response = await api.post(`${endpoints.smallClaims}/regenerate-document`, request)
     return response.data
   },
 }

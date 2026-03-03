@@ -4,284 +4,208 @@
 """
 
 import logging
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from pydantic import BaseModel
 
+from app.core.state import get_session_store
+from app.modules.small_claims.schema import (
+    CaseInfo,
+    DocumentGenerateRequest,
+    DocumentRegenerateRequest,
+    DocumentRegenerateResponse,
+    DocumentResponse,
+    EvidenceChecklistResponse,
+    EvidenceItem,
+    EvidenceOrganizeResponse,
+    EvidenceTimelineItem,
+    EvidenceUploadFile,
+    EvidenceUploadResponse,
+    GuideStep,
+    InterviewAnswerRequest,
+    InterviewQuestion,
+    InterviewResponse,
+    InterviewStartRequest,
+    LawsuitGuideResponse,
+    RelatedCaseItem,
+    RelatedCasesResponse,
+)
 from app.services.document_service import DocumentService
 from app.services.rag import search_relevant_documents_async
+from app.services.service_function.small_claims_service import (
+    EVIDENCE_CHECKLISTS,
+    INTERVIEW_QUESTIONS,
+    LAWSUIT_GUIDES,
+    SMALL_CLAIMS_TEMPLATES,
+    detect_dispute_type,
+    extract_amount,
+    render_template_for_case,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# ── 인터뷰 세션 키 접두사 ──
+_INTERVIEW_PREFIX = "interview:"
 
-# 서류 템플릿 정의 (동적 값은 {placeholder} 형식)
-SMALL_CLAIMS_TEMPLATES: dict[str, dict[str, Any]] = {
-    "demand_letter": {
-        "title": "내용증명",
-        "template_sections": {
-            "header": "내용증명\n\n발신일: {today}",
-            "recipient": "수신: {defendant_name}",
-            "sender": "발신: {plaintiff_name}\n주소: {plaintiff_address}",
-            "body": "",
-            "footer": "위와 같이 내용증명 우편으로 통지합니다.\n\n14일 이내에 이행하지 않을 경우 법적 조치를 취할 것임을 알려드립니다.",
-        },
-        "ai_prompt": """한국어 내용증명 본문을 작성해주세요.
-
-분쟁 유형: {dispute_type}
-청구 금액: {amount_formatted}원
-분쟁 경위: {description}
-발생일: {incident_date}
-
-요구사항:
-1. 법적 효력이 있는 공식적인 문체 사용
-2. 사실관계를 명확히 기술
-3. 청구 금액과 지급 기한(14일) 명시
-4. 불이행 시 법적 조치 경고
-5. 500자 내외로 작성""",
-    },
-    "payment_order": {
-        "title": "지급명령신청서",
-        "template_sections": {
-            "header": "지급명령신청서\n\n{today}",
-            "court": "○○지방법원 귀중",
-            "parties": "채권자(신청인): {plaintiff_name}\n주소: {plaintiff_address}\n\n채무자(피신청인): {defendant_name}\n주소: {defendant_address}",
-            "claim": "청구금액: 금 {amount_formatted}원",
-            "reason": "",
-            "evidence": "",
-            "footer": "위와 같이 지급명령을 신청합니다.",
-        },
-        "ai_prompt": """지급명령신청서의 '청구원인' 부분을 작성해주세요.
-
-분쟁 유형: {dispute_type}
-청구 금액: {amount_formatted}원
-분쟁 경위: {description}
-발생일: {incident_date}
-
-요구사항:
-1. 채권 발생 원인을 명확히 기술
-2. 변제기(지급 기한) 명시
-3. 법률적 근거 포함
-4. 간결하고 명확한 문체
-5. 400자 내외로 작성""",
-    },
-    "complaint": {
-        "title": "소액심판 청구서",
-        "template_sections": {
-            "header": "소액사건심판 청구서\n\n{today}",
-            "court": "○○지방법원 귀중",
-            "parties": "원고: {plaintiff_name}\n주소: {plaintiff_address}\n\n피고: {defendant_name}\n주소: {defendant_address}",
-            "claim": "청구취지: 피고는 원고에게 금 {amount_formatted}원 및 이에 대하여 이 사건 소장 부본 송달 다음날부터 다 갚는 날까지 연 12%의 비율로 계산한 돈을 지급하라.",
-            "reason": "",
-            "evidence": "",
-            "footer": "위와 같이 청구합니다.",
-        },
-        "ai_prompt": """소액심판 청구서의 '청구원인' 부분을 작성해주세요.
-
-분쟁 유형: {dispute_type}
-청구 금액: {amount_formatted}원
-분쟁 경위: {description}
-발생일: {incident_date}
-
-요구사항:
-1. 사실관계를 시간순으로 명확히 기술
-2. 원고의 권리 발생 근거 설명
-3. 피고의 의무 불이행 사실 명시
-4. 법률적 청구 근거 포함
-5. 500자 내외로 작성""",
-    },
-}
+# ── 날짜 파싱 패턴 ──
+_DATE_PATTERNS = [
+    re.compile(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})"),  # 2025.12.15, 2025-12-15
+    re.compile(r"(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일"),   # 2025년 12월 15일
+    re.compile(r"(\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})"),   # 25.12.15
+]
 
 
-def render_template_for_case(
-    case_info: "CaseInfo",
-    today: str,
-    document_type: str,
+def _extract_date_from_text(text: str) -> Optional[str]:
+    """텍스트에서 날짜 문자열을 추출합니다 (YYYY-MM-DD 형식 반환)."""
+    for pattern in _DATE_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            groups = match.groups()
+            year = int(groups[0])
+            if year < 100:
+                year += 2000
+            month = int(groups[1])
+            day = int(groups[2])
+            return f"{year:04d}-{month:02d}-{day:02d}"
+    return None
+
+
+def _extract_from_answer(
+    question_index: int,
+    answer: str,
+    existing: dict[str, Any],
 ) -> dict[str, Any]:
-    """
-    템플릿을 케이스 정보로 렌더링
+    """인터뷰 답변에서 사건 정보를 간단한 키워드 매칭으로 추출합니다."""
+    field_hint = INTERVIEW_QUESTIONS[question_index]["field_hint"]
+    updated = dict(existing)
 
-    Args:
-        case_info: 사건 정보
-        today: 오늘 날짜 문자열
-        document_type: 서류 유형 (demand_letter, payment_order, complaint)
+    if field_hint == "dispute_type":
+        detected = detect_dispute_type(answer)
+        updated["dispute_type"] = detected or answer.strip()[:50]
 
-    Returns:
-        렌더링된 템플릿 (title, template_sections, ai_prompt)
-    """
-    template = SMALL_CLAIMS_TEMPLATES.get(document_type)
-    if not template:
-        return {}
+    elif field_hint == "defendant_name":
+        updated["defendant_name"] = answer.strip()[:100]
 
-    # 템플릿 변수
-    variables = {
-        "today": today,
-        "plaintiff_name": case_info.plaintiff_name,
-        "plaintiff_address": case_info.plaintiff_address,
-        "defendant_name": case_info.defendant_name,
-        "defendant_address": case_info.defendant_address or "(주소 조사 필요)",
-        "amount_formatted": f"{case_info.amount:,}",
-        "dispute_type": case_info.dispute_type,
-        "description": case_info.description,
-        "incident_date": case_info.incident_date or "미상",
-    }
+    elif field_hint == "amount":
+        amount = extract_amount(answer)
+        if amount is not None:
+            updated["amount"] = amount
 
-    # template_sections 렌더링
-    rendered_sections = {}
-    for key, value in template["template_sections"].items():
-        rendered_sections[key] = value.format(**variables)
+    elif field_hint == "incident_date":
+        date = _extract_date_from_text(answer)
+        updated["incident_date"] = date or answer.strip()[:30]
 
-    return {
-        "title": template["title"],
-        "template_sections": rendered_sections,
-        "ai_prompt": template["ai_prompt"].format(**variables),
-    }
+    elif field_hint == "description":
+        updated["description"] = answer.strip()[:500]
+
+    return updated
 
 
-# 증거 체크리스트 데이터
-EVIDENCE_CHECKLISTS: dict[str, dict[str, Any]] = {
-    "product_payment": {
-        "dispute_type": "물품대금",
-        "description": "물품을 판매했으나 대금을 받지 못한 경우",
-        "items": [
-            {"id": "contract", "label": "매매계약서 또는 거래 내역서", "required": True, "description": "판매 조건이 명시된 문서"},
-            {"id": "delivery", "label": "배송 완료 증빙", "required": True, "description": "택배 송장, 수령 확인서 등"},
-            {"id": "invoice", "label": "세금계산서 또는 영수증", "required": False, "description": "거래 금액 증빙"},
-            {"id": "communication", "label": "거래 관련 대화 기록", "required": False, "description": "카카오톡, 문자, 이메일 등"},
-            {"id": "payment_request", "label": "대금 지급 요청 내역", "required": False, "description": "독촉 메시지, 통화 기록 등"},
-        ],
-    },
-    "fraud": {
-        "dispute_type": "중고거래 사기",
-        "description": "중고거래에서 물건을 받지 못했거나 상품이 설명과 다른 경우",
-        "items": [
-            {"id": "chat_capture", "label": "거래 대화 캡처", "required": True, "description": "판매자와의 대화 내용 전체"},
-            {"id": "transfer", "label": "계좌이체 내역", "required": True, "description": "송금 확인 화면 또는 거래 내역서"},
-            {"id": "product_info", "label": "상품 게시글/사진", "required": True, "description": "판매 게시글 캡처"},
-            {"id": "seller_info", "label": "판매자 정보", "required": True, "description": "연락처, 계좌번호, ID 등"},
-            {"id": "received_product", "label": "수령한 상품 사진", "required": False, "description": "하자가 있는 경우 사진 증거"},
-        ],
-    },
-    "deposit": {
-        "dispute_type": "임대차 보증금",
-        "description": "전세/월세 보증금을 돌려받지 못한 경우",
-        "items": [
-            {"id": "lease_contract", "label": "임대차계약서", "required": True, "description": "계약서 원본 또는 사본"},
-            {"id": "deposit_proof", "label": "보증금 입금 내역", "required": True, "description": "최초 보증금 지급 증빙"},
-            {"id": "move_out_proof", "label": "퇴거 증빙", "required": True, "description": "전입세대 열람원, 이사 영수증 등"},
-            {"id": "termination_notice", "label": "계약 해지/종료 통지", "required": False, "description": "내용증명 등"},
-            {"id": "property_photos", "label": "퇴거 시 주거 상태 사진", "required": False, "description": "원상복구 증빙"},
-        ],
-    },
-    "service_payment": {
-        "dispute_type": "용역대금",
-        "description": "용역(서비스)을 제공했으나 대금을 받지 못한 경우",
-        "items": [
-            {"id": "service_contract", "label": "용역계약서", "required": True, "description": "계약 조건이 명시된 문서"},
-            {"id": "work_completion", "label": "작업 완료 증빙", "required": True, "description": "완료 사진, 납품 확인서 등"},
-            {"id": "communication", "label": "업무 관련 대화 기록", "required": False, "description": "작업 지시, 수정 요청 등"},
-            {"id": "invoice", "label": "청구서/견적서", "required": False, "description": "금액이 명시된 문서"},
-            {"id": "payment_request", "label": "대금 지급 요청 내역", "required": False, "description": "독촉 기록"},
-        ],
-    },
-    "wage": {
-        "dispute_type": "임금 체불",
-        "description": "근무했으나 급여/알바비를 받지 못한 경우",
-        "items": [
-            {"id": "employment_proof", "label": "근로계약서 또는 채용 확인", "required": True, "description": "문자, 카톡 채용 확인도 가능"},
-            {"id": "work_record", "label": "출퇴근 기록", "required": True, "description": "타임카드, 근무표, 문자 기록 등"},
-            {"id": "payment_record", "label": "기존 급여 지급 내역", "required": False, "description": "이전에 받은 급여 증빙"},
-            {"id": "company_info", "label": "사업장 정보", "required": True, "description": "상호명, 대표자, 주소"},
-            {"id": "communication", "label": "급여 요청 대화 기록", "required": False, "description": "사장/담당자와의 대화"},
-        ],
-    },
-}
+# ── Phase 3: 인터뷰 엔드포인트 ──
+
+@router.post("/interview/start", response_model=InterviewResponse)
+async def start_interview(request: InterviewStartRequest) -> InterviewResponse:
+    """자연어 인터뷰 시작 — 첫 번째 질문을 반환하고 세션을 생성합니다."""
+    session_id = str(uuid.uuid4())
+    store = get_session_store()
+
+    store.set(
+        f"{_INTERVIEW_PREFIX}{session_id}",
+        {
+            "case_type": request.case_type,
+            "question_index": 0,
+            "collected": {
+                "dispute_type": request.case_type,
+                "plaintiff_name": "원고",
+                "plaintiff_address": "",
+                "defendant_name": "",
+                "amount": 0,
+                "description": "",
+            },
+        },
+    )
+
+    first_q = INTERVIEW_QUESTIONS[0]
+    return InterviewResponse(
+        session_id=session_id,
+        is_complete=False,
+        current_question=InterviewQuestion(
+            question_index=0,
+            question=first_q["question"],
+            total_questions=len(INTERVIEW_QUESTIONS),
+            field_hint=first_q["field_hint"],
+        ),
+    )
 
 
-# Pydantic 스키마
-class EvidenceItem(BaseModel):
-    id: str
-    label: str
-    required: bool
-    description: str
+@router.post("/interview/{session_id}/answer", response_model=InterviewResponse)
+async def submit_answer(
+    session_id: str,
+    request: InterviewAnswerRequest,
+) -> InterviewResponse:
+    """인터뷰 답변 제출 — 다음 질문 또는 완료 시 수집된 사건 정보를 반환합니다."""
+    store = get_session_store()
+    session_key = f"{_INTERVIEW_PREFIX}{session_id}"
+    session_data = store.get(session_key)
 
+    if not session_data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"세션을 찾을 수 없습니다: {session_id}",
+        )
 
-class EvidenceChecklistResponse(BaseModel):
-    dispute_type: str
-    description: str
-    items: List[EvidenceItem]
+    question_index: int = session_data["question_index"]
+    collected: dict[str, Any] = session_data["collected"]
 
+    # 현재 질문의 답변으로 정보 추출
+    collected = _extract_from_answer(question_index, request.answer, collected)
+    next_index = question_index + 1
 
-class CaseInfo(BaseModel):
-    dispute_type: str
-    plaintiff_name: str
-    plaintiff_address: str
-    plaintiff_phone: Optional[str] = None
-    defendant_name: str
-    defendant_address: Optional[str] = None
-    defendant_phone: Optional[str] = None
-    amount: int
-    description: str
-    incident_date: Optional[str] = None
+    if next_index >= len(INTERVIEW_QUESTIONS):
+        # 인터뷰 완료 — 세션 삭제 후 CaseInfo 반환
+        store.delete(session_key)
 
+        filled_case_info = CaseInfo(
+            dispute_type=str(collected.get("dispute_type", "")),
+            plaintiff_name=str(collected.get("plaintiff_name", "원고")),
+            plaintiff_address=str(collected.get("plaintiff_address", "")),
+            defendant_name=str(collected.get("defendant_name", "")),
+            amount=int(collected.get("amount", 0)),
+            description=str(collected.get("description", "")),
+            incident_date=collected.get("incident_date"),
+        )
+        return InterviewResponse(
+            session_id=session_id,
+            is_complete=True,
+            filled_case_info=filled_case_info,
+        )
 
-class DocumentGenerateRequest(BaseModel):
-    document_type: str  # "demand_letter" | "payment_order" | "complaint"
-    case_info: CaseInfo
-
-
-class DocumentResponse(BaseModel):
-    document_type: str
-    title: str
-    content: str
-    template_sections: dict[str, Any]
-    pdf_url: Optional[str] = None
-    docx_url: Optional[str] = None
-
-
-class RelatedCaseItem(BaseModel):
-    id: str
-    case_name: str
-    case_number: str
-    summary: str
-    similarity: float
-    relevance: str
-    ruling: Optional[str] = None
-    reasoning: Optional[str] = None
-
-
-class RelatedCasesResponse(BaseModel):
-    dispute_type: str
-    cases: List[RelatedCaseItem]
-
-
-class EvidenceUploadFile(BaseModel):
-    file_id: str
-    original_name: str
-    file_type: str
-    file_size: int
-
-
-class EvidenceUploadResponse(BaseModel):
-    uploaded_files: List[EvidenceUploadFile]
-
-
-# 미구현 엔드포인트 — 추후 구현 예정
-@router.post("/interview/start")
-async def start_interview(case_type: str) -> dict[str, Any]:
-    """자연어 인터뷰 시작 (미구현)"""
-    raise HTTPException(status_code=501, detail="인터뷰 기능은 현재 준비 중입니다")
-
-
-@router.post("/interview/{session_id}/answer")
-async def submit_answer(session_id: str, answer: str) -> dict[str, Any]:
-    """인터뷰 답변 제출 (미구현)"""
-    raise HTTPException(status_code=501, detail="인터뷰 기능은 현재 준비 중입니다")
+    # 다음 질문 반환
+    store.set(
+        session_key,
+        {
+            **session_data,
+            "question_index": next_index,
+            "collected": collected,
+        },
+    )
+    next_q = INTERVIEW_QUESTIONS[next_index]
+    return InterviewResponse(
+        session_id=session_id,
+        is_complete=False,
+        current_question=InterviewQuestion(
+            question_index=next_index,
+            question=next_q["question"],
+            total_questions=len(INTERVIEW_QUESTIONS),
+            field_hint=next_q["field_hint"],
+        ),
+    )
 
 
 @router.post("/documents/generate")
@@ -360,23 +284,100 @@ async def upload_evidence(
     return EvidenceUploadResponse(uploaded_files=uploaded)
 
 
-@router.post("/evidence/{session_id}/organize")
-async def organize_evidence(session_id: str) -> dict[str, Any]:
-    """증거 자료 타임라인 정리 및 PDF 변환 (미구현)"""
-    raise HTTPException(status_code=501, detail="증거 정리 기능은 현재 준비 중입니다")
+@router.post("/evidence/{session_id}/organize", response_model=EvidenceOrganizeResponse)
+async def organize_evidence(session_id: str) -> EvidenceOrganizeResponse:
+    """
+    증거 자료 타임라인 정리
+
+    data/uploads/small_claims/{session_id}/ 하위 파일 목록을 조회하고
+    파일명에서 날짜를 추출하여 시간순으로 정렬한 타임라인을 반환합니다.
+    """
+    upload_base = Path("data/uploads/small_claims") / session_id
+
+    if not upload_base.exists():
+        return EvidenceOrganizeResponse(session_id=session_id, timeline=[])
+
+    timeline_items: list[EvidenceTimelineItem] = []
+
+    for file_path in upload_base.rglob("*"):
+        if not file_path.is_file():
+            continue
+
+        original_name = file_path.name
+        # UUID 파일명(저장명)에서 날짜 추출 시도 → 파일명에서는 보통 없으므로
+        # 파일 수정 시각을 fallback으로 사용하여 정렬
+        extracted_date = _extract_date_from_text(original_name)
+        if extracted_date is None:
+            # mtime 기반 날짜
+            mtime = file_path.stat().st_mtime
+            extracted_date = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+
+        ext = file_path.suffix.lower().lstrip(".")
+        category = _guess_evidence_category(ext)
+
+        timeline_items.append(
+            EvidenceTimelineItem(
+                file_id=file_path.stem,
+                original_name=original_name,
+                date=extracted_date,
+                category=category,
+            )
+        )
+
+    # 날짜순 정렬 (None을 마지막으로)
+    timeline_items.sort(key=lambda x: x.date or "9999-99-99")
+
+    return EvidenceOrganizeResponse(session_id=session_id, timeline=timeline_items)
 
 
-@router.get("/guide/{case_type}")
-async def get_lawsuit_guide(case_type: str) -> dict[str, Any]:
-    """소송 절차 가이드 조회"""
-    return {
-        "case_type": case_type,
-        "steps": [
-            {"step": 1, "title": "내용증명 발송", "description": "..."},
-            {"step": 2, "title": "지급명령 신청", "description": "..."},
-            {"step": 3, "title": "소액심판 청구", "description": "..."},
-        ],
-    }
+def _guess_evidence_category(ext: str) -> str:
+    """파일 확장자로 증거 유형을 추정합니다."""
+    image_exts = {"jpg", "jpeg", "png", "gif", "webp"}
+    doc_exts = {"pdf", "hwp", "hwpx", "doc", "docx"}
+    spreadsheet_exts = {"xls", "xlsx"}
+
+    if ext in image_exts:
+        return "이미지"
+    if ext in doc_exts:
+        return "문서"
+    if ext in spreadsheet_exts:
+        return "스프레드시트"
+    if ext == "txt":
+        return "텍스트"
+    return "기타"
+
+
+@router.get("/guide/{case_type}", response_model=LawsuitGuideResponse)
+async def get_lawsuit_guide(case_type: str) -> LawsuitGuideResponse:
+    """
+    소송 절차 가이드 조회
+
+    case_type: product_payment | fraud | deposit | service_payment | wage
+    """
+    guide_data = LAWSUIT_GUIDES.get(case_type)
+    if not guide_data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"지원하지 않는 사건 유형입니다: {case_type}. "
+                   f"지원 유형: {', '.join(LAWSUIT_GUIDES.keys())}",
+        )
+
+    steps = [
+        GuideStep(
+            step=s["step"],
+            title=s["title"],
+            description=s["description"],
+            duration=s.get("duration"),
+            tips=s.get("tips"),
+        )
+        for s in guide_data["steps"]
+    ]
+
+    return LawsuitGuideResponse(
+        case_type=case_type,
+        title=guide_data["title"],
+        steps=steps,
+    )
 
 
 # 새로운 엔드포인트
@@ -488,37 +489,29 @@ async def generate_document(request: DocumentGenerateRequest) -> DocumentRespons
 """
 
         # PDF 생성
+        pdf_url: str | None = None
+        docx_url: str | None = None
+        base_dir = Path("data/media/documents")
+        base_dir.mkdir(parents=True, exist_ok=True)
+
         try:
             doc_service = DocumentService()
-
-            # Save path: data/media/documents
-            base_dir = Path("data/media/documents")
-            base_dir.mkdir(parents=True, exist_ok=True)
-
             filename = f"{document_type}_{uuid.uuid4()}.pdf"
             output_path = base_dir / filename
-
             doc_service.generate_pdf_from_text(full_content, str(output_path))
-
-            # URL (mounted at /media)
             pdf_url = f"/media/documents/{filename}"
-
         except Exception as e:
-            logger.error(f"PDF 생성 실패: {e}")
-            pdf_url = None
+            logger.error("PDF 생성 실패: %s", e)
 
         # DOCX 생성 (워드 파일 - 한글에서도 열림)
         try:
+            doc_service = DocumentService()
             docx_filename = f"{document_type}_{uuid.uuid4()}.docx"
             docx_output_path = base_dir / docx_filename
-
             doc_service.generate_docx_from_text(full_content, str(docx_output_path))
-
             docx_url = f"/media/documents/{docx_filename}"
-
         except Exception as e:
-            logger.error(f"DOCX 생성 실패: {e}")
-            docx_url = None
+            logger.error("DOCX 생성 실패: %s", e)
 
         return DocumentResponse(
             document_type=document_type,
@@ -532,8 +525,54 @@ async def generate_document(request: DocumentGenerateRequest) -> DocumentRespons
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"서류 생성 실패: {e}", exc_info=True)
+        logger.error("서류 생성 실패: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="서류 생성 중 오류가 발생했습니다")
+
+
+@router.post("/regenerate-document", response_model=DocumentRegenerateResponse)
+async def regenerate_document(request: DocumentRegenerateRequest) -> DocumentRegenerateResponse:
+    """
+    편집된 텍스트로 PDF/DOCX 재생성 (Phase 2B)
+
+    사용자가 수정한 서류 내용을 받아 PDF/DOCX 파일로 재생성합니다.
+    formats: ["pdf", "docx"] (기본값: 둘 다 생성)
+    """
+    try:
+        base_dir = Path("data/media/documents")
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        doc_service = DocumentService()
+        pdf_url: str | None = None
+        docx_url: str | None = None
+
+        if "pdf" in request.formats:
+            try:
+                filename = f"{request.document_type}_{uuid.uuid4()}.pdf"
+                output_path = base_dir / filename
+                doc_service.generate_pdf_from_text(request.content, str(output_path))
+                pdf_url = f"/media/documents/{filename}"
+            except Exception as e:
+                logger.error("PDF 재생성 실패: %s", e)
+
+        if "docx" in request.formats:
+            try:
+                docx_filename = f"{request.document_type}_{uuid.uuid4()}.docx"
+                docx_output_path = base_dir / docx_filename
+                doc_service.generate_docx_from_text(request.content, str(docx_output_path))
+                docx_url = f"/media/documents/{docx_filename}"
+            except Exception as e:
+                logger.error("DOCX 재생성 실패: %s", e)
+
+        if pdf_url is None and docx_url is None:
+            raise HTTPException(status_code=500, detail="파일 재생성에 실패했습니다")
+
+        return DocumentRegenerateResponse(pdf_url=pdf_url, docx_url=docx_url)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("서류 재생성 실패: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="서류 재생성 중 오류가 발생했습니다")
 
 
 @router.get("/related-cases/{dispute_type}", response_model=RelatedCasesResponse)
@@ -560,7 +599,9 @@ async def get_related_cases(dispute_type: str) -> RelatedCasesResponse:
                 detail=f"지원하지 않는 분쟁 유형입니다: {dispute_type}",
             )
 
-        results = await search_relevant_documents_async(query=query, n_results=5)
+        results = await search_relevant_documents_async(
+            query=query, n_results=5, exclude_doc_types=["법령"],
+        )
 
         # 관련성 설명 생성
         relevance_descriptions = {
@@ -583,7 +624,7 @@ async def get_related_cases(dispute_type: str) -> RelatedCasesResponse:
                 service = get_precedent_service()
                 precedent_details = await service.get_details(source_ids)
             except Exception as e:
-                logger.warning(f"판례 상세 조회 실패 (계속 진행): {e}")
+                logger.warning("판례 상세 조회 실패 (계속 진행): %s", e)
 
         cases = []
         for doc in results:
@@ -598,10 +639,14 @@ async def get_related_cases(dispute_type: str) -> RelatedCasesResponse:
                     summary=doc["content"][:200] + "..." if len(doc["content"]) > 200 else doc["content"],
                     similarity=round(doc.get("similarity", 0), 3),
                     relevance=relevance_descriptions.get(dispute_type, ""),
+                    doc_type=metadata.get("data_type", "판례"),
                     ruling=detail.get("ruling"),
                     reasoning=detail.get("reasoning"),
                 )
             )
+
+        # 유사도 내림차순 정렬 (하이브리드 검색의 RRF 병합 순서와 similarity 값이 불일치할 수 있음)
+        cases.sort(key=lambda c: c.similarity, reverse=True)
 
         return RelatedCasesResponse(
             dispute_type=EVIDENCE_CHECKLISTS.get(dispute_type, {}).get("dispute_type", dispute_type),
@@ -611,5 +656,5 @@ async def get_related_cases(dispute_type: str) -> RelatedCasesResponse:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"관련 판례 조회 실패: {e}", exc_info=True)
+        logger.error("관련 판례 조회 실패: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="관련 판례 조회 중 오류가 발생했습니다")

@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { ProgressBar } from '@/features/small-claims/components/ProgressBar'
 import { DisputeTypeStep } from '@/features/small-claims/components/DisputeTypeStep'
@@ -8,6 +8,7 @@ import { useWizardState } from '@/features/small-claims/hooks/useWizardState'
 import { DISPUTE_TYPE_OPTIONS } from '@/features/small-claims/types'
 import { BackButton } from '@/components/ui/BackButton'
 import { useUI } from '@/context/UIContext'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 const CaseInfoStep = dynamic(
   () => import('@/features/small-claims/components/CaseInfoStep').then((m) => m.CaseInfoStep),
@@ -48,6 +49,7 @@ function StepSkeleton() {
 
 export default function SmallClaimsPage() {
   const { isChatOpen, chatMode } = useUI()
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const {
     currentStep,
     goToStep,
@@ -150,22 +152,24 @@ export default function SmallClaimsPage() {
               </p>
             </div>
           </div>
-          {disputeType && (
-            <button
-              onClick={resetWizard}
-              className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-              처음부터 다시
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {disputeType && (
+              <button
+                onClick={resetWizard}
+                className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                처음부터 다시
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -174,23 +178,44 @@ export default function SmallClaimsPage() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
+        {/* Related Cases Sidebar - Show after selecting dispute type */}
+        {disputeType && currentStep !== 'dispute_type' && (
+          <div className="hidden md:flex shrink-0">
+            {isSidebarOpen ? (
+              <div className="w-72 h-full relative">
+                <Suspense fallback={<div className="w-72 h-full bg-white border-r border-gray-100 animate-pulse" />}>
+                  <RelatedCases
+                    cases={relatedCases}
+                    isLoading={isLoadingRelatedCases}
+                    disputeType={selectedDisputeOption?.name || null}
+                    onClose={() => setIsSidebarOpen(false)}
+                  />
+                </Suspense>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsSidebarOpen(true)}
+                className="flex flex-col items-center justify-center w-8 bg-white border-r border-gray-200 hover:bg-gray-50 transition-colors gap-1"
+                aria-label="유사 판례 패널 열기"
+              >
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+                <span className="text-[10px] text-gray-500 [writing-mode:vertical-rl]">유사 판례</span>
+                {relatedCases.length > 0 && (
+                  <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-medium bg-blue-100 text-blue-600 rounded-full">
+                    {relatedCases.length}
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Wizard Content */}
         <div className="flex-1 overflow-y-auto p-8">
           <Suspense fallback={<StepSkeleton />}>
             {renderStep()}
           </Suspense>
         </div>
-
-        {/* Related Cases Sidebar - Show after selecting dispute type */}
-        {disputeType && currentStep !== 'dispute_type' && (
-          <Suspense fallback={<div className="w-80 bg-white border-l border-navy-100 animate-pulse" />}>
-            <RelatedCases
-              cases={relatedCases}
-              isLoading={isLoadingRelatedCases}
-              disputeType={selectedDisputeOption?.name || null}
-            />
-          </Suspense>
-        )}
       </div>
     </div>
   )

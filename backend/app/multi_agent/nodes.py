@@ -44,6 +44,8 @@ AGENT_NODE_MAP: dict[str, str] = {
     "mock_trial": "mock_trial_subgraph",
     # 콘텐츠 마케팅
     "content_marketing": "content_marketing_node",
+    # 워크스페이스
+    "workspace": "workspace_node",
     # 폴백
     "general": "simple_chat_node",
     # 하위호환 (기존 agent_override 지원)
@@ -96,9 +98,6 @@ async def _run_streaming_node_inner(
         elif event_type == "metadata":
             actions = data.get("actions", [])
             output_session_data = data.get("session_data", {})
-
-    # 태그 후처리: 사용자 메시지에서 태그 추출 후 session_data에 병합
-    output_session_data = await _append_tags(state, agent.name, output_session_data)
 
     return {
         "response": full_response,
@@ -208,47 +207,13 @@ async def _run_nonstreaming_node(
         },
     })
 
-    # 태그 후처리
-    result_session_data = await _append_tags(state, agent.name, result.session_data)
-
     return {
         "response": result.message,
         "sources": result.sources,
         "actions": result.actions,
-        "output_session_data": result_session_data,
+        "output_session_data": result.session_data,
         "agent_used": agent.name,
     }
-
-
-async def _append_tags(
-    state: ChatState,
-    agent_name: str,
-    output_session_data: dict[str, Any],
-) -> dict[str, Any]:
-    """에이전트 노드 공통 태그 후처리
-
-    사용자 메시지에서 태그를 추출하여 output_session_data에 병합한다.
-    실패 시 원본 output_session_data를 그대로 반환한다.
-    """
-    try:
-        from app.multi_agent.services.tagger import extract_tags, merge_tags
-
-        history = state.get("history", [])
-        turn_index = len(history) if history else 0
-
-        new_tags = await extract_tags(
-            message=state.get("message", ""),
-            agent_used=agent_name,
-            turn_index=turn_index,
-        )
-        if new_tags:
-            existing = state.get("session_data", {}).get("tagged_items", [])
-            merged = merge_tags(existing, new_tags)
-            output_session_data = {**output_session_data, "tagged_items": merged}
-    except Exception:
-        logger.debug("태그 후처리 실패 (무시)", exc_info=True)
-
-    return output_session_data
 
 
 # ──────────────────────────────────────────────
@@ -391,7 +356,10 @@ async def legal_search_node(
     if focus not in ("precedent", "law"):
         focus = "precedent"
 
-    return await _run_streaming_node(LegalSearchAgent(focus=focus), state, writer)
+    user_role = state.get("user_role", "user")
+    return await _run_streaming_node(
+        LegalSearchAgent(focus=focus, user_role=user_role), state, writer
+    )
 
 
 async def lawyer_finder_node(
@@ -428,6 +396,15 @@ async def content_marketing_node(
     from app.multi_agent.agents.content_marketing_agent import ContentMarketingAgent
 
     return await _run_nonstreaming_node(ContentMarketingAgent(), state, writer)
+
+
+async def workspace_node(
+    state: ChatState, writer: StreamWriter
+) -> dict[str, Any]:
+    """워크스페이스 노드 (사건 조회, 타임라인 재생성)"""
+    from app.multi_agent.agents.workspace_agent import WorkspaceAgent
+
+    return await _run_nonstreaming_node(WorkspaceAgent(), state, writer)
 
 
 async def simple_chat_node(

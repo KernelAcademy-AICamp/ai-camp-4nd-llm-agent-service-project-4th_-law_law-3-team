@@ -70,6 +70,34 @@ uv run alembic upgrade head
 uv run python -m scripts.ingest.cli --type all --step db
 ```
 
+### 6-1. BM25 인덱스 생성 (키워드 검색)
+
+```bash
+# search_text 데이터가 Step 6에서 함께 적재됨 (--step db 시 자동)
+# 적재 확인 후 BM25 인덱스 생성
+uv run python scripts/create_bm25_index.py
+
+# 인덱스 상태만 확인
+uv run python scripts/create_bm25_index.py --check
+```
+
+> **순서 중요**: search_text 데이터가 먼저 적재되어야 BM25 인덱스 생성이 가능합니다.
+> `--step db`로 데이터를 로드하면 search_text가 자동으로 함께 적재됩니다.
+> 토크나이저(MeCab userdic) 변경 후에는 search_text만 재빌드할 수 있습니다:
+> `uv run python -m scripts.ingest.cli --type all --step fts`
+
+### 6-2. law_articles 데이터 로드 (조문 단위 RAG 컨텍스트)
+
+```bash
+# law_v3.json에서 조문 단위로 분리하여 law_articles 테이블에 적재
+uv run python scripts/load_law_articles_data.py
+
+# 검증
+uv run python scripts/load_law_articles_data.py --verify
+```
+
+> law_articles 테이블은 RAG 검색 시 벡터 매칭된 조문만 선별적으로 LLM 컨텍스트에 포함시키기 위해 사용됩니다.
+
 ### 7. LanceDB 데이터
 
 ```bash
@@ -141,13 +169,15 @@ uv add --dev <package>               # 개발 패키지 추가
 ```
 app/
 ├── api/router/          # 통합 API 라우터
-│   └── chat.py          # /api/chat 엔드포인트
+│   ├── chat.py          # /api/chat, /api/chat/stream 엔드포인트
+│   └── chat_conversations.py  # /api/chat/conversations 대화 목록/조회
 ├── core/                # 핵심 인프라
 │   ├── config.py        # 환경 설정 (pydantic-settings)
 │   ├── database.py      # SQLAlchemy 연결
 │   ├── registry.py      # 모듈 자동 등록
 │   ├── errors.py        # 공통 예외 클래스
 │   ├── context.py       # 요청 컨텍스트
+│   ├── session.py       # 쿠키 기반 세션 관리 (HttpOnly session_token)
 │   ├── logging.py       # 로깅 유틸리티
 │   ├── policies/        # 법률 안전정책
 │   └── state/           # 세션 저장소
@@ -155,7 +185,7 @@ app/
 │   ├── graph.py         # LangGraph StateGraph 빌드/컴파일
 │   ├── nodes.py         # router_node + 에이전트 노드 함수
 │   ├── router.py        # RulesRouter, AgentType, UserRole, ROLE_AGENTS
-│   ├── state.py         # ChatState TypedDict (emotion 포함), 변환 함수
+│   ├── state.py         # ChatState TypedDict (emotion, conversation_id, case_id 포함), 변환 함수
 │   ├── agents/          # 에이전트 구현 (BaseChatAgent 상속)
 │   │   ├── base_chat.py              # 베이스 클래스
 │   │   ├── legal_search_agent.py     # 판례/법령 RAG 검색 (Focus+Supplementary 병렬)
@@ -164,14 +194,19 @@ app/
 │   │   ├── storyboard_agent.py       # 사건 타임라인
 │   │   ├── lawyer_stats_agent.py     # 변호사 통계
 │   │   ├── law_study_agent.py        # 로스쿨 학습
-│   │   └── mock_trial_agent.py       # 모의 법정
+│   │   ├── mock_trial_agent.py       # 모의 법정
+│   │   └── workspace_agent.py       # 워크스페이스 (사건 관리, 태그 수집)
+│   ├── services/        # 에이전트 공통 서비스
+│   │   └── tagger.py                 # 태그 추출 (LLM 기반, 에이전트별 힌트, 사용자+응답 통합)
 │   ├── subgraphs/       # 서브그래프
 │   │   ├── small_claims.py           # 소액소송 서브그래프
+│   │   ├── storyboard.py            # 스토리보드 서브그래프 (태그 수집, 타임라인 생성)
 │   │   ├── mock_trial.py             # 모의 법정 서브그래프 (MockTrialState.emotion 포함)
 │   │   ├── mock_trial_agents.py      # 모의 법정 에이전트 (generate→tuple[str, str], _parse_emotion)
 │   │   └── mock_trial_prompts.py     # 모의 법정 프롬프트 (EMOTION_TAG_INSTRUCTION 포함)
 │   └── schemas/         # 스키마
 │       ├── plan.py      # AgentPlan, AgentResult
+│       ├── tag.py       # TaggedItem (6 tag types, extraction_source)
 │       └── messages.py  # 메시지 타입 (ChatResponse.emotion 포함)
 ├── services/            # 비즈니스 로직
 │   ├── rag/
@@ -179,11 +214,19 @@ app/
 │   │   ├── retrieval.py  # 벡터 검색 + 원문/요약문 배치 조회
 │   │   ├── rerank.py     # 리랭킹
 │   │   ├── query_rewrite.py  # 쿼리 리라이팅
-│   │   ├── keyword_search.py  # FTS 키워드 검색
+│   │   ├── keyword_search.py  # BM25 키워드 검색 (pg_textsearch)
 │   │   ├── pipeline.py   # 검색 파이프라인 (동기 + async)
 │   │   ├── format_utils.py     # LLM 컨텍스트 + 프론트엔드 소스 포맷팅
 │   │   ├── onnx_session.py       # ONNX 세션 싱글턴 관리
 │   │   └── onnx_quality_gate.py  # ONNX 품질 게이트 (PyTorch 비교)
+│   ├── workspace/       # 워크스페이스 서비스
+│   │   ├── workspace_case_service.py  # 사건 CRUD
+│   │   ├── chat_persistence.py        # 대화 저장/조회
+│   │   ├── timeline_engine.py         # 타임라인 자동 추출/재구성
+│   │   ├── conversation_classifier.py # 대화 자동 분류 (에이전트 판별)
+│   │   ├── structured_summarizer.py   # 구조화된 대화 요약
+│   │   ├── activity_logger.py         # 활동 로그 기록
+│   │   └── cleanup.py                 # 고아 데이터 정리
 │   └── service_function/ # 통합 서비스 함수
 │       ├── lawyer_service.py       # 변호사 검색/클러스터링
 │       ├── lawyer_stats_service.py # 변호사 통계
@@ -205,7 +248,8 @@ app/
 │   ├── multi_agent/
 │   ├── review_price/
 │   ├── small_claims/
-│   └── storyboard/
+│   ├── storyboard/
+│   └── workspace/
 ├── models/              # SQLAlchemy ORM 모델
 │   ├── __init__.py
 │   ├── law_document.py
@@ -217,6 +261,8 @@ app/
 │   ├── trial_statistics.py
 │   ├── fts_index.py           # FTS 전문 검색 인덱스
 │   ├── law.py
+│   ├── chat_conversation.py   # 채팅 대화 (session_token 기반)
+│   ├── workspace_case.py      # 워크스페이스 사건 (6개 테이블)
 │   └── ingest/                # 인제스트 원본 테이블 (21개)
 │       ├── admin_rule_document.py
 │       ├── constitutional_document.py
@@ -271,6 +317,7 @@ START → router_node ──(Command)──→ legal_search_node ───→ EN
                       ├──────────→ lawyer_stats_node ───→ END
                       ├──────────→ law_study_node ──────→ END
                       ├──────────→ mock_trial_subgraph ─→ END
+                      ├──────────→ workspace_node ─────→ END
                       └──────────→ simple_chat_node ────→ END
 ```
 
@@ -284,6 +331,7 @@ START → router_node ──(Command)──→ legal_search_node ───→ EN
 | `LawyerStatsAgent` | 변호사 통계 안내 | `lawyer_stats_node` | ❌ | ❌ |
 | `LawStudyAgent` | 로스쿨 학습 가이드 | `law_study_node` | ✅ | ✅ |
 | `MockTrialAgent` | 모의 법정 시뮬레이션 | `mock_trial_subgraph` | ❌ | ✅ |
+| `WorkspaceAgent` | 사건 관리, 태그 수집, 타임라인 | `workspace_node` | ❌ | ✅ |
 | `SimpleChatAgent` | 일반 LLM 채팅 (폴백) | `simple_chat_node` | ❌ | ✅ |
 
 ### 설정
@@ -363,7 +411,7 @@ config = PipelineConfig(
     enable_rerank=True, rerank_top_k=5,
 )
 result = await search_with_pipeline_async(query, config)
-# result.documents, result.metrics, result.rewritten_queries
+# result.documents, result.metrics, result.rewritten_query
 ```
 
 **async 파이프라인 내부 병렬화:**
@@ -468,7 +516,10 @@ backend/tests/
 │   ├── test_legal_term_dict.py      # 법률 용어 사전 테스트 (18개)
 │   ├── test_evaluation_metrics.py   # 메트릭 계산 테스트 (31개)
 │   ├── test_evaluation_schemas.py   # 스키마 검증 테스트 (21개)
-│   └── test_evaluation_dataset_builder.py  # 데이터셋 빌더 테스트 (14개)
+│   ├── test_evaluation_dataset_builder.py  # 데이터셋 빌더 테스트 (14개)
+│   ├── test_storyboard_kakao_parser.py    # 카카오톡 파서 테스트 (16개)
+│   ├── test_storyboard_file_validation.py # 파일 검증 게이트 테스트 (29개)
+│   └── test_storyboard_helpers.py         # 스토리보드 헬퍼 테스트 (28개)
 └── e2e/                             # E2E 테스트 (API 엔드포인트)
     └── __init__.py
 ```
@@ -502,6 +553,7 @@ uv run pytest -m "not requires_lancedb"  # LanceDB 없이 실행
 uv run pytest -m "not requires_postgres" # PostgreSQL 없이 실행
 uv run pytest -m "not requires_mecab"    # MeCab 없이 실행
 uv run pytest -m "not requires_fts"      # FTS 없이 실행
+uv run pytest -m "not requires_openai"   # OpenAI API 없이 실행
 
 # LanceDB 벡터 DB 테스트만 실행
 uv run pytest tests/unit/test_vectorstore_schema.py tests/unit/test_lancedb_store.py tests/unit/test_mecab_tokenizer.py tests/integration/test_lancedb_integration.py -v
@@ -594,7 +646,9 @@ app/models/
 ├── statute_alias.py       # 법령 약칭
 ├── statute_relation.py    # 법령 관련 관계
 ├── case_statute_citation.py # 판례→법령 인용
-└── case_case_citation.py  # 판례→판례 인용
+├── case_case_citation.py  # 판례→판례 인용
+├── chat_conversation.py   # 채팅 대화
+└── workspace_case.py      # 워크스페이스 사건 (6개 테이블)
 ```
 
 ### 테이블 구조
@@ -607,12 +661,18 @@ app/models/
 | `legal_terms` | 법률 용어 사전 (~72,700건) | term(UNIQUE), definition, source_code, source_count, term_length, is_korean_only |
 | `trial_statistics` | 재판 통계 | category, court_name, court_type, parent_court, year, case_count |
 | `local_ordinance_documents` | 자치법규 원본 (160,276건) | ordinance_id, ordinance_name, local_government, overall_summary, content |
-| `fts_index` | FTS 전문 검색 인덱스 (579,498건) | **PK: (source_id, data_type)**, title, date, tsvector. dec_* source_id는 `{name}:{serial_number}` 형식. tsvector는 명사만 저장 (NNG+NNP, 2자 이상) |
+| `fts_index` | BM25 전문 검색 인덱스 (425,209건) | **PK: (source_id, data_type)**, title, date, search_text (MeCab 명사 공백 구분), BM25 인덱스 `idx_fts_bm25` (pg_textsearch). dec_* source_id는 `{name}:{serial_number}` 형식 |
 | `statute_hierarchy` | 법령 계급 관계 | child_id(FK→law_documents), parent_id(FK→law_documents), relation_type |
 | `statute_aliases` | 법령 약칭 | law_id(FK→law_documents), alias, alias_type |
 | `statute_relations` | 법령 관련 관계 | source_id(FK), target_id(FK), relation_type, weight |
 | `case_statute_citations` | 판례→법령 인용 | case_id(FK→precedent_documents), statute_id(FK→law_documents) |
 | `case_case_citations` | 판례→판례 인용 | citing_id(FK→precedent_documents), cited_id(FK→precedent_documents) |
+| `chat_conversations` | 채팅 대화 | id(UUID), session_token, title, last_agent, case_id(FK→workspace_cases), message_count |
+| `workspace_cases` | 워크스페이스 사건 | id(UUID), session_token, case_name, case_type, status(open/closed/archived) |
+| `workspace_tagged_items` | 태그 수집 항목 | id(UUID), case_id(FK), type, label, value, confidence, source_conversation_id |
+| `workspace_timeline_items` | 타임라인 이벤트 | id(UUID), case_id(FK), date, title, description, confidence, source_type |
+| `workspace_activity_logs` | 활동 로그 | id(UUID), case_id(FK), action, detail |
+| `workspace_structured_summaries` | 구조화 요약 | id(UUID), case_id(FK), conversation_id(FK), category, content |
 
 ### 변호사 데이터 (lawyers 테이블)
 
@@ -695,7 +755,7 @@ uv run python scripts/build_mecab_userdic.py --dry-run  # 통계만
 - `_FTS_POS_TAGS = frozenset({"NNG", "NNP"})` — 일반명사 + 고유명사만 허용 (내부 상수)
 - `_MIN_TOKEN_LENGTH = 2` — 1자 명사("시", "때" 등) 노이즈 제거
 - `morphs()` 호출 시 항상 명사 필터 + 2자 이상 필터 적용 (옵션 없음)
-- FTS 생성(`db_writer`, `fts_builder`)과 검색(`keyword_search`) 양쪽에 적용
+- FTS 생성(`db_writer`, `search_text_rebuilder`)과 검색(`keyword_search`) 양쪽에 적용
 - MeCab 미설치 시 에러 발생 (silent fallback 없음)
 
 **수동 용어 추가 (`scripts/manual_terms.json`):**

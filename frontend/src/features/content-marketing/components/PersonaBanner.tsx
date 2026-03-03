@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   LawyerPersona,
   PersonaTone,
@@ -8,6 +8,8 @@ import type {
   TargetAudience,
   TrendCategory,
 } from '../types'
+
+const DEFAULT_BANNER_DISMISSED_KEY = 'persona_default_banner_dismissed'
 
 const CATEGORY_LABELS: Record<TrendCategory, string> = {
   all: '전체',
@@ -42,11 +44,33 @@ interface PersonaBannerProps {
   persona: LawyerPersona
   onEdit: () => void
   onQuickUpdate: (update: PersonaUpdateRequest) => void
+  onSetupPersona?: () => void
 }
 
-export function PersonaBanner({ persona, onEdit, onQuickUpdate }: PersonaBannerProps) {
+export function PersonaBanner({ persona, onEdit, onQuickUpdate, onSetupPersona }: PersonaBannerProps) {
   const [showSpecialtyPopover, setShowSpecialtyPopover] = useState(false)
+  const [showDefaultBanner, setShowDefaultBanner] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
+
+  // 기본 페르소나 감지
+  const isDefaultPersona =
+    persona.source === 'active' &&
+    persona.specialty_areas.length === 1 &&
+    persona.specialty_areas[0] === 'all'
+
+  useEffect(() => {
+    if (isDefaultPersona) {
+      const dismissed = localStorage.getItem(DEFAULT_BANNER_DISMISSED_KEY)
+      if (!dismissed) {
+        setShowDefaultBanner(true)
+      }
+    }
+  }, [isDefaultPersona])
+
+  const dismissDefaultBanner = useCallback(() => {
+    localStorage.setItem(DEFAULT_BANNER_DISMISSED_KEY, 'true')
+    setShowDefaultBanner(false)
+  }, [])
 
   const specialties = persona.specialty_areas
     .map((a) => CATEGORY_LABELS[a] ?? a)
@@ -80,6 +104,33 @@ export function PersonaBanner({ persona, onEdit, onQuickUpdate }: PersonaBannerP
   )
 
   return (
+    <>
+      {/* 기본 설정 안내 배너 */}
+      {showDefaultBanner && (
+        <div className="bg-amber-50 border-b border-amber-100 px-6 py-2.5">
+          <div className="max-w-6xl mx-auto flex items-center justify-between text-sm">
+            <span className="text-amber-800">
+              기본 설정 사용 중 — 맞춤 설정하면 더 좋은 콘텐츠를 받을 수 있어요
+            </span>
+            <div className="flex items-center gap-2">
+              {onSetupPersona && (
+                <button
+                  onClick={onSetupPersona}
+                  className="px-3 py-1 text-xs font-medium text-amber-700 border border-amber-300 rounded-md hover:bg-amber-100 transition-colors"
+                >
+                  지금 설정하기
+                </button>
+              )}
+              <button
+                onClick={dismissDefaultBanner}
+                className="text-amber-400 hover:text-amber-600 text-lg leading-none"
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     <div className="bg-blue-50 border-b border-blue-100 px-6 py-2.5">
       <div className="max-w-6xl mx-auto flex items-center justify-between text-sm">
         <div className="flex items-center gap-3 text-blue-700 min-w-0">
@@ -169,5 +220,6 @@ export function PersonaBanner({ persona, onEdit, onQuickUpdate }: PersonaBannerP
         </button>
       </div>
     </div>
+    </>
   )
 }

@@ -25,6 +25,8 @@ class ChatRequest(BaseModel):
     session_data: dict[str, Any] = {}
     user_location: dict[str, float] | None = None
     agent: str | None = None  # 에이전트 직접 지정 (라우팅 건너뜀)
+    conversation_id: str | None = None  # 기존 대화 이어가기
+    case_id: str | None = None  # 사건에 연결
 
 
 class ChatResponse(BaseModel):

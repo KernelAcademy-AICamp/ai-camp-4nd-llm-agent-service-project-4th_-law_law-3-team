@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
+import Image from 'next/image'
 import type { InputMode, TimelineItem } from '../types'
 
 interface MultiInputPanelProps {
@@ -32,7 +33,21 @@ export function MultiInputPanel({
   const audioInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
+
+  // 컴포넌트 언마운트 시 마이크 스트림 정리
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop())
+        streamRef.current = null
+      }
+      if (mediaRecorderRef.current?.state === 'recording') {
+        mediaRecorderRef.current.stop()
+      }
+    }
+  }, [])
 
   // 텍스트 추출
   const handleExtractText = async () => {
@@ -42,8 +57,10 @@ export function MultiInputPanel({
 
   // 음성 녹음 시작
   const startRecording = async () => {
+    let stream: MediaStream | null = null
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
       const mediaRecorder = new MediaRecorder(stream)
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
@@ -55,12 +72,16 @@ export function MultiInputPanel({
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         setAudioBlob(audioBlob)
-        stream.getTracks().forEach((track) => track.stop())
+        streamRef.current?.getTracks().forEach((track) => track.stop())
+        streamRef.current = null
       }
 
       mediaRecorder.start()
       setIsRecording(true)
     } catch (error) {
+      // 예외 시 스트림 정리 보장
+      stream?.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
       console.error('마이크 접근 오류:', error)
     }
   }
@@ -116,7 +137,7 @@ export function MultiInputPanel({
     }
   }
 
-  const tabs: { mode: InputMode; label: string; icon: JSX.Element }[] = [
+  const tabs: { mode: InputMode; label: string; icon: React.ReactElement }[] = [
     {
       mode: 'text',
       label: '텍스트',
@@ -226,6 +247,7 @@ export function MultiInputPanel({
               type="button"
               onClick={isRecording ? stopRecording : startRecording}
               disabled={isExtracting}
+              aria-label={isRecording ? '녹음 중지' : '녹음 시작'}
               className={`
                 w-24 h-24 rounded-full flex items-center justify-center transition-all mb-6
                 ${isRecording
@@ -319,9 +341,12 @@ export function MultiInputPanel({
 
             {imagePreview ? (
               <div className="relative flex-1 min-h-0 mb-4">
-                <img
+                <Image
                   src={imagePreview}
                   alt="선택된 이미지"
+                  width={400}
+                  height={300}
+                  unoptimized
                   className="w-full h-full object-contain rounded-lg"
                 />
                 <button
@@ -330,6 +355,7 @@ export function MultiInputPanel({
                     setSelectedImage(null)
                     setImagePreview(null)
                   }}
+                  aria-label="이미지 제거"
                   className="absolute top-2 right-2 p-2 bg-white/80 rounded-full hover:bg-white transition-colors shadow-apple-sm"
                 >
                   <svg className="w-4 h-4 text-[#1D1D1F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">

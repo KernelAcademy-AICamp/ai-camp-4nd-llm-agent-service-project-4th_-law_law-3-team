@@ -23,6 +23,11 @@ logger = logging.getLogger(__name__)
 # Chain 1 캐시 TTL (초)
 _CHAIN1_CACHE_TTL: int = 3600
 
+# 타임아웃 (초)
+_CHAIN1_TIMEOUT: int = 15
+_CHAIN2_TIMEOUT: int = 45
+_OVERALL_TIMEOUT: int = 60
+
 
 class PromptChainExecutor:
     """3단계 RAG 프롬프트 체인
@@ -41,12 +46,45 @@ class PromptChainExecutor:
         trend_context: str = "",
         trend_key_points: list[str] | None = None,
     ) -> ScriptContext:
-        """Chain 1 → (자가 검증) → Chain 2 → Chain 3 실행"""
+        """Chain 1 → (자가 검증) → Chain 2 → Chain 3 실행
+
+        각 체인에 개별 타임아웃 + 전체 타임아웃 적용.
+        """
+        try:
+            return await asyncio.wait_for(
+                self._execute_chains(topic, trend_context, trend_key_points),
+                timeout=_OVERALL_TIMEOUT,
+            )
+        except TimeoutError:
+            logger.warning("PromptChainExecutor 전체 타임아웃 (%ds)", _OVERALL_TIMEOUT)
+            # 기본 쟁점으로 빈 컨텍스트 반환
+            return ScriptContext(
+                issues=[{"쟁점": topic, "검색_쿼리": topic}],
+                laws_by_issue={},
+                cases_by_issue={},
+                cross_validated=False,
+                chain_latency_ms={"timeout": _OVERALL_TIMEOUT * 1000},
+            )
+
+    async def _execute_chains(
+        self,
+        topic: str,
+        trend_context: str = "",
+        trend_key_points: list[str] | None = None,
+    ) -> ScriptContext:
+        """체인 실행 내부 로직 (타임아웃은 execute에서 관리)"""
         latency: dict[str, int] = {}
 
-        # Chain 1: 쟁점 추출
+        # Chain 1: 쟁점 추출 (개별 타임아웃)
         start = time.monotonic()
-        issues = await self._chain1_extract_issues(topic, trend_context)
+        try:
+            issues = await asyncio.wait_for(
+                self._chain1_extract_issues(topic, trend_context),
+                timeout=_CHAIN1_TIMEOUT,
+            )
+        except TimeoutError:
+            logger.warning("Chain 1 타임아웃 (%ds), 기본 쟁점 사용", _CHAIN1_TIMEOUT)
+            issues = [{"쟁점": topic, "검색_쿼리": topic}]
         latency["chain_1"] = int((time.monotonic() - start) * 1000)
         logger.info("Chain 1 완료: %d건 쟁점 추출 (%dms)", len(issues), latency["chain_1"])
 
@@ -55,9 +93,17 @@ class PromptChainExecutor:
             issues = self._validate_chain1_against_key_points(issues, trend_key_points)
             logger.info("Chain 1.5 검증 후: %d건 유효", len(issues))
 
-        # Chain 2: RAG 심화 검색
+        # Chain 2: RAG 심화 검색 (개별 타임아웃)
         start = time.monotonic()
-        laws_by_issue, cases_by_issue = await self._chain2_rag_search(issues)
+        try:
+            laws_by_issue, cases_by_issue = await asyncio.wait_for(
+                self._chain2_rag_search(issues),
+                timeout=_CHAIN2_TIMEOUT,
+            )
+        except TimeoutError:
+            logger.warning("Chain 2 타임아웃 (%ds), 빈 RAG 결과 사용", _CHAIN2_TIMEOUT)
+            laws_by_issue = {}
+            cases_by_issue = {}
         latency["chain_2"] = int((time.monotonic() - start) * 1000)
         total_laws = sum(len(v) for v in laws_by_issue.values())
         total_cases = sum(len(v) for v in cases_by_issue.values())

@@ -10,6 +10,13 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+# 완료된 작업 자동 정리 대기 시간 (초)
+JOB_CLEANUP_DELAY_SECONDS = 3600
+
+# SSE 연결 관리 (SEC-07: Connection Leak 방지)
+SSE_HEARTBEAT_INTERVAL_SECONDS = 30
+SSE_CONNECTION_TIMEOUT_SECONDS = 60
+
 
 class JobStatus(str, Enum):
     """작업 상태"""
@@ -125,6 +132,7 @@ class JobManager:
             message="완료",
             result=result,
         )
+        self._schedule_cleanup(job_id)
 
     async def fail_job(
         self,
@@ -138,6 +146,16 @@ class JobManager:
             message="실패",
             error=error,
         )
+        self._schedule_cleanup(job_id)
+
+    def _schedule_cleanup(self, job_id: str) -> None:
+        """완료/실패 작업의 지연 정리 예약"""
+        async def _delayed_cleanup() -> None:
+            await asyncio.sleep(JOB_CLEANUP_DELAY_SECONDS)
+            self.cleanup_job(job_id)
+            logger.debug("작업 자동 정리 완료: %s", job_id)
+
+        asyncio.create_task(_delayed_cleanup())
 
     def get_job(self, job_id: str) -> Optional[JobProgress]:
         """작업 상태 조회"""
@@ -146,6 +164,10 @@ class JobManager:
     async def subscribe(self, job_id: str) -> AsyncGenerator[JobProgress, None]:
         """
         작업 상태 구독 (SSE용)
+
+        SEC-07: Connection Leak 방지
+        - SSE_CONNECTION_TIMEOUT_SECONDS 동안 업데이트 없으면 연결 종료
+        - SSE_HEARTBEAT_INTERVAL_SECONDS마다 하트비트 전송
 
         Args:
             job_id: 작업 ID
@@ -163,9 +185,33 @@ class JobManager:
             # 현재 상태 먼저 전송
             yield self._jobs[job_id]
 
-            # 완료/실패까지 업데이트 대기
+            # 완료/실패까지 업데이트 대기 (타임아웃 + 하트비트 적용)
             while True:
-                job = await queue.get()
+                try:
+                    job = await asyncio.wait_for(
+                        queue.get(),
+                        timeout=SSE_HEARTBEAT_INTERVAL_SECONDS,
+                    )
+                except TimeoutError:
+                    # 하트비트: 현재 상태 재전송
+                    current_job = self._jobs.get(job_id)
+                    if current_job is None:
+                        logger.debug("SSE 하트비트: 작업 삭제됨 (job_id=%s)", job_id)
+                        break
+                    # 연결 타임아웃 검사
+                    last_updated = datetime.fromisoformat(current_job.updated_at)
+                    elapsed = (datetime.utcnow() - last_updated).total_seconds()
+                    if elapsed > SSE_CONNECTION_TIMEOUT_SECONDS:
+                        logger.info(
+                            "SSE 연결 타임아웃 (job_id=%s, elapsed=%.0fs)",
+                            job_id,
+                            elapsed,
+                        )
+                        break
+                    # 하트비트로 현재 상태 재전송
+                    yield current_job
+                    continue
+
                 yield job
 
                 if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
@@ -200,6 +246,10 @@ class JobManager:
 job_manager = JobManager()
 
 
+# API rate limit 고려: 최대 동시 이미지 생성 수 제한
+BATCH_CONCURRENCY_LIMIT = 2
+
+
 async def run_batch_image_generation(
     job_id: str,
     items: list[dict[str, Any]],
@@ -225,32 +275,45 @@ async def run_batch_image_generation(
         message="스토리보드 이미지 생성 시작...",
     )
 
-    for idx, item in enumerate(items):
-        await job_manager.update_progress(
-            job_id,
-            current_step=idx + 1,
-            message=f"스토리보드 이미지 생성 중... ({idx + 1}/{len(items)})",
-        )
+    semaphore = asyncio.Semaphore(BATCH_CONCURRENCY_LIMIT)
+    completed_count = 0
 
-        try:
-            result = await generate_fn(
-                item_id=item["id"],
-                title=item["title"],
-                description=item["description"],
-                participants=item.get("participants", []),
+    async def _generate_one(idx: int, item: dict[str, Any]) -> None:
+        nonlocal completed_count
+        async with semaphore:
+            try:
+                result = await generate_fn(
+                    item_id=item["id"],
+                    title=item["title"],
+                    description=item["description"],
+                    participants=item.get("participants", []),
+                    location=item.get("location"),
+                    time_of_day=item.get("time_of_day"),
+                    participants_detailed=item.get("participants_detailed"),
+                    mood=item.get("mood"),
+                )
+
+                if result["success"]:
+                    results.append({
+                        "item_id": item["id"],
+                        "image_url": result["image_url"],
+                        "image_prompt": result["image_prompt"],
+                    })
+                else:
+                    failed.append(item["id"])
+            except Exception as e:
+                logger.error("이미지 생성 실패 (item_id=%s): %s", item["id"], e, exc_info=True)
+                failed.append(item["id"])
+
+            completed_count += 1
+            await job_manager.update_progress(
+                job_id,
+                current_step=completed_count,
+                message=f"스토리보드 이미지 생성 중... ({completed_count}/{len(items)})",
             )
 
-            if result["success"]:
-                results.append({
-                    "item_id": item["id"],
-                    "image_url": result["image_url"],
-                    "image_prompt": result["image_prompt"],
-                })
-            else:
-                failed.append(item["id"])
-        except Exception as e:
-            logger.error(f"이미지 생성 실패 (item_id={item['id']}): {e}", exc_info=True)
-            failed.append(item["id"])
+    tasks = [_generate_one(idx, item) for idx, item in enumerate(items)]
+    await asyncio.gather(*tasks)
 
     final_result = {
         "generated": results,

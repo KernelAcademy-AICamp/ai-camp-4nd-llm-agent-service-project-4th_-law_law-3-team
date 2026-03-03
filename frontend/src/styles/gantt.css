@@ -1,0 +1,141 @@
+/* vis-timeline 커스텀 스타일 */
+
+/* ── 간트차트 기간 막대 ── */
+.gantt-item.vis-item.vis-range {
+  border-radius: 6px;
+  border-width: 0;
+  background-color: hsl(220, 70%, 50%);
+  opacity: 0.85;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.gantt-item.vis-item.vis-range .vis-item-content {
+  padding: 2px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 포인트 아이템 */
+.gantt-item.vis-item.vis-point {
+  border-color: hsl(220, 70%, 50%);
+  color: hsl(220, 70%, 30%);
+}
+
+/* ── 신뢰도별 투명도 ── */
+.gantt-item.confidence-high {
+  opacity: 1;
+}
+
+.gantt-item.confidence-medium {
+  opacity: 0.7;
+}
+
+.gantt-item.confidence-low {
+  opacity: 0.5;
+  border-style: dashed !important;
+  border-width: 2px !important;
+}
+
+/* ── 증거 마커 ── */
+.evidence-marker-item.vis-item {
+  background-color: transparent;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.evidence-marker-item.vis-item .vis-item-content {
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* ── 증거 그룹 행 ── */
+.vis-label.evidence-group {
+  background-color: hsl(0, 0%, 95%);
+  border-top: 2px solid hsl(0, 0%, 80%);
+  font-size: 0.75rem;
+  color: hsl(0, 0%, 50%);
+}
+
+/* ── 그룹 레이블 ── */
+.vis-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: hsl(220, 15%, 35%);
+  padding: 0 8px;
+}
+
+/* ── 툴팁 ── */
+.vis-tooltip {
+  background-color: hsl(220, 20%, 15%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  max-width: 280px;
+  white-space: pre-wrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ── 충돌 항목 강조 (FR-15) ── */
+.gantt-item.gantt-conflict.vis-item {
+  background-color: hsl(0, 75%, 55%) !important;
+  border: 2px solid hsl(0, 85%, 45%) !important;
+  animation: conflict-pulse 2s ease-in-out infinite;
+}
+
+.gantt-item.gantt-conflict.vis-item::after {
+  content: '⚠';
+  position: absolute;
+  top: -8px;
+  right: -4px;
+  font-size: 0.7rem;
+  background: hsl(38, 90%, 50%);
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+@keyframes conflict-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+/* ── 선택 상태 ── */
+.gantt-item.vis-item.vis-selected {
+  opacity: 1;
+  filter: brightness(1.15);
+  outline: 2px solid hsl(220, 90%, 60%);
+  outline-offset: 1px;
+}
+
+/* ── vis-timeline 컨테이너 기본 스타일 ── */
+.vis-timeline {
+  border: 1px solid hsl(220, 15%, 88%);
+  border-radius: 12px;
+  overflow: hidden;
+  font-family: inherit;
+}
+
+.vis-panel.vis-background {
+  background-color: hsl(220, 30%, 98%);
+}
+
+.vis-time-axis .vis-text {
+  font-size: 0.75rem;
+  color: hsl(220, 15%, 50%);
+}
+
+.vis-current-time {
+  background-color: hsl(0, 80%, 55%);
+  width: 2px;
+}

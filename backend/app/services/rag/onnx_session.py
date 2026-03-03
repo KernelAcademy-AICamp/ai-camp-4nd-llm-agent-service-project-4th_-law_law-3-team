@@ -29,8 +29,8 @@ _MODELS_DIR = Path(__file__).parent.parent.parent.parent / "data" / "models"
 
 # Variant → 디렉토리 이름 매핑
 _EMB_VARIANT_MAP: dict[str, str] = {
-    "ort-opt": "kure-v1-ort-opt",
-    "ort-opt-qdq": "kure-v1-ort-opt-qdq",
+    "ort-opt": "kure-v1-onnx",
+    "ort-opt-qdq": "kure-v1-onnx-int8",
     "onnx-fp16": "kure-v1-onnx-fp16",
 }
 _RR_VARIANT_MAP: dict[str, str] = {

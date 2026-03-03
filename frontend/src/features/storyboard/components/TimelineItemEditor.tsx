@@ -21,6 +21,7 @@ export function TimelineItemEditor({
   const [description, setDescription] = useState('')
   const [participantsText, setParticipantsText] = useState('')
   const [imageUrl, setImageUrl] = useState('')
+  const [imageUrlError, setImageUrlError] = useState<string | null>(null)
 
   useEffect(() => {
     if (item) {
@@ -36,11 +37,36 @@ export function TimelineItemEditor({
       setParticipantsText('')
       setImageUrl('')
     }
+    setImageUrlError(null)
   }, [item])
+
+  // ESC 키로 에디터 닫기
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onCancel])
+
+  const isValidImageUrl = (url: string): boolean => {
+    if (!url) return true
+    return url.startsWith('/media/') || url.startsWith('https://')
+  }
+
+  const handleImageUrlChange = (value: string) => {
+    setImageUrl(value)
+    if (value && !isValidImageUrl(value)) {
+      setImageUrlError('/media/로 시작하는 내부 URL 또는 https://로 시작하는 외부 URL만 허용됩니다')
+    } else {
+      setImageUrlError(null)
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!date.trim() || !title.trim()) return
+    if (imageUrl && !isValidImageUrl(imageUrl)) return
 
     const participants = participantsText
       .split(',')
@@ -107,7 +133,7 @@ export function TimelineItemEditor({
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="이벤트 상세 설명"
                 rows={3}
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-black/[0.06] rounded-xl text-[#1D1D1F] placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:border-transparent transition-all"
               />
             </div>
 
@@ -119,10 +145,13 @@ export function TimelineItemEditor({
                 id="imageUrl"
                 type="text"
                 value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
+                onChange={(e) => handleImageUrlChange(e.target.value)}
                 placeholder="https://example.com/image.jpg"
-                className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-black/[0.06] rounded-xl text-[#1D1D1F] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:border-transparent transition-all"
+                className={`w-full px-4 py-2.5 bg-[#F5F5F7] border rounded-xl text-[#1D1D1F] placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all ${imageUrlError ? 'border-red-400 focus:ring-red-400' : 'border-black/[0.06] focus:ring-[#007AFF]'}`}
               />
+              {imageUrlError && (
+                <p className="text-xs text-red-500 mt-1">{imageUrlError}</p>
+              )}
             </div>
 
             <div>
@@ -150,7 +179,7 @@ export function TimelineItemEditor({
             </button>
             <button
               type="submit"
-              disabled={!date.trim() || !title.trim()}
+              disabled={!date.trim() || !title.trim() || (!!imageUrl && !isValidImageUrl(imageUrl))}
               className="flex-1 py-3 bg-[#007AFF] text-white rounded-xl font-bold hover:bg-[#0056CC] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all shadow-apple"
             >
               {isNew ? '추가' : '저장'}

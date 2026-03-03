@@ -26,7 +26,6 @@ if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
 import scripts.ingest.types  # noqa: E402, F401
-from app.services.rag.tsvector_builder import build_tsvector_string  # noqa: E402
 from app.tools.vectorstore.mecab_tokenizer import (  # noqa: E402
     MeCabTokenizer,
     is_mecab_available,
@@ -52,8 +51,9 @@ VECTOR_REQUIRED_KEYS = {
     "vector", "source_name", "chunk_index", "total_chunks", "date",
 }
 
-# tsvector 토큰 형식: 'token':position (예: '손해':1 '배상':2)
-_TSVECTOR_TOKEN_RE = re.compile(r"'.+?':\d+")
+# search_text 토큰 형식: 공백 구분 문자열 (예: "손해 배상 청구")
+# 각 토큰이 비어있지 않은 문자열인지 확인
+_SEARCH_TEXT_TOKEN_RE = re.compile(r"\S+")
 
 
 # ---------------------------------------------------------------------------
@@ -346,14 +346,14 @@ class TestIngestConfig:
 # ---------------------------------------------------------------------------
 # FTS 역인덱싱 파이프라인 테스트 (19개 타입 × 3개 함수, MeCab 필요)
 #
-# fulltext_fn → MeCab.morphs → build_tsvector_string 전체 흐름 검증
+# fulltext_fn → MeCab.morphs → search_text 전체 흐름 검증
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.requires_mecab
 @pytest.mark.parametrize("config_name", ALL_CONFIG_NAMES)
 class TestFtsIndexingPipeline:
-    """FTS 역인덱싱 파이프라인: fulltext → MeCab 토크나이징 → tsvector 생성"""
+    """FTS 역인덱싱 파이프라인: fulltext → MeCab 토크나이징 → search_text 생성"""
 
     def _get_row(
         self,
@@ -395,44 +395,41 @@ class TestFtsIndexingPipeline:
                 f"토큰[{i}]이 빈 문자열입니다: {token!r}"
             )
 
-    # --- 2. tsvector 생성 ---
+    # --- 2. search_text 생성 ---
 
-    def test_tsvector_pipeline(
+    def test_search_text_pipeline(
         self,
         config_name: str,
         first_rows: dict[str, dict[str, Any]],
         mecab_tokenizer: MeCabTokenizer,
     ) -> None:
-        """fulltext → morphs → tsvector: 유효한 tsvector 문자열 생성"""
+        """fulltext → morphs → search_text: 유효한 공백 구분 토큰 문자열 생성"""
         config = get_config(config_name)
         row = self._get_row(config_name, first_rows)
 
         fulltext = config.fulltext_fn(row)
         tokens = mecab_tokenizer.morphs(fulltext)
-        tsvector = build_tsvector_string(tokens)
+        search_text = " ".join(tokens)
 
-        assert isinstance(tsvector, str), (
-            f"반환 타입: {type(tsvector).__name__}, 기대: str"
+        assert isinstance(search_text, str), (
+            f"반환 타입: {type(search_text).__name__}, 기대: str"
         )
-        assert len(tsvector) > 0, (
-            f"tsvector가 빈 문자열입니다. 토큰 수: {len(tokens)}"
-        )
-
-        # tsvector 형식 검증: 'token':position 패턴
-        tsvector_tokens = _TSVECTOR_TOKEN_RE.findall(tsvector)
-        assert len(tsvector_tokens) > 0, (
-            f"tsvector에서 유효한 토큰을 찾을 수 없습니다: {tsvector[:200]!r}"
+        assert len(search_text) > 0, (
+            f"search_text가 빈 문자열입니다. 토큰 수: {len(tokens)}"
         )
 
-        # position이 1부터 연속 증가하는지 확인
-        positions = [
-            int(t.rsplit(":", 1)[1]) for t in tsvector_tokens
-        ]
-        assert positions == list(range(1, len(positions) + 1)), (
-            f"tsvector position이 연속 증가하지 않습니다: {positions[:10]}"
+        # search_text 형식 검증: 공백 구분 토큰
+        search_tokens = _SEARCH_TEXT_TOKEN_RE.findall(search_text)
+        assert len(search_tokens) > 0, (
+            f"search_text에서 유효한 토큰을 찾을 수 없습니다: {search_text[:200]!r}"
         )
 
-    # --- 3. FTS 메타데이터 + tsvector 통합 ---
+        # 토큰 수가 일치하는지 확인
+        assert len(search_tokens) == len(tokens), (
+            f"search_text 토큰 수 불일치: {len(search_tokens)} != {len(tokens)}"
+        )
+
+    # --- 3. FTS 메타데이터 + search_text 통합 ---
 
     def test_fts_record_assembly(
         self,
@@ -440,30 +437,30 @@ class TestFtsIndexingPipeline:
         first_rows: dict[str, dict[str, Any]],
         mecab_tokenizer: MeCabTokenizer,
     ) -> None:
-        """fts_metadata + tsvector 조합: fts_index 레코드 완성 검증
+        """fts_metadata + search_text 조합: fts_index 레코드 완성 검증
 
         db_writer.py의 실제 파이프라인을 재현:
         1. fulltext_fn(item) → fulltext
         2. tokenizer.morphs(fulltext) → tokens
-        3. build_tsvector_string(tokens) → tsvector_str
-        4. fts_metadata_fn(item) + content_tsvector → fts_record
+        3. " ".join(tokens) → search_text
+        4. fts_metadata_fn(item) + search_text → fts_record
         """
         config = get_config(config_name)
         row = self._get_row(config_name, first_rows)
 
-        # 1-3: tsvector 생성
+        # 1-3: search_text 생성
         fulltext = config.fulltext_fn(row)
         tokens = mecab_tokenizer.morphs(fulltext)
-        tsvector_str = build_tsvector_string(tokens)
+        search_text = " ".join(tokens)
 
-        # 4: fts_metadata + content_tsvector 조합 (db_writer.py:253-254 재현)
+        # 4: fts_metadata + search_text 조합 (db_writer.py 재현)
         fts_meta = config.fts_metadata_fn(row)
-        fts_meta["content_tsvector"] = tsvector_str or None
+        fts_meta["search_text"] = search_text or None
 
         # fts_index 테이블의 필수 컬럼 7개 모두 존재
         fts_record_keys = {
             "source_id", "data_type", "title", "date",
-            "source_name", "case_number", "content_tsvector",
+            "source_name", "case_number", "search_text",
         }
         missing = fts_record_keys - fts_meta.keys()
         assert not missing, (
@@ -471,12 +468,12 @@ class TestFtsIndexingPipeline:
             f"존재하는 키: {set(fts_meta.keys())}"
         )
 
-        # content_tsvector가 채워져 있는지 확인
-        assert fts_meta["content_tsvector"] is not None, (
-            "content_tsvector가 None입니다 (토크나이징 실패)"
+        # search_text가 채워져 있는지 확인
+        assert fts_meta["search_text"] is not None, (
+            "search_text가 None입니다 (토크나이징 실패)"
         )
-        assert len(fts_meta["content_tsvector"]) > 0, (
-            "content_tsvector가 빈 문자열입니다"
+        assert len(fts_meta["search_text"]) > 0, (
+            "search_text가 빈 문자열입니다"
         )
 
         # source_id가 fts_metadata와 일치하는지 확인

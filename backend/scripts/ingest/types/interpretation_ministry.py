@@ -121,18 +121,10 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
     if case_name:
         parts.append(f"[{case_name}]")
 
-    ministry = item.get("__source_group__")
-    if ministry:
-        parts.append(f"부처: {ministry}")
-
-    for field in ("질의요지", "회답", "이유"):
+    for field in ("질의요지", "회답"):
         value = item.get(field)
         if value:
             parts.append(value)
-
-    related_law = item.get("관련법령")
-    if related_law:
-        parts.append(f"관련법령: {related_law}")
 
     return "\n".join(parts)
 
@@ -161,16 +153,10 @@ def _orm_fulltext_fn(row: Any) -> str:
 
     if row.case_name:
         parts.append(f"[{row.case_name}]")
-    if row.ministry_name:
-        parts.append(f"부처: {row.ministry_name}")
     if row.inquiry:
         parts.append(row.inquiry)
     if row.answer:
         parts.append(row.answer)
-    if row.reason:
-        parts.append(row.reason)
-    if row.related_law:
-        parts.append(f"관련법령: {row.related_law}")
 
     return "\n".join(parts)
 

@@ -11,9 +11,9 @@ WSL2 환경에서 Docker를 사용할 때 이 규칙들을 **항상(ALWAYS)** �
 
 ## 2. 프로젝트 컨테이너
 
-| 컨테이너 | 이미지 | 포트 |
-|----------|--------|------|
-| `law-platform-db` | `postgres:15-alpine` | 5432 |
+| 컨테이너 | 이미지 | 포트 | 비고 |
+|----------|--------|------|------|
+| `law-platform-db` | 커스텀 빌드 (`docker/postgres/Dockerfile`, PG 17 + pg_textsearch) | 5432 | `shm_size: 1gb`, BM25 인덱스용 |
 
 ## 3. 준비 대기
 

@@ -4,7 +4,7 @@ source_id 단독 PK → (source_id, data_type) 복합 PK로 변경.
 타입 간 serial_number 중복 시 덮어쓰기 방지 (58,394건 충돌 해소).
 
 Revision ID: 017
-Revises: f61f09ed1c72
+Revises: 016
 Create Date: 2026-02-25
 
 """
@@ -15,7 +15,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "017"
-down_revision: Union[str, Sequence[str], None] = "f61f09ed1c72"
+down_revision: Union[str, Sequence[str], None] = "016"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

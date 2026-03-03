@@ -449,6 +449,8 @@ class LanceDBStore(VectorStoreBase):
                 "source_name": row.get("source_name"),
                 "chunk_index": row.get("chunk_index"),
                 "total_chunks": row.get("total_chunks"),
+                "summary_type": row.get("summary_type"),
+                "article_number": row.get("article_number"),
             }
             metadatas.append(meta)
         return metadatas

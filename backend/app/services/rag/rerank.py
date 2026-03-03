@@ -75,42 +75,57 @@ def _adaptive_truncate(content: str) -> str:
     return content[:_HEAD_CHARS] + "\n...\n" + content[-_TAIL_CHARS:]
 
 
-def _record_rerank_scores(
+def _build_score_summary(
     scored_docs: list[tuple[dict[str, Any], float]],
-    top_k: int,
-    min_score: float,
-    total_candidates: int,
-) -> None:
-    """LangSmith에 cross-encoder 리랭킹 점수 기록."""
-    run_tree = get_current_run_tree()
-    if run_tree is None:
-        return
-
-    score_details: list[dict[str, Any]] = []
-    for doc, score in scored_docs:
-        if score < min_score:
-            continue
-        if len(score_details) >= top_k:
-            break
-        doc_id = doc.get("metadata", {}).get("doc_id", "")
-        case_name = doc.get("metadata", {}).get("case_name", "")
-        score_details.append({
-            "doc_id": doc_id,
-            "case_name": case_name,
-            "rerank_score": round(score, 4),
+) -> list[dict[str, Any]]:
+    """리랭킹 점수 요약 목록을 생성한다."""
+    results: list[dict[str, Any]] = []
+    for rank, (doc, score) in enumerate(scored_docs, 1):
+        doc_meta = doc.get("metadata", {})
+        title = (
+            doc_meta.get("case_name", "")
+            or doc_meta.get("law_name", "")
+            or doc_meta.get("title", "")
+        )
+        results.append({
+            "rank": rank,
+            "doc_id": doc_meta.get("doc_id", ""),
+            "title": title,
+            "data_type": doc_meta.get("data_type", ""),
+            "rerank_score": round(score, 6),
             "original_similarity": round(doc.get("similarity", 0), 4),
+            "bm25_score": round(doc.get("bm25_score", 0), 4),
             "search_source": doc.get("search_source", "unknown"),
         })
+    return results
 
-    run_tree.extra = {
-        **(run_tree.extra or {}),
-        "metadata": {
-            **(run_tree.extra or {}).get("metadata", {}),
-            "rerank_results": score_details,
-            "total_candidates": total_candidates,
-            "min_score_threshold": min_score,
-        },
+
+def _write_scores_to_langsmith(
+    score_summary: list[dict[str, Any]],
+    total_candidates: int,
+    min_score: float,
+    engine: str,
+) -> None:
+    """LangSmith run tree에 리랭킹 점수를 기록한다."""
+    run_tree = get_current_run_tree()
+    if run_tree is None:
+        logger.debug("LangSmith run_tree 없음 — 리랭킹 점수 미기록")
+        return
+
+    payload = {
+        "rerank_engine": engine,
+        "total_candidates": total_candidates,
+        "min_score_threshold": min_score,
+        "rerank_scores": score_summary,
     }
+    try:
+        run_tree.add_outputs(payload)
+    except Exception:
+        logger.debug("add_outputs 실패, add_metadata 시도")
+        try:
+            run_tree.add_metadata(payload)
+        except Exception:
+            logger.warning("LangSmith 리랭킹 점수 기록 실패")
 
 
 @traceable(name="rerank")
@@ -171,8 +186,9 @@ def rerank_documents(
             reverse=True,
         )
 
-        # LangSmith에 cross-encoder 점수 기록
-        _record_rerank_scores(scored_docs, top_k, min_score, len(documents))
+        # LangSmith에 전체 점수 기록
+        summary = _build_score_summary(scored_docs)
+        _write_scores_to_langsmith(summary, len(documents), min_score, "pytorch")
 
         # 최소 점수 필터링 + top_k
         reranked: list[dict[str, Any]] = []
@@ -220,7 +236,7 @@ def _rerank_with_onnx(
 
     try:
         doc_texts = [
-            _adaptive_truncate(doc.get("content", ""))
+            _adaptive_truncate(doc.get("rerank_text", ""))
             for doc in documents
         ]
         all_scores = predict_reranker_onnx(query, doc_texts)
@@ -231,12 +247,19 @@ def _rerank_with_onnx(
             reverse=True,
         )
 
+        # LangSmith에 전체 점수 기록
+        summary = _build_score_summary(scored_docs)
+        _write_scores_to_langsmith(summary, len(documents), min_score, "onnx")
+
         reranked: list[dict[str, Any]] = []
         for doc, score in scored_docs:
             if score < min_score:
                 continue
             doc_copy = doc.copy()
-            doc_copy["rerank_score"] = score
+            doc_copy["original_similarity"] = doc_copy.get("similarity", 0)
+            doc_copy["similarity"] = round(score, 4)
+            doc_copy["rerank_score"] = round(score, 4)
+            doc_copy["score_type"] = "rerank"
             reranked.append(doc_copy)
             if len(reranked) >= top_k:
                 break

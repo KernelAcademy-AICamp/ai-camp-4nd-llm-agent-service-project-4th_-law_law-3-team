@@ -351,6 +351,16 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
         store = get_vector_store()
         result = store.get_by_id(precedent_id)
 
+        # RAG 검색 결과는 source_id를 id로 사용하므로, 청크 id로 못 찾으면 source_id로 폴백
+        if not result:
+            source_result = store.get_by_source_id(precedent_id)
+            if source_result and source_result.get("ids"):
+                result = {
+                    "id": source_result["ids"][0],
+                    "content": source_result["documents"][0] if source_result.get("documents") else "",
+                    "metadata": source_result["metadatas"][0] if source_result.get("metadatas") else {},
+                }
+
         if not result:
             raise HTTPException(status_code=404, detail="판례를 찾을 수 없습니다")
 
@@ -421,6 +431,7 @@ class StatuteNodeResponse(BaseModel):
     citation_count: int = 0
     content: Optional[str] = None
     supplementary: Optional[str] = None
+    ai_summary: Optional[str] = None
 
 
 class StatuteSearchResponse(BaseModel):
@@ -469,7 +480,7 @@ class StatuteGraphResponse(BaseModel):
 async def search_statutes(
     query: str = Query(..., description="검색어 (법령명, 약칭)"),
     limit: int = Query(10, ge=1, le=50, description="결과 수"),
-):
+) -> StatuteSearchResponse:
     """
     법령 검색 API
 
@@ -497,7 +508,7 @@ async def search_statutes(
 
 
 @router.get("/statutes/hierarchy/{statute_id}", response_model=StatuteHierarchyResponse)
-async def get_statute_hierarchy(statute_id: str):
+async def get_statute_hierarchy(statute_id: str) -> StatuteHierarchyResponse:
     """
     법령 계층 조회 API
 
@@ -509,7 +520,7 @@ async def get_statute_hierarchy(statute_id: str):
         if not detail:
             raise HTTPException(status_code=404, detail="법령을 찾을 수 없습니다")
 
-        def _to_node(d: dict) -> StatuteNodeResponse:
+        def _to_node(d: dict[str, Any]) -> StatuteNodeResponse:
             return StatuteNodeResponse(
                 id=d["id"] or "",
                 name=d["name"] or "",
@@ -518,6 +529,7 @@ async def get_statute_hierarchy(statute_id: str):
                 citation_count=d.get("citation_count") or 0,
                 content=d.get("content"),
                 supplementary=d.get("supplementary"),
+                ai_summary=d.get("ai_summary"),
             )
 
         return StatuteHierarchyResponse(
@@ -539,7 +551,7 @@ async def get_statute_hierarchy(statute_id: str):
 async def get_statute_children(
     statute_id: str,
     limit: int = Query(20, ge=1, le=100, description="결과 수"),
-):
+) -> StatuteChildrenResponse:
     """
     법령 하위 법령 조회 API (지연 로딩용)
 
@@ -573,7 +585,7 @@ async def get_statute_graph(
     center_id: Optional[str] = Query(None, description="중심 법령 ID"),
     depth: int = Query(2, ge=1, le=3, description="탐색 깊이"),
     limit: int = Query(100, ge=10, le=500, description="최대 노드 수"),
-):
+) -> StatuteGraphResponse:
     """
     법령 그래프 데이터 조회 (Force-directed 시각화용)
 

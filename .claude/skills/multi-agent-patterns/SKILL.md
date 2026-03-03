@@ -62,11 +62,15 @@ backend/app/multi_agent/
 │   ├── storyboard_agent.py      # StoryboardAgent (LLM 타임라인)
 │   ├── lawyer_stats_agent.py    # LawyerStatsAgent (통계 안내)
 │   └── law_study_agent.py       # LawStudyAgent (학습 가이드)
+├── services/
+│   └── tagger.py            # 태그 추출 (LLM 기반, 에이전트별 힌트, 사용자+응답 통합)
 ├── subgraphs/
-│   └── small_claims.py      # 소액소송 interrupt 서브그래프
+│   ├── small_claims.py      # 소액소송 interrupt 서브그래프
+│   └── storyboard.py        # 스토리보드 서브그래프 (태그 수집, 타임라인 생성)
 └── schemas/
     ├── __init__.py          # Export all schemas
     ├── plan.py              # AgentPlan, AgentResult (dataclass)
+    ├── tag.py               # TaggedItem (6 tag types, extraction_source)
     └── messages.py          # ChatMessage, ChatRequest, ChatResponse (Pydantic)
 ```
 

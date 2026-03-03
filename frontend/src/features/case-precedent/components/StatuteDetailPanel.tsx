@@ -1,6 +1,7 @@
 'use client'
 
-import { X, ChevronRight, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { X, ChevronRight, ChevronDown, ChevronUp, Loader2, Sparkles, FileText } from 'lucide-react'
 import type { StatuteHierarchyResponse, StatuteNode } from '../types'
 
 interface StatuteDetailPanelProps {
@@ -67,74 +68,46 @@ function StatuteList({
   )
 }
 
-function getStatuteDocumentText(root: StatuteNode | null): { title: string; content: string } | null {
-  if (!root) {
-    return null
-  }
+function StatuteContentSection({
+  content,
+  supplementary,
+}: {
+  content: string
+  supplementary?: string | null
+}) {
+  const [isOpen, setIsOpen] = useState(false)
 
-  const contents = [root.content, root.supplementary]
-    .map((value) => value?.trim())
-    .filter((value): value is string => Boolean(value))
-
-  if (contents.length === 0) {
-    return null
-  }
-
-  const parts: string[] = []
-  if (contents[0]) {
-    parts.push(contents[0])
-  }
-  if (contents[1]) {
-    parts.push(contents[1])
-  }
-
-  return {
-    title: contents.length > 1 ? '법령 원문 + 부칙' : '법령 원문',
-    content: parts.join('\n\n---\n\n'),
-  }
-}
-
-function renderReadableText(content: string): JSX.Element[] {
-  const lines = content
-    .replace(/\r/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .split('\n')
-
-  return lines.map((line, index) => {
-    const trimmed = line.trim()
-    const isHeading =
-      /^제\s*\d+\s*조\b/.test(trimmed) ||
-      /^제\s*\d+\s*장\b/.test(trimmed) ||
-      /^부칙/.test(trimmed)
-
-    if (!trimmed) {
-      return <div key={`blank-${index}`} className="h-2" />
-    }
-
-    if (trimmed === '---') {
-      return <div key={`sep-${index}`} className="my-3 border-t border-slate-600/80" />
-    }
-
-    if (isHeading) {
-      return (
-        <h5
-          key={`heading-${index}`}
-          className="mt-3 mb-2 text-sm font-semibold text-white border-l-4 border-amber-400 pl-3"
-        >
-          {trimmed}
-        </h5>
-      )
-    }
-
-    return (
-      <p
-        key={`line-${index}`}
-        className="text-sm text-slate-200 leading-6 tracking-[0.01em] whitespace-pre-wrap break-keep"
+  return (
+    <div>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-amber-400
+                   border border-amber-500/30 rounded-lg hover:bg-amber-500/10 transition-colors"
       >
-        {trimmed}
-      </p>
-    )
-  })
+        <FileText className="w-3.5 h-3.5" />
+        원문 보기
+        {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+      {isOpen && (
+        <div className="mt-3 bg-slate-900/50 border border-slate-700 rounded-lg p-3 space-y-3">
+          <pre className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap break-words font-sans">
+            {content}
+          </pre>
+          {supplementary && (
+            <>
+              <hr className="border-slate-700" />
+              <div>
+                <span className="text-xs font-semibold text-slate-400 block mb-1">부칙</span>
+                <pre className="text-xs text-slate-400 leading-relaxed whitespace-pre-wrap break-words font-sans">
+                  {supplementary}
+                </pre>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function StatuteDetailPanel({
@@ -144,10 +117,9 @@ export function StatuteDetailPanel({
   onNodeClick,
 }: StatuteDetailPanelProps) {
   const root = data.root
-  const statuteDocument = getStatuteDocumentText(root)
 
   return (
-    <div className="w-80 border-l border-slate-700 bg-slate-800 flex flex-col shrink-0 overflow-hidden">
+    <div className="w-80 h-full border-l border-slate-700 bg-slate-800 flex flex-col shrink-0 overflow-hidden relative z-10">
       {/* 헤더 */}
       <div className="p-4 border-b border-slate-700 flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -180,7 +152,7 @@ export function StatuteDetailPanel({
 
       {/* 본문 */}
       {!loading && root && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        <div className="flex-1 overflow-y-auto p-4 space-y-5 statute-scrollbar">
           {/* 기본 정보 */}
           <div className="space-y-2">
             {root.abbreviation && (
@@ -195,19 +167,19 @@ export function StatuteDetailPanel({
             </div>
           </div>
 
-          <hr className="border-slate-700" />
-
-          {/* 원문 */}
-          {statuteDocument && (
-            <details className="border border-slate-700 rounded-lg p-3">
-              <summary className="text-sm font-semibold text-slate-200 cursor-pointer">
-                {statuteDocument.title}
-              </summary>
-              <div className="mt-3 border border-slate-700/70 rounded-md bg-slate-900/80 p-3 max-h-96 overflow-y-auto">
-                <div className="space-y-1">{renderReadableText(statuteDocument.content)}</div>
+          {/* AI 요약 */}
+          {root.ai_summary && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs font-semibold text-amber-400">AI 요약</span>
               </div>
-            </details>
+              <p className="text-sm text-slate-200 leading-relaxed">{root.ai_summary}</p>
+            </div>
           )}
+
+          {/* 원문 보기 (펼치기/접기) */}
+          {root.content && <StatuteContentSection content={root.content} supplementary={root.supplementary} />}
 
           <hr className="border-slate-700" />
 

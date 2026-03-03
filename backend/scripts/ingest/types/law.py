@@ -83,6 +83,7 @@ def _orm_factory(item: dict[str, Any]) -> LawDocument:
         content=content,
         supplementary=supplementary,
         ai_summary=item.get("법령 요약") or item.get("ai_summary"),
+        citation_count=item.get("citation_count", 0) or 0,
     )
 
 
@@ -248,15 +249,6 @@ def _fulltext_fn(item: dict[str, Any]) -> str:
                 # 항·호 추가
                 parts.extend(_extract_article_body(article))
 
-    # 부칙 텍스트 (중첩 리스트 [[{...}]] 대응)
-    supplementary = item.get("부칙")
-    if supplementary and isinstance(supplementary, list):
-        for supp in _flatten_list(supplementary):
-            if isinstance(supp, dict):
-                text = supp.get("부칙내용", "")
-                if text:
-                    parts.append(text)
-
     return "\n".join(parts)
 
 
@@ -288,8 +280,6 @@ def _orm_fulltext_fn(row: Any) -> str:
         parts.append(f"[{row.law_name}]")
     if row.content:
         parts.append(row.content)
-    if row.supplementary:
-        parts.append(row.supplementary)
 
     return "\n".join(parts)
 

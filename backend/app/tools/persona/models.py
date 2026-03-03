@@ -3,7 +3,13 @@
 Design 문서 §3.6 기반 — ChatMetadata, PersonaExtractionResult, ScoredIssueV2, ScriptContext
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.modules.content_marketing.schema import AnalysisInsights, LawyerPersona
 
 
 @dataclass
@@ -26,6 +32,14 @@ class PersonaExtractionResult:
     focus_topics: list[str]
     confidence: float
     raw_response: str
+
+
+@dataclass
+class AnalysisResult:
+    """페르소나 분석 결과 (persona + insights)"""
+
+    persona: LawyerPersona
+    insights: AnalysisInsights
 
 
 @dataclass

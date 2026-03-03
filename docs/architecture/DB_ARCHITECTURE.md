@@ -634,18 +634,49 @@ backend/
 
 ---
 
-## 13. FTS 전문 검색 인덱스 (migration 008)
+## 13. FTS 전문 검색 인덱스 (migration 008 + 017 + 020)
+
+> **현재 상태**: PostgreSQL 17 + pg_textsearch 확장 (BM25 + BMW 최적화)
+> ts_rank + GIN에서 BM25 + BMW로 전환 완료 (2026-03-01)
 
 ```sql
 CREATE TABLE fts_index (
-    id SERIAL PRIMARY KEY,
+    -- PK: (source_id, data_type) 복합 PK (migration 017)
     source_id VARCHAR(100) NOT NULL,   -- 원본 문서 ID
     data_type VARCHAR(50) NOT NULL,    -- 데이터 타입 (law, precedent 등)
     title TEXT,                        -- 제목
-    date DATE,                         -- 날짜
-    content_tsvector TSVECTOR,         -- 전문 검색 벡터
+    date VARCHAR(50),                  -- 날짜
+    content_tsvector TSVECTOR,         -- (레거시) 롤백용 유지, BM25 안정화 후 제거 예정
+    search_text TEXT,                  -- BM25 검색 대상 (MeCab 명사 공백 구분 토큰)
     created_at TIMESTAMP,
-    updated_at TIMESTAMP
+    updated_at TIMESTAMP,
+    PRIMARY KEY (source_id, data_type)
+);
+
+-- BM25 인덱스 (pg_textsearch, migration 020 이후 별도 생성)
+CREATE INDEX idx_fts_bm25 ON fts_index USING bm25(search_text) WITH (text_config='simple');
+```
+
+**인덱스 생성 필수 사전 조건**:
+1. PostgreSQL 17 + `pg_textsearch` 확장 설치 (`docker/postgres/Dockerfile`)
+2. `shared_preload_libraries=pg_textsearch` 설정 (`docker-compose.yml`)
+3. `search_text` 데이터 적재 완료 (`uv run python -m scripts.ingest.cli --type all --step db`)
+4. 인덱스 생성: `uv run python scripts/create_bm25_index.py`
+
+### 13.1 law_articles 테이블 (migration 021)
+
+RAG 검색 시 벡터 매칭된 조문만 선별적으로 LLM 컨텍스트에 포함시키기 위한 조문 단위 테이블.
+
+```sql
+CREATE TABLE law_articles (
+    id SERIAL PRIMARY KEY,
+    law_id VARCHAR(20) NOT NULL,           -- FK → law_documents.law_id
+    article_number VARCHAR(50) NOT NULL,   -- 조문 번호 (제1조, 제2조의2 등)
+    article_title TEXT,                    -- 조문 제목
+    content TEXT NOT NULL,                 -- 조문 본문
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    UNIQUE (law_id, article_number)        -- 복합 유니크 (멱등 upsert)
 );
 ```
 
@@ -674,6 +705,11 @@ CREATE TABLE fts_index (
 | f61f09ed1c72 | `widen_fts_index_date_to_50` | fts_index.date VARCHAR(20)→VARCHAR(50) 확장 |
 | 017 | `fts_index_composite_pk` | fts_index PK를 `source_id` → `(source_id, data_type)` 복합 PK로 변경. 타입 간 serial_number 충돌 해결. TRUNCATE 포함 (전체 FTS 재빌드 필요) |
 | 018 | `add_graph_tables` | 5개 그래프 테이블 (statute_hierarchy, statute_aliases, statute_relations, case_statute_citations, case_case_citations) + law_documents에 abbreviation/citation_count 컬럼 + pg_trgm GIN 인덱스 |
+| 018 | `add_news_articles_table` | 법률 뉴스 기사 테이블 |
+| 019 | `add_lawyer_personas_and_feedback` | 변호사 페르소나 + 피드백 테이블 |
+| 020 | `add_bm25_search_text` | fts_index에 search_text(Text) 컬럼 추가, 기존 GIN 인덱스 제거. BM25 인덱스는 `create_bm25_index.py`로 별도 생성 |
+| 020 | `add_workspace_mvp_tables` | 워크스페이스 MVP 테이블 (workspace_cases, chat_conversations, tagged_items, timeline_items, activity_logs, structured_summaries) |
+| 021 | `add_law_articles_table` | law_articles 테이블 (조문 단위 분리, law_id + article_number 복합 UNIQUE) |
 
 ---
 
@@ -694,6 +730,21 @@ Neo4j 그래프 데이터를 PostgreSQL로 이관하기 위한 5개 테이블. `
 
 데이터 로드: `uv run python scripts/load_graph_data.py` (법령 계급, 약칭, 판례 인용 관계 일괄 로드)
 
+## 16. 워크스페이스 테이블 (migration 020_workspace)
+
+사건 관리, 대화 영속화, 태그 수집, 타임라인, 활동 로그를 위한 7개 테이블. 쿠키 기반 `session_token`으로 사용자 식별.
+
+| 테이블 | 설명 | 주요 컬럼 |
+|--------|------|-----------|
+| `chat_conversations` | 채팅 대화 영속화 | id(UUID PK), session_token, title, last_agent, case_id(FK→workspace_cases, nullable), message_count, tag_count |
+| `workspace_cases` | 워크스페이스 사건 | id(UUID PK), session_token, case_name, case_type, status(open/closed/archived) |
+| `workspace_tagged_items` | 태그 수집 항목 | id(UUID PK), case_id(FK), type(person/date/law/...), label, value, confidence, source_conversation_id |
+| `workspace_timeline_items` | 타임라인 이벤트 | id(UUID PK), case_id(FK), date, title, description, confidence, source_type(ai/user/evidence) |
+| `workspace_activity_logs` | 활동 로그 | id(UUID PK), case_id(FK), action, detail(JSONB) |
+| `workspace_structured_summaries` | 구조화 요약 | id(UUID PK), case_id(FK), conversation_id(FK), category, content |
+
+인덱스: `session_token` B-tree (전 테이블), `case_id` B-tree (FK 참조)
+
 ---
 
-*최종 업데이트: 2026-02-27*
+*최종 업데이트: 2026-03-02*

@@ -51,6 +51,18 @@ export interface DocumentResponse {
   docx_url?: string
 }
 
+export interface DocumentRegenerateRequest {
+  document_type: string
+  title: string
+  content: string
+  formats?: string[]
+}
+
+export interface DocumentRegenerateResponse {
+  pdf_url?: string
+  docx_url?: string
+}
+
 export interface RelatedCaseItem {
   id: string
   case_name: string
@@ -58,6 +70,7 @@ export interface RelatedCaseItem {
   summary: string
   similarity: number
   relevance: string
+  doc_type?: string
   ruling?: string
   reasoning?: string
 }

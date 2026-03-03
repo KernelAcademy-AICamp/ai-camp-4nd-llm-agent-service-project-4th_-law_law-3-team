@@ -1,3 +1,8 @@
+---
+name: git-convention-bridge
+description: Codex가 이 저장소에서 Git 작업을 수행할 때 .claude 규칙을 안전하게 적용하기 위한 브리지 스킬. 브랜치 명명, 커밋 메시지 형식, 금지사항 등 Git 규칙 참조.
+---
+
 # Git Convention Bridge (Codex)
 
 Codex가 이 저장소에서 Git 작업을 수행할 때 `.claude` 규칙을 안전하게 적용하기 위한 브리지 스킬입니다.

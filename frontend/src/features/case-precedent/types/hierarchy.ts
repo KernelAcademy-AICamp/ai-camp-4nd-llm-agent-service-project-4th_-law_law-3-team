@@ -10,6 +10,7 @@ export interface StatuteNode {
   abbreviation?: string
   content?: string | null
   supplementary?: string | null
+  ai_summary?: string | null
 }
 
 export interface StatuteSearchResponse {

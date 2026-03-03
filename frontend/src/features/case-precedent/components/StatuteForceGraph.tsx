@@ -1,8 +1,9 @@
 'use client'
 
-import { useRef, useCallback, useEffect, useState } from 'react'
+import { useRef, useCallback, useEffect, useState, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import NextImage from 'next/image'
+import { Plus, Minus, Maximize2 } from 'lucide-react'
 import { casePrecedentService, type GraphNode, type GraphLink } from '../services'
 import { getLawTypeLogo, DEFAULT_GOV_LOGO } from '../utils/lawTypeLogo'
 import type { SimulationNodeDatum } from 'd3-force'
@@ -22,13 +23,15 @@ interface ForceGraphInstance {
   d3Force(name: 'link'): ForceLinkForce | undefined
   d3Force(name: string, force: unknown): void
   d3ReheatSimulation: () => void
+  zoom(k: number, ms?: number): void
+  centerAt(x: number, y: number, ms?: number): void
+  zoomToFit(ms?: number, padding?: number): void
 }
 
-// SSR 비활성화로 ForceGraph 로드
 // SSR 비활성화로 ForceGraph 로드 (Wrapper 컴포넌트 사용)
 const ForceGraph2D = dynamic(
-  () => import('./StatuteForceGraphWrapper'), 
-  { 
+  () => import('./StatuteForceGraphWrapper'),
+  {
     ssr: false,
     loading: () => (
       <div className="w-full h-full flex items-center justify-center bg-slate-900">
@@ -45,6 +48,8 @@ interface StatuteForceGraphProps {
   centerId?: string
   centerName?: string
   onNodeClick?: (node: GraphNode) => void
+  visibleTypes?: Set<string>
+  highlightNodeId?: string
 }
 
 // 법령 유형별 색상
@@ -83,6 +88,16 @@ function getRadialRadius(type: string): number {
   if (type.endsWith('부령')) return 300
   if (type.includes('규칙')) return 380
   return 380 // 기타
+}
+
+// 법령 유형 → 필터 카테고리 매핑
+function getFilterCategory(type: string): string {
+  if (type === '헌법') return '헌법'
+  if (type === '법률') return '법률'
+  if (type === '대통령령') return '대통령령'
+  if (type === '총리령' || type.endsWith('부령')) return '총리령·부령'
+  if (type.includes('규칙')) return '규칙'
+  return '규칙' // 기타
 }
 
 // 헌법 노드 (태양)
@@ -129,13 +144,15 @@ function getLogoImage(type: string): HTMLImageElement | null {
   return null
 }
 
-export function StatuteForceGraph({ centerId, centerName, onNodeClick }: StatuteForceGraphProps) {
+export function StatuteForceGraph({ centerId, centerName, onNodeClick, visibleTypes, highlightNodeId }: StatuteForceGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const fgRef = useRef<ForceGraphInstance | null>(null)
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; links: GraphLink[] }>({ nodes: [], links: [] })
-  const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const [isLoading, setIsLoading] = useState(true)
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null)
+  // 원본 데이터 (필터링 전)
+  const [rawGraphData, setRawGraphData] = useState<{ nodes: GraphNode[]; links: GraphLink[] }>({ nodes: [], links: [] })
 
   const resolveCenterId = useCallback((nodes: GraphNode[]): string | undefined => {
     const normalizedCenterName = centerName?.trim()
@@ -178,9 +195,9 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
           if (!hasConstitution) {
             nodes = [CONSTITUTION_NODE, ...nodes]
           }
-          
+
           // 초기 화면에서는 총리령/부령/규칙 숨김 (대통령령까지만 표시)
-          nodes = nodes.filter(n => 
+          nodes = nodes.filter(n =>
             n.type === '헌법' || n.type === '법률' || n.type === '대통령령'
           )
         }
@@ -214,24 +231,20 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
 
         // HIERARCHY_OF 관계로 부모-자식 맵 생성 (법률 → 시행령)
         const parentToChildren: Record<string, string[]> = {}
-        const childToParent: Record<string, string> = {}
         links.forEach(link => {
           if (link.relation === 'HIERARCHY_OF') {
             // source가 하위법(시행령), target이 상위법(법률)
-            const sourceId = typeof link.source === 'object' ? (link.source as any).id : link.source
-            const targetId = typeof link.target === 'object' ? (link.target as any).id : link.target
-            
+            const sourceId = typeof link.source === 'object' ? (link.source as { id: string }).id : link.source
+            const targetId = typeof link.target === 'object' ? (link.target as { id: string }).id : link.target
+
             const childId = sourceId
             const parentId = targetId
 
-            childToParent[childId] = parentId
             if (!parentToChildren[parentId]) parentToChildren[parentId] = []
             parentToChildren[parentId].push(childId)
           }
         })
 
-        // ... (중략: angleMap 계산 로직은 유지하되, 헌법/법률에만 의미가 있음)
-        
         // 법률 노드들 (상위법)에 각도 할당
         const lawNodes = nodes.filter(n => n.type === '법률' && n.id !== centerNodeId)
         const angleMap: Record<string, number> = {}
@@ -240,9 +253,9 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
           angleMap[node.id] = angle
           // 자식 노드들(시행령)도 초기 위치는 부모 근처로 설정
           const children = parentToChildren[node.id] || []
-          children.forEach((childId, childIndex) => {
+          children.forEach(() => {
              // 부모 각도 주변으로 초기 배치
-             angleMap[childId] = angle + (Math.random() - 0.5) * 0.1
+             angleMap[node.id] = angle + (Math.random() - 0.5) * 0.1
           })
         })
 
@@ -251,7 +264,6 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
         const unassignedNodes = nodes.filter(n =>
           n.id !== centerNodeId && !assignedIds.has(n.id)
         )
-        // ... (나머지 초기 위치 로직 유지)
 
         // 계층별로 분류
         const unassignedByRadius: Record<number, typeof nodes> = {}
@@ -290,6 +302,7 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
           }
         })
 
+        setRawGraphData({ nodes: nodesWithPosition, links: links })
         setGraphData({ nodes: nodesWithPosition, links: links })
       } catch (error) {
         console.error('그래프 로드 실패:', error)
@@ -298,7 +311,25 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
       }
     }
     loadGraph()
-  }, [centerId, resolveCenterId])
+  }, [centerId, resolveCenterId, centerName])
+
+  // visibleTypes 필터 적용
+  useEffect(() => {
+    if (!visibleTypes || rawGraphData.nodes.length === 0) return
+
+    const filteredNodes = rawGraphData.nodes.filter(node => {
+      const category = getFilterCategory(node.type)
+      return visibleTypes.has(category)
+    })
+    const filteredNodeIds = new Set(filteredNodes.map(n => n.id))
+    const filteredLinks = rawGraphData.links.filter(link => {
+      const sourceId = typeof link.source === 'object' ? (link.source as { id: string }).id : link.source
+      const targetId = typeof link.target === 'object' ? (link.target as { id: string }).id : link.target
+      return filteredNodeIds.has(sourceId) && filteredNodeIds.has(targetId)
+    })
+
+    setGraphData({ nodes: filteredNodes, links: filteredLinks })
+  }, [visibleTypes, rawGraphData])
 
   // 컨테이너 크기 감지 (ResizeObserver 사용)
   useEffect(() => {
@@ -316,8 +347,8 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
       }
     }
 
-    // 초기 로드 시 약간의 지연 후 크기 계산 (레이아웃 완료 대기)
-    const timer = setTimeout(updateDimensions, 100)
+    // 즉시 실행 + requestAnimationFrame으로 레이아웃 안정화
+    requestAnimationFrame(updateDimensions)
 
     // ResizeObserver로 컨테이너 크기 변경 감지
     let resizeObserver: ResizeObserver | null = null
@@ -331,7 +362,6 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
     window.addEventListener('resize', updateDimensions)
 
     return () => {
-      clearTimeout(timer)
       resizeObserver?.disconnect()
       window.removeEventListener('resize', updateDimensions)
     }
@@ -346,11 +376,8 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
   const applyD3Forces = useCallback((fg: ForceGraphInstance) => {
     if (!fg) return
 
-    console.log('applyD3Forces executing...', { nodes: graphData.nodes.length })
-
     try {
       // 1. 방사형 배치 (황도 십이궁 스타일) - 헌법과 법률만 궤도 강제
-      // 대통령령 등 하위 법령은 궤도에 구속되지 않고 부모(법률) 주변에 위성처럼 위치함
       fg.d3Force('radial', forceRadial<ForceNode>(
         (node) => {
           if (node.type === '헌법') return 0 // 태양
@@ -359,19 +386,18 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
         },
         0, 0  // 중심점
       ).strength((node) => {
-         // 헌법/법률은 고정하되, 링크에 의해 약간 움직일 수 있도록 강도 조절
          return (node.type === '헌법' || node.type === '법률') ? 0.7 : 0
       }))
 
       // 2. 충돌 방지: 노드가 겹치지 않도록
       fg.d3Force('collide', forceCollide<ForceNode>((node) => {
         const size = getHierarchySize(node.type)
-        return size * 2 + 10 // 간격 조정
+        return size * 2 + 10
       }).strength(0.8).iterations(3))
 
       // 3. 반발력 (Charge)
       fg.d3Force('charge', forceManyBody()
-        .strength(-200) // 서로 밀어내는 힘 적절히 유지
+        .strength(-200)
         .distanceMin(10)
         .distanceMax(400)
       )
@@ -379,16 +405,12 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
       // 4. 링크 힘 (위성 배치 & 관련 법령 응집)
       fg.d3Force('link')
         ?.distance((link) => {
-          // 계급 관계(HIERARCHY_OF)는 짧게 -> 부모 옆에 착 붙게 (위성)
           if (link.relation === 'HIERARCHY_OF') return 50
-          // 관련 법령은 적당히 가깝게 (너무 멀지 않게)
-          return 100 // 150 -> 100
+          return 100
         })
         ?.strength((link) => {
-           // 계급 관계는 강하게 당김
            if (link.relation === 'HIERARCHY_OF') return 1.0
-           // 관련 법령도 서로 끌어당기도록 힘 강화
-           return 0.3 // 0.05 -> 0.3
+           return 0.3
         })
 
       // center force 제거
@@ -396,7 +418,6 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
 
       // 시뮬레이션 재가열
       fg.d3ReheatSimulation()
-      console.log('applyD3Forces applied successfully')
     } catch (err) {
       console.error('Failed to apply D3 forces:', err)
     }
@@ -406,7 +427,6 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
   const handleGraphRef = useCallback((fg: ForceGraphInstance) => {
     fgRef.current = fg
     if (fg && graphData.nodes.length > 0) {
-      // 약간의 지연 후 적용 (초기화 안정성)
       setTimeout(() => applyD3Forces(fg), 10)
     }
   }, [graphData.nodes.length, applyD3Forces])
@@ -419,9 +439,12 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
     }
   }, [graphData, applyD3Forces])
 
-  // 노드 클릭 핸들러
+  // 노드 클릭 핸들러 (센터링 포함)
   const handleNodeClick = useCallback((node: object) => {
-    const n = node as GraphNode
+    const n = node as GraphNode & { x?: number; y?: number }
+    if (n.x !== undefined && n.y !== undefined && fgRef.current) {
+      fgRef.current.centerAt(n.x, n.y, 500)
+    }
     if (onNodeClick && n.id) {
       onNodeClick(n)
     }
@@ -432,9 +455,34 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
     setHoveredNode(node as GraphNode | null)
   }, [])
 
-  if (isLoading || !ForceGraph2D) {
+  // 줌 컨트롤
+  const handleZoomIn = useCallback(() => {
+    const fg = fgRef.current
+    if (!fg) return
+    fg.zoom(2, 300)
+  }, [])
+
+  const handleZoomOut = useCallback(() => {
+    const fg = fgRef.current
+    if (!fg) return
+    fg.zoom(0.5, 300)
+  }, [])
+
+  const handleZoomFit = useCallback(() => {
+    const fg = fgRef.current
+    if (!fg) return
+    fg.zoomToFit(400, 40)
+  }, [])
+
+  // 그래프 통계
+  const graphStats = useMemo(() => ({
+    nodeCount: graphData.nodes.length,
+    linkCount: graphData.links.length,
+  }), [graphData.nodes.length, graphData.links.length])
+
+  if (isLoading || dimensions.width === 0 || !ForceGraph2D) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-slate-900">
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center bg-slate-900">
         <div className="text-white">그래프 로딩 중...</div>
       </div>
     )
@@ -459,6 +507,7 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
           const size = getNodeSize(n)
           const fontSize = Math.max(12 / globalScale, 3)
           const isHovered = hoveredNode?.id === n.id
+          const isHighlighted = highlightNodeId === n.id
           // 중심 노드: centerId가 있으면 해당 노드, 없으면 헌법
           const currentCenterId = resolveCenterId(graphData.nodes) || CONSTITUTION_NODE.id
           const isCenterNode = n.id === currentCenterId
@@ -466,6 +515,17 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
 
           // 로고 이미지 가져오기
           const logoImg = getLogoImage(n.type)
+
+          // 하이라이트 링 (선택된 노드)
+          if (isHighlighted && !isSunNode) {
+            ctx.beginPath()
+            ctx.arc(n.x, n.y, size + 6, 0, 2 * Math.PI)
+            ctx.strokeStyle = '#fbbf24'
+            ctx.lineWidth = 2 / globalScale
+            ctx.setLineDash([4 / globalScale, 3 / globalScale])
+            ctx.stroke()
+            ctx.setLineDash([])
+          }
 
           // 중심 노드(태양) 특별 효과
           if (isSunNode) {
@@ -557,7 +617,6 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
         }}
         linkColor={(link) => {
           const l = link as GraphLink
-          // HIERARCHY_OF: 계급 관계는 황금색, 그 외는 회색
           return l.relation === 'HIERARCHY_OF' ? 'rgba(251, 191, 36, 0.8)' : 'rgba(148, 163, 184, 0.6)'
         }}
         linkWidth={(link) => {
@@ -566,14 +625,13 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
         }}
         linkDirectionalArrowLength={(link) => {
           const l = link as GraphLink
-          // 계급 관계에만 화살표 표시
           return l.relation === 'HIERARCHY_OF' ? 6 : 0
         }}
         linkDirectionalArrowRelPos={1}
         linkDirectionalParticles={0}
         onRenderFramePre={(ctx) => {
           // 궤도 원 그리기 (황도 십이궁 스타일)
-          const orbits = [120, 220, 300, 380]  // 법률, 대통령령, 총리령/부령, 규칙
+          const orbits = [120, 220, 300, 380]
           const orbitColors = ['rgba(251, 191, 36, 0.15)', 'rgba(96, 165, 250, 0.15)', 'rgba(52, 211, 153, 0.12)', 'rgba(156, 163, 175, 0.1)']
 
           orbits.forEach((radius, i) => {
@@ -619,6 +677,11 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
         enablePanInteraction={true}
       />
 
+      {/* 통계 오버레이 */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-black/50 rounded-full px-3 py-1 text-xs text-slate-300 pointer-events-none">
+        노드 {graphStats.nodeCount}개 · 링크 {graphStats.linkCount}개
+      </div>
+
       {/* 범례 */}
       <div className="absolute bottom-4 left-4 bg-black/70 rounded-lg p-3 text-xs text-white">
         <div className="font-bold mb-2">법령 계층 (황도 십이궁)</div>
@@ -653,9 +716,34 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick }: Statute
         </div>
       </div>
 
+      {/* 줌 컨트롤 */}
+      <div className="absolute bottom-4 right-4 flex flex-col gap-1">
+        <button
+          onClick={handleZoomIn}
+          className="w-8 h-8 bg-black/70 hover:bg-black/90 text-white rounded flex items-center justify-center transition-colors"
+          aria-label="확대"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+        <button
+          onClick={handleZoomOut}
+          className="w-8 h-8 bg-black/70 hover:bg-black/90 text-white rounded flex items-center justify-center transition-colors"
+          aria-label="축소"
+        >
+          <Minus className="w-4 h-4" />
+        </button>
+        <button
+          onClick={handleZoomFit}
+          className="w-8 h-8 bg-black/70 hover:bg-black/90 text-white rounded flex items-center justify-center transition-colors"
+          aria-label="전체 보기"
+        >
+          <Maximize2 className="w-4 h-4" />
+        </button>
+      </div>
+
       {/* 호버 정보 */}
       {hoveredNode && (
-        <div className="absolute top-4 right-4 bg-black/80 rounded-lg p-3 text-white max-w-xs">
+        <div className="absolute top-4 left-4 bg-black/80 rounded-lg p-3 text-white max-w-xs" style={{ top: '2.5rem' }}>
           <div className="font-bold text-sm">{hoveredNode.name}</div>
           <div className="text-xs text-gray-300 mt-1">{hoveredNode.type}</div>
           <div className="text-xs text-gray-400 mt-1">

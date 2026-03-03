@@ -15,11 +15,14 @@ from typing_extensions import TypedDict
 
 from app.multi_agent.agents.base_chat import ActionType, ChatAction
 from app.multi_agent.agents.small_claims_agent import (
-    SMALL_CLAIMS_LIMIT,
     STEP_MESSAGES,
     SmallClaimsStep,
+)
+from app.services.service_function.small_claims_service import (
+    SMALL_CLAIMS_LIMIT,
     detect_dispute_type,
     extract_amount,
+    search_for_dispute_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +42,11 @@ class SmallClaimsState(TypedDict, total=False):
     claim_amount: int
     step: str
     is_complete: bool
+
+    # RAG 캐시 (mock_trial의 rag_prosecutor_context 패턴)
+    rag_case_context: str  # 판례 컨텍스트 (LLM 응답용)
+    rag_law_context: str  # 법령 컨텍스트
+    rag_case_sources: list[dict[str, Any]]  # 프론트엔드 소스 전달용
 
     # 출력 (부모 그래프로 전달)
     response: str
@@ -112,8 +120,8 @@ def _sync_from_ui_state(state: SmallClaimsState) -> dict[str, Any]:
     if not wizard_state:
         return {}
 
-    updates = {}
-    
+    updates: dict[str, Any] = {}
+
     # 분쟁 유형 동기화 (프론트엔드 ID -> 백엔드 한글명)
     ui_dispute_type = wizard_state.get("dispute_type")
     if ui_dispute_type:
@@ -218,11 +226,11 @@ def init_node(state: SmallClaimsState) -> Command[str]:
     )
 
 
-def gather_info_node(state: SmallClaimsState) -> Command[str]:
-    """금액/상대방 정보 수집"""
+async def gather_info_node(state: SmallClaimsState) -> Command[str]:
+    """금액/상대방 정보 수집 (RAG 검색 포함)"""
     # 1. UI 상태와 동기화
     ui_updates = _sync_from_ui_state(state)
-    
+
     # interrupt로 사용자 입력 대기
     interrupt_value = interrupt({
         "response": STEP_MESSAGES[SmallClaimsStep.GATHER_INFO],
@@ -232,7 +240,7 @@ def gather_info_node(state: SmallClaimsState) -> Command[str]:
 
     user_input = str(interrupt_value)
     amount = extract_amount(user_input)
-    
+
     # UI에서 전달된 금액이 있고 메시지에서 추출된 금액이 없으면 UI 금액 사용
     if not amount and "claim_amount" in ui_updates:
         amount = ui_updates["claim_amount"]
@@ -252,6 +260,23 @@ def gather_info_node(state: SmallClaimsState) -> Command[str]:
         })
         user_input = str(interrupt_value)
         amount = extract_amount(user_input) or amount
+
+    # 2. RAG 검색 — 금액 추출 직후, 분쟁 유형 기반 판례 검색
+    dispute_type = ui_updates.get("dispute_type") or state.get("dispute_type", "기타")
+    description = (
+        state.get("session_data", {})
+        .get("wizard_state", {})
+        .get("case_info", {})
+        .get("description", "")
+    ) or user_input
+
+    rag_case_context = ""
+    rag_case_sources: list[dict[str, Any]] = []
+    if dispute_type and dispute_type != "기타":
+        _, rag_case_context, rag_case_sources = await search_for_dispute_type(
+            dispute_type=dispute_type,
+            description=description,
+        )
 
     if amount:
         response = (
@@ -273,6 +298,9 @@ def gather_info_node(state: SmallClaimsState) -> Command[str]:
             "response": response,
             "actions": [],
             "agent_used": "small_claims",
+            "rag_case_context": rag_case_context,
+            "rag_law_context": "",
+            "rag_case_sources": rag_case_sources,
         },
         goto="evidence_node",
     )
@@ -322,12 +350,12 @@ def demand_letter_node(state: SmallClaimsState) -> Command[str]:
     })
 
     user_input = str(interrupt_value)
-    
+
     # 내용증명 작성 도움 버튼 클릭 시
     if "draft_demand_letter" in user_input or "내용증명" in user_input or "작성" in user_input:
         dispute_type = ui_updates.get("dispute_type") or state.get("dispute_type", "기타")
         claim_amount = ui_updates.get("claim_amount") or state.get("claim_amount", 0)
-        
+
         draft_response = f"""**내용증명 작성을 도와드리겠습니다.**
 
 📋 **소액소송 서류 작성 페이지**로 이동하여 내용증명을 작성하세요.
@@ -374,6 +402,7 @@ def court_node(state: SmallClaimsState) -> dict[str, Any]:
     return {
         "response": STEP_MESSAGES[SmallClaimsStep.COURT],
         "actions": _court_actions(),
+        "sources": state.get("rag_case_sources", []),
         "is_complete": True,
         "step": SmallClaimsStep.COMPLETE,
         "agent_used": "small_claims",

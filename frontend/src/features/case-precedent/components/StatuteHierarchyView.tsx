@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { Network, Search, X, Loader2, ArrowLeft } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { StatuteForceGraph } from './StatuteForceGraph'
@@ -24,6 +24,30 @@ export function StatuteHierarchyView() {
   const [detailData, setDetailData] = useState<StatuteHierarchyResponse | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
+  // 법령 유형별 필터
+  const ALL_STATUTE_TYPES = ['헌법', '법률', '대통령령', '총리령·부령', '규칙'] as const
+  const [visibleTypes, setVisibleTypes] = useState<Set<string>>(() => new Set(ALL_STATUTE_TYPES))
+
+  const toggleType = useCallback((type: string) => {
+    setVisibleTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(type)) {
+        if (next.size > 1) next.delete(type)
+      } else {
+        next.add(type)
+      }
+      return next
+    })
+  }, [])
+
+  const TYPE_BADGE_COLORS: Record<string, string> = useMemo(() => ({
+    '헌법': 'bg-orange-500/20 text-orange-400 border-orange-500/40',
+    '법률': 'bg-amber-500/20 text-amber-400 border-amber-500/40',
+    '대통령령': 'bg-blue-500/20 text-blue-400 border-blue-500/40',
+    '총리령·부령': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
+    '규칙': 'bg-violet-500/20 text-violet-400 border-violet-500/40',
+  }), [])
+
   // URL 파라미터에서 선택된 법령 복원
   useEffect(() => {
     let isCancelled = false
@@ -35,6 +59,9 @@ export function StatuteHierarchyView() {
         try {
           const detail = await casePrecedentService.getStatuteHierarchy(statuteId)
           const normalizedTargetName = normalizeName(statuteName)
+          if (!detail.root) {
+            throw new Error('법령 루트 데이터가 없습니다')
+          }
           const normalizeRootName = normalizeName(detail.root.name)
           const normalizedAbbreviation = detail.root.abbreviation
             ? normalizeName(detail.root.abbreviation)
@@ -44,7 +71,7 @@ export function StatuteHierarchyView() {
             normalizeRootName === normalizedTargetName ||
             (normalizedAbbreviation && normalizedAbbreviation === normalizedTargetName)
           ) {
-            if (!isCancelled) {
+            if (!isCancelled && detail.root) {
               setSelectedStatute({
                 id: detail.root.id || statuteId,
                 name: detail.root.name,
@@ -330,27 +357,49 @@ export function StatuteHierarchyView() {
         </div>
       </div>
 
+      {/* 유형 필터 */}
+      <div className="px-4 py-2 border-b border-slate-700 bg-slate-800/50 flex items-center gap-2 shrink-0">
+        <span className="text-xs text-slate-400 mr-1">유형 필터:</span>
+        {ALL_STATUTE_TYPES.map((type) => (
+          <button
+            key={type}
+            onClick={() => toggleType(type)}
+            className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+              visibleTypes.has(type)
+                ? TYPE_BADGE_COLORS[type]
+                : 'bg-slate-800 text-slate-600 border-slate-700'
+            }`}
+          >
+            {type}
+          </button>
+        ))}
+      </div>
+
       {/* 그래프 + 상세 패널 */}
       <div className="flex flex-1 overflow-hidden">
         {/* 그래프 영역 */}
-        <div className="relative flex-1">
+        <div className="relative flex-1 overflow-hidden">
           <div className="absolute inset-0">
             <StatuteForceGraph
               centerId={selectedStatute?.id}
               centerName={selectedStatute?.name}
               onNodeClick={handleNodeClick}
+              visibleTypes={visibleTypes}
+              highlightNodeId={selectedStatute?.id}
             />
           </div>
         </div>
 
         {/* 상세 사이드 패널 */}
         {(detailData || detailLoading) && (
-          <StatuteDetailPanel
-            data={detailData || { root: null, upper: [], lower: [], related: [] }}
-            loading={detailLoading}
-            onClose={() => setDetailData(null)}
-            onNodeClick={handlePanelNodeClick}
-          />
+          <div className="relative z-10 h-full">
+            <StatuteDetailPanel
+              data={detailData || { root: null, upper: [], lower: [], related: [] }}
+              loading={detailLoading}
+              onClose={() => setDetailData(null)}
+              onNodeClick={handlePanelNodeClick}
+            />
+          </div>
         )}
       </div>
     </div>

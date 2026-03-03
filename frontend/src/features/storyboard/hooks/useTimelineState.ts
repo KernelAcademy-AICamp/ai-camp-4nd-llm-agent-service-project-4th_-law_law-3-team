@@ -1,15 +1,19 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import type { TimelineItem, TimelineData, EditMode, VideoSettings } from '../types'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import type { TimelineItem, TimelineData, EditMode } from '../types'
 import { storyboardService } from '../services'
-
-const generateId = () =>
-  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`
+import { useImageGeneration } from './useImageGeneration'
+import { useVideoGeneration } from './useVideoGeneration'
+import { generateId } from '../utils/generateId'
 
 export function useTimelineState() {
   // 타임라인 데이터
   const [items, setItems] = useState<TimelineItem[]>([])
+  const itemsRef = useRef<TimelineItem[]>(items)
+  useEffect(() => {
+    itemsRef.current = items
+  }, [items])
   const [title, setTitle] = useState('새 타임라인')
   const [originalText, setOriginalText] = useState<string | undefined>()
   const [summary, setSummary] = useState<string | undefined>()
@@ -20,15 +24,26 @@ export function useTimelineState() {
   const [isExtracting, setIsExtracting] = useState(false)
   const [extractError, setExtractError] = useState<string | null>(null)
 
-  // 이미지 생성 상태
-  const [generatingImageIds, setGeneratingImageIds] = useState<Set<string>>(new Set())
-  const [isGeneratingBatch, setIsGeneratingBatch] = useState(false)
-  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | undefined>()
+  // 이미지/영상 생성 에러 상태
+  const [actionError, setActionError] = useState<string | null>(null)
 
-  // 영상 생성 상태
-  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false)
-  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null)
-  const [showVideoModal, setShowVideoModal] = useState(false)
+  // 이미지 생성 서브 훅
+  const {
+    generatingImageIds,
+    isGeneratingBatch,
+    batchProgress,
+    generateItemImage,
+    generateAllImages,
+  } = useImageGeneration({ itemsRef, setItems, setActionError })
+
+  // 영상 생성 서브 훅
+  const {
+    isGeneratingVideo,
+    generatedVideoUrl,
+    showVideoModal,
+    setShowVideoModal,
+    generateVideo,
+  } = useVideoGeneration({ setActionError })
 
   // AI 타임라인 추출 (텍스트)
   const extractTimeline = useCallback(async (text: string) => {
@@ -106,130 +121,19 @@ export function useTimelineState() {
     }
   }, [])
 
-  // 단일 스토리보드 이미지 생성
-  const generateItemImage = useCallback(async (itemId: string) => {
-    setGeneratingImageIds((prev) => new Set(prev).add(itemId))
-
-    try {
-      // functional update로 최신 items 상태 참조
-      let targetItem: TimelineItem | undefined
-      setItems((currentItems) => {
-        targetItem = currentItems.find((i) => i.id === itemId)
-        return currentItems
-      })
-
-      if (!targetItem) {
-        return
-      }
-
-      const response = await storyboardService.generateImage(targetItem)
-      if (response.success && response.image_url) {
-        setItems((prev) =>
-          prev.map((i) =>
-            i.id === itemId
-              ? { ...i, imageUrl: response.image_url, imagePrompt: response.image_prompt }
-              : i
-          )
-        )
-      } else {
-        console.error('Image generation failed:', response.error)
-      }
-    } catch (error) {
-      console.error('Generate image error:', error)
-    } finally {
-      setGeneratingImageIds((prev) => {
-        const newSet = new Set(prev)
-        newSet.delete(itemId)
-        return newSet
-      })
-    }
-  }, [])
-
-  // 일괄 스토리보드 이미지 생성 (순차 처리 - 안정적)
-  const generateAllImages = useCallback(async () => {
-    // functional update로 최신 items 가져오기
-    let currentItems: TimelineItem[] = []
-    setItems((prev) => {
-      currentItems = prev
-      return prev
-    })
-
-    if (currentItems.length === 0) return
-
-    setIsGeneratingBatch(true)
-    setBatchProgress({ current: 0, total: currentItems.length })
-
-    try {
-      // 순차적으로 이미지 생성 (한 번에 하나씩)
-      for (let i = 0; i < currentItems.length; i++) {
-        const item = currentItems[i]
-        setBatchProgress({ current: i, total: currentItems.length })
-
-        try {
-          const response = await storyboardService.generateImage(item)
-          if (response.success && response.image_url) {
-            // 즉시 UI 업데이트
-            setItems((prev) =>
-              prev.map((it) =>
-                it.id === item.id
-                  ? { ...it, imageUrl: response.image_url, imagePrompt: response.image_prompt }
-                  : it
-              )
-            )
-          }
-        } catch (err) {
-          console.error(`Image generation failed for ${item.id}:`, err)
-        }
-      }
-
-      setBatchProgress({ current: currentItems.length, total: currentItems.length })
-    } catch (error) {
-      console.error('Generate all images error:', error)
-    } finally {
-      setIsGeneratingBatch(false)
-      setBatchProgress(undefined)
-    }
-  }, [])
-
-  // 영상 생성
-  const generateVideo = useCallback(async (imageUrls: string[], settings: VideoSettings) => {
-    if (imageUrls.length < 2) return
-
-    setIsGeneratingVideo(true)
-
-    try {
-      const response = await storyboardService.generateVideo({
-        timeline_id: generateId(),
-        image_urls: imageUrls,
-        duration_per_image: settings.durationPerImage,
-        transition: settings.transition,
-        transition_duration: settings.transitionDuration,
-        resolution: settings.resolution,
-      })
-
-      if (response.success && response.video_url) {
-        setGeneratedVideoUrl(response.video_url)
-      } else {
-        console.error('Video generation failed:', response.error)
-      }
-    } catch (error) {
-      console.error('Generate video error:', error)
-    } finally {
-      setIsGeneratingVideo(false)
-    }
-  }, [])
-
   // 항목 추가
   const addItem = useCallback(
     (item: Omit<TimelineItem, 'id' | 'order'>) => {
-      const newItem: TimelineItem = {
-        ...item,
-        id: generateId(),
-        order: items.length,
-      }
-      setItems((prev) => [...prev, newItem])
+      setItems((prev) => {
+        const newItem: TimelineItem = {
+          ...item,
+          id: generateId(),
+          order: prev.length,
+        }
+        return [...prev, newItem]
+      })
     },
-    [items.length]
+    []
   )
 
   // 항목 수정
@@ -329,7 +233,6 @@ export function useTimelineState() {
     setSelectedItemId(null)
     setEditMode('view')
     setExtractError(null)
-    setGeneratedVideoUrl(null)
   }, [])
 
   // 이미지가 있는 항목 수
@@ -347,6 +250,7 @@ export function useTimelineState() {
     selectedItemId,
     isExtracting,
     extractError,
+    actionError,
 
     // 이미지 생성 상태
     generatingImageIds,
