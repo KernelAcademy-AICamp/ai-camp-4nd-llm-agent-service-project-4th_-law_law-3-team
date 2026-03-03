@@ -29,11 +29,14 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.core.config import settings
 
+DEFAULT_MAX_TOKENS = 4096
+
 
 def get_chat_model(
     provider: Optional[str] = None,
     model: Optional[str] = None,
     temperature: float = 0.7,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     **kwargs: Any,
 ) -> BaseChatModel:
     """
@@ -43,6 +46,7 @@ def get_chat_model(
         provider: LLM 프로바이더 (openai, anthropic, google)
         model: 모델명 (없으면 config에서)
         temperature: 생성 온도
+        max_tokens: 최대 출력 토큰 수 (기본값: 4096)
         **kwargs: 추가 인자 (각 프로바이더별 옵션)
 
     Returns:
@@ -52,19 +56,20 @@ def get_chat_model(
     provider_name = str(provider_name).lower()
 
     if provider_name == "anthropic":
-        return _get_anthropic_model(model, temperature, **kwargs)
+        return _get_anthropic_model(model, temperature, max_tokens=max_tokens, **kwargs)
     elif provider_name == "google":
-        return _get_google_model(model, temperature, **kwargs)
+        return _get_google_model(model, temperature, max_tokens=max_tokens, **kwargs)
     elif provider_name == "upstage":
-        return _get_upstage_model(model, temperature, **kwargs)
+        return _get_upstage_model(model, temperature, max_tokens=max_tokens, **kwargs)
     else:
         # 기본값: OpenAI
-        return _get_openai_model(model, temperature, **kwargs)
+        return _get_openai_model(model, temperature, max_tokens=max_tokens, **kwargs)
 
 
 def _get_openai_model(
     model: Optional[str] = None,
     temperature: float = 0.7,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     **kwargs: Any,
 ) -> BaseChatModel:
     """OpenAI ChatModel 생성"""
@@ -79,9 +84,10 @@ def _get_openai_model(
             ".env 파일에 OPENAI_API_KEY를 설정해주세요."
         )
 
-    return ChatOpenAI(
+    return ChatOpenAI(  # type: ignore[call-arg]
         model=model_name,
         temperature=temperature,
+        max_tokens=max_tokens,
         api_key=api_key,  # type: ignore[arg-type]
         timeout=settings.LLM_TIMEOUT_SECONDS,
         **kwargs,
@@ -91,6 +97,7 @@ def _get_openai_model(
 def _get_anthropic_model(
     model: Optional[str] = None,
     temperature: float = 0.7,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     **kwargs: Any,
 ) -> BaseChatModel:
     """Anthropic ChatModel 생성"""
@@ -108,9 +115,10 @@ def _get_anthropic_model(
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY가 설정되지 않았습니다.")
 
-    return ChatAnthropic(
+    return ChatAnthropic(  # type: ignore[call-arg]
         model_name=model_name,
         temperature=temperature,
+        max_tokens=max_tokens,
         api_key=api_key,  # type: ignore[arg-type]
         timeout=float(settings.LLM_TIMEOUT_SECONDS),
         **kwargs,
@@ -120,6 +128,7 @@ def _get_anthropic_model(
 def _get_google_model(
     model: Optional[str] = None,
     temperature: float = 0.7,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     **kwargs: Any,
 ) -> BaseChatModel:
     """Google Gemini ChatModel 생성"""
@@ -140,6 +149,7 @@ def _get_google_model(
     return ChatGoogleGenerativeAI(
         model=model_name,
         temperature=temperature,
+        max_output_tokens=max_tokens,
         google_api_key=api_key,
         **kwargs,
     )
@@ -148,6 +158,7 @@ def _get_google_model(
 def _get_upstage_model(
     model: Optional[str] = None,
     temperature: float = 0.7,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     **kwargs: Any,
 ) -> BaseChatModel:
     """Upstage Solar ChatModel 생성 (OpenAI 호환 API)"""
@@ -159,9 +170,10 @@ def _get_upstage_model(
     if not api_key:
         raise ValueError("UPSTAGE_API_KEY가 설정되지 않았습니다.")
 
-    return ChatOpenAI(
+    return ChatOpenAI(  # type: ignore[call-arg]
         model=model_name,
         temperature=temperature,
+        max_tokens=max_tokens,
         api_key=api_key,  # type: ignore[arg-type]
         base_url="https://api.upstage.ai/v1/solar",
         timeout=settings.LLM_TIMEOUT_SECONDS,

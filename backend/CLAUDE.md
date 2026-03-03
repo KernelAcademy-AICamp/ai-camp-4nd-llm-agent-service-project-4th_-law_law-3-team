@@ -245,8 +245,6 @@ app/
 │   ├── lawyer_finder/
 │   ├── lawyer_stats/
 │   ├── mock_trial/
-│   ├── multi_agent/
-│   ├── review_price/
 │   ├── small_claims/
 │   ├── storyboard/
 │   └── workspace/

@@ -82,7 +82,7 @@ async def _run_streaming_node_inner(
     output_session_data: dict[str, Any] = {}
 
     async for event_type, data in agent.process_stream(
-        message=state["message"],
+        message=state.get("message", ""),
         history=state.get("history"),
         session_data=state.get("session_data"),
         user_location=state.get("user_location"),
@@ -160,7 +160,7 @@ async def _run_nonstreaming_node(
     try:
         result = await asyncio.wait_for(
             agent.process(
-                message=state["message"],
+                message=state.get("message", ""),
                 history=state.get("history"),
                 session_data=state.get("session_data"),
                 user_location=state.get("user_location"),
@@ -230,7 +230,7 @@ def router_node(state: ChatState) -> Command[str]:
     Returns:
         Command with goto target node
     """
-    message = state["message"]
+    message = state.get("message", "")
     user_role = state.get("user_role", "user")
     session_data = state.get("session_data", {})
     agent_override = state.get("agent_override")

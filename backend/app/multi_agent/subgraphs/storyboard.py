@@ -432,7 +432,7 @@ def confirm_node(state: StoryboardState) -> Command[str]:
     )
 
 
-def generate_node(state: StoryboardState) -> dict[str, Any]:
+async def generate_node(state: StoryboardState) -> dict[str, Any]:
     """타임라인 생성: LLM으로 최종 타임라인 생성"""
     collected_narrative = state.get("collected_narrative", "")
     original_message = state.get("message", "")
@@ -440,7 +440,7 @@ def generate_node(state: StoryboardState) -> dict[str, Any]:
 
     # LLM으로 타임라인 텍스트 생성
     tag_source_summary = _summarize_tag_sources(tagged_items)
-    timeline_text = _generate_timeline_text(
+    timeline_text = await _generate_timeline_text(
         collected_narrative, original_message, tag_source_summary,
     )
 
@@ -622,12 +622,12 @@ def _generate_question(
     )
 
 
-def _generate_timeline_text(
+async def _generate_timeline_text(
     collected_narrative: str,
     original_message: str,
     tag_source_summary: str = "",
 ) -> str:
-    """LLM으로 타임라인 텍스트 생성 (동기 호출)"""
+    """LLM으로 타임라인 텍스트 생성 (비동기 호출)"""
     try:
         from app.tools.llm import get_chat_model
 
@@ -637,7 +637,7 @@ def _generate_timeline_text(
             tag_source_summary=tag_source_summary or "(없음)",
             original_message=original_message[:500],
         )
-        response = model.invoke([("user", prompt)])
+        response = await model.ainvoke([("user", prompt)])
         return str(response.content)
     except Exception:
         logger.exception("타임라인 LLM 생성 실패, 수집 정보 반환")
