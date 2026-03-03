@@ -114,6 +114,12 @@ services:
       - ./backend/data/mecab_userdic:/app/mecab_userdic:ro
       # 미디어 파일 (persistent, 컨테이너 재시작 시 유실 방지)
       - media_data:/app/media
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      start_period: 180s
+      retries: 10
     depends_on:
       postgres:
         condition: service_healthy

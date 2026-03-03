@@ -1,4 +1,17 @@
 /** @type {import('next').NextConfig} */
+// Vercel 배포 시 BACKEND_URL 미설정 방지 (VERCEL env는 Vercel이 자동 설정)
+if (
+  process.env.VERCEL === '1' &&
+  (!process.env.BACKEND_URL ||
+    process.env.BACKEND_URL.includes('127.0.0.1') ||
+    process.env.BACKEND_URL.includes('localhost'))
+) {
+  throw new Error(
+    'BACKEND_URL 환경변수가 프로덕션에 설정되지 않았거나 localhost를 가리킵니다. ' +
+      'Vercel 대시보드에서 BACKEND_URL=https://api.your-domain.example 을 설정하세요.'
+  )
+}
+
 const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
 
 const nextConfig = {

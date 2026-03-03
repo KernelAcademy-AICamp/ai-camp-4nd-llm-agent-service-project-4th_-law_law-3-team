@@ -10,7 +10,27 @@ env:
   ENV_FILE: .env.prod
 
 jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Backend lint
+        run: cd backend && uv sync --dev && uv run ruff check app/
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Frontend build check
+        run: cd frontend && npm ci && npm run build
+
   deploy:
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH
@@ -21,28 +41,4 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd ${{ secrets.PROJECT_DIR || '/opt/law-platform' }}
-
-            # 최신 코드 가져오기
-            git fetch origin
-            git checkout deploy/aws-arm
-            git pull origin deploy/aws-arm
-
-            # 빌드 및 재시작
-            docker compose --env-file ${{ env.ENV_FILE }} -f ${{ env.COMPOSE_FILE }} build
-            docker compose --env-file ${{ env.ENV_FILE }} -f ${{ env.COMPOSE_FILE }} up -d
-
-            # DB 마이그레이션
-            docker compose --env-file ${{ env.ENV_FILE }} -f ${{ env.COMPOSE_FILE }} exec -T backend python -m alembic upgrade head
-
-            # 헬스 체크 (최대 120초 대기 — ML 모델 로드 고려)
-            for i in $(seq 1 12); do
-              if curl -sf http://localhost/health > /dev/null 2>&1; then
-                echo "Health check passed"
-                exit 0
-              fi
-              echo "Waiting for health check... ($i/12)"
-              sleep 10
-            done
-            echo "WARNING: Health check did not pass within 120s"
-            docker compose --env-file ${{ env.ENV_FILE }} -f ${{ env.COMPOSE_FILE }} logs --tail=50 backend
-            exit 1
+            bash scripts/deploy/deploy.sh
