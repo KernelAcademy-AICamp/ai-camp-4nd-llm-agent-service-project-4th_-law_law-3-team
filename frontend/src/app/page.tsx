@@ -128,27 +128,15 @@ function HomeContent() {
       >
         {/* Header Section */}
         <header className="mb-16">
-          <div className="flex justify-between items-start mb-12">
+          <div className="mb-12">
             <div className="space-y-1">
               <h1 className="text-4xl font-bold text-[#1D1D1F] tracking-tight">
                 반갑습니다, <span className="text-blue-600">{role === 'lawyer' ? '변호사님' : '의뢰인님'}</span>
               </h1>
-              <p className="text-xl text-[#86868B] font-medium">
-                오늘도 당신의 법률 파트너 AI가 대기하고 있습니다.
-              </p>
             </div>
-            <button
-              onClick={handleResetRole}
-              className="px-4 py-2 text-sm font-semibold text-[#86868B] hover:text-[#1D1D1F] bg-white border border-[#D2D2D7] rounded-full shadow-sm transition-all active:scale-95"
-            >
-              역할 변경
-            </button>
           </div>
 
           <div className="space-y-2">
-            <div className="inline-block px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-bold uppercase tracking-widest mb-4">
-              AI Command Center
-            </div>
             <h2 className="text-5xl font-extrabold text-[#1D1D1F] leading-tight max-w-2xl">
               어떤 업무를 <br />도와드릴까요?
             </h2>
@@ -157,16 +145,21 @@ function HomeContent() {
 
         {/* Quick Recommendations Section */}
         <section>
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center mb-8">
             <h3 className="text-sm font-bold text-[#86868B] uppercase tracking-widest flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
               추천 작업
             </h3>
-            <span className="text-xs text-[#86868B]">메뉴의 모든 기능은 대화로 실행 가능합니다</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {enabledModules.slice(0, 4).map((module) => (
+            {(() => {
+              const lawyerPicks = ['lawyer-stats', 'case-precedent', 'mock-trial', 'storyboard']
+              const picks = role === 'lawyer'
+                ? lawyerPicks.map(id => enabledModules.find(m => m.id === id)).filter(Boolean)
+                : enabledModules.slice(0, 4)
+              return picks
+            })().map((module) => (
               <Link
                 key={module.id}
                 href={module.href}

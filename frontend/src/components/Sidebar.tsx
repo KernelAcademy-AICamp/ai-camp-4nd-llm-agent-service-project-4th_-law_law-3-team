@@ -86,19 +86,17 @@ export default function Sidebar() {
       animate={{ width: isExpanded ? 260 : 64 }}
       onMouseEnter={() => setIsExpanded(true)}
       onMouseLeave={() => setIsExpanded(false)}
-      className="fixed left-0 top-0 h-screen bg-[#F5F5F7]/80 backdrop-blur-xl border-r border-[#D2D2D7]/30 z-50 flex flex-col transition-all duration-300 ease-in-out"
+      className="fixed left-0 top-0 h-screen bg-white/90 backdrop-blur-xl border-r border-[#D2D2D7]/30 z-50 flex flex-col transition-all duration-300 ease-in-out"
     >
       {/* Logo Area */}
       <div className="h-16 flex items-center px-4 mb-4 overflow-hidden shrink-0">
         <Link href={`/?role=${userRole}`} className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0 shadow-sm">
-            <span className="text-white font-bold text-xs">LP</span>
-          </div>
+          <img src="/logo.png" alt="Legal President AI" className="w-8 h-8 shrink-0 object-contain" />
           <motion.span
             animate={{ opacity: isExpanded ? 1 : 0 }}
             className="font-bold text-[#1D1D1F] whitespace-nowrap"
           >
-            LEGAL AI
+            LEGAL PRESIDENT AI
           </motion.span>
         </Link>
       </div>
@@ -192,7 +190,7 @@ export default function Sidebar() {
                 exit={{ opacity: 0 }}
                 className="text-sm font-medium whitespace-nowrap"
               >
-                역할 종료
+                나가기
               </motion.span>
             )}
           </AnimatePresence>
