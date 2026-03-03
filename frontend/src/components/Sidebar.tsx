@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search,
@@ -26,7 +26,7 @@ import {
 } from 'lucide-react'
 import { useChat } from '@/context/ChatContext'
 import { useUI } from '@/context/UIContext'
-import { getEnabledModules, getModuleCategory, CATEGORY_NAMES } from '@/lib/modules'
+import { modules, getEnabledModules, getModuleCategory, CATEGORY_NAMES } from '@/lib/modules'
 import { cn } from '@/lib/utils'
 
 const CATEGORY_ICONS: Record<string, any> = {
@@ -61,8 +61,9 @@ export default function Sidebar() {
   const { setChatOpen } = useUI()
   const [isExpanded, setIsExpanded] = useState(false)
 
+  const searchParams = useSearchParams()
   // 히어로 페이지에서는 사이드바 숨김
-  const isHeroPage = pathname === '/' && !new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('role')
+  const isHeroPage = pathname === '/' && !searchParams.get('role')
 
   const enabledModules = useMemo(() => getEnabledModules(userRole), [userRole])
 
@@ -131,7 +132,8 @@ export default function Sidebar() {
               {isExpanded && (
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-[#1D1D1F] truncate">
-                    {sessionData.active_agent.replace('_', ' ').toUpperCase()}
+                    {modules.find(m => m.id === sessionData.active_agent?.replace('_', '-'))?.name ||
+                      sessionData.active_agent?.replace('_', ' ').toUpperCase()}
                   </p>
                   <p className="text-[10px] text-[#86868B]">
                     {sessionData.step || '대기 중...'}
@@ -196,7 +198,7 @@ export default function Sidebar() {
           </AnimatePresence>
         </button>
       </div>
-    </motion.aside>
+    </motion.aside >
   )
 }
 

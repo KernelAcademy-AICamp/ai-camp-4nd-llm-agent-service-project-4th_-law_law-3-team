@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useChat } from '@/context/ChatContext'
+import { useUI } from '@/context/UIContext'
 import { ArrowLeft } from 'lucide-react'
 
 interface BackButtonProps {
@@ -11,9 +12,13 @@ interface BackButtonProps {
 export function BackButton({ className }: BackButtonProps) {
   const router = useRouter()
   const { userRole, resetSession } = useChat()
+  const { setActivePanel } = useUI()
 
   const handleBack = () => {
-    // 세션 초기화 후 홈으로 이동
+    // 1. InquiryPanel이 열려있다면 닫기
+    setActivePanel(null)
+
+    // 2. 세션 초기화 후 홈으로 이동
     resetSession()
     if (userRole) {
       router.push(`/?role=${userRole}`)

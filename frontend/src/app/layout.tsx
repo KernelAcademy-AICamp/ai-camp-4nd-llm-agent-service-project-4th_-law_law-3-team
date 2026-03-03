@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import dynamic from 'next/dynamic'
+import { Suspense } from 'react'
 import '../styles/globals.css'
 import { Providers } from './providers'
 import Sidebar from '@/components/Sidebar'
@@ -32,7 +33,9 @@ export default function RootLayout({
       <body>
         <Providers>
           <div className="flex min-h-screen relative">
-            <Sidebar />
+            <Suspense fallback={null}>
+              <Sidebar />
+            </Suspense>
             <LayoutWrapper>
               {children}
             </LayoutWrapper>

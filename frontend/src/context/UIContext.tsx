@@ -6,10 +6,12 @@ interface UIContextType {
   isChatOpen: boolean
   chatMode: 'split' | 'floating'
   activePanel: string | null
+  pendingMessage: string | null
   toggleChat: () => void
   setChatOpen: (isOpen: boolean) => void
   setChatMode: (mode: 'split' | 'floating') => void
   setActivePanel: (panel: string | null) => void
+  setPendingMessage: (message: string | null) => void
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined)
@@ -18,21 +20,25 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [chatMode, setChatModeState] = useState<'split' | 'floating'>('split')
   const [activePanel, setActivePanelState] = useState<string | null>(null)
+  const [pendingMessage, setPendingMessageState] = useState<string | null>(null)
 
   const toggleChat = useCallback(() => setIsChatOpen((prev) => !prev), [])
   const setChatOpen = useCallback((isOpen: boolean) => setIsChatOpen(isOpen), [])
   const setChatMode = useCallback((mode: 'split' | 'floating') => setChatModeState(mode), [])
   const setActivePanel = useCallback((panel: string | null) => setActivePanelState(panel), [])
+  const setPendingMessage = useCallback((message: string | null) => setPendingMessageState(message), [])
 
   return (
     <UIContext.Provider value={{
       isChatOpen,
       chatMode,
       activePanel,
+      pendingMessage,
       toggleChat,
       setChatOpen,
       setChatMode,
-      setActivePanel
+      setActivePanel,
+      setPendingMessage
     }}>
       {children}
     </UIContext.Provider>

@@ -1,19 +1,22 @@
 'use client'
 
-import { useEffect, Suspense, useMemo } from 'react'
+import { useEffect, Suspense, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getEnabledModules, getModuleCategory, CATEGORY_NAMES } from '@/lib/modules'
 import { useUI } from '@/context/UIContext'
 import { useChat, UserRole } from '@/context/ChatContext'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Send } from 'lucide-react'
 
 function HomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const role = searchParams.get('role') as 'lawyer' | 'user' | null
 
-  const { isChatOpen, setChatOpen } = useUI()
+  const { isChatOpen, setChatOpen, setPendingMessage } = useUI()
   const { setUserRole } = useChat()
+  const [inputValue, setInputValue] = useState('')
   const enabledModules = useMemo(() => getEnabledModules(role || undefined), [role])
 
   const modulesByCategory = useMemo(() => {
@@ -31,14 +34,14 @@ function HomeContent() {
     if (!role) {
       setChatOpen(false)
     } else {
-      setChatOpen(true)
+      setChatOpen(false) // 대시보드 진입 시 채팅 자동 열림 방지
       setUserRole(role as UserRole)
     }
   }, [role, setChatOpen, setUserRole])
 
   const handleRoleSelect = (selectedRole: 'lawyer' | 'user') => {
     setUserRole(selectedRole)
-    setChatOpen(true)
+    setChatOpen(false) // 역할 선택 시에도 채팅 자동 열림 방지
     router.push(`/?role=${selectedRole}`)
   }
 
@@ -121,14 +124,14 @@ function HomeContent() {
 
   // AI Command Center Layout (when role is selected)
   return (
-    <div className="min-h-screen bg-[#F5F5F7] p-6 md:p-12 relative overflow-x-hidden transition-all duration-500 ease-in-out">
+    <div className="min-h-screen bg-[#F5F5F7] pt-12 pb-6 px-6 md:pt-20 md:pb-12 md:px-12 relative transition-all duration-500 ease-in-out">
       <div
-        className={`relative z-10 transition-all duration-500 ease-in-out ${isChatOpen ? 'w-1/2 pr-12' : 'w-full max-w-5xl mx-auto'
+        className={`relative z-10 h-full flex flex-col transition-all duration-500 ease-in-out ${isChatOpen ? 'w-1/2 pr-8' : 'w-full max-w-5xl mx-auto'
           }`}
       >
         {/* Header Section */}
-        <header className="mb-16">
-          <div className="mb-12">
+        <header className="mb-20 shrink-0">
+          <div className="mb-6">
             <div className="space-y-1">
               <h1 className="text-4xl font-bold text-[#1D1D1F] tracking-tight">
                 반갑습니다, <span className="text-blue-600">{role === 'lawyer' ? '변호사님' : '의뢰인님'}</span>
@@ -136,80 +139,142 @@ function HomeContent() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <h2 className="text-5xl font-extrabold text-[#1D1D1F] leading-tight max-w-2xl">
-              어떤 업무를 <br />도와드릴까요?
+          <div className="space-y-4">
+            <h2 className="text-5xl font-extrabold text-[#1D1D1F] leading-tight tracking-tighter max-w-2xl">
+              어느 단계를 <span className="relative inline-block">
+                도와드릴까요?
+                <span className="absolute -bottom-2 left-0 w-full h-1.5 bg-blue-600/10 rounded-full" />
+              </span>
             </h2>
           </div>
         </header>
 
+        {/* Interactive Chat Input Hub */}
+        <div className="mb-20 relative group">
+          <div className="p-8 bg-white/90 backdrop-blur-2xl border-2 border-[#D2D2D7] shadow-xl rounded-[2.5rem] overflow-hidden relative">
+            {/* Background Decoration (Logo) */}
+            <div className="absolute bottom-2 right-8 opacity-[0.08] group-hover:opacity-[0.12] transform rotate-12 group-hover:rotate-0 transition-all duration-700 pointer-events-none">
+              <img src="/logo.png" alt="" className="w-32 h-32 object-contain" />
+            </div>
+
+            <div className="relative z-10">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (!inputValue.trim()) return
+                  setPendingMessage(inputValue)
+                  setChatOpen(true)
+                  setInputValue('')
+                }}
+                className="relative"
+              >
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder='"최근 판결 동향 알려줘" 혹은 "내 주변 변호사 찾아줘"'
+                  className="w-full px-8 py-6 bg-[#F5F5F7] border-none rounded-2xl text-lg font-medium text-[#1D1D1F] placeholder:text-[#86868B] focus:ring-2 focus:ring-blue-600 transition-all shadow-inner"
+                />
+                <button
+                  type="submit"
+                  disabled={!inputValue.trim()}
+                  className="absolute right-3 top-3 bottom-3 px-6 bg-blue-600 hover:bg-blue-500 disabled:bg-[#D2D2D7] text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all active:scale-95 flex items-center gap-2 group/btn"
+                >
+                  요청하기
+                  <Send size={18} className="group-hover/btn:translate-x-1 transition-transform" />
+                </button>
+              </form>
+
+              <div className="mt-6 flex flex-wrap gap-2">
+                {['최근 판례 검색', '변호사 찾기', '소액 소송 절차', '법리 검토 요청'].map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setInputValue(tag)}
+                    className="px-4 py-2 bg-[#F5F5F7] hover:bg-blue-50 text-[#86868B] hover:text-blue-600 text-xs font-bold rounded-full border border-transparent hover:border-blue-200 transition-all"
+                  >
+                    #{tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Quick Recommendations Section */}
-        <section>
-          <div className="flex items-center mb-8">
-            <h3 className="text-sm font-bold text-[#86868B] uppercase tracking-widest flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+        <section className="mb-10 mt-auto">
+          <div className="flex items-center mb-6">
+            <h3 className="text-xs font-bold text-[#86868B] uppercase tracking-widest flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
               추천 작업
             </h3>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {(() => {
-              const lawyerPicks = ['lawyer-stats', 'case-precedent', 'mock-trial', 'storyboard']
-              const picks = role === 'lawyer'
-                ? lawyerPicks.map(id => enabledModules.find(m => m.id === id)).filter(Boolean)
-                : enabledModules.slice(0, 4)
-              return picks
+              const lawyerPicks = ['lawyer-stats', 'mock-trial', 'case-precedent', 'storyboard']
+              const userPicks = ['lawyer-finder', 'small-claims', 'case-precedent', 'storyboard']
+              const targetPicks = role === 'lawyer' ? lawyerPicks : userPicks
+
+              const picks = targetPicks
+                .map(id => enabledModules.find(m => m.id === id))
+                .filter(Boolean)
+
+              return picks as Exclude<typeof picks[number], undefined>[]
             })().map((module) => (
               <Link
                 key={module.id}
                 href={module.href}
-                className="group relative block p-8 bg-white border border-[#D2D2D7]/50 rounded-[2rem] hover:shadow-apple-hover hover:border-blue-200 transition-all duration-300 overflow-hidden"
+                className="group relative block p-4 bg-white border border-[#D2D2D7]/50 rounded-2xl hover:shadow-apple-hover hover:border-blue-200 transition-all duration-300 overflow-hidden"
               >
-                {/* Background Decoration */}
-                <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
-                  <span className="text-7xl">{module.icon}</span>
+                {/* Action / Icon Indicator (Top Right) */}
+                <div className="absolute top-2 right-2 pointer-events-none">
+                  {/* Default Icon Background */}
+                  <div className="opacity-[0.03] group-hover:opacity-0 transition-opacity">
+                    <span className="text-4xl">{module.icon}</span>
+                  </div>
                 </div>
 
-                <div className="relative z-10 h-full flex flex-col">
-                  <div className="text-3xl mb-6 group-hover:scale-110 transition-transform inline-block">
+                {/* Hover Action Text (Horizontal) */}
+                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all pointer-events-none">
+                  <div className="text-[10px] font-bold text-blue-600 whitespace-nowrap bg-blue-50/80 backdrop-blur-sm px-2 py-1.5 rounded-lg flex items-center gap-1 shadow-sm border border-blue-100">
+                    시작하기 <span className="text-xs">→</span>
+                  </div>
+                </div>
+
+                <div className="relative z-10 flex flex-col">
+                  <div className="text-2xl mb-2 opacity-70 group-hover:opacity-100 group-hover:scale-110 transition-all inline-block">
                     {module.icon}
                   </div>
-                  <h4 className="text-xl font-bold text-[#1D1D1F] mb-3 group-hover:text-blue-600 transition-colors">
+                  <h4 className="text-sm font-bold text-[#1D1D1F]/80 mb-1 group-hover:text-blue-600 transition-colors line-clamp-1">
                     {module.name}
                   </h4>
-                  <p className="text-[#86868B] text-sm leading-relaxed mb-6 flex-1">
-                    {module.description}
+                  <p className="text-[#86868B]/70 group-hover:text-[#86868B] text-[10px] leading-snug line-clamp-2 transition-colors">
+                    {(() => {
+                      const overrides: Record<string, string> = role === 'lawyer'
+                        ? {
+                          'lawyer-stats': '지역·전문분야별 법률시장 구조 분석 대시보드',
+                          'case-precedent': '사건 맥락을 이해하는 AI 판례 분석 에이전트',
+                          'mock-trial': 'AI 에이전트 기반 재판 시뮬레이션',
+                          'storyboard': '사건 사실관계 구조화 및 타임라인 분석'
+                        }
+                        : {
+                          'lawyer-finder': '사건 유형과 위치를 고려한 최적의 변호사 추천',
+                          'case-precedent': '사건 내용을 기반으로 관련 판례를 찾아주는 AI 검색',
+                          'small-claims': '단계별 안내에 따라 소액소송 서류 작성',
+                          'storyboard': '복잡한 사건을 한눈에 정리'
+                        }
+                      return overrides[module.id] || module.description
+                    })()}
                   </p>
-
-                  <div className="flex items-center text-sm font-bold text-blue-600 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all">
-                    업무 시작 <span className="ml-2">→</span>
-                  </div>
                 </div>
               </Link>
             ))}
           </div>
         </section>
-
-        {/* Floating Guide */}
-        <div className="mt-20 p-8 bg-blue-600 rounded-[2.5rem] text-white shadow-xl shadow-blue-500/20 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-12 opacity-10 transform rotate-12 group-hover:rotate-0 transition-transform duration-700">
-            <span className="text-9xl">💡</span>
-          </div>
-          <div className="relative z-10 max-w-lg">
-            <h4 className="text-2xl font-bold mb-3">AI 인턴 활용 팁</h4>
-            <p className="text-blue-50/80 leading-relaxed mb-6">
-              "현재 위치 주변에 가사 전문 변호사 찾아줘" 또는 "어제 작업하던 소액소송 서류 다시 열어줘"라고 말해보세요. 우측 채팅창이 당신의 모든 명령을 수행합니다.
-            </p>
-            <button
-              onClick={() => setChatOpen(true)}
-              className="px-6 py-3 bg-white text-blue-600 rounded-full font-bold shadow-soft hover:bg-blue-50 transition-colors"
-            >
-              대화 시작하기
-            </button>
-          </div>
-        </div>
       </div>
     </div>
+
   )
 }
 

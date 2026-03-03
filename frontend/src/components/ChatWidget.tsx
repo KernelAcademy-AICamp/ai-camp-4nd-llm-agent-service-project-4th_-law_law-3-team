@@ -286,7 +286,7 @@ export default function ChatWidget() {
   const searchParams = useSearchParams()
   const agentFromUrl = searchParams.get('agent')
   const effectiveAgent = agentFromUrl || PATHNAME_AGENT_MAP[pathname] || null
-  const { isChatOpen, toggleChat, setChatOpen, chatMode, setChatMode, activePanel, setActivePanel } = useUI()
+  const { isChatOpen, toggleChat, setChatOpen, chatMode, setChatMode, activePanel, setActivePanel, pendingMessage, setPendingMessage } = useUI()
   const {
     userRole,
     setUserRole,
@@ -347,6 +347,14 @@ export default function ChatWidget() {
       }
     }
   }, [])
+
+  // Interactive Hub 연동: pendingMessage 감지 시 자동 전송
+  useEffect(() => {
+    if (pendingMessage && !isLoading && !isStreaming) {
+      handleSend(pendingMessage)
+      setPendingMessage(null) // 메시지 처리 후 초기화
+    }
+  }, [pendingMessage, isLoading, isStreaming])
 
   // 페이지 변경 시 모드 설정
   const prevPathnameRef = useRef<string | null>(null)
@@ -878,7 +886,7 @@ export default function ChatWidget() {
   // Apple HIG white theme
   const themeClasses = {
     container:
-      'bg-white/95 backdrop-blur-xl border-l border-black/[0.06] shadow-2xl text-[#1D1D1F]',
+      'bg-white/95 backdrop-blur-xl border-l border-blue-500/20 shadow-[-20px_0_80px_-20px_rgba(0,0,0,0.15),-4px_0_20px_rgba(59,130,246,0.03)] text-[#1D1D1F]',
     header: 'bg-white border-b border-black/[0.06]',
     headerTitle: 'text-[#1D1D1F]',
     headerSubtitle: 'text-[#007AFF]',
