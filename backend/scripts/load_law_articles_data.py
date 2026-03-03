@@ -28,15 +28,15 @@ from app.models.law_article import LawArticle  # noqa: E402
 from scripts.common.db import create_sync_session_factory  # noqa: E402
 from scripts.common.json_loader import load_json_file  # noqa: E402
 from scripts.common.logging_config import setup_logging  # noqa: E402
+from scripts.ingest.config import get_source_path  # noqa: E402
 from scripts.ingest.types.law import (  # noqa: E402
     _extract_article_body,
 )
 
 logger = setup_logging(__name__)
 
-# 데이터 소스 경로 (ingest 파이프라인과 동일)
-DATA_DIR = PROJECT_ROOT.parent / "data" / "ingest_source"
-LAW_FILE = DATA_DIR / "law_v3.json"
+# 데이터 소스 경로 (sources.yaml 중앙 관리)
+LAW_FILE = get_source_path("law")
 
 BATCH_SIZE = 1000
 
