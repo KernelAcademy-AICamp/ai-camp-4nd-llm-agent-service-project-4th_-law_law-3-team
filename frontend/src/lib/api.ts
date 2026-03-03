@@ -18,7 +18,7 @@ export const endpoints = {
   storyboard: '/storyboard',
   lawStudy: '/law-study',
   smallClaims: '/small-claims',
-  multiAgent: '/multi-agent',
+
   mockTrial: '/mock-trial',
   contentMarketing: '/content-marketing',
   workspace: '/workspace',

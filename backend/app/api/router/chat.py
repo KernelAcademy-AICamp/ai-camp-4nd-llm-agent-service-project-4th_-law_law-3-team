@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
+from sqlalchemy.exc import SQLAlchemyError
 from sse_starlette.sse import EventSourceResponse
 
 from app.core.database import async_session_factory
@@ -156,11 +157,11 @@ async def _persist_after_graph(
                         db, conversation_id, summary
                     )
 
-            except Exception:
-                logger.debug("자동 분류/요약 실패 (무시)", exc_info=True)
+            except (ValueError, KeyError, RuntimeError):
+                logger.warning("자동 분류/요약 실패 (무시)", exc_info=True)
 
             await db.commit()
-        except Exception:
+        except SQLAlchemyError:
             await db.rollback()
             logger.exception("대화 영속화 후처리 실패")
 
@@ -217,12 +218,18 @@ async def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
                 if graph_state2.tasks and any(t.interrupts for t in graph_state2.tasks):
                     interrupt_data = graph_state2.tasks[0].interrupts[0].value
                     response_text = interrupt_data.get("response", "")
+                    _agent_used = (
+                        result.get("agent_used")
+                        or result.get("selected_agent")
+                        or graph_state2.values.get("agent_used")
+                        or graph_state2.values.get("selected_agent", "unknown")
+                    )
                     await _persist_after_graph(
-                        conv_id, response_text, "small_claims", result, chat_request.message
+                        conv_id, response_text, _agent_used, result, chat_request.message
                     )
                     return ChatResponse(
                         response=response_text,
-                        agent_used="small_claims",
+                        agent_used=_agent_used,
                         sources=interrupt_data.get("sources", []),
                         actions=interrupt_data.get("actions", []),
                         session_data={"thread_id": thread_id},
@@ -251,12 +258,18 @@ async def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
         if graph_state.tasks and any(t.interrupts for t in graph_state.tasks):
             interrupt_data = graph_state.tasks[0].interrupts[0].value
             response_text = interrupt_data.get("response", "")
+            _agent_used = (
+                result.get("agent_used")
+                or result.get("selected_agent")
+                or graph_state.values.get("agent_used")
+                or graph_state.values.get("selected_agent", "unknown")
+            )
             await _persist_after_graph(
-                conv_id, response_text, "small_claims", result, chat_request.message
+                conv_id, response_text, _agent_used, result, chat_request.message
             )
             return ChatResponse(
                 response=response_text,
-                agent_used="small_claims",
+                agent_used=_agent_used,
                 sources=interrupt_data.get("sources", []),
                 actions=interrupt_data.get("actions", []),
                 session_data={"thread_id": thread_id},
@@ -387,11 +400,15 @@ async def chat_stream(request: Request, chat_request: ChatRequest) -> EventSourc
                     }
                     collected_response.append(response_text)
 
+                _stream_agent_used = (
+                    graph_state.values.get("agent_used")
+                    or graph_state.values.get("selected_agent", "unknown")
+                )
                 yield {
                     "event": "metadata",
                     "data": json.dumps(
                         {
-                            "agent_used": "small_claims",
+                            "agent_used": _stream_agent_used,
                             "actions": interrupt_data.get("actions", []),
                             "session_data": {
                                 "thread_id": thread_id,

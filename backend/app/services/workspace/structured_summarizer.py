@@ -107,8 +107,8 @@ class StructuredSummarizer:
 
             return normalized
 
-        except Exception:
-            logger.debug("구조화 요약 생성 실패 (무시)", exc_info=True)
+        except (ValueError, KeyError, RuntimeError):
+            logger.warning("구조화 요약 생성 실패 (무시)", exc_info=True)
             return existing_summary or {field: [] for field in SUMMARY_FIELDS}
 
     @staticmethod

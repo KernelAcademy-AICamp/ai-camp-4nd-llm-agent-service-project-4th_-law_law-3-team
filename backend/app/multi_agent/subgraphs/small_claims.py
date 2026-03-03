@@ -181,7 +181,7 @@ def init_node(state: SmallClaimsState) -> Command[str]:
                 goto="gather_info_node",
             )
 
-    message = state["message"]
+    message = state.get("message", "")
     # 메시지에서 분쟁 유형 감지 시도
     dispute_type = detect_dispute_type(message)
     if dispute_type:
@@ -289,6 +289,17 @@ async def gather_info_node(state: SmallClaimsState) -> Command[str]:
             "금액 정보를 확인했습니다.\n\n"
             "다음은 증거 자료를 정리해야 합니다.\n\n"
             + STEP_MESSAGES[SmallClaimsStep.EVIDENCE]
+        )
+
+    # RAG 판례 컨텍스트가 있으면 응답에 관련 판례 요약 추가
+    if rag_case_context:
+        # 컨텍스트가 너무 길면 앞 300자만 발췌
+        preview = rag_case_context[:300].rstrip()
+        if len(rag_case_context) > 300:
+            preview += "…"
+        response += (
+            "\n\n---\n**📋 관련 판례 참고:**\n"
+            f"{preview}"
         )
 
     return Command(

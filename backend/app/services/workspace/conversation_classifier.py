@@ -95,8 +95,8 @@ class ConversationClassifier:
                 ),
             }
 
-        except Exception:
-            logger.debug("대화 자동 분류 실패 (무시)", exc_info=True)
+        except (ValueError, KeyError, RuntimeError):
+            logger.warning("대화 자동 분류 실패 (무시)", exc_info=True)
             return {"title": "법률 상담", "case_type": "기타", "customer_name": None}
 
     @staticmethod

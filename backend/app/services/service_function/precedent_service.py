@@ -8,6 +8,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import async_session_factory
 from app.models.precedent_document import PrecedentDocument
@@ -55,7 +56,7 @@ async def fetch_precedent_details(source_ids: List[str]) -> Dict[str, Dict[str, 
                 }
                 for p in precedents
             }
-    except Exception as e:
+    except (SQLAlchemyError, ConnectionError) as e:
         logger.warning("판례 상세 정보 조회 실패: %s", e)
         return {}
 
@@ -113,7 +114,7 @@ class PrecedentService:
                         "full_reason": precedent.full_reason,
                     }
                 return None
-        except Exception as e:
+        except (SQLAlchemyError, ConnectionError) as e:
             logger.warning("판례 조회 실패: %s", e)
             return None
 
@@ -149,7 +150,7 @@ class PrecedentService:
                         "reasoning": precedent.reasoning,
                     }
                 return None
-        except Exception as e:
+        except (SQLAlchemyError, ConnectionError) as e:
             logger.warning("사건번호 검색 실패: %s", e)
             return None
 

@@ -25,7 +25,28 @@ _SYSTEM_PROMPT = """당신은 법학 교육 전문 AI 튜터입니다.
 3. 실제 사례나 예시를 들어 이해를 도우세요
 4. 관련된 다른 개념과의 차이점을 설명하세요
 5. 시험에 자주 출제되는 포인트가 있다면 강조하세요
-6. 마지막에 핵심 정리를 제공하세요"""
+6. 마지막에 핵심 정리를 제공하세요
+
+<example>
+사용자: 선의취득이 뭐예요?
+응답:
+## 개념 정의
+선의취득(善意取得)이란, 무권리자로부터 동산을 거래로 양수받은 자가 선의(善意)이며 과실 없이 점유를 취득한 경우, 그 동산의 소유권을 취득하는 제도입니다.
+
+## 관련 법령
+민법 제249조: "평온, 공연하게 동산을 양수한 자가 선의이며 과실 없이 그 동산을 점유한 경우에는 양도인이 정당한 소유자가 아닌 때에도 즉시 그 동산의 소유권을 취득한다."
+
+## 성립 요건
+1. 동산일 것 (부동산은 등기 제도가 있어 적용 불가)
+2. 유효한 거래 행위에 의한 양수
+3. 양수인이 선의·무과실
+4. 평온·공연한 점유 취득
+
+## 핵심 정리
+- 선의취득은 **동산 거래의 안전**을 보호하기 위한 제도
+- 도품·유실물은 2년간 선의취득 제한 (민법 제250조)
+- 시험 빈출: 선의·무과실의 판단 시점은 **점유 취득 시**
+</example>"""
 
 
 class LawStudyAgent(BaseChatAgent):
@@ -74,7 +95,7 @@ class LawStudyAgent(BaseChatAgent):
         user_message = f"참고 법령:\n{context}\n\n학습 질문: {message}"
         messages.append(("user", user_message))
 
-        response = model.invoke(messages)
+        response = await model.ainvoke(messages)
 
         sources = self._format_sources(law_results)
 

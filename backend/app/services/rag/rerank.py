@@ -54,7 +54,7 @@ def _load_reranker_model(model_name: str = DEFAULT_RERANKER_MODEL) -> Any:
     except ImportError:
         logger.warning("sentence-transformers 미설치 → 리랭킹 비활성화")
         return None
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         logger.warning("리랭커 모델 로드 실패: %s", e)
         return None
 
@@ -120,11 +120,11 @@ def _write_scores_to_langsmith(
     }
     try:
         run_tree.add_outputs(payload)
-    except Exception:
+    except (AttributeError, TypeError, RuntimeError):
         logger.debug("add_outputs 실패, add_metadata 시도")
         try:
             run_tree.add_metadata(payload)
-        except Exception:
+        except (AttributeError, TypeError, RuntimeError):
             logger.warning("LangSmith 리랭킹 점수 기록 실패")
 
 
@@ -210,7 +210,7 @@ def rerank_documents(
 
         return reranked
 
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         logger.warning("리랭킹 실패: %s", e)
         return documents[:top_k]
 
@@ -269,7 +269,7 @@ def _rerank_with_onnx(
 
         return reranked
 
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         logger.warning("ONNX 리랭킹 실패, PyTorch 폴백: %s", e)
         return rerank_documents(
             query, documents, top_k,

@@ -178,8 +178,8 @@ async def extract_tags(
             )
         return tags
 
-    except Exception:
-        logger.debug("태그 추출 실패 (무시)", exc_info=True)
+    except (ValueError, KeyError, TypeError):
+        logger.warning("태그 추출 실패 (무시)", exc_info=True)
         return []
 
 

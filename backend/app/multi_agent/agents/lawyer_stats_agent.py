@@ -64,7 +64,22 @@ _INTENT_SYSTEM_PROMPT = """\
   "prediction_year": null,
   "demand_category": null,
   "demand_year": null
-}"""
+}
+
+<example>
+사용자: 서울에서 개업하려면 어떤 분야가 좋을까요?
+응답: {"query_type": "recommend_specialty", "regions": ["서울"], "province": "서울", "specialty_interest": null, "prediction_year": null, "demand_category": null, "demand_year": null}
+</example>
+
+<example>
+사용자: 전국 변호사 현황 알려줘
+응답: {"query_type": "overview", "regions": [], "province": null, "specialty_interest": null, "prediction_year": null, "demand_category": null, "demand_year": null}
+</example>
+
+<example>
+사용자: 형사 사건 수요가 많은 지역은?
+응답: {"query_type": "demand", "regions": [], "province": null, "specialty_interest": null, "prediction_year": null, "demand_category": "형사", "demand_year": null}
+</example>"""
 
 _RECOMMENDATION_SYSTEM_PROMPT = """\
 당신은 신입 변호사를 위한 시장 분석 어드바이저입니다.
@@ -214,7 +229,7 @@ class LawyerStatsAgent(BaseChatAgent):
 
             parsed = json.loads(cleaned)
             return StatsIntent(**parsed)
-        except Exception:
+        except (json.JSONDecodeError, ValueError, KeyError):
             logger.warning("의도 분석 실패, 기본값(overview) 사용: %s", message[:100])
             return StatsIntent(query_type="overview")
 
@@ -306,7 +321,7 @@ class LawyerStatsAgent(BaseChatAgent):
             async with async_session_factory() as db:
                 demand = await calculate_demand_by_region(db, category, year)
                 result["demand"] = demand
-        except Exception:
+        except (ValueError, RuntimeError):
             logger.warning("수요 데이터 조회 실패, 수요 데이터 없이 진행")
             result["demand"] = None
 
@@ -352,7 +367,7 @@ class LawyerStatsAgent(BaseChatAgent):
                     year = intent.demand_year or 2024
                     async with async_session_factory() as db:
                         return {"demand": await calculate_demand_by_region(db, category, year)}
-                except Exception:
+                except (ValueError, RuntimeError):
                     logger.warning("수요 데이터 조회 실패")
                     return {"demand": None}
         else:

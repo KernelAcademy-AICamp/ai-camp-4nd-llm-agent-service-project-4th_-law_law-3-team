@@ -185,6 +185,6 @@ class TimelineEngine:
 
             return result[:20]  # 최대 20개
 
-        except Exception:
-            logger.debug("타임라인 LLM 생성 실패 (무시)", exc_info=True)
+        except (ValueError, json.JSONDecodeError, RuntimeError):
+            logger.warning("타임라인 LLM 생성 실패 (무시)", exc_info=True)
             return []

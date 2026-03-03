@@ -66,7 +66,7 @@ def rewrite_query(
         if rewritten:
             return rewritten
 
-    except Exception as e:
+    except (ValueError, RuntimeError) as e:
         logger.warning("쿼리 리라이팅 실패 (LLM): %s", e)
         keywords = extract_legal_keywords(query)
         if keywords:

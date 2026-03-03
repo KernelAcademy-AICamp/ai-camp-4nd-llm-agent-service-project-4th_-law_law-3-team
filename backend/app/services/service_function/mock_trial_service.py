@@ -71,7 +71,7 @@ class LanceDBEvidenceSearcher:
                 if doc.get("metadata", {}).get("doc_type") == "precedent"
                 or not doc.get("metadata", {}).get("doc_type")
             ]
-        except Exception as e:
+        except (ValueError, RuntimeError) as e:
             logger.warning("판례 검색 실패: %s", e)
             return []
 
@@ -105,7 +105,7 @@ class LanceDBEvidenceSearcher:
                 if doc.get("metadata", {}).get("doc_type") == "law"
                 or not doc.get("metadata", {}).get("doc_type")
             ]
-        except Exception as e:
+        except (ValueError, RuntimeError) as e:
             logger.warning("법령 검색 실패: %s", e)
             return []
 
@@ -164,7 +164,7 @@ async def search_for_role(
         case_result = await search_with_pipeline_async(biased_query, case_config)
         law_result = await search_with_pipeline_async(biased_query, law_config)
         return case_result.documents, law_result.documents
-    except Exception as e:
+    except (ValueError, RuntimeError) as e:
         logger.warning("역할별 RAG 검색 실패 (role=%s): %s", role, e)
         return [], []
 
@@ -195,7 +195,7 @@ async def search_for_verdict(
     try:
         result = await search_with_pipeline_async(verdict_query, config)
         return result.documents
-    except Exception as e:
+    except (ValueError, RuntimeError) as e:
         logger.warning("양형 판례 검색 실패: %s", e)
         return []
 
@@ -233,7 +233,7 @@ async def search_rebuttal(
             or d.get("metadata", {}).get("data_type", "").startswith("법령")
         ]
         return cases, articles
-    except Exception as e:
+    except (ValueError, RuntimeError) as e:
         logger.warning("반박 증거 검색 실패: %s", e)
         return [], []
 

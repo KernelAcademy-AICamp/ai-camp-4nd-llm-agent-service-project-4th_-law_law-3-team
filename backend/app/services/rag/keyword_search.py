@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 from langsmith import traceable
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import async_session_factory, sync_session_factory
 from app.models.fts_index import FtsIndex
@@ -152,7 +153,7 @@ def search_by_keyword(
             return _execute_bm25_query(
                 session, query, n_results, doc_type, exclude_doc_types
             )
-    except Exception as e:
+    except (SQLAlchemyError, RuntimeError) as e:
         logger.warning("BM25 키워드 검색 실패: %s", e)
         return []
 
@@ -183,7 +184,7 @@ def is_fts_available_sync() -> bool:
             )
             _fts_available_cache = result.scalar_one_or_none() is not None
             return _fts_available_cache
-    except Exception:
+    except (SQLAlchemyError, RuntimeError):
         return False
 
 
@@ -212,5 +213,5 @@ async def is_fts_available() -> bool:
             )
             _fts_available_cache = result.scalar_one_or_none() is not None
             return _fts_available_cache
-    except Exception:
+    except (SQLAlchemyError, RuntimeError):
         return False

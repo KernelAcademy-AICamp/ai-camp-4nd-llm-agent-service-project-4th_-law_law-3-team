@@ -79,7 +79,7 @@ async def search_for_dispute_type(
         context = format_precedent_context(documents)
         sources = format_precedent_sources(documents)
         return documents, context, sources
-    except Exception as e:
+    except (ValueError, RuntimeError) as e:
         logger.warning("소액소송 RAG 검색 실패 (dispute_type=%s): %s", dispute_type, e)
         return [], "", []
 

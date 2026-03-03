@@ -160,7 +160,7 @@ class SmallClaimsAgent(BaseChatAgent):
             search_query = f"{dispute_type or ''} 소액소송 손해배상"
             try:
                 related_docs = await search_relevant_documents_async(search_query, n_results=3)
-            except Exception as e:
+            except (ValueError, RuntimeError) as e:
                 logger.warning(f"관련 문서 검색 실패: {e}")
 
         # 단계별 처리
@@ -329,7 +329,7 @@ class SmallClaimsAgent(BaseChatAgent):
             try:
                 precedent_service = get_precedent_service()
                 precedent_details = await precedent_service.get_details(source_ids)
-            except Exception as e:
+            except (ConnectionError, RuntimeError) as e:
                 logger.warning(f"판례 상세 조회 실패: {e}")
 
         sources = []

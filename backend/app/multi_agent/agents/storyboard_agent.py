@@ -22,7 +22,25 @@ _SYSTEM_PROMPT = """당신은 법률 사건 타임라인 전문가입니다.
 2. 각 이벤트는 "- [시점] 내용" 형식으로 작성하세요
 3. 법적으로 중요한 시점(계약일, 이행기, 소멸시효 등)을 강조하세요
 4. 핵심 쟁점을 별도로 정리하세요
-5. 마지막에 간단한 법적 조언이나 주의사항을 추가하세요"""
+5. 마지막에 간단한 법적 조언이나 주의사항을 추가하세요
+
+<example>
+사용자: 작년 3월에 전세 계약했는데 집주인이 보증금을 안 돌려줘요. 6월에 계약 만료됐고 8월에 내용증명 보냈어요.
+응답:
+## 사건 타임라인
+
+- [2024년 3월] 전세 계약 체결
+- [2025년 6월] 임대차 계약 만료 → **보증금 반환 의무 발생 시점**
+- [2025년 8월] 임대인에게 내용증명 발송
+
+## 핵심 쟁점
+- 임대차보증금 반환 청구권 (민법 제312조, 주택임대차보호법)
+- 임차권등기명령 신청 가능 여부
+
+## 주의사항
+- 보증금 반환 청구의 소멸시효는 10년이나, 조속한 법적 조치가 권장됩니다.
+- 임차권등기명령을 신청하면 이사 후에도 대항력과 우선변제권을 유지할 수 있습니다.
+</example>"""
 
 
 class StoryboardAgent(BaseChatAgent):
@@ -58,7 +76,7 @@ class StoryboardAgent(BaseChatAgent):
                 messages.append((h.get("role", "user"), h.get("content", "")))
         messages.append(("user", message))
 
-        response = model.invoke(messages)
+        response = await model.ainvoke(messages)
 
         return AgentResult(
             message=str(response.content),
