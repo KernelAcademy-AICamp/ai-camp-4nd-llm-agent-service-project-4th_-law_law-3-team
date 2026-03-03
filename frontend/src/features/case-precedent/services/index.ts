@@ -4,6 +4,7 @@ import type {
   PrecedentDetail,
   AIQuestionResponse,
   SearchFilters,
+  LawFullText,
   StatuteSearchResponse,
   StatuteHierarchyResponse,
   StatuteChildrenResponse,
@@ -36,6 +37,12 @@ export const casePrecedentService = {
     const response = await api.post(`${endpoints.casePrecedent}/precedents/${precedentId}/ask`, {
       question,
     })
+    return response.data
+  },
+
+  // 법령 전문 조회 API
+  getLawFullText: async (lawId: string): Promise<LawFullText> => {
+    const response = await api.get(`${endpoints.casePrecedent}/laws/${lawId}/full-text`)
     return response.data
   },
 

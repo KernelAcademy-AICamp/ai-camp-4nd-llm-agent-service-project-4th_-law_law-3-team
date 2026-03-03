@@ -13,29 +13,22 @@ export function LawyerView({ initialCaseId }: LawyerViewProps) {
     searchResults,
     totalResults,
     isSearching,
-    searchError,
     selectedCase,
     isLoadingDetail,
     detailError,
-    filters,
-    setFilters,
-    search,
     selectCase,
   } = useCaseSearch(initialCaseId)
 
   return (
     <div className="h-full flex overflow-hidden">
-      {/* Left Panel - Search */}
+      {/* Left Panel - Search Results */}
       <SearchPanel
         results={searchResults}
         totalResults={totalResults}
         isSearching={isSearching}
-        error={searchError}
-        filters={filters}
+        error={null}
         selectedCaseId={selectedCase?.id || null}
         selectedCase={selectedCase}
-        onFilterChange={setFilters}
-        onSearch={search}
         onCaseSelect={selectCase}
       />
 

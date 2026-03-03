@@ -7,8 +7,12 @@ from typing import Any, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 
+from app.core.database import async_session_factory
 from app.core.errors import EmbeddingModelNotFoundError
+from app.models.law_article import LawArticle
+from app.models.law_document import LawDocument
 from app.services.rag import search_relevant_documents_async
 from app.services.service_function.precedent_service import fetch_precedent_details
 from app.tools.graph.pg_graph_service import get_pg_graph_service
@@ -415,6 +419,83 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
     except Exception as e:
         logger.error(f"판례 조회 실패: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="판례 조회 중 오류가 발생했습니다")
+
+
+# ============================================
+# 법령 전문 조회 API (Law Full Text)
+# ============================================
+
+
+class LawArticleItem(BaseModel):
+    """조문 단위 응답"""
+    article_number: str
+    article_title: Optional[str] = None
+    article_content: str
+
+
+class LawFullTextResponse(BaseModel):
+    """법령 전문 응답 (조문 단위)"""
+    law_id: str
+    law_name: str
+    law_type: Optional[str] = None
+    ministry: Optional[str] = None
+    ai_summary: Optional[str] = None
+    supplementary: Optional[str] = None
+    articles: List[LawArticleItem]
+    total_articles: int
+
+
+@router.get("/laws/{law_id}/full-text", response_model=LawFullTextResponse)
+async def get_law_full_text(law_id: str) -> LawFullTextResponse:
+    """
+    법령 전문 조회 API
+
+    law_id로 법령의 조문 목록, 부칙, AI 요약을 반환합니다.
+    law_articles 테이블에서 조문 단위로 조회합니다.
+    """
+    try:
+        async with async_session_factory() as session:
+            # 법령 기본 정보 조회
+            law_result = await session.execute(
+                select(LawDocument).where(LawDocument.law_id == law_id)
+            )
+            law = law_result.scalar_one_or_none()
+
+            if not law:
+                raise HTTPException(status_code=404, detail="법령을 찾을 수 없습니다")
+
+            # 조문 목록 조회 (조문번호 순)
+            articles_result = await session.execute(
+                select(LawArticle)
+                .where(LawArticle.law_id == law_id)
+                .order_by(LawArticle.id)
+            )
+            articles = articles_result.scalars().all()
+
+        return LawFullTextResponse(
+            law_id=law.law_id,
+            law_name=law.law_name,
+            law_type=law.law_type,
+            ministry=law.ministry,
+            ai_summary=law.ai_summary,
+            supplementary=law.supplementary,
+            articles=[
+                LawArticleItem(
+                    article_number=a.article_number,
+                    article_title=a.article_title,
+                    article_content=a.article_content,
+                )
+                for a in articles
+            ],
+            total_articles=len(articles),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("법령 전문 조회 실패: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="법령 전문 조회 중 오류가 발생했습니다"
+        )
 
 
 # ============================================

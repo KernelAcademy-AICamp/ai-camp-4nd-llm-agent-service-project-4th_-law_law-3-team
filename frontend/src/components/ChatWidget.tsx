@@ -703,7 +703,10 @@ export default function ChatWidget() {
             }
 
             // NAVIGATE 액션이 없으면 에이전트 → 페이지 매핑으로 이동
-            if (!hasNavigated && agentUsed && AGENT_PAGE_MAP[agentUsed]) {
+            // 단, 현재 페이지가 이미 에이전트 매핑된 페이지라면 리다이렉트하지 않음
+            // (예: /statute-hierarchy에서 법령 검색 시 /case-precedent로 이동 방지)
+            const currentPageAgent = PATHNAME_AGENT_MAP[pathname]
+            if (!hasNavigated && agentUsed && AGENT_PAGE_MAP[agentUsed] && !currentPageAgent) {
               const targetPage = AGENT_PAGE_MAP[agentUsed]
               const targetPathname = targetPage.split('?')[0]
               if (pathname !== targetPathname) {

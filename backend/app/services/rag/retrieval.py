@@ -514,6 +514,89 @@ def _apply_law_article_content(docs: list[dict[str, Any]]) -> None:
             )
 
 
+def _populate_law_metadata(docs: list[dict[str, Any]]) -> None:
+    """법령 문서의 law_type·ministry·article_title 보강 (in-place).
+
+    벡터 검색 결과의 법령 문서에 law_documents/law_articles 테이블에서
+    메타데이터를 배치 조회하여 주입.
+    """
+    law_docs = [
+        (idx, doc)
+        for idx, doc in enumerate(docs)
+        if doc.get("metadata", {}).get("data_type") == "법령"
+    ]
+    if not law_docs:
+        return
+
+    # 1) law_documents 배치 조회 (law_type, ministry)
+    law_ids = list({
+        doc.get("metadata", {}).get("doc_id", "")
+        for _, doc in law_docs
+        if doc.get("metadata", {}).get("doc_id")
+    })
+    law_meta_map: dict[str, dict[str, str]] = {}
+    if law_ids:
+        with sync_session_factory() as session:
+            rows = session.execute(
+                text(
+                    "SELECT law_id, law_type, ministry "
+                    "FROM law_documents WHERE law_id = ANY(:ids)"
+                ),
+                {"ids": law_ids},
+            ).fetchall()
+            for row in rows:
+                law_meta_map[str(row[0])] = {
+                    "law_type": row[1] or "",
+                    "ministry": row[2] or "",
+                }
+
+    # 2) law_articles 배치 조회 (article_title)
+    article_queries: list[tuple[str, str]] = [
+        (
+            doc.get("metadata", {}).get("doc_id", ""),
+            doc.get("metadata", {}).get("article_number", ""),
+        )
+        for _, doc in law_docs
+        if doc.get("metadata", {}).get("article_number")
+        and doc.get("metadata", {}).get("doc_id")
+    ]
+    article_title_map: dict[tuple[str, str], str] = {}
+    if article_queries:
+        from sqlalchemy import and_, or_
+
+        conditions = [
+            and_(
+                LawArticle.law_id == lid,
+                LawArticle.article_number == anum,
+            )
+            for lid, anum in article_queries
+        ]
+        with sync_session_factory() as session:
+            rows = session.execute(
+                select(
+                    LawArticle.law_id,
+                    LawArticle.article_number,
+                    LawArticle.article_title,
+                ).where(or_(*conditions))
+            ).fetchall()
+            for row in rows:
+                article_title_map[(str(row[0]), str(row[1]))] = row[2] or ""
+
+    # 3) in-place 주입
+    for _, doc in law_docs:
+        meta = doc.get("metadata", {})
+        lid = meta.get("doc_id", "")
+        if lid in law_meta_map:
+            extra = law_meta_map[lid]
+            if not meta.get("law_type"):
+                meta["law_type"] = extra["law_type"]
+            if not meta.get("ministry"):
+                meta["ministry"] = extra["ministry"]
+        anum = meta.get("article_number", "")
+        if anum and (lid, anum) in article_title_map:
+            meta["article_title"] = article_title_map[(lid, anum)]
+
+
 def _populate_precedent_metadata(docs: list[dict[str, Any]]) -> None:
     """판례 문서의 case_number·decision_date·court_name 보강 (in-place).
 
