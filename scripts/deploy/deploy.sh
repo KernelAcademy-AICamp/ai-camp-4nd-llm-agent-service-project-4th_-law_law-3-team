@@ -121,6 +121,18 @@ else
 fi
 
 # ──────────────────────────────────────────────
+# 3.5. Named volume 권한 수정
+#      비루트(appuser) 컨테이너용. 빈 volume은 root 소유로 생성되므로 수정 필요
+# ──────────────────────────────────────────────
+echo "=== 3.5. Named volume 권한 수정 ==="
+for vol in law-platform_media_data law-platform_lancedb_data; do
+    if docker volume inspect "$vol" &>/dev/null; then
+        docker run --rm -v "$vol:/mnt/vol" alpine \
+            chmod -R 777 /mnt/vol 2>/dev/null || true
+    fi
+done
+
+# ──────────────────────────────────────────────
 # 4. 서비스 기동
 #    - entrypoint: download_models.py + alembic upgrade head 자동 실행
 #    - --wait: 모든 컨테이너 healthy 될 때까지 대기

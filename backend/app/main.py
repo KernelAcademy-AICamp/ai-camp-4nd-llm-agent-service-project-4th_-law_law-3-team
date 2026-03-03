@@ -26,10 +26,6 @@ from app.core.session import SessionMiddleware
 
 # 미디어 디렉토리 경로 (프로덕션: /app/media, 개발: data/media)
 MEDIA_DIR = Path(os.environ.get("MEDIA_DIR", Path(__file__).parent.parent / "data" / "media"))
-MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-
-# 웹툰 스토리보드 이미지 디렉토리
-(MEDIA_DIR / "webtoon" / "images").mkdir(parents=True, exist_ok=True)
 
 
 @asynccontextmanager
@@ -40,6 +36,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.services.rag import check_embedding_model_availability, get_local_model
 
     logger = logging.getLogger(__name__)
+
+    # 미디어 디렉토리 생성 (named volume 권한 문제 대비 graceful)
+    try:
+        MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+        (MEDIA_DIR / "webtoon" / "images").mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        logger.warning("미디어 디렉토리 생성 실패 (권한 부족): %s", MEDIA_DIR)
 
     # 시작 시: 임베딩 모델 캐시 상태 확인
     model_available = check_embedding_model_availability()
