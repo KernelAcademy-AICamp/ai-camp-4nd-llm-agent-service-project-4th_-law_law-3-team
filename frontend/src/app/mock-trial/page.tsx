@@ -256,6 +256,7 @@ export default function MockTrialPage() {
         }
         if (newRefs.length > 0) {
           setReferences((prev) => [...prev, ...newRefs])
+          setIsReferencePanelOpen(true)
         }
       }
 
@@ -290,6 +291,7 @@ export default function MockTrialPage() {
           for (const r of newRefs) referenceIdsRef.current.add(r.id)
           if (newRefs.length > 0) {
             setReferences((prev) => [...prev, ...newRefs])
+            setIsReferencePanelOpen(true)
           }
         }
         // 사용자 입력 인덱스 증가
@@ -372,6 +374,7 @@ export default function MockTrialPage() {
           for (const r of newRefs) referenceIdsRef.current.add(r.id)
           if (newRefs.length > 0) {
             setReferences((prev) => [...prev, ...newRefs])
+            setIsReferencePanelOpen(true)
           }
         }
       })
@@ -422,6 +425,7 @@ export default function MockTrialPage() {
             for (const r of newRefs) referenceIdsRef.current.add(r.id)
             if (newRefs.length > 0) {
               setReferences((prev) => [...prev, ...newRefs])
+              setIsReferencePanelOpen(true)
             }
           }
         }, 500)
@@ -505,6 +509,7 @@ export default function MockTrialPage() {
 
     if (newReferences.length > 0) {
       setReferences((prev) => [...prev, ...newReferences])
+      setIsReferencePanelOpen(true)
     }
   }, [messages])
 
@@ -678,6 +683,7 @@ export default function MockTrialPage() {
                     isLoading={isEvidenceLoading}
                     userHints={userHints}
                     physicalEvidence={physicalEvidence}
+                    references={references}
                   />
                 ) : (
                   <ReferencePanel references={references} />
