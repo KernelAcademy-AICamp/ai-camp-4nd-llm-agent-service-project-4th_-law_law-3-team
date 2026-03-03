@@ -5,6 +5,7 @@ import type {
   AIQuestionResponse,
   SearchFilters,
   LawFullText,
+  CitingCasesResponse,
   StatuteSearchResponse,
   StatuteHierarchyResponse,
   StatuteChildrenResponse,
@@ -61,6 +62,12 @@ export const casePrecedentService = {
   getStatuteChildren: async (statuteId: string, limit: number = 20): Promise<StatuteChildrenResponse> => {
     const params = new URLSearchParams({ limit: limit.toString() })
     const response = await api.get(`${endpoints.casePrecedent}/statutes/${statuteId}/children?${params}`)
+    return response.data
+  },
+
+  getCitingCases: async (statuteId: string, limit: number = 10): Promise<CitingCasesResponse> => {
+    const params = new URLSearchParams({ limit: limit.toString() })
+    const response = await api.get(`${endpoints.casePrecedent}/statutes/${statuteId}/citing-cases?${params}`)
     return response.data
   },
 

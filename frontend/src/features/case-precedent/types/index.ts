@@ -108,6 +108,24 @@ export interface LawFullText {
   supplementary?: string
   articles: LawArticleItem[]
   total_articles: number
+  enforcement_date?: string
+  promulgation_date?: string
+  promulgation_no?: string
+}
+
+// 법령 인용 판례 타입
+export interface CitingCaseItem {
+  serial_number?: string
+  case_number?: string
+  case_name?: string
+  decision_date?: string
+  court_name?: string
+}
+
+export interface CitingCasesResponse {
+  statute_id: string
+  total: number
+  cases: CitingCaseItem[]
 }
 
 // 법령 계층도 타입

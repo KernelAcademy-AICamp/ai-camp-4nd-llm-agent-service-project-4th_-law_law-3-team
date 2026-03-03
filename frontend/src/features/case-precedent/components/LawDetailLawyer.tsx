@@ -1,9 +1,12 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
-import type { ChatSource, PrecedentDetail, LawFullText } from '../types'
+import type { ChatSource, PrecedentDetail, LawFullText, StatuteHierarchyResponse } from '../types'
 import { casePrecedentService } from '../services'
+import { formatIsoDate, formatPromulgationDate } from '../utils/dateUtils'
+import { buildArticleTree, hasTreeStructure, findExpandedLabels } from '../utils/articleTreeParser'
+import type { ArticleTreeNode } from '../utils/articleTreeParser'
 
 interface LawDetailLawyerProps {
   source: ChatSource | PrecedentDetail
@@ -20,36 +23,66 @@ export function LawDetailLawyer({ source }: LawDetailLawyerProps) {
   const docId = 'doc_id' in source ? source.doc_id : undefined
   const lawName = source.law_name || ''
 
-  const handleToggleFullText = useCallback(async () => {
-    if (isFullTextOpen) {
-      setIsFullTextOpen(false)
-      return
-    }
+  const [hierarchy, setHierarchy] = useState<StatuteHierarchyResponse | null>(null)
 
-    if (fullText) {
-      setIsFullTextOpen(true)
-      return
-    }
-
-    if (!docId) {
-      setError('법령 ID가 없어 전문을 불러올 수 없습니다.')
-      setIsFullTextOpen(true)
-      return
-    }
-
-    setIsLoading(true)
+  // source 변경 시 상태 초기화 + 데이터 로딩
+  useEffect(() => {
+    setFullText(null)
     setError(null)
-    try {
-      const data = await casePrecedentService.getLawFullText(docId)
-      setFullText(data)
-      setIsFullTextOpen(true)
-    } catch {
-      setError('법령 전문을 불러오는 중 오류가 발생했습니다.')
-      setIsFullTextOpen(true)
-    } finally {
-      setIsLoading(false)
+    setIsFullTextOpen(false)
+    setIsSummaryOpen(false)
+    setHierarchy(null)
+
+    if (!docId) return
+    let cancelled = false
+
+    // 전문 로딩
+    setIsLoading(true)
+    casePrecedentService.getLawFullText(docId)
+      .then((data) => { if (!cancelled) setFullText(data) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setIsLoading(false) })
+
+    // 법령 계층 로딩
+    casePrecedentService.getStatuteHierarchy(docId)
+      .then((data) => { if (!cancelled) setHierarchy(data) })
+      .catch(() => {})
+
+    return () => { cancelled = true }
+  }, [docId])
+
+  // 조문 트리 구조
+  const articleTree = useMemo(
+    () => fullText ? buildArticleTree(fullText.articles) : [],
+    [fullText]
+  )
+  const isTree = hasTreeStructure(articleTree)
+
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!isTree || !source.article_number) return
+    const labels = findExpandedLabels(articleTree, source.article_number)
+    if (labels.size > 0) setExpandedSections(labels)
+  }, [isTree, articleTree, source.article_number])
+
+  const toggleSection = useCallback((label: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
+      return next
+    })
+  }, [])
+
+  const handleToggleFullText = useCallback(() => {
+    if (!fullText && !isLoading) {
+      if (!docId) {
+        setError('법령 ID가 없어 전문을 불러올 수 없습니다.')
+      }
     }
-  }, [isFullTextOpen, fullText, docId])
+    setIsFullTextOpen((prev) => !prev)
+  }, [fullText, isLoading, docId])
 
   return (
     <div className="space-y-4">
@@ -79,7 +112,57 @@ export function LawDetailLawyer({ source }: LawDetailLawyerProps) {
             <dd className="text-gray-800">{source.article_title}</dd>
           </>
         )}
+        {fullText?.enforcement_date && (
+          <>
+            <dt className="text-gray-500 font-medium">시행일</dt>
+            <dd className="text-gray-800">{formatIsoDate(fullText.enforcement_date)}</dd>
+          </>
+        )}
+        {fullText?.promulgation_date && (
+          <>
+            <dt className="text-gray-500 font-medium">공포일자</dt>
+            <dd className="text-gray-800">{formatPromulgationDate(fullText.promulgation_date)}</dd>
+          </>
+        )}
+        {fullText?.promulgation_no && (
+          <>
+            <dt className="text-gray-500 font-medium">공포번호</dt>
+            <dd className="text-gray-800">제{fullText.promulgation_no}호</dd>
+          </>
+        )}
       </dl>
+
+      {/* 법령 계층 (상위 > 현재 > 하위) */}
+      {hierarchy && (hierarchy.upper.length > 0 || hierarchy.lower.length > 0) && (
+        <div className="bg-blue-50 rounded-xl border border-blue-100 p-4">
+          <h4 className="text-xs font-semibold text-blue-600 mb-2">법령 단계 구조</h4>
+          <div className="flex items-center gap-2 flex-wrap text-sm">
+            {hierarchy.upper.map((node) => (
+              <a
+                key={node.id}
+                href={`/statute-hierarchy?id=${node.id}&name=${encodeURIComponent(node.name)}&type=${encodeURIComponent(node.type)}`}
+                className="text-blue-700 hover:underline"
+              >
+                {node.name}
+              </a>
+            ))}
+            {hierarchy.upper.length > 0 && <span className="text-gray-400">&rsaquo;</span>}
+            <span className="font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded">
+              {lawName}
+            </span>
+            {hierarchy.lower.length > 0 && <span className="text-gray-400">&rsaquo;</span>}
+            {hierarchy.lower.map((node) => (
+              <a
+                key={node.id}
+                href={`/statute-hierarchy?id=${node.id}&name=${encodeURIComponent(node.name)}&type=${encodeURIComponent(node.type)}`}
+                className="text-blue-700 hover:underline"
+              >
+                {node.name}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {hasArticle ? (
         /* 조문 원문 (법원 스타일) */
@@ -145,35 +228,43 @@ export function LawDetailLawyer({ source }: LawDetailLawyerProps) {
                 <div className="p-4 text-sm text-red-600 bg-red-50">{error}</div>
               ) : fullText && fullText.articles.length > 0 ? (
                 <div className="max-h-[600px] overflow-y-auto">
-                  {/* 조문 목록 */}
-                  <div className="divide-y divide-gray-100">
-                    {fullText.articles.map((article) => {
-                      const isCurrentArticle = source.article_number === article.article_number
-                      return (
-                        <div
-                          key={article.article_number}
-                          className={`px-5 py-4 ${isCurrentArticle ? 'bg-blue-50 border-l-4 border-blue-400' : ''}`}
-                        >
-                          <h4 className={`text-sm font-bold mb-1 ${isCurrentArticle ? 'text-blue-800' : 'text-gray-800'}`}>
-                            제{article.article_number}
-                            {article.article_title && (
-                              <span className="font-normal text-gray-500 ml-1">
-                                ({article.article_title})
-                              </span>
-                            )}
-                            {isCurrentArticle && (
-                              <span className="ml-2 text-xs bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded">
-                                검색된 조문
-                              </span>
-                            )}
-                          </h4>
-                          <div className="text-sm text-gray-600 leading-relaxed prose prose-sm max-w-none">
-                            <ReactMarkdown>{article.article_content}</ReactMarkdown>
+                  {isTree ? (
+                    <LawyerArticleTreeView
+                      nodes={articleTree}
+                      currentArticleNumber={source.article_number}
+                      expandedSections={expandedSections}
+                      onToggle={toggleSection}
+                    />
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {fullText.articles.map((article) => {
+                        const isCurrentArticle = source.article_number === article.article_number
+                        return (
+                          <div
+                            key={article.article_number}
+                            className={`px-5 py-4 ${isCurrentArticle ? 'bg-blue-50 border-l-4 border-blue-400' : ''}`}
+                          >
+                            <h4 className={`text-sm font-bold mb-1 ${isCurrentArticle ? 'text-blue-800' : 'text-gray-800'}`}>
+                              제{article.article_number}
+                              {article.article_title && (
+                                <span className="font-normal text-gray-500 ml-1">
+                                  ({article.article_title})
+                                </span>
+                              )}
+                              {isCurrentArticle && (
+                                <span className="ml-2 text-xs bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded">
+                                  검색된 조문
+                                </span>
+                              )}
+                            </h4>
+                            <div className="text-sm text-gray-600 leading-relaxed prose prose-sm max-w-none">
+                              <ReactMarkdown>{article.article_content}</ReactMarkdown>
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                        )
+                      })}
+                    </div>
+                  )}
 
                   {/* 부칙 */}
                   {fullText.supplementary && (
@@ -246,6 +337,87 @@ export function LawDetailLawyer({ source }: LawDetailLawyerProps) {
           )}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function LawyerArticleTreeView({
+  nodes,
+  currentArticleNumber,
+  expandedSections,
+  onToggle,
+}: {
+  nodes: ArticleTreeNode[]
+  currentArticleNumber?: string
+  expandedSections: Set<string>
+  onToggle: (label: string) => void
+}) {
+  return (
+    <div className="divide-y divide-gray-100">
+      {nodes.map((node) => {
+        if (node.type === 'article' && node.article) {
+          const isCurrentArticle = currentArticleNumber === node.article.article_number
+          return (
+            <div
+              key={node.article.article_number}
+              className={`px-5 py-4 ${isCurrentArticle ? 'bg-blue-50 border-l-4 border-blue-400' : ''}`}
+            >
+              <h4 className={`text-sm font-bold mb-1 ${isCurrentArticle ? 'text-blue-800' : 'text-gray-800'}`}>
+                제{node.article.article_number}
+                {node.article.article_title && (
+                  <span className="font-normal text-gray-500 ml-1">
+                    ({node.article.article_title})
+                  </span>
+                )}
+                {isCurrentArticle && (
+                  <span className="ml-2 text-xs bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded">
+                    검색된 조문
+                  </span>
+                )}
+              </h4>
+              <div className="text-sm text-gray-600 leading-relaxed prose prose-sm max-w-none">
+                <ReactMarkdown>{node.article.article_content}</ReactMarkdown>
+              </div>
+            </div>
+          )
+        }
+
+        const isExpanded = expandedSections.has(node.label)
+        const isChapter = node.type === 'chapter'
+        return (
+          <div key={node.label}>
+            <button
+              onClick={() => onToggle(node.label)}
+              className={`w-full text-left px-5 py-3 flex items-center gap-2 hover:bg-gray-50 transition-colors ${
+                isChapter ? 'bg-gray-100 font-bold text-gray-800' : 'bg-gray-50 font-medium text-gray-700'
+              }`}
+            >
+              <svg
+                className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <span className="text-sm">{node.label}</span>
+              <span className="text-xs text-gray-400 ml-auto">
+                {node.children.length}개
+              </span>
+            </button>
+            {isExpanded && (
+              <div className={isChapter ? 'ml-2' : 'ml-4'}>
+                <LawyerArticleTreeView
+                  nodes={node.children}
+                  currentArticleNumber={currentArticleNumber}
+                  expandedSections={expandedSections}
+                  onToggle={onToggle}
+                />
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

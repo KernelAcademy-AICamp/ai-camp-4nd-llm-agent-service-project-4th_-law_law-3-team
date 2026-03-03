@@ -443,6 +443,9 @@ class LawFullTextResponse(BaseModel):
     supplementary: Optional[str] = None
     articles: List[LawArticleItem]
     total_articles: int
+    enforcement_date: Optional[str] = None
+    promulgation_date: Optional[str] = None
+    promulgation_no: Optional[str] = None
 
 
 @router.get("/laws/{law_id}/full-text", response_model=LawFullTextResponse)
@@ -488,6 +491,13 @@ async def get_law_full_text(law_id: str) -> LawFullTextResponse:
                 for a in articles
             ],
             total_articles=len(articles),
+            enforcement_date=(
+                law.enforcement_date.isoformat()
+                if law.enforcement_date
+                else None
+            ),
+            promulgation_date=law.promulgation_date,
+            promulgation_no=law.promulgation_no,
         )
     except HTTPException:
         raise
@@ -533,6 +543,22 @@ class StatuteChildrenResponse(BaseModel):
     """법령 하위 목록 응답"""
     statute_id: str
     children: List[StatuteNodeResponse]
+
+
+class CitingCaseItem(BaseModel):
+    """법령을 인용한 판례 항목"""
+    serial_number: Optional[str] = None
+    case_number: Optional[str] = None
+    case_name: Optional[str] = None
+    decision_date: Optional[str] = None
+    court_name: Optional[str] = None
+
+
+class CitingCasesResponse(BaseModel):
+    """법령을 인용한 판례 목록 응답"""
+    statute_id: str
+    total: int
+    cases: List[CitingCaseItem]
 
 
 class GraphNodeResponse(BaseModel):
@@ -658,6 +684,40 @@ async def get_statute_children(
         logger.error(f"하위 법령 조회 실패: {e}", exc_info=True)
         raise HTTPException(
             status_code=500, detail="하위 법령 조회 중 오류가 발생했습니다"
+        )
+
+
+@router.get("/statutes/{statute_id}/citing-cases", response_model=CitingCasesResponse)
+async def get_citing_cases(
+    statute_id: str,
+    limit: int = Query(10, ge=1, le=50, description="결과 수"),
+) -> CitingCasesResponse:
+    """
+    법령을 인용한 판례 목록 조회
+
+    특정 법령을 참조조문으로 인용한 판례들을 반환합니다.
+    """
+    try:
+        pg = get_pg_graph_service()
+        cases = await pg.get_cases_citing_statute(statute_id, limit)
+        return CitingCasesResponse(
+            statute_id=statute_id,
+            total=len(cases),
+            cases=[
+                CitingCaseItem(
+                    serial_number=c.get("serial_number"),
+                    case_number=c.get("case_number"),
+                    case_name=c.get("case_name"),
+                    decision_date=c.get("decision_date"),
+                    court_name=c.get("court_name"),
+                )
+                for c in cases
+            ],
+        )
+    except Exception as e:
+        logger.error(f"인용 판례 조회 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="인용 판례 조회 중 오류가 발생했습니다"
         )
 
 
