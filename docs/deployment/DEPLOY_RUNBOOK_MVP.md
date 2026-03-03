@@ -168,7 +168,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml restart backend n
 docker compose --env-file .env.prod -f docker-compose.prod.yml down
 ```
 
-데이터 볼륨 유지됨 (`postgres_data`, `chroma_data`, `lancedb_data`).
+데이터 볼륨 유지됨 (`postgres_data`, `lancedb_data`, `media_data`).
 
 ## 11. 최소 롤백 절차
 

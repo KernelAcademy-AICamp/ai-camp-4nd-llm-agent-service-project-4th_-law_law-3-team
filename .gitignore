@@ -86,6 +86,7 @@ backups/
 # Google Drive backup secrets
 secrets/
 rclone.conf
+credentials.json
 
 # EDA output (intermediate results)
 eda_output/

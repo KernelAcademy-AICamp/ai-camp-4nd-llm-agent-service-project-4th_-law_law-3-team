@@ -317,7 +317,7 @@ class BatchAnalyzer:
             try:
                 import io
 
-                import pypdf  # type: ignore[import-not-found]
+                import pypdf
 
                 reader = pypdf.PdfReader(io.BytesIO(content))
                 pages = [page.extract_text() or "" for page in reader.pages]

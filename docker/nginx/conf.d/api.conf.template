@@ -52,6 +52,9 @@ server {
     # HSTS (HTTPS 강제)
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
 
+    # Content Security Policy (API 서버 + 미디어 서빙)
+    add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'" always;
+
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

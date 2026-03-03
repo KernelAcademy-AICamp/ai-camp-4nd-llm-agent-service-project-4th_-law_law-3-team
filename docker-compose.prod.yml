@@ -112,6 +112,8 @@ services:
       - ./backend/data/models:/app/models
       # MeCab userdic (readonly, host에서 사전 빌드, /app/data:ro 외부)
       - ./backend/data/mecab_userdic:/app/mecab_userdic:ro
+      # 미디어 파일 (persistent, 컨테이너 재시작 시 유실 방지)
+      - media_data:/app/media
     depends_on:
       postgres:
         condition: service_healthy
@@ -158,6 +160,11 @@ services:
     volumes:
       - certbot_www:/var/www/certbot
       - certbot_certs:/etc/letsencrypt
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
     restart: unless-stopped
     networks:
@@ -170,5 +177,6 @@ networks:
 volumes:
   postgres_data:
   lancedb_data:
+  media_data:
   certbot_www:
   certbot_certs:

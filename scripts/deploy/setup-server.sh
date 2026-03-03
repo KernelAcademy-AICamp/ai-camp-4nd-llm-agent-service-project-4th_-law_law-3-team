@@ -61,14 +61,14 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 
 echo ""
 echo "=== 서비스 시작 완료 ==="
-echo "상태 확인: docker compose -f docker-compose.prod.yml ps"
-echo "로그 확인: docker compose -f docker-compose.prod.yml logs -f backend"
+echo "상태 확인: docker compose --env-file .env.prod -f docker-compose.prod.yml ps"
+echo "로그 확인: docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f backend"
 echo ""
 
 # DB 마이그레이션 대기
 echo "=== PostgreSQL 준비 대기 ==="
 for i in $(seq 1 15); do
-    if docker compose -f docker-compose.prod.yml exec -T postgres pg_isready -U lawuser -d lawdb 2>&1 | grep -q "accepting"; then
+    if docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres pg_isready -U lawuser -d lawdb 2>&1 | grep -q "accepting"; then
         echo "PostgreSQL 준비 완료"
         break
     fi
@@ -77,16 +77,16 @@ for i in $(seq 1 15); do
 done
 
 echo "=== DB 마이그레이션 ==="
-docker compose -f docker-compose.prod.yml exec -T backend python -m alembic upgrade head
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T backend python -m alembic upgrade head
 
 echo ""
 echo "=== 초기 설정 완료 ==="
 echo ""
 echo "다음 단계 (수동):"
 echo "  1. ML 모델 다운로드:"
-echo "     docker compose -f docker-compose.prod.yml exec backend python scripts/download_models.py"
+echo "     docker compose --env-file .env.prod -f docker-compose.prod.yml exec backend python scripts/download_models.py"
 echo "  2. 데이터 로드 (선택):"
-echo "     docker compose -f docker-compose.prod.yml exec backend python -m scripts.ingest.cli --type all --step db"
+echo "     docker compose --env-file .env.prod -f docker-compose.prod.yml exec backend python -m scripts.ingest.cli --type all --step db"
 echo "  3. 헬스 체크:"
 echo "     curl http://localhost/health"
 echo ""
