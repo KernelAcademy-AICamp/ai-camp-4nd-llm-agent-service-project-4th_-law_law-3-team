@@ -224,6 +224,7 @@ class RAGPipeline:
             rewritten_query = rewrite_query(
                 query=query,
                 use_llm=config.use_llm_rewrite,
+                search_focus=config.doc_type,
             )
             result.rewritten_query = rewritten_query
 
@@ -349,6 +350,7 @@ class RAGPipeline:
                 rewrite_query,
                 query=query,
                 use_llm=config.use_llm_rewrite,
+                search_focus=config.doc_type,
             )
             result.rewritten_query = rewritten_query
 
@@ -399,6 +401,7 @@ class RAGPipeline:
                 rewrite_query,
                 query=query,
                 use_llm=config.use_llm_rewrite,
+                search_focus=config.doc_type,
             )
             result.rewritten_query = rewritten_query
 
