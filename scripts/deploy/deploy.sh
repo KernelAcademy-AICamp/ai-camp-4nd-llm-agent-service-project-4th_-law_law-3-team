@@ -174,10 +174,10 @@ fi
 # 6. 최종 헬스 체크
 # ──────────────────────────────────────────────
 echo "=== 6. 헬스 체크 ==="
-if curl -sf http://localhost/health > /dev/null 2>&1; then
-    echo "Health check PASSED"
+if $DC exec -T backend curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+    echo "Health check PASSED (backend direct)"
 else
-    echo "WARNING: Health check failed. 로그 확인:"
+    echo "WARNING: Backend health check failed. 로그 확인:"
     $DC logs --tail=30 backend
     exit 1
 fi
