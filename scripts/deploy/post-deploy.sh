@@ -67,7 +67,7 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 
-if ! $DC ps backend 2>/dev/null | grep -q "running"; then
+if ! $DC ps backend 2>/dev/null | grep -qE "running|Up|healthy"; then
     echo "ERROR: backend 컨테이너가 실행 중이 아닙니다."
     echo "  먼저 deploy.sh를 실행하세요: bash scripts/deploy/deploy.sh"
     exit 1
