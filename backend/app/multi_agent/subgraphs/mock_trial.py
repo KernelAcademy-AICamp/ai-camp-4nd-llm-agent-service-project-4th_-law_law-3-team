@@ -32,6 +32,7 @@ from app.multi_agent.subgraphs.mock_trial_prompts import (
 )
 from app.services.service_function.mock_trial_service import (
     build_rag_context,
+    build_references_payload,
     build_user_hints,
     get_evidence_searcher,
     search_for_role,
@@ -78,6 +79,7 @@ class MockTrialState(TypedDict, total=False):
     rag_prosecutor_context: str
     rag_attorney_context: str
     rag_user_hints: list[dict[str, Any]]
+    rag_references: list[dict[str, Any]]
 
     # Rate limiting
     llm_call_count: int
@@ -280,7 +282,7 @@ def _generate_feedback(state: MockTrialState) -> str:
 # ── 공통 노드 ──
 
 
-def setup_node(state: MockTrialState) -> Command[str]:
+async def setup_node(state: MockTrialState) -> Command[str]:
     """사건 설정 노드 (형사/민사 공통)"""
     interrupt_value = interrupt({
         "response": (
@@ -303,6 +305,39 @@ def setup_node(state: MockTrialState) -> Command[str]:
 
     agents = _init_agents(case_type)
 
+    # RAG 검색: 첫 단계부터 참조 판례/법령을 제공하기 위해 setup에서 실행
+    rag_prosecutor_context = ""
+    rag_attorney_context = ""
+    rag_user_hints: list[dict[str, Any]] = []
+    rag_references: list[dict[str, Any]] = []
+
+    if case_summary:
+        try:
+            pros_cases, pros_articles = await search_for_role(
+                "prosecutor", case_summary, case_type
+            )
+            atty_cases, atty_articles = await search_for_role(
+                "attorney", case_summary, case_type
+            )
+            rag_prosecutor_context = build_rag_context(
+                "prosecutor", pros_cases, pros_articles
+            )
+            rag_attorney_context = build_rag_context(
+                "attorney", atty_cases, atty_articles
+            )
+
+            if user_role == "prosecutor":
+                hint_cases, hint_articles = pros_cases, pros_articles
+            else:
+                hint_cases, hint_articles = atty_cases, atty_articles
+            rag_user_hints = build_user_hints(hint_cases, hint_articles)
+
+            rag_references = build_references_payload(
+                pros_cases + atty_cases, pros_articles + atty_articles
+            )
+        except Exception:
+            logger.warning("setup_node RAG 검색 실패, 빈 참조로 진행")
+
     first_stage = "identity_node" if case_type == "criminal" else "pretrial_node"
 
     return Command(
@@ -324,6 +359,10 @@ def setup_node(state: MockTrialState) -> Command[str]:
             "is_complete": False,
             "agent_used": "mock_trial",
             "output_session_data": {"active_agent": "mock_trial"},
+            "rag_prosecutor_context": rag_prosecutor_context,
+            "rag_attorney_context": rag_attorney_context,
+            "rag_user_hints": rag_user_hints,
+            "rag_references": rag_references,
         },
         goto=first_stage,
     )
@@ -343,28 +382,39 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
     evidence_cases = await searcher.search_cases(query, limit=5)
     evidence_articles = await searcher.search_articles(query, limit=5)
 
-    # 역할별 RAG 컨텍스트 생성 → state에 캐시
+    # 역할별 RAG 컨텍스트: setup_node에서 캐시된 데이터가 있으면 재사용
     case_type = state.get("case_type", "criminal")
-    pros_cases, pros_articles = await search_for_role(
-        "prosecutor", query, case_type
-    )
-    atty_cases, atty_articles = await search_for_role(
-        "attorney", query, case_type
-    )
-    rag_prosecutor_context = build_rag_context(
-        "prosecutor", pros_cases, pros_articles
-    )
-    rag_attorney_context = build_rag_context(
-        "attorney", atty_cases, atty_articles
-    )
-
-    # 사용자 힌트 생성 (사용자 역할 기준)
     user_role = state.get("user_role", "prosecutor")
-    if user_role == "prosecutor":
-        hint_cases, hint_articles = pros_cases, pros_articles
+    cached_refs = state.get("rag_references", [])
+
+    if cached_refs:
+        rag_prosecutor_context = str(state.get("rag_prosecutor_context", ""))
+        rag_attorney_context = str(state.get("rag_attorney_context", ""))
+        rag_user_hints = list(state.get("rag_user_hints", []))
+        rag_references = list(cached_refs)
     else:
-        hint_cases, hint_articles = atty_cases, atty_articles
-    rag_user_hints = build_user_hints(hint_cases, hint_articles)
+        pros_cases, pros_articles = await search_for_role(
+            "prosecutor", query, case_type
+        )
+        atty_cases, atty_articles = await search_for_role(
+            "attorney", query, case_type
+        )
+        rag_prosecutor_context = build_rag_context(
+            "prosecutor", pros_cases, pros_articles
+        )
+        rag_attorney_context = build_rag_context(
+            "attorney", atty_cases, atty_articles
+        )
+
+        if user_role == "prosecutor":
+            hint_cases, hint_articles = pros_cases, pros_articles
+        else:
+            hint_cases, hint_articles = atty_cases, atty_articles
+        rag_user_hints = build_user_hints(hint_cases, hint_articles)
+
+        rag_references = build_references_payload(
+            pros_cases + atty_cases, pros_articles + atty_articles
+        )
 
     # 판사 발언: 증거조사 시작 안내
     judge = _get_agent(state, "judge")
@@ -387,6 +437,7 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
             "articles": evidence_articles,
         },
         "user_hints": rag_user_hints,
+        "references": rag_references,
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -431,6 +482,7 @@ async def evidence_node(state: MockTrialState) -> Command[str]:
             "rag_prosecutor_context": rag_prosecutor_context,
             "rag_attorney_context": rag_attorney_context,
             "rag_user_hints": rag_user_hints,
+            "rag_references": rag_references,
             "agents": _update_agent_in_state(state.get("agents", {}), judge),
             "response": judge_response,
             "speaking_agent": "judge",
@@ -525,6 +577,7 @@ async def identity_node(state: MockTrialState) -> Command[str]:
         "speaking_agent": "judge",
         "emotion": identity_emotion,
         "stage": "identity",
+        "references": state.get("rag_references", []),
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -572,6 +625,7 @@ async def opening_node(state: MockTrialState) -> Command[str]:
             "speaking_agent": "judge",
             "stage": "opening",
             "user_hints": rag_hints,
+            "references": state.get("rag_references", []),
             "actions": [],
         })
         pros_stmt = str(interrupt_value)
@@ -612,6 +666,7 @@ async def opening_node(state: MockTrialState) -> Command[str]:
             "emotion": opening_emotion,
             "stage": "opening",
             "user_hints": rag_hints,
+            "references": state.get("rag_references", []),
             "actions": [
                 ChatAction(
                     type=ActionType.BUTTON,
@@ -681,6 +736,7 @@ async def examination_node(state: MockTrialState) -> Command[str]:
         "emotion": exam_emotion,
         "stage": "examination",
         "user_hints": rag_hints,
+        "references": state.get("rag_references", []),
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -749,6 +805,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
             "speaking_agent": "judge",
             "stage": "closing",
             "user_hints": rag_hints,
+            "references": state.get("rag_references", []),
             "actions": [],
         })
         user_stmt = str(interrupt_value)
@@ -792,6 +849,7 @@ async def criminal_closing_node(state: MockTrialState) -> Command[str]:
             "emotion": closing_emotion,
             "stage": "closing",
             "user_hints": rag_hints,
+            "references": state.get("rag_references", []),
             "actions": [],
         })
         user_stmt = str(interrupt_value)
@@ -852,6 +910,7 @@ async def pretrial_node(state: MockTrialState) -> Command[str]:
         "speaking_agent": "judge",
         "emotion": pretrial_emotion,
         "stage": "pretrial",
+        "references": state.get("rag_references", []),
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -900,6 +959,7 @@ async def claims_node(state: MockTrialState) -> Command[str]:
             "speaking_agent": "judge",
             "stage": "claims",
             "user_hints": rag_hints,
+            "references": state.get("rag_references", []),
             "actions": [],
         })
         user_input = str(interrupt_value)
@@ -942,6 +1002,7 @@ async def claims_node(state: MockTrialState) -> Command[str]:
             "emotion": claims_emotion,
             "stage": "claims",
             "user_hints": rag_hints,
+            "references": state.get("rag_references", []),
             "actions": [],
         })
         user_input = str(interrupt_value)
@@ -981,6 +1042,7 @@ async def argument_node(state: MockTrialState) -> Command[str]:
         ),
         "stage": "argument",
         "user_hints": rag_hints,
+        "references": state.get("rag_references", []),
         "actions": [
             ChatAction(
                 type=ActionType.BUTTON,
@@ -1069,6 +1131,7 @@ async def civil_closing_node(state: MockTrialState) -> Command[str]:
         "speaking_agent": "judge",
         "stage": "closing",
         "user_hints": rag_hints,
+        "references": state.get("rag_references", []),
         "actions": [],
     })
     user_stmt = str(interrupt_value)

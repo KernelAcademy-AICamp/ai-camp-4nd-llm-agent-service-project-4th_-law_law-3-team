@@ -15,6 +15,7 @@ from app.services.service_function.lawyer_service import (
     get_categories,
     get_clusters,
     get_lawyer_by_id,
+    get_region_data_cached,
     get_zoom_grid_size,
     load_lawyers_data,
     search_lawyers,
@@ -27,6 +28,7 @@ from ..schema import (
     NearbySearchResponse,
     SearchResponse,
 )
+from ..schema.region import RegionResponse
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +215,26 @@ async def search_lawyers_endpoint(
 
     validated = [LawyerResponse(**lawyer) for lawyer in lawyers_data]
     return SearchResponse(lawyers=validated, total_count=total_count)
+
+
+@router.get("/regions", response_model=RegionResponse)
+async def get_regions(
+    db: AsyncSession = Depends(get_db),
+) -> RegionResponse:
+    """
+    전국 시/도 + 시/군/구별 변호사 분포 데이터 조회
+
+    각 시/도와 하위 시/군/구의 중심 좌표와 변호사 수를 반환합니다.
+    """
+    if settings.USE_DB_LAWYERS:
+        from app.services.service_function.lawyer_db_service import (
+            get_region_data_db,
+        )
+        data = await get_region_data_db(db)
+    else:
+        data = get_region_data_cached()
+
+    return RegionResponse(**data)
 
 
 @router.get("/stats")

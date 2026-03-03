@@ -257,22 +257,50 @@ async def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
         graph_state = await graph.aget_state(config)
         if graph_state.tasks and any(t.interrupts for t in graph_state.tasks):
             interrupt_data = graph_state.tasks[0].interrupts[0].value
+            # 서브그래프 interrupt 중에는 agent_used가 부모 상태에 전파되지 않으므로
+            # selected_agent(router_node에서 설정)를 fallback으로 사용
+            active_agent = (
+                graph_state.values.get("agent_used")
+                or graph_state.values.get("selected_agent")
+                or "unknown"
+            )
+
             response_text = interrupt_data.get("response", "")
-            _agent_used = (
-                result.get("agent_used")
-                or result.get("selected_agent")
-                or graph_state.values.get("agent_used")
-                or graph_state.values.get("selected_agent", "unknown")
-            )
             await _persist_after_graph(
-                conv_id, response_text, _agent_used, result, chat_request.message
+                conv_id, response_text, active_agent, result, chat_request.message
             )
+
+            resp_session_data: dict[str, Any] = {
+                "thread_id": thread_id,
+                "session_secret": session_secret,
+            }
+
+            if active_agent == "mock_trial":
+                resp_session_data.update({
+                    "speaking_agent": interrupt_data.get(
+                        "speaking_agent", ""
+                    ),
+                    "emotion": interrupt_data.get("emotion", "neutral"),
+                    "stage": interrupt_data.get("stage", ""),
+                    "evidence": interrupt_data.get("evidence", {}),
+                    "user_hints": interrupt_data.get("user_hints", []),
+                    "references": interrupt_data.get("references", []),
+                })
+            elif active_agent == "small_claims":
+                resp_session_data.update({
+                    "dispute_type": graph_state.values.get("dispute_type"),
+                    "step": interrupt_data.get("step")
+                    or graph_state.values.get("step"),
+                    "claim_amount": graph_state.values.get("claim_amount"),
+                })
+
             return ChatResponse(
                 response=response_text,
-                agent_used=_agent_used,
+                agent_used=active_agent,
                 sources=interrupt_data.get("sources", []),
                 actions=interrupt_data.get("actions", []),
-                session_data={"thread_id": thread_id},
+                session_data=resp_session_data,
+                emotion=interrupt_data.get("emotion", "neutral"),
                 confidence=1.0,
             )
 
@@ -389,6 +417,15 @@ async def chat_stream(request: Request, chat_request: ChatRequest) -> EventSourc
                 t.interrupts for t in graph_state.tasks
             ):
                 interrupt_data = graph_state.tasks[0].interrupts[0].value
+                # 서브그래프 interrupt 중에는 agent_used가 부모 상태에 전파되지 않으므로
+                # selected_agent(router_node에서 설정)를 fallback으로 사용
+                active_agent = (
+                    graph_state.values.get("agent_used")
+                    or graph_state.values.get("selected_agent")
+                    or "unknown"
+                )
+
+                # interrupt 응답 텍스트를 token 이벤트로 전송
                 response_text = interrupt_data.get("response", "")
                 if response_text:
                     yield {
@@ -400,24 +437,55 @@ async def chat_stream(request: Request, chat_request: ChatRequest) -> EventSourc
                     }
                     collected_response.append(response_text)
 
-                _stream_agent_used = (
-                    graph_state.values.get("agent_used")
-                    or graph_state.values.get("selected_agent", "unknown")
-                )
+                # metadata 이벤트 - 에이전트별 분기
+                metadata_session_data: dict[str, Any] = {
+                    "thread_id": thread_id,
+                    "session_secret": session_secret,
+                }
+                metadata_payload: dict[str, Any] = {
+                    "agent_used": active_agent,
+                    "actions": interrupt_data.get("actions", []),
+                }
+
+                if active_agent == "mock_trial":
+                    metadata_payload["speaking_agent"] = (
+                        interrupt_data.get("speaking_agent", "")
+                    )
+                    metadata_payload["emotion"] = interrupt_data.get(
+                        "emotion", "neutral"
+                    )
+                    metadata_payload["stage"] = interrupt_data.get(
+                        "stage", ""
+                    )
+                    metadata_payload["evidence"] = interrupt_data.get(
+                        "evidence", {}
+                    )
+                    metadata_payload["user_hints"] = interrupt_data.get(
+                        "user_hints", []
+                    )
+                    metadata_payload["references"] = interrupt_data.get(
+                        "references", []
+                    )
+                    metadata_session_data["stage"] = interrupt_data.get(
+                        "stage", ""
+                    )
+                elif active_agent == "small_claims":
+                    metadata_session_data.update({
+                        "dispute_type": graph_state.values.get(
+                            "dispute_type"
+                        ),
+                        "step": interrupt_data.get("step")
+                        or graph_state.values.get("step"),
+                        "claim_amount": graph_state.values.get(
+                            "claim_amount"
+                        ),
+                    })
+
+                metadata_payload["session_data"] = metadata_session_data
                 yield {
                     "event": "metadata",
                     "data": json.dumps(
-                        {
-                            "agent_used": _stream_agent_used,
-                            "actions": interrupt_data.get("actions", []),
-                            "session_data": {
-                                "thread_id": thread_id,
-                                "conversation_id": str(conv_id),
-                                "dispute_type": graph_state.values.get("dispute_type"),
-                                "step": interrupt_data.get("step") or graph_state.values.get("step"),
-                                "claim_amount": graph_state.values.get("claim_amount"),
-                            },
-                        },
+                        metadata_payload,
                         ensure_ascii=False,
                     ),
                 }

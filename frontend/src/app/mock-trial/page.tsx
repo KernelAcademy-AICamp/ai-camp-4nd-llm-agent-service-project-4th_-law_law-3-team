@@ -13,6 +13,7 @@ import { ReferencePanel } from '@/features/mock-trial/components/ReferencePanel'
 import { EvidencePanel } from '@/features/mock-trial/components/EvidencePanel'
 import { ScenarioBriefing } from '@/features/mock-trial/components/ScenarioBriefing'
 import { eventBus } from '@/features/mock-trial/game/EventBus'
+import { useStreamingChat, type ChatMetadata } from '@/hooks/useStreamingChat'
 import { ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import { DialogueControls } from '@/features/mock-trial/components/DialogueControls'
 import type {
@@ -46,9 +47,9 @@ const DEMO_RESPONSE_DELAY = 1200
 /** 판례번호 패턴 (예: 2023다12345) */
 const CASE_NUMBER_PATTERN = /(\d{2,4}[가-힣]{1,3}\d{1,6})/g
 
-/** 법령 참조 패턴 (예: 형사소송법 제284조) */
+/** 법령 참조 패턴 (예: 형사소송법 제284조, 도로교통법 제50조) */
 const LAW_REFERENCE_PATTERN =
-  /((?:형사|민사|상법|민법|헌법|행정)(?:소송법|소송규칙)?)\s*(?:제?\s*(\d+)조(?:의?\d+)?)/g
+  /([가-힣]{2,}(?:법|규칙|령|조례)(?:시행령|시행규칙)?)\s*(?:제?\s*(\d+)조(?:의\s*\d+)?)/g
 
 export default function MockTrialPage() {
   const { isChatOpen, chatMode } = useUI()
@@ -88,6 +89,17 @@ export default function MockTrialPage() {
   const [demoScenario, setDemoScenario] = useState<DemoScenario | null>(null)
   /** 각 단계별 사용자 입력 인덱스 (몇 번째 입력을 사용할 차례인지) */
   const demoInputIndexRef = useRef<Record<string, number>>({})
+
+  // 일반 모드 SSE 상태
+  const { sendStreamingMessage } = useStreamingChat()
+  const sessionDataRef = useRef<Record<string, unknown>>({})
+  const tokenBufferRef = useRef('')
+  const setupInfoRef = useRef({
+    caseType: '',
+    caseCategory: '',
+    userRole: '',
+    caseSummary: '',
+  })
 
   const stages = caseType === 'civil' ? CIVIL_STAGES : CRIMINAL_STAGES
 
@@ -172,8 +184,87 @@ export default function MockTrialPage() {
         userRole: setup.userRole,
         caseSummary: setup.caseSummary,
       })
+
+      setupInfoRef.current = {
+        caseType: setup.caseType,
+        caseCategory: setup.caseCategory,
+        userRole: setup.userRole,
+        caseSummary: setup.caseSummary,
+      }
     },
     []
+  )
+
+  /** SSE 메타데이터 응답 처리 (일반 모드 공용) */
+  const processSSEMetadata = useCallback(
+    (metadata: ChatMetadata) => {
+      const content = tokenBufferRef.current
+      tokenBufferRef.current = ''
+
+      if (metadata.session_data) {
+        sessionDataRef.current = {
+          thread_id: metadata.session_data.thread_id,
+          session_secret: metadata.session_data.session_secret,
+        }
+      }
+
+      const speaker = metadata.speaking_agent || 'judge'
+      const emotion =
+        metadata.emotion || DEFAULT_ROLE_EMOTION[speaker] || 'neutral'
+
+      if (content) {
+        const event: CourtEvent = {
+          stage: currentStageId,
+          speaker,
+          content,
+          timestamp: new Date().toISOString(),
+          emotion: emotion as EmotionType,
+        }
+        setMessages((prev) => [...prev, event])
+        eventBus.emit('dialogue:enqueue', {
+          agent: speaker,
+          text: content,
+          emotion: emotion as EmotionType,
+        })
+      }
+
+      if (metadata.evidence) {
+        setEvidenceCases(metadata.evidence.cases as EvidenceItem[])
+        setEvidenceArticles(metadata.evidence.articles as EvidenceItem[])
+      }
+
+      if (metadata.user_hints) {
+        setUserHints(metadata.user_hints as UserHint[])
+      }
+
+      // RAG 검색 결과를 ReferencePanel에 추가
+      if (metadata.references && metadata.references.length > 0) {
+        const newRefs: ReferenceItem[] = []
+        for (const ref of metadata.references) {
+          if (!referenceIdsRef.current.has(ref.id)) {
+            referenceIdsRef.current.add(ref.id)
+            newRefs.push({
+              id: ref.id,
+              type: ref.type as 'case' | 'law',
+              title: ref.title,
+              summary: ref.summary,
+              relevance_score: ref.relevance_score,
+              source: ref.source,
+              matched_text: ref.title,
+            })
+          }
+        }
+        if (newRefs.length > 0) {
+          setReferences((prev) => [...prev, ...newRefs])
+          setIsReferencePanelOpen(true)
+        }
+      }
+
+      if (metadata.stage && metadata.stage !== currentStageId) {
+        setCurrentStageId(metadata.stage)
+      }
+    },
+    [currentStageId]
   )
 
   const handleSendMessage = useCallback(
@@ -192,16 +283,53 @@ export default function MockTrialPage() {
       if (isDemoMode && currentDemoStage) {
         // 데모 모드: mock AI 응답 재생
         playMockResponses(currentDemoStage.mockResponses, currentStageId)
+        // 데모 참조 판례/법령 추가
+        if (currentDemoStage.references) {
+          const newRefs = currentDemoStage.references.filter(
+            (r) => !referenceIdsRef.current.has(r.id)
+          )
+          for (const r of newRefs) referenceIdsRef.current.add(r.id)
+          if (newRefs.length > 0) {
+            setReferences((prev) => [...prev, ...newRefs])
+            setIsReferencePanelOpen(true)
+          }
+        }
         // 사용자 입력 인덱스 증가
         const currentIndex =
           demoInputIndexRef.current[currentStageId] ?? 0
         demoInputIndexRef.current[currentStageId] = currentIndex + 1
       } else {
-        // 일반 모드: 백엔드 응답 대기 (플레이스홀더)
-        setTimeout(() => setIsWaiting(false), 1000)
+        // 일반 모드: 백엔드 SSE 호출
+        const info = setupInfoRef.current
+        sendStreamingMessage(
+          {
+            message: text,
+            agent: 'mock_trial',
+            session_data: {
+              ...sessionDataRef.current,
+              stage: currentStageId,
+              case_type: info.caseType,
+              user_role: info.userRole,
+              case_summary: info.caseSummary,
+            },
+          },
+          {
+            onToken: (content) => {
+              tokenBufferRef.current += content
+            },
+            onMetadata: processSSEMetadata,
+            onDone: () => {
+              setIsWaiting(false)
+            },
+            onError: (error) => {
+              console.error('[MockTrial] SSE error:', error)
+              setIsWaiting(false)
+            },
+          }
+        )
       }
     },
-    [currentStageId, isDemoMode, currentDemoStage, playMockResponses]
+    [currentStageId, isDemoMode, currentDemoStage, playMockResponses, sendStreamingMessage, processSSEMetadata]
   )
 
   // ── 데모 모드 핸들러 ──
@@ -238,6 +366,17 @@ export default function MockTrialPage() {
       const unsub = eventBus.on('court:entrance:complete', () => {
         unsub()
         playMockResponses(firstStage.mockResponses, firstStageId)
+        // 데모 참조 판례/법령 추가
+        if (firstStage.references) {
+          const newRefs = firstStage.references.filter(
+            (r) => !referenceIdsRef.current.has(r.id)
+          )
+          for (const r of newRefs) referenceIdsRef.current.add(r.id)
+          if (newRefs.length > 0) {
+            setReferences((prev) => [...prev, ...newRefs])
+            setIsReferencePanelOpen(true)
+          }
+        }
       })
     }
   }, [demoScenario, handleSetupComplete, playMockResponses])
@@ -278,6 +417,17 @@ export default function MockTrialPage() {
       if (nextStage && nextStage.userInputs.length === 0) {
         setTimeout(() => {
           playMockResponses(nextStage.mockResponses, nextId)
+          // 데모 참조 판례/법령 추가
+          if (nextStage.references) {
+            const newRefs = nextStage.references.filter(
+              (r) => !referenceIdsRef.current.has(r.id)
+            )
+            for (const r of newRefs) referenceIdsRef.current.add(r.id)
+            if (newRefs.length > 0) {
+              setReferences((prev) => [...prev, ...newRefs])
+              setIsReferencePanelOpen(true)
+            }
+          }
         }, 500)
       }
     }
@@ -359,6 +509,7 @@ export default function MockTrialPage() {
 
     if (newReferences.length > 0) {
       setReferences((prev) => [...prev, ...newReferences])
+      setIsReferencePanelOpen(true)
     }
   }, [messages])
 
@@ -402,9 +553,38 @@ export default function MockTrialPage() {
     setIsWaiting(true)
 
     if (!isDemoMode) {
-      setTimeout(() => setIsWaiting(false), 1000)
+      const info = setupInfoRef.current
+      sendStreamingMessage(
+        {
+          message: JSON.stringify({
+            selected_ids: Array.from(selectedEvidenceIds),
+            excluded_ids: excludedIds,
+            text: `증거 ${selectedEvidenceIds.size}건 제출`,
+          }),
+          agent: 'mock_trial',
+          session_data: {
+            ...sessionDataRef.current,
+            stage: currentStageId,
+            case_type: info.caseType,
+            user_role: info.userRole,
+          },
+        },
+        {
+          onToken: (content) => {
+            tokenBufferRef.current += content
+          },
+          onMetadata: processSSEMetadata,
+          onDone: () => {
+            setIsWaiting(false)
+          },
+          onError: (error) => {
+            console.error('[MockTrial] SSE error:', error)
+            setIsWaiting(false)
+          },
+        }
+      )
     }
-  }, [evidenceCases, evidenceArticles, selectedEvidenceIds, currentStageId, isDemoMode])
+  }, [evidenceCases, evidenceArticles, selectedEvidenceIds, currentStageId, isDemoMode, sendStreamingMessage, processSSEMetadata])
 
   /** 현재 단계가 증거조사인지 여부 */
   const isEvidenceStage = currentStageId === 'evidence' && phase === 'trial'
@@ -503,6 +683,7 @@ export default function MockTrialPage() {
                     isLoading={isEvidenceLoading}
                     userHints={userHints}
                     physicalEvidence={physicalEvidence}
+                    references={references}
                   />
                 ) : (
                   <ReferencePanel references={references} />

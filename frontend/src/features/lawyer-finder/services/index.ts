@@ -6,6 +6,7 @@ import type {
   StatsResponse,
   CategoriesResponse,
   ClusterResponse,
+  RegionResponse,
 } from '../types'
 
 export const lawyerFinderService = {
@@ -100,6 +101,14 @@ export const lawyerFinderService = {
     if (specialty) params.append('specialty', specialty)
     else if (category) params.append('category', category)
     const response = await api.get(`${endpoints.lawyerFinder}/clusters?${params}`)
+    return response.data
+  },
+
+  /**
+   * 전국 시/도 + 시/군/구별 변호사 분포 데이터 조회
+   */
+  getRegions: async (): Promise<RegionResponse> => {
+    const response = await api.get(`${endpoints.lawyerFinder}/regions`)
     return response.data
   },
 

@@ -327,3 +327,52 @@ def build_user_hints(
         })
 
     return hints
+
+
+def build_references_payload(
+    cases: list[dict[str, Any]],
+    articles: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """검색 결과를 프론트엔드 ReferenceItem 형태의 dict 리스트로 변환합니다.
+
+    Args:
+        cases: 판례 검색 결과
+        articles: 법령 검색 결과
+
+    Returns:
+        ReferenceItem 형태의 dict 리스트
+    """
+    refs: list[dict[str, Any]] = []
+
+    for doc in cases:
+        metadata = doc.get("metadata", {})
+        case_name = metadata.get("case_name", "")
+        case_number = metadata.get("case_number", "")
+        title = case_name or case_number or "판례"
+        refs.append({
+            "id": f"rag-case-{doc.get('id', '')}",
+            "type": "case",
+            "title": title,
+            "summary": doc.get("content", "")[:200],
+            "relevance_score": round(doc.get("similarity", 0.0), 3),
+            "source": "RAG 검색",
+        })
+
+    for doc in articles:
+        metadata = doc.get("metadata", {})
+        law_name = (
+            metadata.get("case_name", "")
+            or metadata.get("title", "")
+            or metadata.get("law_name", "")
+            or "법령"
+        )
+        refs.append({
+            "id": f"rag-law-{doc.get('id', '')}",
+            "type": "law",
+            "title": law_name,
+            "summary": doc.get("content", "")[:200],
+            "relevance_score": round(doc.get("similarity", 0.0), 3),
+            "source": "RAG 검색",
+        })
+
+    return refs

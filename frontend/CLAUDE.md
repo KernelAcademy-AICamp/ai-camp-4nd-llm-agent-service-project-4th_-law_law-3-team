@@ -169,8 +169,8 @@ src/features/<module-name>/
 - `ChatPanel` - AI 에이전트 채팅 (검사/변호사/판사), 감정 이모지 표시
 - `ChatBottomBar` - 하단 입력바, 최근 AI 발언 + 감정 이모지
 - `DialogueControls` - 대화 속도(1x/2x/4x/즉시) + 스킵 버튼 + Space 안내
-- `ReferencePanel` - 법률 참조 패널
-- `EvidencePanel` - 증거 표시 (물적 증거 + RAG 판례/법령 + 사용자 힌트)
+- `ReferencePanel` - 법률 참조 패널 (references 도착 시 자동 오픈)
+- `EvidencePanel` - 증거 표시 (물적 증거 + RAG 판례/법령 + 사용자 힌트 + 참조 판례/법령 접이식 섹션)
 - `JudgmentDisplay` - 판결 결과
 - `StageProgress` - 재판 단계 진행 표시
 - `DisclaimerBanner` - 면책 안내
@@ -204,7 +204,7 @@ src/features/<module-name>/
 **데모 시나리오:** `src/features/mock-trial/demo/`
 - `DemoScenario` - 시나리오 정의 (setup, characters, objectives, evidence, stages)
 - `DemoCharacter` - 등장인물 (role, name, description)
-- `DemoStage` - 단계별 사용자 입력 + mock AI 응답
+- `DemoStage` - 단계별 사용자 입력 + mock AI 응답 + 참조 판례/법령 (첫 단계부터 제공)
 
 **물적 증거 시스템:**
 - `PhysicalEvidence` - 시나리오 내장 증거물 (document, video, financial, photo, testimony, other)
