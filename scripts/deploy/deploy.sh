@@ -106,6 +106,31 @@ mkdir -p backend/data/models backend/data/mecab_userdic
 if [ "$SYNC_DATA" = true ]; then
     echo "=== 2. S3 데이터 동기화 (data/, MeCab) ==="
     bash scripts/deploy/s3-download.sh
+
+    # MeCab userdic .dic 빌드 (ARM native)
+    # S3에서 CSV/JSON만 내려받고 .dic은 제외되므로, 호스트에서 빌드 필요
+    MECAB_CSV="backend/data/mecab_userdic/legal_terms.csv"
+    MECAB_DIC="backend/data/mecab_userdic/legal_terms.dic"
+    if [ -f "$MECAB_CSV" ] && [ ! -f "$MECAB_DIC" ]; then
+        echo "  MeCab userdic .dic 빌드 (ARM native)..."
+        # mecab-builder stage를 활용하여 아키텍처 호환 .dic 생성
+        docker build -q --target mecab-builder \
+            -f docker/backend/Dockerfile.prod \
+            -t law-mecab-builder backend/ > /dev/null 2>&1
+        docker run --rm \
+            -v "$(pwd)/backend/data/mecab_userdic:/data" \
+            law-mecab-builder \
+            /usr/local/libexec/mecab/mecab-dict-index \
+            -d /usr/local/lib/mecab/dic/mecab-ko-dic \
+            -u /data/legal_terms.dic \
+            -f utf-8 -t utf-8 \
+            /data/legal_terms.csv
+        echo "  MeCab userdic .dic 빌드 완료: $MECAB_DIC"
+    elif [ -f "$MECAB_DIC" ]; then
+        echo "  MeCab userdic .dic 이미 존재: $MECAB_DIC"
+    else
+        echo "  WARNING: MeCab CSV 없음, .dic 빌드 건너뜀 (S3에 mecab_userdic 데이터 확인 필요)"
+    fi
 else
     echo "=== 2. S3 데이터 동기화 (건너뜀) ==="
 fi

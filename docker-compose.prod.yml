@@ -78,8 +78,10 @@ services:
       # Embedding / Reranker
       USE_LOCAL_EMBEDDING: ${USE_LOCAL_EMBEDDING:-true}
       LOCAL_EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-nlpai-lab/KURE-v1}
-      USE_ONNX_EMBEDDING: ${USE_ONNX_EMBEDDING:-false}
-      USE_ONNX_RERANKER: ${USE_ONNX_RERANKER:-false}
+      USE_ONNX_EMBEDDING: ${USE_ONNX_EMBEDDING:-true}
+      USE_ONNX_RERANKER: ${USE_ONNX_RERANKER:-true}
+      ONNX_EMBEDDING_VARIANT: ${ONNX_EMBEDDING_VARIANT:-ort-opt}
+      ONNX_RERANKER_VARIANT: ${ONNX_RERANKER_VARIANT:-ort-opt-qdq}
 
       # MeCab userdic (read-only /app/data 외부)
       MECAB_USERDIC_PATH: ${MECAB_USERDIC_PATH:-/app/mecab_userdic/legal_terms.dic}

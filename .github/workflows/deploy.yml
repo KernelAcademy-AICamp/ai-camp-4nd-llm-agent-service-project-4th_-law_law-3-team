@@ -4,6 +4,27 @@ on:
   push:
     branches: [deploy/aws-arm]
   workflow_dispatch:
+    inputs:
+      sync_data:
+        description: 'S3 데이터 동기화 (data/, MeCab)'
+        type: boolean
+        default: false
+      load_lancedb:
+        description: 'LanceDB 벡터 → Docker volume 복사'
+        type: boolean
+        default: false
+      clean_models:
+        description: '불완전 모델 캐시 삭제 (재다운로드 유도)'
+        type: boolean
+        default: false
+      init_ssl:
+        description: 'SSL 인증서 초기 발급'
+        type: boolean
+        default: false
+      skip_ci:
+        description: 'CI 검사 건너뛰기 (데이터만 갱신 시)'
+        type: boolean
+        default: false
 
 env:
   COMPOSE_FILE: docker-compose.prod.yml
@@ -13,6 +34,7 @@ env:
 
 jobs:
   ci:
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_ci) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +51,7 @@ jobs:
 
   deploy:
     needs: ci
+    if: ${{ always() && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - name: Configure AWS credentials
@@ -61,7 +84,24 @@ jobs:
             git fetch origin
             git checkout deploy/aws-arm
             git pull origin deploy/aws-arm
-            bash scripts/deploy/deploy.sh --skip-pull
+
+            # deploy.sh 플래그 조립
+            DEPLOY_FLAGS="--skip-pull"
+            if [ "${{ inputs.sync_data }}" = "true" ]; then
+              DEPLOY_FLAGS="$DEPLOY_FLAGS --sync-data"
+            fi
+            if [ "${{ inputs.load_lancedb }}" = "true" ]; then
+              DEPLOY_FLAGS="$DEPLOY_FLAGS --load-lancedb"
+            fi
+            bash scripts/deploy/deploy.sh $DEPLOY_FLAGS
+
+            # post-deploy 작업 (workflow_dispatch에서만)
+            if [ "${{ inputs.clean_models }}" = "true" ]; then
+              bash scripts/deploy/post-deploy.sh --skip-s3 --skip-lancedb --clean-models
+            fi
+            if [ "${{ inputs.init_ssl }}" = "true" ]; then
+              bash scripts/deploy/init-letsencrypt.sh
+            fi
 
       - name: Close SSH for runner
         if: always()

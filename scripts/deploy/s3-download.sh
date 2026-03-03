@@ -23,9 +23,10 @@ echo ""
 mkdir -p "${PROJECT_DIR}/backend/lancedb_data"
 mkdir -p "${PROJECT_DIR}/data"
 mkdir -p "${PROJECT_DIR}/backend/data/mecab_userdic"
+mkdir -p "${PROJECT_DIR}/backend/data/models"
 
 # 1. LanceDB 벡터 데이터
-echo "[1/3] LanceDB 데이터 다운로드 중..."
+echo "[1/4] LanceDB 데이터 다운로드 중..."
 aws s3 sync \
     "${S3_BUCKET}/${S3_PREFIX}/lancedb_data/" \
     "${PROJECT_DIR}/backend/lancedb_data/" \
@@ -34,7 +35,7 @@ aws s3 sync \
 
 # 2. 런타임 데이터
 echo ""
-echo "[2/3] 런타임 데이터 다운로드 중..."
+echo "[2/4] 런타임 데이터 다운로드 중..."
 aws s3 sync \
     "${S3_BUCKET}/${S3_PREFIX}/data/" \
     "${PROJECT_DIR}/data/" \
@@ -43,11 +44,21 @@ aws s3 sync \
 
 # 3. MeCab 사전 (csv + json만 — .dic는 EC2에서 빌드하거나 scp 전송)
 echo ""
-echo "[3/3] MeCab 사전 다운로드 중..."
+echo "[3/4] MeCab 사전 다운로드 중..."
 aws s3 sync \
     "${S3_BUCKET}/${S3_PREFIX}/mecab_userdic/" \
     "${PROJECT_DIR}/backend/data/mecab_userdic/" \
     --exclude "*.dic" \
+    ${DRY_RUN} \
+    --region ap-northeast-2
+
+# 4. ONNX 모델 (임베딩: kure-v1-ort-opt, 리랭커: reranker-ort-opt-qdq)
+echo ""
+echo "[4/4] ONNX 모델 다운로드 중..."
+aws s3 sync \
+    "${S3_BUCKET}/${S3_PREFIX}/models/" \
+    "${PROJECT_DIR}/backend/data/models/" \
+    --exclude "models--*" \
     ${DRY_RUN} \
     --region ap-northeast-2
 
