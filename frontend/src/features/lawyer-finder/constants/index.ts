@@ -126,6 +126,29 @@ export const SPECIALTY_CATEGORIES: SpecialtyCategory[] = [
   },
 ]
 
+// 시/도별 중심 좌표 + 기본 반경 (API 로드 전 fallback)
+export const PROVINCE_CENTERS: Record<string, {
+  lat: number; lng: number; defaultRadius: number
+}> = {
+  '서울': { lat: 37.5665, lng: 126.9780, defaultRadius: 15000 },
+  '경기': { lat: 37.2750, lng: 127.0095, defaultRadius: 50000 },
+  '부산': { lat: 35.1796, lng: 129.0756, defaultRadius: 15000 },
+  '대구': { lat: 35.8714, lng: 128.6014, defaultRadius: 15000 },
+  '인천': { lat: 37.4563, lng: 126.7052, defaultRadius: 20000 },
+  '광주': { lat: 35.1595, lng: 126.8526, defaultRadius: 15000 },
+  '대전': { lat: 36.3504, lng: 127.3845, defaultRadius: 15000 },
+  '울산': { lat: 35.5384, lng: 129.3114, defaultRadius: 15000 },
+  '세종': { lat: 36.4800, lng: 127.2550, defaultRadius: 15000 },
+  '강원': { lat: 37.8228, lng: 128.1555, defaultRadius: 50000 },
+  '충북': { lat: 36.6357, lng: 127.4912, defaultRadius: 50000 },
+  '충남': { lat: 36.6588, lng: 126.6728, defaultRadius: 50000 },
+  '전북': { lat: 35.8203, lng: 127.1089, defaultRadius: 50000 },
+  '전남': { lat: 34.8161, lng: 126.4629, defaultRadius: 50000 },
+  '경북': { lat: 36.4919, lng: 128.8889, defaultRadius: 50000 },
+  '경남': { lat: 35.4606, lng: 128.2132, defaultRadius: 50000 },
+  '제주': { lat: 33.4996, lng: 126.5312, defaultRadius: 30000 },
+}
+
 // 전문분야 → 대분류 매핑 (역방향 조회용)
 export const SPECIALTY_TO_CATEGORY: Record<string, string> = {}
 SPECIALTY_CATEGORIES.forEach((cat) => {

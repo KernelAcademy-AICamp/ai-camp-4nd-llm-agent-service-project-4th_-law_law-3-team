@@ -73,6 +73,26 @@ export interface CategoriesResponse {
   count: number
 }
 
+// 지역 데이터 (전국 시/도 + 시/군/구)
+export interface DistrictData {
+  name: string
+  center_lat: number
+  center_lng: number
+  count: number
+}
+
+export interface ProvinceData {
+  name: string
+  center_lat: number
+  center_lng: number
+  count: number
+  districts: DistrictData[]
+}
+
+export interface RegionResponse {
+  provinces: ProvinceData[]
+}
+
 // 사무소 정보 (지도 팝업용)
 export interface Office {
   name: string

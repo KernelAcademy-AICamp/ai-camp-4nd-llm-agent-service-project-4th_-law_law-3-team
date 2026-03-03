@@ -7,6 +7,7 @@
 import json
 import logging
 import re
+from collections import defaultdict
 from functools import lru_cache
 from math import asin, cos, radians, sin, sqrt
 from pathlib import Path
@@ -555,6 +556,85 @@ def get_clusters(
         grid[key]["count"] += 1
 
     return list(grid.values())
+
+
+def get_region_data() -> Dict[str, Any]:
+    """전국 시/도 + 시/군/구별 변호사 분포 데이터 생성 (좌표 포함).
+
+    좌표가 있는 변호사만 대상으로 province/district별 평균 lat/lng과 건수를 계산합니다.
+    결과는 모듈 레벨에서 캐싱됩니다 (데이터 불변).
+    """
+    # lazy import to avoid circular dependency
+    from app.services.service_function.lawyer_stats_service import (
+        REGION_PATTERN,
+        normalize_province,
+    )
+
+    data = load_lawyers_data()
+    lawyers = data.get("lawyers", [])
+
+    # province -> district -> list of (lat, lng)
+    province_districts: Dict[str, Dict[str, List[Tuple[float, float]]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+
+    for lawyer in lawyers:
+        lat = lawyer.get("latitude")
+        lng = lawyer.get("longitude")
+        address = lawyer.get("address") or ""
+
+        if lat is None or lng is None or not address:
+            continue
+
+        match = REGION_PATTERN.match(address)
+        if not match:
+            continue
+
+        province = normalize_province(match.group(1))
+        district = match.group(2)
+        province_districts[province][district].append((lat, lng))
+
+    provinces = []
+    for prov_name, districts_map in sorted(province_districts.items()):
+        all_lats: List[float] = []
+        all_lngs: List[float] = []
+        district_list = []
+
+        for dist_name, coords in sorted(districts_map.items()):
+            avg_lat = sum(c[0] for c in coords) / len(coords)
+            avg_lng = sum(c[1] for c in coords) / len(coords)
+            district_list.append({
+                "name": dist_name,
+                "center_lat": round(avg_lat, 4),
+                "center_lng": round(avg_lng, 4),
+                "count": len(coords),
+            })
+            all_lats.extend(c[0] for c in coords)
+            all_lngs.extend(c[1] for c in coords)
+
+        prov_avg_lat = sum(all_lats) / len(all_lats)
+        prov_avg_lng = sum(all_lngs) / len(all_lngs)
+        provinces.append({
+            "name": prov_name,
+            "center_lat": round(prov_avg_lat, 4),
+            "center_lng": round(prov_avg_lng, 4),
+            "count": len(all_lats),
+            "districts": district_list,
+        })
+
+    return {"provinces": provinces}
+
+
+# 모듈 레벨 캐시 (JSON 데이터 불변이므로 1회 계산)
+_region_data_cache: Optional[Dict[str, Any]] = None
+
+
+def get_region_data_cached() -> Dict[str, Any]:
+    """지역 데이터 캐싱 래퍼."""
+    global _region_data_cache
+    if _region_data_cache is None:
+        _region_data_cache = get_region_data()
+    return _region_data_cache
 
 
 def get_zoom_grid_size(zoom: int) -> float:

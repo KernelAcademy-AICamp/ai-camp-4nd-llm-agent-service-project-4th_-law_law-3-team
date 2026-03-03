@@ -2,9 +2,9 @@
 
 import { useState, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import type { Lawyer } from '../types'
+import type { Lawyer, ProvinceData } from '../types'
 import { LawyerCard } from './LawyerCard'
-import { SEOUL_DISTRICTS, SPECIALTY_CATEGORIES } from '../constants'
+import { SPECIALTY_CATEGORIES } from '../constants'
 
 interface SearchPanelProps {
   lawyers: Lawyer[]
@@ -16,6 +16,9 @@ interface SearchPanelProps {
   onSearchReset: () => void
   radius: number
   totalCount: number
+  province: string
+  onProvinceChange: (province: string) => void
+  provinces: ProvinceData[]
   sigungu: string
   onSigunguChange: (sigungu: string) => void
   searchQuery: string  // 부모에서 관리하는 검색어
@@ -30,6 +33,8 @@ const RADIUS_OPTIONS = [
   { value: 3000, label: '3km' },
   { value: 5000, label: '5km' },
   { value: 10000, label: '10km' },
+  { value: 20000, label: '20km' },
+  { value: 50000, label: '50km' },
 ]
 
 export function SearchPanel({
@@ -42,6 +47,9 @@ export function SearchPanel({
   onSearchReset,
   radius,
   totalCount,
+  province,
+  onProvinceChange,
+  provinces,
   sigungu,
   onSigunguChange,
   searchQuery,
@@ -72,21 +80,41 @@ export function SearchPanel({
     <div className="w-96 bg-white border-r border-gray-200 flex flex-col h-full">
       {/* 검색 옵션 */}
       <div className="p-4 border-b space-y-3">
-        {/* 지역 선택 */}
+        {/* 지역 선택 (시/도 + 시/군/구) */}
         <div className="flex items-center gap-2">
           <svg className="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
           <select
-            value={sigungu}
-            onChange={(e) => onSigunguChange(e.target.value)}
+            value={province}
+            onChange={(e) => onProvinceChange(e.target.value)}
             className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="">서울 전체</option>
-            {SEOUL_DISTRICTS.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
+            {provinces.length > 0 ? (
+              provinces.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name} ({p.count.toLocaleString()})
+                </option>
+              ))
+            ) : (
+              <option value="서울">서울</option>
+            )}
+          </select>
+          <select
+            value={sigungu}
+            onChange={(e) => onSigunguChange(e.target.value)}
+            disabled={!province}
+            className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <option value="">{province} 전체</option>
+            {provinces
+              .find((p) => p.name === province)
+              ?.districts.map((d) => (
+                <option key={d.name} value={d.name}>
+                  {d.name} ({d.count.toLocaleString()})
+                </option>
+              ))}
           </select>
         </div>
 

@@ -259,6 +259,69 @@ async def get_lawyer_by_id_db(
     return _lawyer_to_dict(lawyer)
 
 
+async def get_region_data_db(db: AsyncSession) -> dict[str, Any]:
+    """전국 시/도 + 시/군/구별 변호사 분포 데이터 (DB 기반).
+
+    province, district 컬럼으로 GROUP BY하여 평균 좌표와 건수를 반환합니다.
+    """
+    query = (
+        select(
+            Lawyer.province,
+            Lawyer.district,
+            func.avg(Lawyer.latitude).label("avg_lat"),
+            func.avg(Lawyer.longitude).label("avg_lng"),
+            func.count().label("cnt"),
+        )
+        .where(
+            Lawyer.latitude.isnot(None),
+            Lawyer.longitude.isnot(None),
+            Lawyer.province.isnot(None),
+            Lawyer.district.isnot(None),
+        )
+        .group_by(Lawyer.province, Lawyer.district)
+        .order_by(Lawyer.province, Lawyer.district)
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    # province -> list of district info
+    province_map: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        prov = row.province
+        if prov not in province_map:
+            province_map[prov] = {
+                "name": prov,
+                "districts": [],
+                "all_lats": [],
+                "all_lngs": [],
+                "total_count": 0,
+            }
+        province_map[prov]["districts"].append({
+            "name": row.district,
+            "center_lat": round(float(row.avg_lat), 4),
+            "center_lng": round(float(row.avg_lng), 4),
+            "count": row.cnt,
+        })
+        # 시/도 전체 평균 계산을 위해 가중 합산
+        province_map[prov]["all_lats"].append(float(row.avg_lat) * row.cnt)
+        province_map[prov]["all_lngs"].append(float(row.avg_lng) * row.cnt)
+        province_map[prov]["total_count"] += row.cnt
+
+    provinces = []
+    for prov_data in sorted(province_map.values(), key=lambda x: x["name"]):
+        total = prov_data["total_count"]
+        provinces.append({
+            "name": prov_data["name"],
+            "center_lat": round(sum(prov_data["all_lats"]) / total, 4) if total else 0,
+            "center_lng": round(sum(prov_data["all_lngs"]) / total, 4) if total else 0,
+            "count": total,
+            "districts": prov_data["districts"],
+        })
+
+    return {"provinces": provinces}
+
+
 async def get_lawyer_stats_db(db: AsyncSession) -> dict[str, Any]:
     """데이터 통계 조회 (DB 기반)."""
     total = await db.scalar(select(func.count(Lawyer.id))) or 0

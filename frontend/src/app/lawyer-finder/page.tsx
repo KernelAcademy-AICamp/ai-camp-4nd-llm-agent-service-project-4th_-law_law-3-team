@@ -10,8 +10,8 @@ import { SearchPanel } from '@/features/lawyer-finder/components/SearchPanel'
 import { OfficeDetailPanel } from '@/features/lawyer-finder/components/OfficeDetailPanel'
 import { useGeolocation } from '@/features/lawyer-finder/hooks/useGeolocation'
 import { lawyerFinderService } from '@/features/lawyer-finder/services'
-import { DISTRICT_COORDS } from '@/features/lawyer-finder/constants'
-import type { Lawyer, Office, ClusterData } from '@/features/lawyer-finder/types'
+import { DISTRICT_COORDS, PROVINCE_CENTERS } from '@/features/lawyer-finder/constants'
+import type { Lawyer, Office, ClusterData, ProvinceData } from '@/features/lawyer-finder/types'
 
 const KakaoMap = dynamic(
   () => import('@/features/lawyer-finder/components/KakaoMap').then((m) => m.MemoizedKakaoMap),
@@ -86,6 +86,10 @@ function LawyerFinderPage() {
     }
     return null
   })
+  const [province, setProvince] = useState(() => {
+    return searchParams.get('province') || '서울'
+  })
+  const [regions, setRegions] = useState<ProvinceData[]>([])
   const [sigungu, setSigungu] = useState('')
   const [searchQuery, setSearchQuery] = useState('')  // 검색어 (빈 문자열 = 주변 탐색 모드)
   const [category, setCategory] = useState('')  // 선택된 전문분야 카테고리 ID
@@ -124,6 +128,13 @@ function LawyerFinderPage() {
     getCurrentPosition()
   }, [getCurrentPosition])
 
+  // 전국 지역 데이터 로드
+  useEffect(() => {
+    lawyerFinderService.getRegions()
+      .then((data) => setRegions(data.provinces))
+      .catch(() => {}) // fallback: PROVINCE_CENTERS 사용
+  }, [])
+
   // URL 쿼리 파라미터로 검색 (챗봇에서 이동 시)
   useEffect(() => {
     if (!mapReady) return
@@ -132,18 +143,19 @@ function LawyerFinderPage() {
     const lng = searchParams.get('lng')
     const categoryParam = searchParams.get('category')
     const specialtyParam = searchParams.get('specialty')
+    const provinceParam = searchParams.get('province')
     const sigunguParam = searchParams.get('sigungu')
     const radiusParam = searchParams.get('radius')
     const searchAllParam = searchParams.get('searchAll')
     const zoomParam = searchParams.get('zoom')
 
     // 파라미터가 없으면 스킵
-    if (!lat && !lng && !categoryParam && !specialtyParam && !sigunguParam && !searchAllParam) {
+    if (!lat && !lng && !categoryParam && !specialtyParam && !sigunguParam && !searchAllParam && !provinceParam) {
       return
     }
 
     // 파라미터 조합으로 고유 키 생성 (같은 파라미터면 중복 검색 방지)
-    const paramsKey = `${lat}-${lng}-${categoryParam}-${specialtyParam}-${sigunguParam}-${radiusParam}-${searchAllParam}-${zoomParam}`
+    const paramsKey = `${lat}-${lng}-${categoryParam}-${specialtyParam}-${provinceParam}-${sigunguParam}-${radiusParam}-${searchAllParam}-${zoomParam}`
 
     if (lastSearchParamsKey.current === paramsKey) {
       return
@@ -168,6 +180,9 @@ function LawyerFinderPage() {
       setSpecialty(specialtyParam)
     } else if (categoryParam) {
       setCategory(categoryParam)
+    }
+    if (provinceParam) {
+      setProvince(provinceParam)
     }
     if (sigunguParam) {
       setSigungu(sigunguParam)
@@ -385,13 +400,41 @@ function LawyerFinderPage() {
     setMapBounds(bounds)
   }, [])
 
-  // 구 변경 (선택 시 자동으로 해당 지역으로 지도 이동)
+  // 시/도 변경
+  const handleProvinceChange = useCallback((newProvince: string) => {
+    setProvince(newProvince)
+    setSigungu('')  // 구 선택 초기화
+
+    // 지역 데이터에서 좌표 찾기, 없으면 PROVINCE_CENTERS fallback
+    const regionData = regions.find((r) => r.name === newProvince)
+    if (regionData) {
+      setSearchCenter({ lat: regionData.center_lat, lng: regionData.center_lng })
+    } else if (PROVINCE_CENTERS[newProvince]) {
+      setSearchCenter({ lat: PROVINCE_CENTERS[newProvince].lat, lng: PROVINCE_CENTERS[newProvince].lng })
+    }
+
+    // 반경 자동 조정: 해당 시/도의 기본 반경 적용
+    const defaultRadius = PROVINCE_CENTERS[newProvince]?.defaultRadius ?? 15000
+    setRadius(defaultRadius)
+  }, [regions])
+
+  // 시/군/구 변경 (선택 시 자동으로 해당 지역으로 지도 이동)
   const handleSigunguChange = useCallback((newSigungu: string) => {
     setSigungu(newSigungu)
-    if (newSigungu && DISTRICT_COORDS[newSigungu]) {
+    if (!newSigungu) return  // "전체" 선택 시 province 좌표 유지
+
+    // API 데이터에서 district 좌표 찾기
+    const regionData = regions.find((r) => r.name === province)
+    const districtData = regionData?.districts.find((d) => d.name === newSigungu)
+    if (districtData) {
+      setSearchCenter({ lat: districtData.center_lat, lng: districtData.center_lng })
+      setRadius(5000)  // 구/시 선택 시 기본 반경 5km
+    }
+    // fallback: 서울 구 (기존 DISTRICT_COORDS)
+    else if (DISTRICT_COORDS[newSigungu]) {
       setSearchCenter(DISTRICT_COORDS[newSigungu])
     }
-  }, [])
+  }, [regions, province])
 
   // 전문분야 카테고리 변경
   const handleCategoryChange = useCallback((newCategory: string) => {
@@ -470,6 +513,9 @@ function LawyerFinderPage() {
             onSearchReset={handleSearchReset}
             radius={radius}
             totalCount={totalCount}
+            province={province}
+            onProvinceChange={handleProvinceChange}
+            provinces={regions}
             sigungu={sigungu}
             onSigunguChange={handleSigunguChange}
             searchQuery={searchQuery}
