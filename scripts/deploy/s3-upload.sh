@@ -40,12 +40,13 @@ aws s3 sync \
     ${DRY_RUN} \
     --region ap-northeast-2
 
-# 3. MeCab 사전
+# 3. MeCab 사전 (csv + json만 — .dic는 플랫폼별 바이너리이므로 업로드 제외)
 echo ""
 echo "[3/3] MeCab 사전 업로드 중..."
 aws s3 sync \
     "${PROJECT_DIR}/backend/data/mecab_userdic/" \
     "${S3_BUCKET}/${S3_PREFIX}/mecab_userdic/" \
+    --exclude "*.dic" \
     ${DRY_RUN} \
     --region ap-northeast-2
 

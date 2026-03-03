@@ -228,6 +228,12 @@ ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
 # Google Gemini (스토리보드 일부 기능)
 GOOGLE_API_KEY=
 GOOGLE_MODEL=gemini-3-flash-preview
+
+# ML 모델 캐시 경로 (기본값: /app/models, 변경 불필요)
+# MODEL_CACHE_DIR=/app/models
+
+# MeCab 사용자 사전 경로 (기본값: /app/mecab_userdic/legal_terms.dic, 변경 불필요)
+# MECAB_USERDIC_PATH=/app/mecab_userdic/legal_terms.dic
 ```
 
 ---
@@ -235,7 +241,10 @@ GOOGLE_MODEL=gemini-3-flash-preview
 ## Phase 6: 빌드 & 기동
 
 ```bash
-# 볼륨 마운트 디렉토리 사전 생성
+# 볼륨 마운트 디렉토리 사전 생성 (선택 — Docker가 자동 생성하므로 생략 가능)
+# ML models → /app/models, MeCab → /app/mecab_userdic (read-only /app/data 외부)
+# - backend/data/mecab_userdic/: S3 다운로드(Phase 4)에서 이미 생성됨
+# - backend/data/models/: 비어있어도 OK, 첫 기동 시 모델 자동 다운로드
 mkdir -p backend/data/models backend/data/mecab_userdic
 
 # 빌드 (첫 빌드: 10~15분, MeCab 소스 컴파일 포함)
@@ -295,6 +304,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml restart backend
 
 ```bash
 # ML 모델 자동 다운로드 로그 확인 (2~3분 소요)
+# 모델 캐시 경로: /app/models (호스트: backend/data/models)
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f backend
 
 # 헬스체크
@@ -383,6 +393,33 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T backend \
   python -m alembic upgrade head
 ```
 
+### MeCab 사전 / ML 모델 수동 전송 (scp)
+
+`backend/data/mecab_userdic/`과 `backend/data/models/`는 `.gitignore`에 포함되어 있어 `git pull`로 받을 수 없다.
+S3 경로에 최신 파일이 없거나, 로컬에서 직접 전송하고 싶을 때 scp를 사용한다.
+
+```bash
+# 로컬 → EC2: MeCab 사전 전송
+scp -i law-platform-key.pem -r \
+  backend/data/mecab_userdic/ \
+  ubuntu@<EC2_IP>:/opt/law-platform/backend/data/mecab_userdic/
+
+# 로컬 → EC2: ML 모델 전송 (선택 — 첫 기동 시 자동 다운로드되므로 보통 불필요)
+scp -i law-platform-key.pem -r \
+  backend/data/models/ \
+  ubuntu@<EC2_IP>:/opt/law-platform/backend/data/models/
+```
+
+> **MeCab 사전은 로컬에서 빌드 후 전송**하는 것을 권장한다.
+> EC2에서 직접 빌드하려면 MeCab 시스템 패키지, DB legal_terms 테이블, Python 바인딩이 모두 필요하고,
+> `docker-compose.prod.yml`에서 mecab_userdic 마운트가 `:ro`(읽기 전용)이므로 컨테이너 내부 빌드가 불가능하다.
+
+전송 후 Backend 재시작:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml restart backend
+```
+
 ### 디스크 정리
 
 ```bash
@@ -433,6 +470,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml logs backend
 # 1. POSTGRES_PASSWORD 미설정 → .env.prod 확인
 # 2. API_KEY 미설정 → .env.prod 확인
 # 3. ML 모델 다운로드 실패 → 네트워크 확인, 수동 재시작
+# 4. 볼륨 마운트 오류 → backend/data/models, backend/data/mecab_userdic 디렉토리 존재 확인
 ```
 
 ### LanceDB 테이블을 찾을 수 없을 때

@@ -91,6 +91,7 @@ services:
 
       # ML 모델 캐시 디렉토리 (read-only /app/data 외부)
       MODEL_CACHE_DIR: ${MODEL_CACHE_DIR:-/app/models}
+      HF_HOME: /app/models
 
       # Runtime tuning
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
