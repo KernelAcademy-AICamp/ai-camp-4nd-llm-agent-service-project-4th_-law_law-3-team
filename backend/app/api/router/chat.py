@@ -12,6 +12,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 from sse_starlette.sse import EventSourceResponse
 
@@ -196,7 +197,7 @@ async def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
             )
             await db.commit()
 
-        config = {"configurable": {"thread_id": thread_id}}
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
         # session_secret: LangGraph 내부용 (응답에는 포함하지 않음)
         session_secret = (
@@ -318,7 +319,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest) -> EventSourc
                 )
                 await db.commit()
 
-            config = {"configurable": {"thread_id": thread_id}}
+            config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
             # session_secret: LangGraph 내부용
             session_secret = (
@@ -327,7 +328,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest) -> EventSourc
             )
 
             # interrupt 재개 여부 판단
-            input_value: dict[str, Any] | Command
+            input_value: dict[str, Any] | Command[str]
             if chat_request.session_data.get("thread_id") or chat_request.conversation_id:
                 graph_state = await graph.aget_state(config)
                 if graph_state.tasks and any(

@@ -13,7 +13,7 @@ Backoff 전략: [60, 300, 900]초 점증 (1분 → 5분 → 15분)
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 

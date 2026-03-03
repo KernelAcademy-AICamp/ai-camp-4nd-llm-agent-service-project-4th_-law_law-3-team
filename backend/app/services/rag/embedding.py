@@ -170,6 +170,8 @@ def _compute_embedding(query: str) -> List[float]:
         )
         return embedding.tolist()
     else:
+        from openai import OpenAI
+
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
         response = client.embeddings.create(
             model=settings.EMBEDDING_MODEL,

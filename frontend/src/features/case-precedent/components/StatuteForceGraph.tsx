@@ -421,7 +421,7 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick, visibleTy
     } catch (err) {
       console.error('Failed to apply D3 forces:', err)
     }
-  }, [graphData.nodes.length])
+  }, [])
 
   // ref callback (fgRef 설정 및 force 초기화)
   const handleGraphRef = useCallback((fg: ForceGraphInstance) => {

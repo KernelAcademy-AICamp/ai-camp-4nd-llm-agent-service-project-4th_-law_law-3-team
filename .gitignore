@@ -36,6 +36,7 @@ ENV/
 .claude/worktree-context.md
 .claude/CLAUDE.md
 .omc/
+.gemini/
 *.swp
 *.swo
 .DS_Store
@@ -59,6 +60,9 @@ npm-debug.log*
 
 # Misc
 .eslintcache
+
+# Root-level screenshots (프로젝트 루트에 실수로 커밋된 스크린샷)
+/*.png
 
 data/
 !docs/data/

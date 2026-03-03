@@ -281,7 +281,7 @@ export default function MockTrialPage() {
         }, 500)
       }
     }
-  }, [getNextStageId, isDemoMode, demoScenario, playMockResponses])
+  }, [getNextStageId, isDemoMode, demoScenario, playMockResponses, currentStageId, stages])
 
   // ── dialogue:queue:empty → isWaiting 해제 ──
   useEffect(() => {

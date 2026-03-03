@@ -7,6 +7,7 @@ v2: 2단계 API — search.list → videos.list(statistics)
 
 import logging
 from datetime import datetime
+from typing import Any
 
 import httpx
 
@@ -87,7 +88,7 @@ class YouTubeSource(BaseTrendSource):
 
         # Stage 1: search 결과에서 비디오 ID 추출
         video_ids: list[str] = []
-        search_items: list[dict[str, object]] = []
+        search_items: list[dict[str, Any]] = []
         for item in data.get("items", []):
             snippet = item.get("snippet", {})
             video_id = item.get("id", {}).get("videoId", "")
@@ -97,7 +98,7 @@ class YouTubeSource(BaseTrendSource):
             search_items.append(item)
 
         # Stage 2: videos.list로 statistics 보강
-        stats_map: dict[str, dict[str, int]] = {}
+        stats_map: dict[str, dict[str, int | None]] = {}
         if video_ids:
             stats_map = await self._fetch_video_statistics(
                 video_ids, client=None,
@@ -135,7 +136,7 @@ class YouTubeSource(BaseTrendSource):
         self,
         video_ids: list[str],
         client: httpx.AsyncClient | None = None,
-    ) -> dict[str, dict[str, int]]:
+    ) -> dict[str, dict[str, int | None]]:
         """videos.list(statistics)로 조회수/댓글수/좋아요수 조회
 
         Args:
@@ -145,7 +146,7 @@ class YouTubeSource(BaseTrendSource):
         Returns:
             {video_id: {"view_count": N, "comment_count": N, "like_count": N}}
         """
-        result: dict[str, dict[str, int]] = {}
+        result: dict[str, dict[str, int | None]] = {}
 
         # YouTube API는 videos.list에서 최대 50개씩 조회 가능
         for i in range(0, len(video_ids), 50):
@@ -176,7 +177,7 @@ class YouTubeSource(BaseTrendSource):
         return result
 
     @staticmethod
-    def _detect_shorts(video_id: str, snippet: dict[str, object]) -> bool:
+    def _detect_shorts(video_id: str, snippet: dict[str, Any]) -> bool:
         """Shorts 영상 감지 (제목/설명 기반 휴리스틱)"""
         title = str(snippet.get("title", "")).lower()
         description = str(snippet.get("description", "")).lower()
