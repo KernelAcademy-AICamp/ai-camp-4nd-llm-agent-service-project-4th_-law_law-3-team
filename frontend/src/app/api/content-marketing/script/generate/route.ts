@@ -38,11 +38,15 @@ export async function POST(request: NextRequest) {
       CONNECT_TIMEOUT_MS,
     )
 
+    const apiKey = process.env.API_KEY || ''
     const backendResponse = await fetch(
       `${BACKEND_URL}/api/content-marketing/script/generate`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+        },
         body: JSON.stringify(body),
         signal: abortController.signal,
       },

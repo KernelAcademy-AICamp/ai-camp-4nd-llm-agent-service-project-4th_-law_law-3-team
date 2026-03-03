@@ -49,12 +49,14 @@ export async function POST(request: NextRequest) {
 
     // 클라이언트 쿠키를 백엔드로 전달 (세션 토큰)
     const cookieHeader = request.headers.get('cookie') || ''
+    const apiKey = process.env.API_KEY || ''
 
     const backendResponse = await fetchWithRetry(`${BACKEND_URL}/api/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+        ...(apiKey ? { 'X-API-Key': apiKey } : {}),
       },
       body: JSON.stringify(body),
     })

@@ -31,11 +31,15 @@ export async function GET(
   try {
     const timeoutId = setTimeout(() => abortController.abort(), PROXY_TIMEOUT_MS)
 
+    const apiKey = process.env.API_KEY || ''
     const backendResponse = await fetch(
       `${BACKEND_URL}/api/content-marketing/script/webtoon/${jobId}/stream`,
       {
         method: 'GET',
-        headers: { Accept: 'text/event-stream' },
+        headers: {
+          Accept: 'text/event-stream',
+          ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+        },
         signal: abortController.signal,
       },
     )
