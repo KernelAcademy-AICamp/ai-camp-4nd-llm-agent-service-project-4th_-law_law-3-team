@@ -1,14 +1,11 @@
 import type { Metadata } from 'next'
 import dynamic from 'next/dynamic'
-import { Inter } from 'next/font/google'
 import '../styles/globals.css'
 import { Providers } from './providers'
 
 const ChatWidget = dynamic(() => import('@/components/ChatWidget'), {
   ssr: false,
 })
-
-const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: '법률 서비스 플랫폼',
@@ -22,7 +19,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
-      <body className={inter.className}>
+      <head>
+        <link
+          rel="stylesheet"
+          as="style"
+          crossOrigin="anonymous"
+          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+        />
+      </head>
+      <body>
         <Providers>
           {children}
           <ChatWidget />
