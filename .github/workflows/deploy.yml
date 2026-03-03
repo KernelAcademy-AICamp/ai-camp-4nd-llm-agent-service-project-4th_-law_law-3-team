@@ -58,7 +58,10 @@ jobs:
           command_timeout: 30m
           script: |
             cd ${{ secrets.PROJECT_DIR || '/opt/law-platform' }}
-            bash scripts/deploy/deploy.sh
+            git fetch origin
+            git checkout deploy/aws-arm
+            git pull origin deploy/aws-arm
+            bash scripts/deploy/deploy.sh --skip-pull
 
       - name: Close SSH for runner
         if: always()
