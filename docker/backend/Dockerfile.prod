@@ -69,6 +69,11 @@ RUN ldconfig
 # 비루트 사용자 생성
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
+# named volume 마운트 포인트를 appuser 소유로 미리 생성
+# (Docker named volume이 빈 상태일 때 이미지의 디렉토리 권한을 상속함)
+RUN mkdir -p /app/media /app/lancedb_data /app/models \
+    && chown -R appuser:appuser /app/media /app/lancedb_data /app/models
+
 # uv 복사
 COPY --from=deps /root/.local/bin/uv /usr/local/bin/uv
 
