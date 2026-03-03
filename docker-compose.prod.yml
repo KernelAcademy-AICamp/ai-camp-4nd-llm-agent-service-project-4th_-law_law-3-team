@@ -82,6 +82,7 @@ services:
       USE_ONNX_RERANKER: ${USE_ONNX_RERANKER:-true}
       ONNX_EMBEDDING_VARIANT: ${ONNX_EMBEDDING_VARIANT:-ort-opt}
       ONNX_RERANKER_VARIANT: ${ONNX_RERANKER_VARIANT:-ort-opt-qdq}
+      ONNX_QUALITY_GATE_ENABLED: ${ONNX_QUALITY_GATE_ENABLED:-false}
 
       # MeCab userdic (read-only /app/data 외부)
       MECAB_USERDIC_PATH: ${MECAB_USERDIC_PATH:-/app/mecab_userdic/legal_terms.dic}
