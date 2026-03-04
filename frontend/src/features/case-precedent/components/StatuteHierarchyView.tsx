@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Network, Search, X, Loader2, ArrowLeft } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { StatuteForceGraph } from './StatuteForceGraph'
@@ -48,7 +48,7 @@ export function StatuteHierarchyView() {
     '규칙': 'bg-violet-500/20 text-violet-400 border-violet-500/40',
   }), [])
 
-  // URL 파라미터에서 선택된 법령 복원
+  // URL 파라미터에서 선택된 법령 복원 + 상세 데이터 동시 로드 (API 워터폴 제거)
   useEffect(() => {
     let isCancelled = false
     const normalizeName = (value: string): string =>
@@ -60,9 +60,6 @@ export function StatuteHierarchyView() {
           const detail = await casePrecedentService.getStatuteHierarchy(statuteId)
           if (!detail.root) return
           const normalizedTargetName = normalizeName(statuteName)
-          if (!detail.root) {
-            throw new Error('법령 루트 데이터가 없습니다')
-          }
           const normalizeRootName = normalizeName(detail.root.name)
           const normalizedAbbreviation = detail.root.abbreviation
             ? normalizeName(detail.root.abbreviation)
@@ -81,6 +78,8 @@ export function StatuteHierarchyView() {
                 citation_count: detail.root.citation_count,
               })
               setSearchQuery(detail.root.name)
+              // 이미 받은 hierarchy 응답을 detailData에 직접 저장 (중복 API 호출 방지)
+              setDetailData(detail)
             }
             return
           }
@@ -212,16 +211,18 @@ export function StatuteHierarchyView() {
     }
   }, [])
 
-  // 검색어 변경 (디바운스)
+  // 검색어 변경 (디바운스 — useRef로 타이머 관리)
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setSearchQuery(value)
 
-    // 간단한 디바운스
-    const timer = setTimeout(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+    debounceTimerRef.current = setTimeout(() => {
       handleSearch(value)
     }, 300)
-    return () => clearTimeout(timer)
   }, [handleSearch])
 
   // 법령 선택 (URL에 추가하여 뒤로가기 지원)
@@ -256,14 +257,16 @@ export function StatuteHierarchyView() {
     }
   }, [])
 
-  // URL 파라미터에서 선택된 법령의 상세 정보도 로드
+  // URL 파라미터에서 선택된 법령의 상세 정보 로드 (이미 로드된 경우 스킵)
   useEffect(() => {
     if (selectedStatute?.id) {
+      // 첫 번째 useEffect에서 이미 detailData를 로드한 경우 중복 호출 방지
+      if (detailData?.root?.id === selectedStatute.id) return
       loadDetail(selectedStatute.id)
     } else {
       setDetailData(null)
     }
-  }, [selectedStatute?.id, loadDetail])
+  }, [selectedStatute?.id, loadDetail, detailData?.root?.id])
 
   // 그래프에서 노드 클릭 (URL에 추가하여 뒤로가기 지원)
   const handleNodeClick = useCallback((node: GraphNode) => {

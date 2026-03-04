@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { X, ChevronRight, ChevronDown, ChevronUp, Loader2, Sparkles, FileText } from 'lucide-react'
 import type { StatuteHierarchyResponse, StatuteNode } from '../types'
 
@@ -24,7 +24,7 @@ function getTypeBadgeColor(type: string): string {
   return TYPE_COLORS[type] || 'bg-slate-500/20 text-slate-400'
 }
 
-function StatuteList({
+const StatuteList = memo(function StatuteList({
   title,
   nodes,
   onNodeClick,
@@ -66,7 +66,7 @@ function StatuteList({
       )}
     </div>
   )
-}
+})
 
 function StatuteContentSection({
   content,
@@ -110,7 +110,7 @@ function StatuteContentSection({
   )
 }
 
-export function StatuteDetailPanel({
+export const StatuteDetailPanel = memo(function StatuteDetailPanel({
   data,
   loading,
   onClose,
@@ -195,4 +195,4 @@ export function StatuteDetailPanel({
       )}
     </div>
   )
-}
+})
