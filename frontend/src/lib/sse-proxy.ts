@@ -5,7 +5,16 @@
  * API Route에서 직접 스트리밍 프록시할 때 사용하는 공통 함수들.
  */
 
-export const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
+const rawBackendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
+
+if (
+  process.env.NODE_ENV === 'production' &&
+  (rawBackendUrl.includes('127.0.0.1') || rawBackendUrl.includes('localhost'))
+) {
+  console.error('[SSE Proxy] BACKEND_URL이 프로덕션에서 localhost를 가리키고 있습니다')
+}
+
+export const BACKEND_URL = rawBackendUrl
 
 export const SSE_HEADERS: Record<string, string> = {
   'Content-Type': 'text/event-stream',
