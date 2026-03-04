@@ -4,7 +4,6 @@ import React, { useState, useMemo } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
 import {
   Search,
@@ -84,23 +83,24 @@ export default function Sidebar() {
   if (isHeroPage) return null
 
   return (
-    <motion.aside
-      initial={false}
-      animate={{ width: isExpanded ? 260 : 64 }}
+    <aside
+      style={{ width: isExpanded ? 260 : 64 }}
       onMouseEnter={() => setIsExpanded(true)}
       onMouseLeave={() => setIsExpanded(false)}
-      className="fixed left-0 top-0 h-screen bg-white/90 backdrop-blur-xl border-r border-[#D2D2D7]/30 z-50 flex flex-col transition-all duration-300 ease-in-out"
+      className="fixed left-0 top-0 h-screen bg-white/90 backdrop-blur-xl border-r border-[#D2D2D7]/30 z-50 flex flex-col transition-[width] duration-300 ease-in-out"
     >
       {/* Logo Area */}
       <div className="h-16 flex items-center px-4 mb-4 overflow-hidden shrink-0">
         <Link href={`/?role=${userRole}`} className="flex items-center gap-3">
           <Image src="/logo.png" alt="Legal President AI" width={32} height={32} className="shrink-0 object-contain" />
-          <motion.span
-            animate={{ opacity: isExpanded ? 1 : 0 }}
-            className="font-bold text-[#1D1D1F] whitespace-nowrap"
+          <span
+            className={cn(
+              "font-bold text-[#1D1D1F] whitespace-nowrap transition-opacity duration-200",
+              isExpanded ? "opacity-100" : "opacity-0"
+            )}
           >
             LEGAL PRESIDENT AI
-          </motion.span>
+          </span>
         </Link>
       </div>
 
@@ -121,7 +121,7 @@ export default function Sidebar() {
             <div className="flex items-center gap-2 mb-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
               <span className={cn(
-                "text-[10px] font-bold text-blue-600 uppercase tracking-wider transition-opacity",
+                "text-[10px] font-bold text-blue-600 uppercase tracking-wider transition-opacity duration-200",
                 !isExpanded && "opacity-0 invisible h-0"
               )}>
                 Active Agent
@@ -148,16 +148,18 @@ export default function Sidebar() {
 
         {categories.map(cat => (
           <div key={cat} className="space-y-1">
-            <motion.div
-              animate={{ opacity: isExpanded ? 1 : 0, height: isExpanded ? 'auto' : 0 }}
-              className="px-3"
+            <div
+              className={cn(
+                "px-3 transition-all duration-200 overflow-hidden",
+                isExpanded ? "opacity-100 h-auto" : "opacity-0 h-0"
+              )}
             >
               {isExpanded && (
                 <span className="text-[10px] font-bold text-[#86868B] uppercase tracking-wider">
                   {CATEGORY_NAMES[cat]?.[userRole] || cat}
                 </span>
               )}
-            </motion.div>
+            </div>
 
             {modulesByCategory[cat].map(mod => {
               const Icon = MODULE_ICONS[mod.id] || Search
@@ -186,21 +188,17 @@ export default function Sidebar() {
           className="w-full flex items-center gap-3 p-3 rounded-xl text-[#86868B] hover:text-[#1D1D1F] hover:bg-black/[0.03] transition-colors"
         >
           <LogOut size={20} className="shrink-0" />
-          <AnimatePresence>
-            {isExpanded && (
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="text-sm font-medium whitespace-nowrap"
-              >
-                나가기
-              </motion.span>
+          <span
+            className={cn(
+              "text-sm font-medium whitespace-nowrap transition-opacity duration-200",
+              isExpanded ? "opacity-100" : "opacity-0 w-0 overflow-hidden"
             )}
-          </AnimatePresence>
+          >
+            나가기
+          </span>
         </button>
       </div>
-    </motion.aside >
+    </aside>
   )
 }
 
@@ -229,25 +227,18 @@ function NavItem({
     >
       <Icon size={20} className={cn("shrink-0 transition-transform group-hover:scale-110", isActive && "text-blue-600")} />
 
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.span
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            className="text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis"
-          >
-            {label}
-          </motion.span>
+      <span
+        className={cn(
+          "text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-200",
+          isExpanded ? "opacity-100 max-w-[180px]" : "opacity-0 max-w-0"
         )}
-      </AnimatePresence>
+      >
+        {label}
+      </span>
 
       {/* Active Indicator */}
       {isActive && (
-        <motion.div
-          layoutId="active-nav"
-          className="absolute left-0 w-1 h-6 bg-blue-600 rounded-r-full"
-        />
+        <div className="absolute left-0 w-1 h-6 bg-blue-600 rounded-r-full" />
       )}
 
       {/* Tooltip for collapsed state */}

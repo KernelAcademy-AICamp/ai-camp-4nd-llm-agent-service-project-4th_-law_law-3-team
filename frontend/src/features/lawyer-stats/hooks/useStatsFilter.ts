@@ -17,6 +17,9 @@ import type {
   StatsFilter,
   ViewMode,
 } from '@/features/lawyer-stats/types'
+import courtCoordsData from '../../../../public/data/court_coordinates.json'
+
+const courtCoords = courtCoordsData as unknown as Record<string, [number, number]>
 
 export function useStatsFilter() {
   const { sessionData } = useChat()
@@ -32,18 +35,8 @@ export function useStatsFilter() {
   const [highlightedRegion, setHighlightedRegion] = useState<string | null>(null)
   const [mapSelectedRegion, setMapSelectedRegion] = useState<string | null>(null)
   const [selectedCourt, setSelectedCourt] = useState<string | null>(null)
-  const [courtCoords, setCourtCoords] = useState<Record<string, [number, number]>>({})
-
   const regionSectionRef = useRef<HTMLDivElement>(null)
   const crossSectionRef = useRef<HTMLDivElement>(null)
-
-  // 법원 좌표 데이터 로드
-  useEffect(() => {
-    fetch('/data/court_coordinates.json')
-      .then(r => r.json())
-      .then(setCourtCoords)
-      .catch(() => {})
-  }, [])
 
   // 채팅 에이전트 sessionData.stats_filter → 대시보드 필터 자동 적용
   const appliedFilterRef = useRef<string>('')

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useGeolocation } from './useGeolocation'
 import { useLawyerSearchParams } from './useLawyerSearchParams'
 import { lawyerFinderService } from '../services'
@@ -83,7 +83,7 @@ export function useLawyerFinder() {
   // ── 통합 검색 이펙트 ──
   // 기존: URL 검색 이펙트 + 자동 검색 이펙트 + 3개 ref로 조율
   // 리팩토링: 단일 이펙트, primitive deps로 자동 중복 제거
-  const location = getSearchLocation()
+  const location = useMemo(() => getSearchLocation(), [getSearchLocation])
 
   useEffect(() => {
     if (!mapReady || searchQuery) return
@@ -304,7 +304,7 @@ export function useLawyerFinder() {
   }, [])
 
   // ── 파생 상태 ──
-  const center = getSearchLocation()
+  const center = location
   const userLocation = hasLocation ? getEffectiveLocation() : null
 
   return {

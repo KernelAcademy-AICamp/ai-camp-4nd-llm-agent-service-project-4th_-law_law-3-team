@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
@@ -41,57 +42,60 @@ export default function CaseDetailPage() {
   const params = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const queryClient = useQueryClient()
   const { isChatOpen, chatMode } = useUI()
   const { setConversationId, setCaseId: setChatCaseId } = useChat()
 
   const caseId = params.caseId as string
+  const isDemoParam = process.env.NODE_ENV === 'development' && searchParams.get('demo') === '1'
 
-  const [caseData, setCaseData] = useState<WorkspaceCaseDetail | null>(null)
   const [timeline, setTimeline] = useState<TimelineItem[]>([])
   const [activeTab, setActiveTab] = useState<Tab>('summary')
-  const [isLoading, setIsLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [isRebuilding, setIsRebuilding] = useState(false)
   const [isDemoMode, setIsDemoMode] = useState(false)
 
+  const { data: caseData, isLoading } = useQuery({
+    queryKey: ['workspace', 'case', caseId, isDemoParam ? 'demo' : 'live'],
+    queryFn: async () => {
+      if (isDemoParam) {
+        const { getDemoCaseDetail } = require('@/features/workspace/demo/demo-data')
+        const demo = getDemoCaseDetail(caseId)
+        if (demo) return demo as WorkspaceCaseDetail
+      }
+      return getCase(caseId)
+    },
+  })
+
+  // caseData에서 timeline 초기화 + 데모 모드 동기화
+  useEffect(() => {
+    if (caseData) {
+      setTimeline(caseData.timeline ?? [])
+      setIsDemoMode(isDemoParam)
+    }
+  }, [caseData, isDemoParam])
+
   const loadDemoData = useCallback(() => {
     const { getDemoCaseDetail } = require('@/features/workspace/demo/demo-data')
     const demo = getDemoCaseDetail(caseId)
     if (demo) {
-      setCaseData(demo)
-      setTimeline(demo.timeline ?? [])
+      queryClient.setQueryData(
+        ['workspace', 'case', caseId, isDemoParam ? 'demo' : 'live'],
+        demo as WorkspaceCaseDetail,
+      )
       setIsDemoMode(true)
-      setIsLoading(false)
     }
-  }, [caseId])
-
-  const fetchCase = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const data = await getCase(caseId)
-      setCaseData(data)
-      setTimeline(data.timeline ?? [])
-    } catch (error) {
-      console.error('사건 조회 실패:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [caseId])
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && searchParams.get('demo') === '1') {
-      loadDemoData()
-    } else {
-      fetchCase()
-    }
-  }, [fetchCase, loadDemoData, searchParams])
+  }, [caseId, queryClient, isDemoParam])
 
   const handleSaveName = async () => {
     if (!editName.trim() || !caseData) return
     try {
       const updated = await updateCase(caseId, { case_name: editName.trim() })
-      setCaseData({ ...caseData, case_name: updated.case_name })
+      queryClient.setQueryData(
+        ['workspace', 'case', caseId, isDemoParam ? 'demo' : 'live'],
+        { ...caseData, case_name: updated.case_name },
+      )
       setIsEditing(false)
     } catch (error) {
       console.error('사건 이름 수정 실패:', error)
@@ -112,7 +116,10 @@ export default function CaseDetailPage() {
     if (!caseData) return
     try {
       const updated = await updateCase(caseId, { status })
-      setCaseData({ ...caseData, status: updated.status })
+      queryClient.setQueryData(
+        ['workspace', 'case', caseId, isDemoParam ? 'demo' : 'live'],
+        { ...caseData, status: updated.status },
+      )
     } catch (error) {
       console.error('상태 변경 실패:', error)
     }
