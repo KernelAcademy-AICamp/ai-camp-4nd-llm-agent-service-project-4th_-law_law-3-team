@@ -17,7 +17,10 @@ import type {
   WorkspaceCaseDetail,
   TimelineItem,
 } from '@/features/workspace/types'
-import { TAG_TYPE_COLORS } from '@/features/workspace/types'
+import { CaseSummaryTab } from '@/features/workspace/components/CaseSummaryTab'
+import { CaseTagsTab } from '@/features/workspace/components/CaseTagsTab'
+import { CaseTimelineTab } from '@/features/workspace/components/CaseTimelineTab'
+import { CaseConversationsTab } from '@/features/workspace/components/CaseConversationsTab'
 
 type Tab = 'summary' | 'tags' | 'timeline' | 'conversations'
 
@@ -337,11 +340,11 @@ export default function CaseDetailPage() {
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="max-w-5xl mx-auto">
           {activeTab === 'summary' && (
-            <SummaryTab caseData={caseData} timeline={timeline} />
+            <CaseSummaryTab caseData={caseData} timeline={timeline} />
           )}
-          {activeTab === 'tags' && <TagsTab caseData={caseData} />}
+          {activeTab === 'tags' && <CaseTagsTab caseData={caseData} />}
           {activeTab === 'timeline' && (
-            <TimelineTab
+            <CaseTimelineTab
               timeline={timeline}
               isRebuilding={isRebuilding}
               onRebuild={handleRebuildTimeline}
@@ -349,316 +352,13 @@ export default function CaseDetailPage() {
             />
           )}
           {activeTab === 'conversations' && (
-            <ConversationsTab
+            <CaseConversationsTab
               caseData={caseData}
               onContinue={handleContinueConversation}
             />
           )}
         </div>
       </div>
-    </div>
-  )
-}
-
-// ── 요약 탭 ──
-
-function SummaryTab({
-  caseData,
-  timeline,
-}: {
-  caseData: WorkspaceCaseDetail
-  timeline: TimelineItem[]
-}) {
-  const tagsByType: Record<string, number> = {}
-  for (const tag of caseData.tagged_items) {
-    tagsByType[tag.type] = (tagsByType[tag.type] || 0) + 1
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* 통계 카드 */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg border p-4">
-          <p className="text-sm text-gray-500">대화</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">
-            {caseData.conversations.length}
-          </p>
-        </div>
-        <div className="bg-white rounded-lg border p-4">
-          <p className="text-sm text-gray-500">태그</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">
-            {caseData.tagged_items.length}
-          </p>
-        </div>
-        <div className="bg-white rounded-lg border p-4">
-          <p className="text-sm text-gray-500">타임라인</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">
-            {timeline.length}
-          </p>
-        </div>
-      </div>
-
-      {/* 태그 유형 분포 */}
-      {Object.keys(tagsByType).length > 0 && (
-        <div className="bg-white rounded-lg border p-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">태그 유형 분포</h3>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(tagsByType).map(([type, count]) => (
-              <span
-                key={type}
-                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                  TAG_TYPE_COLORS[type] ?? 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                {type}: {count}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 최근 대화 */}
-      {caseData.conversations.length > 0 && (
-        <div className="bg-white rounded-lg border p-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">연결된 대화</h3>
-          <div className="space-y-2">
-            {caseData.conversations.map((conv) => (
-              <div
-                key={conv.id}
-                className="flex items-center justify-between py-1.5 text-sm"
-              >
-                <span className="text-gray-900 truncate">
-                  {conv.title || '제목 없는 대화'}
-                </span>
-                <span className="text-xs text-gray-500 shrink-0 ml-2">
-                  {conv.message_count}개 메시지
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── 태그 탭 ──
-
-function TagsTab({ caseData }: { caseData: WorkspaceCaseDetail }) {
-  if (caseData.tagged_items.length === 0) {
-    return (
-      <div className="text-center py-12 text-gray-500">
-        <p className="text-lg">추출된 태그가 없습니다</p>
-        <p className="text-sm mt-1">대화를 시작하면 자동으로 태그가 수집됩니다</p>
-      </div>
-    )
-  }
-
-  const grouped: Record<string, typeof caseData.tagged_items> = {}
-  for (const tag of caseData.tagged_items) {
-    const type = tag.type || 'other'
-    if (!grouped[type]) grouped[type] = []
-    grouped[type].push(tag)
-  }
-
-  return (
-    <div className="space-y-4">
-      {Object.entries(grouped).map(([type, tags]) => (
-        <div key={type} className="bg-white rounded-lg border p-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-            <span
-              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${
-                TAG_TYPE_COLORS[type] ?? 'bg-gray-100 text-gray-700'
-              }`}
-            >
-              {type}
-            </span>
-            <span className="text-gray-400 text-xs">{tags.length}개</span>
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {tags.map((tag, i) => (
-              <div
-                key={`case-tag-${i}`}
-                className="bg-gray-50 rounded-lg px-3 py-2 text-sm"
-              >
-                <span className="font-medium text-gray-900">
-                  {tag.label || tag.value}
-                </span>
-                {tag.confidence !== undefined && tag.confidence < 1 && (
-                  <span className="ml-1 text-xs text-gray-400">
-                    ({Math.round(tag.confidence * 100)}%)
-                  </span>
-                )}
-                {tag.source && (
-                  <span className="ml-1 text-xs text-gray-400">
-                    - {tag.source}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ── 타임라인 탭 ──
-
-function TimelineTab({
-  timeline,
-  isRebuilding,
-  onRebuild,
-  onOpenStoryboard,
-}: {
-  timeline: TimelineItem[]
-  isRebuilding: boolean
-  onRebuild: () => void
-  onOpenStoryboard: () => void
-}) {
-  const sorted = [...timeline].sort((a, b) => {
-    if (a.date_normalized && b.date_normalized) {
-      return a.date_normalized.localeCompare(b.date_normalized)
-    }
-    if (a.date_normalized) return -1
-    if (b.date_normalized) return 1
-    return 0
-  })
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium text-gray-700">
-          타임라인 ({timeline.length}개 항목)
-        </h3>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onOpenStoryboard}
-            className="px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
-          >
-            스토리보드 AI로 생성
-          </button>
-          <button
-            onClick={onRebuild}
-            disabled={isRebuilding}
-            className="px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors"
-          >
-            {isRebuilding ? '재생성 중...' : '타임라인 재생성'}
-          </button>
-        </div>
-      </div>
-
-      {sorted.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          <p className="text-lg">타임라인 항목이 없습니다</p>
-          <p className="text-sm mt-1">
-            &ldquo;스토리보드 AI로 생성&rdquo;으로 대화 내용에서 타임라인을 추출하거나,
-            &ldquo;타임라인 재생성&rdquo;으로 태그에서 타임라인을 만들어 보세요
-          </p>
-        </div>
-      ) : (
-        <div className="relative pl-6 space-y-4">
-          {/* 세로 선 */}
-          <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-gray-200" />
-
-          {sorted.map((item) => (
-            <div key={item.id} className="relative">
-              {/* 점 */}
-              <div
-                className={`absolute -left-4 top-1 w-3 h-3 rounded-full border-2 border-white ${
-                  item.source_type === 'manual'
-                    ? 'bg-blue-500'
-                    : item.confidence >= 0.8
-                      ? 'bg-green-500'
-                      : item.confidence >= 0.5
-                        ? 'bg-yellow-500'
-                        : 'bg-red-500'
-                }`}
-              />
-              <div className="bg-white rounded-lg border p-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900 text-sm">
-                      {item.title}
-                    </p>
-                    {item.description && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {item.description}
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right shrink-0 ml-4">
-                    {item.date_text && (
-                      <p className="text-xs font-medium text-gray-700">
-                        {item.date_text}
-                      </p>
-                    )}
-                    {item.category && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600 mt-1">
-                        {item.category}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
-                  <span>
-                    신뢰도: {Math.round(item.confidence * 100)}%
-                  </span>
-                  <span>|</span>
-                  <span>{item.source_type}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── 대화 탭 ──
-
-function ConversationsTab({
-  caseData,
-  onContinue,
-}: {
-  caseData: WorkspaceCaseDetail
-  onContinue: (conversationId: string) => void
-}) {
-  if (caseData.conversations.length === 0) {
-    return (
-      <div className="text-center py-12 text-gray-500">
-        <p className="text-lg">연결된 대화가 없습니다</p>
-        <p className="text-sm mt-1">
-          채팅에서 이 사건과 연결된 대화를 시작해보세요
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-3">
-      {caseData.conversations.map((conv) => (
-        <div
-          key={conv.id}
-          className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-between"
-        >
-          <div>
-            <h4 className="font-medium text-gray-900 text-sm">
-              {conv.title || '제목 없는 대화'}
-            </h4>
-            <p className="text-xs text-gray-500 mt-1">
-              {conv.message_count}개 메시지
-            </p>
-          </div>
-          <button
-            onClick={() => onContinue(conv.id)}
-            className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors shrink-0"
-          >
-            이어가기
-          </button>
-        </div>
-      ))}
     </div>
   )
 }
