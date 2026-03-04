@@ -360,7 +360,7 @@ settings.VECTOR_DB        # lancedb | chroma | qdrant
 | `UPSTAGE_API_KEY` | Solar API 키 | - |
 | `UPSTAGE_MODEL` | Solar 모델명 | `solar-pro3-260126` |
 | `USE_DB_LAWYERS` | 변호사 데이터 소스 (true: PostgreSQL, false: JSON) | `false` |
-| `USE_LEGAL_TERM_DICT` | 법률 용어 사전 사용 (true: MeCab 토큰 보강) | `false` |
+| `USE_LEGAL_TERM_DICT` | 법률 용어 사전 사용 (true: MeCab 토큰 보강) | `true` |
 | `LANGCHAIN_TRACING_V2` | LangSmith 트레이싱 활성화 | `false` |
 | `LANGCHAIN_PROJECT` | LangSmith 프로젝트명 | `law-platform` |
 | `LANGCHAIN_API_KEY` | LangSmith API 키 | `""` |
@@ -730,7 +730,7 @@ uv run python scripts/load_legal_terms_data.py --verify  # 검증
 - `alembic/versions/006_add_legal_terms_table.py` - 마이그레이션
 - `scripts/load_legal_terms_data.py` - 데이터 로드 스크립트
 
-**롤백:** `USE_LEGAL_TERM_DICT=false` (기본값)로 설정하면 기존 MeCab 동작 100% 유지
+**롤백:** `USE_LEGAL_TERM_DICT=false`로 설정하면 기존 MeCab 동작 100% 유지
 
 ### MeCab userdic (사용자 사전)
 

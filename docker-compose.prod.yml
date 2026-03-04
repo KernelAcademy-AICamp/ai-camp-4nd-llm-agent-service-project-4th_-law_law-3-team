@@ -74,40 +74,55 @@ services:
       LANCEDB_MODE: local
       LANCEDB_URI: ${LANCEDB_URI:-/app/lancedb_data}
       LANCEDB_TABLE_NAME: ${LANCEDB_TABLE_NAME:-legal_chunks}
-      USE_LEGAL_TERM_DICT: ${USE_LEGAL_TERM_DICT:-false}
-      CHROMA_PERSIST_DIR: /app/data/chroma
-
+      USE_LEGAL_TERM_DICT: ${USE_LEGAL_TERM_DICT:-true}
       # Embedding / Reranker
       USE_LOCAL_EMBEDDING: ${USE_LOCAL_EMBEDDING:-true}
       LOCAL_EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-nlpai-lab/KURE-v1}
-      USE_ONNX_EMBEDDING: ${USE_ONNX_EMBEDDING:-false}
-      USE_ONNX_RERANKER: ${USE_ONNX_RERANKER:-false}
+      USE_ONNX_EMBEDDING: ${USE_ONNX_EMBEDDING:-true}
+      USE_ONNX_RERANKER: ${USE_ONNX_RERANKER:-true}
+      ONNX_EMBEDDING_VARIANT: ${ONNX_EMBEDDING_VARIANT:-ort-opt}
+      ONNX_RERANKER_VARIANT: ${ONNX_RERANKER_VARIANT:-ort-opt-qdq}
+      ONNX_QUALITY_GATE_ENABLED: ${ONNX_QUALITY_GATE_ENABLED:-false}
 
-      # MeCab userdic
-      MECAB_USERDIC_PATH: ${MECAB_USERDIC_PATH:-data/mecab_userdic/legal_terms.dic}
+      # MeCab userdic (read-only /app/data 외부)
+      MECAB_USERDIC_PATH: ${MECAB_USERDIC_PATH:-/app/mecab_userdic/legal_terms.dic}
 
       # AI model selection
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
       GOOGLE_MODEL: ${GOOGLE_MODEL:-gemini-3-flash-preview}
 
+      # ML 모델 캐시 디렉토리 (read-only /app/data 외부)
+      MODEL_CACHE_DIR: ${MODEL_CACHE_DIR:-/app/models}
+      HF_HOME: /app/models
+
+      # 미디어 디렉토리 (read-only /app/data 외부)
+      MEDIA_DIR: /app/media
+
       # Runtime tuning
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
       AGENT_TIMEOUT_SECONDS: ${AGENT_TIMEOUT_SECONDS:-120}
 
       # Feature flags
-      USE_DB_LAWYERS: ${USE_DB_LAWYERS:-false}
+      USE_DB_LAWYERS: ${USE_DB_LAWYERS:-true}
       ENABLED_MODULES: ${ENABLED_MODULES:-[]}
     volumes:
-      - chroma_data:/app/data/chroma
       # App data (readonly)
       - ./data:/app/data:ro
       # LanceDB local mode data (persistent)
       - lancedb_data:/app/lancedb_data
-      # ML models (writable - 컨테이너 내부에서 다운로드 가능)
-      - ./backend/data/models:/app/data/models
-      # MeCab userdic (readonly, host에서 사전 빌드)
-      - ./backend/data/mecab_userdic:/app/data/mecab_userdic:ro
+      # ML models (writable - 컨테이너 내부에서 다운로드 가능, /app/data:ro 외부)
+      - ./backend/data/models:/app/models
+      # MeCab userdic (readonly, host에서 사전 빌드, /app/data:ro 외부)
+      - ./backend/data/mecab_userdic:/app/mecab_userdic:ro
+      # 미디어 파일 (persistent, 컨테이너 재시작 시 유실 방지)
+      - media_data:/app/media
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      start_period: 600s
+      retries: 15
     depends_on:
       postgres:
         condition: service_healthy
@@ -154,6 +169,11 @@ services:
     volumes:
       - certbot_www:/var/www/certbot
       - certbot_certs:/etc/letsencrypt
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
     restart: unless-stopped
     networks:
@@ -165,7 +185,7 @@ networks:
 
 volumes:
   postgres_data:
-  chroma_data:
   lancedb_data:
+  media_data:
   certbot_www:
   certbot_certs:

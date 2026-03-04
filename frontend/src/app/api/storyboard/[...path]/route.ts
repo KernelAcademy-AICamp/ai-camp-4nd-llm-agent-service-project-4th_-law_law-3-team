@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
+const API_KEY = process.env.API_KEY || ''
 
 export async function GET(
   request: NextRequest,
@@ -15,6 +16,7 @@ export async function GET(
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        ...(API_KEY ? { 'X-API-Key': API_KEY } : {}),
       },
     })
 
@@ -50,6 +52,10 @@ export async function POST(
       // JSON 처리
       body = JSON.stringify(await request.json())
       headers['Content-Type'] = 'application/json'
+    }
+
+    if (API_KEY) {
+      headers['X-API-Key'] = API_KEY
     }
 
     const response = await fetch(url, {

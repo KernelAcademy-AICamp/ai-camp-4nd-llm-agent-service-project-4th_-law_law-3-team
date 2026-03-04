@@ -34,3 +34,10 @@ local_ordinance: ingest_source/local_rules_v1.json
 # 그래프 데이터 소스 (--step graph 전용)
 graph_hierarchy: law_hierarchy.json
 graph_abbreviations: law_abbreviations.json
+
+# 독립 데이터 소스 (load_*_data.py 스크립트용)
+lawyers: lawyers.json
+trial_statistics: trial_statistics_data
+legal_terms: lawterms_v1.json
+legal_terms_fallback: law_data/lawterms_full.json
+population: population.json

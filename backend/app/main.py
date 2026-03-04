@@ -24,12 +24,8 @@ from app.core.rate_limit import limiter
 from app.core.registry import ModuleRegistry
 from app.core.session import SessionMiddleware
 
-# 미디어 디렉토리 경로
-MEDIA_DIR = Path(__file__).parent.parent / "data" / "media"
-MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-
-# 웹툰 스토리보드 이미지 디렉토리
-(MEDIA_DIR / "webtoon" / "images").mkdir(parents=True, exist_ok=True)
+# 미디어 디렉토리 경로 (프로덕션: /app/media, 개발: data/media)
+MEDIA_DIR = Path(os.environ.get("MEDIA_DIR", Path(__file__).parent.parent / "data" / "media"))
 
 
 @asynccontextmanager
@@ -41,11 +37,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger = logging.getLogger(__name__)
 
+    # 미디어 디렉토리 생성 (named volume 권한 문제 대비 graceful)
+    try:
+        MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+        (MEDIA_DIR / "webtoon" / "images").mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        logger.warning("미디어 디렉토리 생성 실패 (권한 부족): %s", MEDIA_DIR)
+
     # 시작 시: 임베딩 모델 캐시 상태 확인
     model_available = check_embedding_model_availability()
 
     # 로컬 임베딩 사용 시 미리 로드 + JIT warm-up
-    if model_available and settings.USE_LOCAL_EMBEDDING:
+    # ONNX 임베딩 활성화 시 PyTorch warmup 건너뜀 (ONNX 세션에서 별도 warmup)
+    if model_available and settings.USE_LOCAL_EMBEDDING and not settings.USE_ONNX_EMBEDDING:
         logger.info("임베딩 모델을 미리 로드합니다...")
         try:
             model = get_local_model()

@@ -43,7 +43,7 @@ echo "  이메일: $EMAIL"
 echo ""
 
 # 1. nginx가 실행 중인지 확인 (wrapper가 자체서명 인증서를 자동 생성하므로 정상 기동됨)
-if ! docker compose -f "$COMPOSE_FILE" ps nginx 2>/dev/null | grep -q "running"; then
+if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps nginx 2>/dev/null | grep -qE "running|Up|healthy"; then
     echo "nginx가 실행 중이 아닙니다. 먼저 서비스를 시작하세요:"
     echo "  docker compose --env-file $ENV_FILE -f $COMPOSE_FILE up -d"
     exit 1
@@ -51,13 +51,16 @@ fi
 
 # 2. Let's Encrypt 인증서 발급 (ACME webroot challenge)
 # nginx wrapper가 이미 자체서명 인증서로 443을 리스닝 중이므로 바로 발급 가능
+# --entrypoint: docker-compose.prod.yml의 renew-loop entrypoint 오버라이드 우회
+# --cert-name: 인증서 디렉토리명을 도메인과 동일하게 고정 (-0001 접미사 방지)
 echo "=== 1/2. Let's Encrypt 인증서 발급 ==="
-docker compose -f "$COMPOSE_FILE" run --rm certbot \
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot \
     certonly --webroot \
     --webroot-path=/var/www/certbot \
     --email "$EMAIL" \
     --agree-tos \
     --no-eff-email \
+    --cert-name "$DOMAIN" \
     -d "$DOMAIN"
 
 # 3. nginx 재시작 (실제 인증서 적용)

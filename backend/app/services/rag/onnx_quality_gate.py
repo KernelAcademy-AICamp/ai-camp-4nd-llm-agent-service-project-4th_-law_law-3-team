@@ -126,6 +126,17 @@ def check_embedding_quality() -> QualityGateResult:
 
     try:
         pt_model = _create_temp_embedding_model()
+    except Exception:
+        return QualityGateResult(
+            passed=False,
+            metric_name="cosine",
+            metric_value=0.0,
+            threshold=_EMBEDDING_COSINE_THRESHOLD,
+            elapsed_ms=0.0,
+            detail="PyTorch 임베딩 모델 로드 실패 (ONNX 전용 배포에서는 품질 게이트를 비활성화하세요: ONNX_QUALITY_GATE_ENABLED=false)",
+        )
+
+    try:
         cosines: list[float] = []
         for query in _GATE_QUERIES:
             # PyTorch 임베딩

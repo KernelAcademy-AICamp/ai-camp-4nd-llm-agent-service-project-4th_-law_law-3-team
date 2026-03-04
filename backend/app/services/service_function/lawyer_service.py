@@ -10,20 +10,19 @@ import re
 from collections import defaultdict
 from functools import lru_cache
 from math import asin, cos, radians, sin, sqrt
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+from app.core.config import RUNTIME_DATA_DIR
 
 logger = logging.getLogger(__name__)
 
 # =============================================================================
 # 데이터 파일 경로
 # =============================================================================
-# __file__ = backend/app/services/service_function/lawyer_service.py
-# 5 parents up = law-3-team/ (프로젝트 루트)
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
+
+DATA_DIR = RUNTIME_DATA_DIR
 LAWYERS_FILE = DATA_DIR / "lawyers.json"
-FALLBACK_FILE = PROJECT_ROOT / "all_lawyers.json"
+FALLBACK_FILE = DATA_DIR.parent / "all_lawyers.json"
 
 # =============================================================================
 # 전문분야 12대분류 (사용자에게는 이것만 표시)

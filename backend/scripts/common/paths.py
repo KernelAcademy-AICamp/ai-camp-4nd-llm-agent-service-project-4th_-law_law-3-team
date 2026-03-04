@@ -17,7 +17,14 @@ _THIS_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = _THIS_DIR.parent  # backend/scripts/
 BACKEND_DIR = SCRIPTS_DIR.parent  # backend/
 PROJECT_ROOT = BACKEND_DIR.parent  # law-3-team/
-DATA_DIR = PROJECT_ROOT / "data"
+
+# Docker 환경 감지: WORKDIR=/app → PROJECT_ROOT=/ (루트)
+# 이 경우 data/는 볼륨 마운트로 /app/data/에 있음
+if PROJECT_ROOT == Path("/"):
+    DATA_DIR = BACKEND_DIR / "data"
+else:
+    DATA_DIR = PROJECT_ROOT / "data"
+
 OUTPUT_DIR = BACKEND_DIR / "eda_output"
 
 

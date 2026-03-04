@@ -86,11 +86,13 @@ backups/
 # Google Drive backup secrets
 secrets/
 rclone.conf
+credentials.json
 
 # EDA output (intermediate results)
 eda_output/
 
 # bkit local state files
+.bkit/
 docs/.bkit-memory.json
 docs/.pdca-status.json
 .pdca-status.json

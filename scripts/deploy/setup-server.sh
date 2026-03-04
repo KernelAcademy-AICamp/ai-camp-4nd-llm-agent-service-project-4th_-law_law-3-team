@@ -5,7 +5,7 @@ set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-/opt/law-platform}"
 BRANCH="${BRANCH:-deploy/aws-arm}"
-REPO_URL="${REPO_URL:-git@github.com:your-org/law-3.git}"
+REPO_URL="${REPO_URL:-https://github.com/KernelAcademy-AICamp/ai-camp-4nd-llm-agent-service-project-4th_-law_law-3-team.git}"
 
 echo "=== 1/6. 시스템 패키지 업데이트 ==="
 sudo apt-get update -y
@@ -56,37 +56,22 @@ echo "=== 6/6. 서비스 빌드 및 시작 ==="
 # 볼륨 마운트 디렉토리 사전 생성
 mkdir -p backend/data/models backend/data/mecab_userdic
 
+# 빌드 + 기동 (entrypoint에서 alembic 자동 실행, healthcheck 대기)
 docker compose --env-file .env.prod -f docker-compose.prod.yml build
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
-
-echo ""
-echo "=== 서비스 시작 완료 ==="
-echo "상태 확인: docker compose -f docker-compose.prod.yml ps"
-echo "로그 확인: docker compose -f docker-compose.prod.yml logs -f backend"
-echo ""
-
-# DB 마이그레이션 대기
-echo "=== PostgreSQL 준비 대기 ==="
-for i in $(seq 1 15); do
-    if docker compose -f docker-compose.prod.yml exec -T postgres pg_isready -U lawuser -d lawdb 2>&1 | grep -q "accepting"; then
-        echo "PostgreSQL 준비 완료"
-        break
-    fi
-    echo "대기 중... ($i/15)"
-    sleep 2
-done
-
-echo "=== DB 마이그레이션 ==="
-docker compose -f docker-compose.prod.yml exec -T backend python -m alembic upgrade head
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --wait --wait-timeout 300
 
 echo ""
 echo "=== 초기 설정 완료 ==="
 echo ""
-echo "다음 단계 (수동):"
-echo "  1. ML 모델 다운로드:"
-echo "     docker compose -f docker-compose.prod.yml exec backend python scripts/download_models.py"
-echo "  2. 데이터 로드 (선택):"
-echo "     docker compose -f docker-compose.prod.yml exec backend python -m scripts.ingest.cli --type all --step db"
-echo "  3. 헬스 체크:"
+echo "상태: docker compose --env-file .env.prod -f docker-compose.prod.yml ps"
+echo "로그: docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f backend"
+echo ""
+echo "다음 단계 (선택):"
+echo "  1. 데이터 로드:"
+echo "     docker compose --env-file .env.prod -f docker-compose.prod.yml exec backend python -m scripts.ingest.cli --type all --step db"
+echo "  2. 헬스 체크:"
 echo "     curl http://localhost/health"
+echo ""
+echo "이후 배포는 deploy.sh로 실행:"
+echo "  bash scripts/deploy/deploy.sh"
 echo ""

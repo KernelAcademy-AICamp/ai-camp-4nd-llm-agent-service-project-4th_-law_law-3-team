@@ -41,11 +41,13 @@ export async function GET(request: NextRequest) {
 
     let backendResponse: Response
     try {
+      const apiKey = process.env.API_KEY || ''
       backendResponse = await fetch(backendUrl, {
         method: 'GET',
         headers: {
           Accept: 'text/event-stream',
           'Cache-Control': 'no-cache',
+          ...(apiKey ? { 'X-API-Key': apiKey } : {}),
         },
         signal: controller.signal,
       })

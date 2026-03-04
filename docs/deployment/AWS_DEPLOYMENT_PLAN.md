@@ -174,7 +174,7 @@ Vercel에서 `BACKEND_URL=http://<EC2_PUBLIC_IP>:8000` 설정
 aws rds create-db-instance \
   --db-instance-identifier law-platform-db \
   --db-instance-class db.t3.micro \
-  --engine postgres --engine-version 15 \
+  --engine postgres --engine-version 17 \
   --master-username lawuser --master-user-password <PASSWORD> \
   --allocated-storage 20 --storage-type gp3 \
   --db-name lawdb --no-multi-az --no-publicly-accessible \

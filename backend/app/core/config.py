@@ -1,8 +1,20 @@
 import os
+from pathlib import Path
 from typing import List
 from urllib.parse import urlparse, urlunparse
 
 from pydantic_settings import BaseSettings
+
+# backend/ 디렉토리 (이 파일 기준: backend/app/core/config.py)
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+_PROJECT_ROOT = _BACKEND_DIR.parent
+
+# Docker 환경 감지: WORKDIR=/app → PROJECT_ROOT=/ (루트)
+# 이 경우 data/는 볼륨 마운트로 /app/data/에 있음
+if _PROJECT_ROOT == Path("/"):
+    RUNTIME_DATA_DIR = _BACKEND_DIR / "data"
+else:
+    RUNTIME_DATA_DIR = _PROJECT_ROOT / "data"
 
 
 class Settings(BaseSettings):
@@ -89,13 +101,16 @@ class Settings(BaseSettings):
     AGENT_TIMEOUT_SECONDS: int = 120
 
     # 법률 용어 사전 (MeCab 토크나이저 법률 복합명사 보강)
-    USE_LEGAL_TERM_DICT: bool = False
+    USE_LEGAL_TERM_DICT: bool = True
 
     # 하이브리드 검색 (벡터 + 키워드)
     USE_HYBRID_SEARCH: bool = True
 
     # BM25 검색 (pg_textsearch). True: BM25 인덱스 사용, False: FTS 비활성화
     USE_BM25_SEARCH: bool = True
+
+    # ML 모델 캐시 디렉토리 (임베딩/리랭커, 상대경로는 backend/ 기준)
+    MODEL_CACHE_DIR: str = "data/models"
 
     # MeCab 사용자 사전 경로 (법률 복합명사 인식)
     MECAB_USERDIC_PATH: str = "data/mecab_userdic/legal_terms.dic"

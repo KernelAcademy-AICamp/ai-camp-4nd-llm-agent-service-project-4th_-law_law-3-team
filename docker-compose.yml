@@ -40,7 +40,7 @@ services:
     environment:
       - LANCEDB_URI=/app/lancedb_data
       - LANCEDB_TABLE_NAME=${LANCEDB_TABLE_NAME:-legal_chunks}
-      - USE_LEGAL_TERM_DICT=${USE_LEGAL_TERM_DICT:-false}
+      - USE_LEGAL_TERM_DICT=${USE_LEGAL_TERM_DICT:-true}
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8100/health || exit 1"]
       interval: 10s

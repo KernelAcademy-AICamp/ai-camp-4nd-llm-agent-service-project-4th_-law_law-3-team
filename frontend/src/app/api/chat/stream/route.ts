@@ -33,7 +33,7 @@ async function fetchWithRetry(
     } catch (error) {
       if (attempt < retries && isConnectionError(error)) {
         const delay = INITIAL_DELAY_MS * Math.pow(2, attempt)
-        console.log(`[SSE Proxy] 재시도 ${attempt + 1}/${retries} (${delay}ms 후)`)
+        // 재시도 로깅은 서버사이드에서만 노출되지만 프로덕션에서는 불필요
         await new Promise(resolve => setTimeout(resolve, delay))
         continue
       }
@@ -47,21 +47,19 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    console.log('[SSE Proxy] Forwarding request to backend:', `${BACKEND_URL}/api/chat/stream`)
-
     // 클라이언트 쿠키를 백엔드로 전달 (세션 토큰)
     const cookieHeader = request.headers.get('cookie') || ''
+    const apiKey = process.env.API_KEY || ''
 
     const backendResponse = await fetchWithRetry(`${BACKEND_URL}/api/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+        ...(apiKey ? { 'X-API-Key': apiKey } : {}),
       },
       body: JSON.stringify(body),
     })
-
-    console.log('[SSE Proxy] Backend response status:', backendResponse.status)
 
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text()

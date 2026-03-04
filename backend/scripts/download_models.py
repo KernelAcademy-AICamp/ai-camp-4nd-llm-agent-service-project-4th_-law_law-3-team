@@ -13,6 +13,7 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -26,12 +27,21 @@ DEFAULT_RERANKER_MODEL = "dragonkue/bge-reranker-v2-m3-ko"
 
 
 def get_cache_dir() -> Path:
-    """모델 캐시 디렉토리 반환"""
-    return PROJECT_ROOT / "data" / "models"
+    """모델 캐시 디렉토리 반환 (MODEL_CACHE_DIR 환경변수 우선, 절대경로는 그대로 사용)"""
+    env_val = os.environ.get("MODEL_CACHE_DIR", "data/models")
+    p = Path(env_val)
+    if p.is_absolute():
+        return p
+    return PROJECT_ROOT / p
 
 
 def check_model_cached(model_name: str, cache_dir: Path) -> bool:
-    """모델이 완전히 캐시되어 있는지 확인"""
+    """모델이 완전히 캐시되어 있는지 확인
+
+    단순히 snapshots 디렉토리 존재만 확인하면 config 파일만 있는
+    불완전한 캐시도 '캐시됨'으로 판단하는 버그가 있었음.
+    최소 100MB 크기 검증을 추가하여 모델 가중치 파일 존재를 보장.
+    """
     sanitized = model_name.replace("/", "--")
     model_path = cache_dir / f"models--{sanitized}"
 
@@ -50,7 +60,17 @@ def check_model_cached(model_name: str, cache_dir: Path) -> bool:
     if not snapshots_dir.exists():
         return False
 
-    return len(list(snapshots_dir.iterdir())) > 0
+    if len(list(snapshots_dir.iterdir())) == 0:
+        return False
+
+    # 최소 모델 크기 검증 (100MB 미만이면 불완전한 캐시)
+    # 임베딩 모델 ~2.3GB, 리랭커 ~2.1GB이므로 100MB는 안전한 하한값
+    min_model_size = 100 * 1024 * 1024  # 100MB
+    total_size = sum(f.stat().st_size for f in model_path.rglob("*") if f.is_file())
+    if total_size < min_model_size:
+        return False
+
+    return True
 
 
 def get_cache_size(model_name: str, cache_dir: Path) -> str:
@@ -181,6 +201,48 @@ def check_all_models(cache_dir: Path) -> int:
     return 0 if all_cached else 1
 
 
+def _is_onnx_enabled(component: str) -> bool:
+    """ONNX 모드가 활성화되어 있는지 확인 (환경변수 기반)
+
+    Args:
+        component: "embedding" 또는 "reranker"
+    """
+    env_key = f"USE_ONNX_{component.upper()}"
+    return os.environ.get(env_key, "false").lower() in ("true", "1", "yes")
+
+
+def _check_onnx_model_exists(component: str) -> bool:
+    """ONNX 모델 파일이 존재하는지 확인"""
+    variant_map = {
+        "embedding": {
+            "ort-opt": "kure-v1-ort-opt",
+            "ort-opt-qdq": "kure-v1-ort-opt-qdq",
+            "onnx-fp16": "kure-v1-ort-opt-fp16",
+        },
+        "reranker": {
+            "ort-opt": "reranker-ort-opt",
+            "ort-opt-qdq": "reranker-ort-opt-qdq",
+            "ort-opt-qdq-6fp32": "reranker-ort-opt-qdq-6fp32",
+        },
+    }
+    env_key = f"ONNX_{component.upper()}_VARIANT"
+    variant = os.environ.get(env_key, "ort-opt")
+    dir_name = variant_map.get(component, {}).get(variant)
+    if not dir_name:
+        return False
+
+    cache_dir = get_cache_dir()
+    model_dir = cache_dir / dir_name
+    if not model_dir.exists():
+        return False
+
+    # model_optimized.onnx 또는 model.onnx 존재 확인
+    for candidate in ("model_optimized.onnx", "model.onnx"):
+        if (model_dir / candidate).exists():
+            return True
+    return False
+
+
 def main() -> int:
     """메인 함수"""
     parser = argparse.ArgumentParser(
@@ -240,10 +302,48 @@ def main() -> int:
         success = download_embedding_model(args.model, cache_dir, force=args.force)
         return 0 if success else 1
 
+    # ONNX 모드 확인 — 활성화된 컴포넌트는 PyTorch 다운로드 건너뜀
+    onnx_embedding = _is_onnx_enabled("embedding")
+    onnx_reranker = _is_onnx_enabled("reranker")
+    onnx_missing: list[str] = []
+
+    if onnx_embedding or onnx_reranker:
+        print("[ONNX 모드 감지]")
+        if onnx_embedding:
+            variant = os.environ.get("ONNX_EMBEDDING_VARIANT", "ort-opt")
+            exists = _check_onnx_model_exists("embedding")
+            status = "✓ 모델 존재" if exists else "✗ 모델 없음"
+            print(f"  임베딩: ONNX {variant} → PyTorch 다운로드 건너뜀 ({status})")
+            if not exists:
+                onnx_missing.append(f"임베딩 ({variant})")
+        if onnx_reranker:
+            variant = os.environ.get("ONNX_RERANKER_VARIANT", "ort-opt")
+            exists = _check_onnx_model_exists("reranker")
+            status = "✓ 모델 존재" if exists else "✗ 모델 없음"
+            print(f"  리랭커: ONNX {variant} → PyTorch 다운로드 건너뜀 ({status})")
+            if not exists:
+                onnx_missing.append(f"리랭커 ({variant})")
+
+    # ONNX 모델 누락 시 fail-fast (프로덕션 entrypoint에서 set -e로 중단)
+    if onnx_missing:
+        print()
+        print(f"✗ ONNX 모델 누락: {', '.join(onnx_missing)}")
+        print("  → S3 동기화 필요: bash scripts/deploy/s3-download.sh")
+        return 1
+
+    if onnx_embedding and onnx_reranker:
+        print()
+        print("✓ 임베딩/리랭커 모두 ONNX 모드 — 모델 확인 완료")
+        return 0
+
+    # ONNX가 아닌 컴포넌트만 다운로드
+    skip_embedding = onnx_embedding or args.reranker_only
+    skip_reranker = onnx_reranker or args.embedding_only
+
     results: list[bool] = []
 
     # 임베딩 모델
-    if not args.reranker_only:
+    if not skip_embedding:
         print(f"[1/2] 임베딩: {DEFAULT_EMBEDDING_MODEL}")
         results.append(
             download_embedding_model(DEFAULT_EMBEDDING_MODEL, cache_dir, force=args.force)
@@ -251,8 +351,8 @@ def main() -> int:
         print()
 
     # 리랭커 모델
-    if not args.embedding_only:
-        step = "1/1" if args.reranker_only else "2/2"
+    if not skip_reranker:
+        step = "1/1" if skip_embedding else "2/2"
         print(f"[{step}] 리랭커: {DEFAULT_RERANKER_MODEL}")
         results.append(
             download_reranker_model(DEFAULT_RERANKER_MODEL, cache_dir, force=args.force)

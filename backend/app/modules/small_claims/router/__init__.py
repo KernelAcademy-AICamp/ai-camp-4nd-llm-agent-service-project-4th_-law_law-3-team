@@ -4,6 +4,7 @@
 """
 
 import logging
+import os
 import re
 import uuid
 from datetime import datetime
@@ -491,7 +492,7 @@ async def generate_document(request: DocumentGenerateRequest) -> DocumentRespons
         # PDF 생성
         pdf_url: str | None = None
         docx_url: str | None = None
-        base_dir = Path("data/media/documents")
+        base_dir = Path(os.environ.get("MEDIA_DIR", "data/media")) / "documents"
         base_dir.mkdir(parents=True, exist_ok=True)
 
         try:
@@ -538,7 +539,7 @@ async def regenerate_document(request: DocumentRegenerateRequest) -> DocumentReg
     formats: ["pdf", "docx"] (기본값: 둘 다 생성)
     """
     try:
-        base_dir = Path("data/media/documents")
+        base_dir = Path(os.environ.get("MEDIA_DIR", "data/media")) / "documents"
         base_dir.mkdir(parents=True, exist_ok=True)
 
         doc_service = DocumentService()

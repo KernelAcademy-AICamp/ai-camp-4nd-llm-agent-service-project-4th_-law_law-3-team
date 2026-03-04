@@ -23,8 +23,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# 모델 캐시 디렉토리
-MODEL_CACHE_DIR = Path(__file__).parent.parent.parent.parent / "data" / "models"
+# 모델 캐시 디렉토리 (settings.MODEL_CACHE_DIR: 절대경로는 그대로, 상대경로는 backend/ 기준)
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+MODEL_CACHE_DIR = (
+    Path(settings.MODEL_CACHE_DIR)
+    if Path(settings.MODEL_CACHE_DIR).is_absolute()
+    else _BACKEND_ROOT / settings.MODEL_CACHE_DIR
+)
 
 # 모델 가용성 상태 (모듈 레벨 캐싱)
 _embedding_model_available: Optional[bool] = None
@@ -91,7 +96,15 @@ def is_embedding_model_cached(model_name: Optional[str] = None) -> bool:
         return False
 
     snapshots = list(snapshots_dir.iterdir())
-    return len(snapshots) > 0
+    if not snapshots:
+        return False
+
+    # dangling symlink 방지: 첫 스냅샷에서 config.json이 실제 접근 가능한지 확인
+    snapshot_path = snapshots[0]
+    if not snapshot_path.is_dir():
+        return False
+    config_file = snapshot_path / "config.json"
+    return config_file.exists()
 
 
 def check_embedding_model_availability() -> bool:

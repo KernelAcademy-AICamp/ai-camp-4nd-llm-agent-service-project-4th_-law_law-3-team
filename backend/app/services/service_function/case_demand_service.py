@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import csv
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import RUNTIME_DATA_DIR
 from app.models.trial_statistics import TrialStatistics
 from app.services.service_function.court_mapping_service import (
     get_region_to_court_map,
@@ -24,8 +24,8 @@ from app.services.service_function.court_mapping_service import (
 # =============================================================================
 # 상수 정의
 # =============================================================================
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
-LAWYER_CSV_PATH = PROJECT_ROOT / "data" / "lawyers_2010_2025.csv"
+
+LAWYER_CSV_PATH = RUNTIME_DATA_DIR / "lawyers_2010_2025.csv"
 
 # UI 분야 → (scourt_category, trial_statistics categories) 매핑
 CATEGORY_MAP: dict[str, tuple[str, list[str]]] = {

@@ -69,6 +69,11 @@ RUN ldconfig
 # 비루트 사용자 생성
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
+# named volume 마운트 포인트를 appuser 소유로 미리 생성
+# (Docker named volume이 빈 상태일 때 이미지의 디렉토리 권한을 상속함)
+RUN mkdir -p /app/media /app/lancedb_data /app/models \
+    && chown -R appuser:appuser /app/media /app/lancedb_data /app/models
+
 # uv 복사
 COPY --from=deps /root/.local/bin/uv /usr/local/bin/uv
 
@@ -79,7 +84,7 @@ COPY --from=deps --chown=appuser:appuser /app/.venv /app/.venv
 COPY --chown=appuser:appuser . .
 
 # entrypoint 스크립트 생성 (서버 시작 전 ML 모델 자동 다운로드)
-RUN printf '#!/bin/sh\nset -e\necho "=== ML 모델 캐시 확인 ==="\npython scripts/download_models.py\necho "=== 서버 시작 ==="\nexec "$@"\n' > /app/entrypoint.sh \
+RUN printf '#!/bin/sh\nset -e\necho "=== ML 모델 캐시 확인 ==="\npython scripts/download_models.py\necho "=== DB 마이그레이션 ==="\npython -m alembic upgrade head\necho "=== 서버 시작 ==="\nexec "$@"\n' > /app/entrypoint.sh \
     && chmod +x /app/entrypoint.sh
 
 # 환경변수 설정
@@ -87,6 +92,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV ENVIRONMENT=production
+ENV UV_CACHE_DIR=/tmp/uv-cache
 
 # 비루트 사용자로 전환
 USER appuser

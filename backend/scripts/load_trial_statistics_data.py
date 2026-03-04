@@ -27,10 +27,11 @@ from sqlalchemy.orm import sessionmaker
 from app.models.trial_statistics import TrialStatistics
 from scripts.common.db import create_sync_session_factory
 from scripts.common.logging_config import setup_logging
+from scripts.ingest.config import get_source_path
 
 logger = setup_logging(__name__)
 
-DATA_DIR = PROJECT_ROOT.parent / "data" / "trial_statistics_data"
+DATA_DIR = get_source_path("trial_statistics")
 
 BATCH_SIZE = 1000
 
