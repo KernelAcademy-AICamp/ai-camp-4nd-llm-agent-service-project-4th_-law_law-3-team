@@ -1,6 +1,7 @@
 'use client'
 
 import type { CaseInfo } from '../types'
+import { SMALL_CLAIMS_AMOUNT_LIMIT, REQUIRED_CASE_FIELDS } from '../types'
 
 interface CaseInfoStepProps {
   caseInfo: Partial<CaseInfo>
@@ -10,12 +11,7 @@ interface CaseInfoStepProps {
 }
 
 export function CaseInfoStep({ caseInfo, onUpdate, onNext, onPrevious }: CaseInfoStepProps) {
-  const isValid =
-    caseInfo.plaintiff_name &&
-    caseInfo.plaintiff_address &&
-    caseInfo.defendant_name &&
-    caseInfo.amount &&
-    caseInfo.description
+  const isValid = REQUIRED_CASE_FIELDS.every((field) => Boolean(caseInfo[field]))
 
   const handleAmountChange = (value: string) => {
     const numericValue = value.replace(/[^0-9]/g, '')
@@ -175,7 +171,7 @@ export function CaseInfoStep({ caseInfo, onUpdate, onNext, onPrevious }: CaseInf
                     원
                   </span>
                 </div>
-                {caseInfo.amount && caseInfo.amount > 30000000 && (
+                {caseInfo.amount && caseInfo.amount > SMALL_CLAIMS_AMOUNT_LIMIT && (
                   <p className="mt-1 text-xs text-amber-600">
                     * 3,000만원 초과 시 소액사건이 아닌 일반 민사소송입니다
                   </p>

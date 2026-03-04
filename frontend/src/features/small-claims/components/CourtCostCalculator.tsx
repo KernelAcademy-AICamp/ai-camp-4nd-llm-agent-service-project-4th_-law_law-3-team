@@ -10,16 +10,36 @@ const DELIVERY_COST_PER_TIME = 5200
 const DEFAULT_DELIVERY_COUNT = 15
 const DEFAULT_PARTY_COUNT = 2
 
+const STAMP_FEE_RATES = {
+  TIER1_MAX: 10_000_000,
+  TIER2_MAX: 100_000_000,
+  TIER1_MIN_FEE: 1_000,
+  TIER1_RATE: 0.005,
+  TIER2_BASE_FEE: 50_000,
+  TIER2_RATE: 0.0045,
+  TIER3_BASE_FEE: 455_000,
+  TIER3_RATE: 0.004,
+} as const
+
 function calculateStampFee(amount: number): number {
   if (amount <= 0) return 0
 
-  if (amount <= 10_000_000) {
-    return Math.max(Math.round(amount * 0.005), 1000)
+  if (amount <= STAMP_FEE_RATES.TIER1_MAX) {
+    return Math.max(
+      Math.round(amount * STAMP_FEE_RATES.TIER1_RATE),
+      STAMP_FEE_RATES.TIER1_MIN_FEE
+    )
   }
-  if (amount <= 100_000_000) {
-    return 50_000 + Math.round((amount - 10_000_000) * 0.0045)
+  if (amount <= STAMP_FEE_RATES.TIER2_MAX) {
+    return (
+      STAMP_FEE_RATES.TIER2_BASE_FEE +
+      Math.round((amount - STAMP_FEE_RATES.TIER1_MAX) * STAMP_FEE_RATES.TIER2_RATE)
+    )
   }
-  return 455_000 + Math.round((amount - 100_000_000) * 0.004)
+  return (
+    STAMP_FEE_RATES.TIER3_BASE_FEE +
+    Math.round((amount - STAMP_FEE_RATES.TIER2_MAX) * STAMP_FEE_RATES.TIER3_RATE)
+  )
 }
 
 function calculateCourtCost(claimAmount: number): CourtCostBreakdown {

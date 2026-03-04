@@ -169,3 +169,13 @@ export const WIZARD_STEPS: { step: WizardStep; label: string }[] = [
   { step: 'evidence', label: '증거 체크' },
   { step: 'document', label: '서류 생성' },
 ]
+
+export const SMALL_CLAIMS_AMOUNT_LIMIT = 30_000_000
+
+export const REQUIRED_CASE_FIELDS: ReadonlyArray<keyof CaseInfo> = [
+  'plaintiff_name',
+  'plaintiff_address',
+  'defendant_name',
+  'amount',
+  'description',
+] as const
