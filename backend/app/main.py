@@ -23,6 +23,7 @@ from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.core.registry import ModuleRegistry
 from app.core.session import SessionMiddleware
+from app.modules.auth.router import router as auth_router
 
 # 미디어 디렉토리 경로 (프로덕션: /app/media, 개발: data/media)
 MEDIA_DIR = Path(os.environ.get("MEDIA_DIR", Path(__file__).parent.parent / "data" / "media"))
@@ -219,6 +220,7 @@ registry = ModuleRegistry(app)
 registry.register_all_modules()
 
 # API 라우터 수동 등록 (모듈 시스템과 별도)
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(chat_router, prefix="/api")
 app.include_router(chat_conversations_router, prefix="/api")
 

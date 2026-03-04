@@ -190,6 +190,20 @@ class Settings(BaseSettings):
     # 활성화할 모듈 목록 (빈 리스트면 모든 모듈 활성화)
     ENABLED_MODULES: List[str] = []
 
+    # JWT 인증
+    JWT_SECRET_KEY: str = ""  # 프로덕션 필수
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # OAuth: Google
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+
+    # OAuth: Kakao
+    KAKAO_OAUTH_CLIENT_ID: str = ""
+    KAKAO_OAUTH_CLIENT_SECRET: str = ""
+
     # API 인증 (빈 문자열이면 인증 비활성화)
     API_KEY: str = ""
 

@@ -1,6 +1,7 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
+import { useAuth } from './AuthContext'
 
 export type UserRole = 'user' | 'lawyer'
 
@@ -36,13 +37,34 @@ interface ChatContextType {
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
 
+function getStoredRole(): UserRole {
+  if (typeof window === 'undefined') return 'user'
+  const stored = localStorage.getItem('userRole')
+  return stored === 'lawyer' ? 'lawyer' : 'user'
+}
+
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const [userRole, setUserRole] = useState<UserRole>('user')
+  const { user } = useAuth()
+  const [userRole, setUserRoleState] = useState<UserRole>(getStoredRole)
   const [sessionData, setSessionData] = useState<SessionData>({})
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null)
   const [highlightedCaseNumber, setHighlightedCaseNumber] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [caseId, setCaseId] = useState<string | null>(null)
+
+  const setUserRole = useCallback((role: UserRole) => {
+    setUserRoleState(role)
+    localStorage.setItem('userRole', role)
+  }, [])
+
+  // 인증 사용자의 역할을 동기화
+  useEffect(() => {
+    if (user?.role) {
+      const authRole = user.role === 'lawyer' ? 'lawyer' : 'user'
+      setUserRoleState(authRole)
+      localStorage.setItem('userRole', authRole)
+    }
+  }, [user?.role])
 
   const resetSession = useCallback(() => {
     setSessionData({})

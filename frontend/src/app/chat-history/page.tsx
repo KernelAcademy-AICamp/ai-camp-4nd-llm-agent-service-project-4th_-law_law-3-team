@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Trash2 } from 'lucide-react'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
-import { listConversations } from '@/features/workspace/services'
+import { BackButton } from '@/components/ui/BackButton'
+import { deleteConversation, listConversations } from '@/features/workspace/services'
 
 const AGENT_LABELS: Record<string, string> = {
   legal_search: '판례/법령 검색',
@@ -22,22 +24,44 @@ const AGENT_LABELS: Record<string, string> = {
   simple_chat: '일반 상담',
 }
 
+const AGENT_FILTERS = [
+  { key: '', label: '전체' },
+  { key: 'legal_search', label: '판례/법령' },
+  { key: 'lawyer_finder', label: '변호사' },
+  { key: 'small_claims', label: '소액소송' },
+  { key: 'mock_trial', label: '모의 법정' },
+  { key: 'workspace', label: '워크스페이스' },
+  { key: 'simple_chat', label: '일반 상담' },
+]
+
 export default function ChatHistoryPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const { isChatOpen, chatMode } = useUI()
   const { setConversationId } = useChat()
 
   const [search, setSearch] = useState('')
+  const [agentFilter, setAgentFilter] = useState('')
   const [page, setPage] = useState(1)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string | null } | null>(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['conversations', search, page],
+    queryKey: ['conversations', search, agentFilter, page],
     queryFn: () => listConversations({
       search: search || undefined,
+      agent: agentFilter || undefined,
       page,
       page_size: 20,
     }),
     placeholderData: keepPreviousData,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteConversation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      setDeleteTarget(null)
+    },
   })
 
   const handleContinue = (conversationId: string) => {
@@ -56,16 +80,21 @@ export default function ChatHistoryPage() {
       {/* 헤더 */}
       <header className="bg-white border-b px-6 py-4">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-xl font-bold text-gray-900">대화 기록</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            이전 법률 상담 대화를 검색하고 이어갈 수 있습니다
-          </p>
+          <div className="flex items-center gap-3">
+            <BackButton />
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">대화 기록</h1>
+              <p className="text-sm text-gray-500 mt-1">
+                이전 법률 상담 대화를 검색하고 이어갈 수 있습니다
+              </p>
+            </div>
+          </div>
         </div>
       </header>
 
-      {/* 검색 */}
+      {/* 검색 + 에이전트 필터 */}
       <div className="bg-white border-b px-6 py-3">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl mx-auto space-y-3">
           <input
             type="text"
             placeholder="대화 제목 또는 내용 검색..."
@@ -76,6 +105,24 @@ export default function ChatHistoryPage() {
             }}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
           />
+          <div className="flex gap-2 flex-wrap">
+            {AGENT_FILTERS.map((filter) => (
+              <button
+                key={filter.key}
+                onClick={() => {
+                  setAgentFilter(filter.key)
+                  setPage(1)
+                }}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                  agentFilter === filter.key
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-blue-300 hover:text-blue-600'
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -124,12 +171,21 @@ export default function ChatHistoryPage() {
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleContinue(conv.id)}
-                    className="ml-4 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors shrink-0"
-                  >
-                    이어가기
-                  </button>
+                  <div className="flex items-center gap-2 ml-4 shrink-0">
+                    <button
+                      onClick={() => handleContinue(conv.id)}
+                      className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                    >
+                      이어가기
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget({ id: conv.id, title: conv.title })}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      aria-label="대화 삭제"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -158,6 +214,36 @@ export default function ChatHistoryPage() {
             >
               다음
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 삭제 확인 모달 */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-sm mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">대화 삭제</h3>
+            <p className="mt-2 text-sm text-gray-600">
+              &quot;{deleteTarget.title || '제목 없는 대화'}&quot;를 삭제하시겠습니까?
+              <br />
+              <span className="text-red-500">삭제된 대화는 복구할 수 없습니다.</span>
+            </p>
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteMutation.isPending}
+                className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate(deleteTarget.id)}
+                disabled={deleteMutation.isPending}
+                className="flex-1 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {deleteMutation.isPending ? '삭제 중...' : '삭제'}
+              </button>
+            </div>
           </div>
         </div>
       )}

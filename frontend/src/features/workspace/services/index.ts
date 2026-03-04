@@ -83,6 +83,39 @@ export async function updateTimelineItem(
   return res.data
 }
 
+// ── 사건 요약 API ──
+
+export interface CaseSummaryResponse {
+  case_summary: Record<string, string[]> | null
+  conversation_summaries: {
+    conversation_id: string
+    title: string | null
+    summary: Record<string, string[]>
+  }[]
+}
+
+export async function getCaseSummary(caseId: string): Promise<CaseSummaryResponse> {
+  const res = await api.get(`${endpoints.workspace}/cases/${caseId}/summary`)
+  return res.data
+}
+
+export async function triggerCaseSummarize(
+  caseId: string,
+): Promise<{ summary: Record<string, string[]> | null; message?: string }> {
+  const res = await api.post(`${endpoints.workspace}/cases/${caseId}/summarize`)
+  return res.data
+}
+
+// ── 태그 관리 ──
+
+export async function deleteCaseTag(
+  caseId: string,
+  tagIndex: number,
+): Promise<{ removed: Record<string, unknown>; remaining_count: number }> {
+  const res = await api.delete(`${endpoints.workspace}/cases/${caseId}/tags/${tagIndex}`)
+  return res.data
+}
+
 // ── 사건 내보내기 ──
 
 export function exportCaseUrl(
@@ -98,11 +131,16 @@ export function exportCaseUrl(
 export async function listConversations(params?: {
   case_id?: string
   search?: string
+  agent?: string
   page?: number
   page_size?: number
 }): Promise<PaginatedResponse<ConversationListItem>> {
   const res = await api.get(endpoints.chatConversations, { params })
   return res.data
+}
+
+export async function deleteConversation(conversationId: string): Promise<void> {
+  await api.delete(`${endpoints.chatConversations}/${conversationId}`)
 }
 
 export async function getConversation(

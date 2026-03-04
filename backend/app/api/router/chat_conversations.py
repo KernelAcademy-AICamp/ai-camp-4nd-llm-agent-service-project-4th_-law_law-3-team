@@ -15,6 +15,7 @@ from sqlalchemy import func, update
 
 from app.core.database import async_session_factory
 from app.models.chat_conversation import ChatConversation
+from app.models.workspace_case import IdentityLink
 from app.services.workspace.chat_persistence import ChatPersistenceService
 
 router = APIRouter(prefix="/chat/conversations", tags=["chat-conversations"])
@@ -56,17 +57,35 @@ async def list_conversations(
     request: Request,
     case_id: str | None = Query(None),
     search: str | None = Query(None),
+    agent: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
 ) -> ConversationListResponse:
     """대화 목록 조회"""
     session_token: str = request.state.session_token
+    user_id = getattr(request.state, "user_id", None)
 
     case_uuid = uuid.UUID(case_id) if case_id else None
 
     async with async_session_factory() as db:
+        # 인증 사용자는 모든 연결된 세션 토큰으로 조회
+        session_tokens: list[str] | None = None
+        if user_id:
+            from sqlalchemy import select
+
+            result = await db.execute(
+                select(IdentityLink.session_token).where(
+                    IdentityLink.user_id == user_id,
+                )
+            )
+            tokens = list(result.scalars().all())
+            if session_token not in tokens:
+                tokens.append(session_token)
+            session_tokens = tokens
+
         conversations, total = await ChatPersistenceService.list_conversations(
-            db, session_token, case_uuid, search, page, page_size
+            db, session_token, case_uuid, search, page, page_size,
+            agent=agent, session_tokens=session_tokens,
         )
 
         items: list[ConversationListItem] = []
@@ -189,6 +208,44 @@ async def update_conversation(
 
     # 최신 상태 반환
     return await get_conversation(request, conversation_id)
+
+
+@router.delete("/{conversation_id}", status_code=204)
+async def delete_conversation(
+    request: Request,
+    conversation_id: str,
+) -> None:
+    """대화 삭제 (메시지 cascade 삭제)"""
+    session_token: str = request.state.session_token
+    user_id = getattr(request.state, "user_id", None)
+
+    async with async_session_factory() as db:
+        from sqlalchemy import select
+
+        # 인증 사용자는 연결된 세션 토큰으로 소유권 확인
+        tokens = [session_token]
+        if user_id:
+            result = await db.execute(
+                select(IdentityLink.session_token).where(
+                    IdentityLink.user_id == user_id,
+                )
+            )
+            tokens = list(result.scalars().all())
+            if session_token not in tokens:
+                tokens.append(session_token)
+
+        result = await db.execute(
+            select(ChatConversation).where(
+                ChatConversation.id == uuid.UUID(conversation_id),
+                ChatConversation.session_token.in_(tokens),
+            )
+        )
+        conv = result.scalar_one_or_none()
+        if not conv:
+            raise HTTPException(status_code=404, detail="대화를 찾을 수 없습니다.")
+
+        await db.delete(conv)
+        await db.commit()
 
 
 @router.get("/{conversation_id}/export")

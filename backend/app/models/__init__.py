@@ -42,6 +42,7 @@ from app.models.statute_alias import StatuteAlias
 from app.models.statute_hierarchy import StatuteHierarchy
 from app.models.statute_relation import StatuteRelation
 from app.models.trial_statistics import TrialStatistics
+from app.models.user import RefreshToken, SocialAccount, User
 from app.models.workspace_case import (
     IdentityLink,
     WorkspaceActivityLog,
@@ -96,4 +97,8 @@ __all__ = [
     "WorkspaceActivityLog",
     "WorkspaceCase",
     "WorkspaceCaseTimelineItem",
+    # 인증
+    "User",
+    "SocialAccount",
+    "RefreshToken",
 ]

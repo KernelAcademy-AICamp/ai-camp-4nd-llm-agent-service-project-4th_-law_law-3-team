@@ -135,6 +135,16 @@ export const modules: Module[] = [
     roles: ['lawyer', 'user'],
     category: 'research',
   },
+  {
+    id: 'profile',
+    name: '프로필 설정',
+    description: '계정 정보, 역할 변경, 로그인/로그아웃',
+    href: '/profile',
+    icon: '👤',
+    enabled: true,
+    roles: ['user', 'lawyer'],
+    category: 'settings',
+  },
 ]
 
 export const CATEGORY_NAMES: Record<string, { lawyer: string; user: string }> = {

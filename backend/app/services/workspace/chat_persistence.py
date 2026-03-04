@@ -160,10 +160,13 @@ class ChatPersistenceService:
         search: str | None = None,
         page: int = 1,
         page_size: int = 20,
+        agent: str | None = None,
+        session_tokens: list[str] | None = None,
     ) -> tuple[list[ChatConversation], int]:
         """대화 목록 조회 (페이지네이션)"""
+        tokens = session_tokens or [session_token]
         query = select(ChatConversation).where(
-            ChatConversation.session_token == session_token,
+            ChatConversation.session_token.in_(tokens),
         )
 
         if case_id:
@@ -171,6 +174,9 @@ class ChatPersistenceService:
 
         if search:
             query = query.where(ChatConversation.title.ilike(f"%{search}%"))
+
+        if agent:
+            query = query.where(ChatConversation.last_agent == agent)
 
         # 전체 수
         count_result = await db.execute(

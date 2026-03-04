@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat_conversation import ChatConversation
 from app.models.workspace_case import (
+    IdentityLink,
     WorkspaceCase,
     WorkspaceCaseTimelineItem,
 )
@@ -21,6 +22,27 @@ from app.services.workspace.chat_persistence import _merge_tags_dict
 
 class WorkspaceCaseService:
     """사건 워크스페이스 서비스"""
+
+    @staticmethod
+    async def _get_session_tokens(
+        db: AsyncSession,
+        session_token: str,
+        user_id: uuid.UUID | None = None,
+    ) -> list[str]:
+        """인증 사용자는 모든 연결된 세션 토큰 목록, 익명이면 단일 토큰 반환"""
+        if not user_id:
+            return [session_token]
+
+        result = await db.execute(
+            select(IdentityLink.session_token).where(
+                IdentityLink.user_id == user_id,
+            )
+        )
+        tokens = [row for row in result.scalars().all()]
+        # 현재 세션도 포함 (아직 마이그레이션 안 된 경우)
+        if session_token not in tokens:
+            tokens.append(session_token)
+        return tokens
 
     @staticmethod
     async def create_case(
@@ -75,10 +97,14 @@ class WorkspaceCaseService:
         search: str | None = None,
         page: int = 1,
         page_size: int = 20,
+        user_id: uuid.UUID | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         """사건 목록 조회 (카운트 포함)"""
+        tokens = await WorkspaceCaseService._get_session_tokens(
+            db, session_token, user_id
+        )
         query = select(WorkspaceCase).where(
-            WorkspaceCase.session_token == session_token,
+            WorkspaceCase.session_token.in_(tokens),
         )
         if status:
             query = query.where(WorkspaceCase.status == status)
@@ -136,12 +162,16 @@ class WorkspaceCaseService:
         db: AsyncSession,
         case_id: uuid.UUID,
         session_token: str,
+        user_id: uuid.UUID | None = None,
     ) -> dict[str, Any] | None:
         """사건 상세 조회 (대화 + 타임라인 포함)"""
+        tokens = await WorkspaceCaseService._get_session_tokens(
+            db, session_token, user_id
+        )
         result = await db.execute(
             select(WorkspaceCase).where(
                 WorkspaceCase.id == case_id,
-                WorkspaceCase.session_token == session_token,
+                WorkspaceCase.session_token.in_(tokens),
             )
         )
         case = result.scalar_one_or_none()
@@ -205,12 +235,16 @@ class WorkspaceCaseService:
         case_id: uuid.UUID,
         session_token: str,
         updates: dict[str, Any],
+        user_id: uuid.UUID | None = None,
     ) -> dict[str, Any] | None:
         """사건 업데이트"""
+        tokens = await WorkspaceCaseService._get_session_tokens(
+            db, session_token, user_id
+        )
         result = await db.execute(
             select(WorkspaceCase).where(
                 WorkspaceCase.id == case_id,
-                WorkspaceCase.session_token == session_token,
+                WorkspaceCase.session_token.in_(tokens),
             )
         )
         case = result.scalar_one_or_none()
@@ -232,19 +266,25 @@ class WorkspaceCaseService:
             )
 
         # 최신 상태 반환
-        return await WorkspaceCaseService.get_case_detail(db, case_id, session_token)
+        return await WorkspaceCaseService.get_case_detail(
+            db, case_id, session_token, user_id
+        )
 
     @staticmethod
     async def delete_case(
         db: AsyncSession,
         case_id: uuid.UUID,
         session_token: str,
+        user_id: uuid.UUID | None = None,
     ) -> bool:
         """사건 삭제 (연결된 대화의 case_id null 처리)"""
+        tokens = await WorkspaceCaseService._get_session_tokens(
+            db, session_token, user_id
+        )
         result = await db.execute(
             select(WorkspaceCase).where(
                 WorkspaceCase.id == case_id,
-                WorkspaceCase.session_token == session_token,
+                WorkspaceCase.session_token.in_(tokens),
             )
         )
         case = result.scalar_one_or_none()
