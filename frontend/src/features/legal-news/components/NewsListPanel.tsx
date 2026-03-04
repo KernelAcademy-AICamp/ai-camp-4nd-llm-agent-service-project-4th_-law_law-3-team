@@ -137,21 +137,13 @@ export function NewsListPanel() {
         </div>
       )}
 
-      {/* 상세 패널 */}
+      {/* 상세 패널 (Portal로 body에 렌더링) */}
       <NewsDetailPanel
         article={selectedArticle}
         loading={detailLoading}
         error={detailError}
         onClose={clearSelection}
       />
-
-      {/* 오버레이 */}
-      {(selectedArticle || detailLoading || detailError) && (
-        <div
-          className="fixed inset-0 bg-black/20 z-40"
-          onClick={clearSelection}
-        />
-      )}
     </div>
   )
 }
