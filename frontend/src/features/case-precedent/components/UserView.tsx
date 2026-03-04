@@ -67,6 +67,9 @@ export function UserView({ pageType = 'precedent' }: UserViewProps) {
       date: ref.decision_date || '',
       summary: ref.summary || '',
       similarity: ref.similarity || 0,
+      law_type: ref.law_type,
+      article_number: ref.article_number,
+      article_title: ref.article_title,
     }))
   , [filtered])
 

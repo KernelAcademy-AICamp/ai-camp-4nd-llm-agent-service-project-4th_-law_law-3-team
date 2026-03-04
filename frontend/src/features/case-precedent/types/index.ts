@@ -8,6 +8,10 @@ export interface PrecedentItem {
   date?: string
   summary: string
   similarity: number
+  // 법령 카드 표시용
+  law_type?: string
+  article_number?: string
+  article_title?: string
 }
 
 export interface PrecedentListResponse {

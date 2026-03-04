@@ -69,17 +69,24 @@ export function useCaseSearch(initialCaseId?: string): UseCaseSearchReturn {
         return true
       })
       // aiReferences에서 모든 판례를 검색 결과 목록에 추가
-      const newResults: PrecedentItem[] = refs.map((ref, idx) => ({
-        id: ref.id || `ai-ref-${idx}-${Date.now()}`,
-        doc_id: ref.doc_id || '',
-        case_name: ref.case_name || '',
-        case_number: ref.case_number || '',
-        doc_type: ref.doc_type || 'precedent',
-        court: ref.court || ref.court_name || '',
-        date: ref.date || ref.decision_date || '',
-        summary: ref.summary || '',
-        similarity: 100 - idx,
-      }))
+      const newResults: PrecedentItem[] = refs.map((ref, idx) => {
+        const isLawDoc = ref.doc_type === 'law'
+        const lawRef = ref as unknown as Record<string, unknown>
+        return {
+          id: ref.id || `ai-ref-${idx}-${Date.now()}`,
+          doc_id: ref.doc_id || '',
+          case_name: isLawDoc ? ((lawRef.law_name as string) || '') : (ref.case_name || ''),
+          case_number: ref.case_number || '',
+          doc_type: ref.doc_type || 'precedent',
+          court: ref.court || ref.court_name || '',
+          date: ref.date || ref.decision_date || '',
+          summary: ref.summary || '',
+          similarity: 100 - idx,
+          law_type: isLawDoc ? (lawRef.law_type as string) : undefined,
+          article_number: isLawDoc ? (lawRef.article_number as string) : undefined,
+          article_title: isLawDoc ? (lawRef.article_title as string) : undefined,
+        }
+      })
       setSearchResults(newResults)
       setTotalResults(newResults.length)
       // 첫 번째 판례를 자동 선택

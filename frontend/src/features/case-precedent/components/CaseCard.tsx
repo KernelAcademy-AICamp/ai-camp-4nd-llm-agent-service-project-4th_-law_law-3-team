@@ -65,10 +65,32 @@ function CaseCardComponent({ case_, selected, onSelect }: CaseCardProps) {
 
         <div className="flex-1 min-w-0">
           <h3 className="font-medium text-gray-900 line-clamp-2">
-            {[case_.court, case_.case_number].filter(Boolean).join(' ') || '제목 없음'}
+            {isLaw
+              ? (case_.case_name || '제목 없음')
+              : ([case_.court, case_.case_number].filter(Boolean).join(' ') || '제목 없음')}
           </h3>
-          {case_.date && (
-            <p className="text-xs text-gray-400 mt-1">{case_.date}</p>
+          {isLaw ? (
+            <>
+              {(case_.article_number || case_.article_title) && (
+                <p className="text-sm text-gray-600 mt-0.5 line-clamp-1">
+                  {[case_.article_number, case_.article_title].filter(Boolean).join(' ')}
+                </p>
+              )}
+              <div className="flex items-center gap-1.5 mt-1">
+                {case_.law_type && (
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                    {case_.law_type}
+                  </span>
+                )}
+                {case_.summary && (
+                  <p className="text-xs text-gray-400 truncate">{case_.summary}</p>
+                )}
+              </div>
+            </>
+          ) : (
+            case_.date && (
+              <p className="text-xs text-gray-400 mt-1">{case_.date}</p>
+            )
           )}
         </div>
       </div>

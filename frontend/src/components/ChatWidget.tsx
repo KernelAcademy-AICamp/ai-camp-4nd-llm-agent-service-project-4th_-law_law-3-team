@@ -246,9 +246,6 @@ const MessageBubble = memo(function MessageBubble({
                   <p className="text-xs opacity-70 mt-1">{loadingStatus.detail}</p>
                 </div>
               </div>
-              <div className="h-1.5 w-full rounded-full bg-blue-500/20 overflow-hidden">
-                <div className="h-full w-1/3 rounded-full bg-blue-500 animate-pulse" />
-              </div>
             </div>
           ) : (
             <div className={`prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit ${!isLightTheme ? 'prose-invert' : ''}`}>
