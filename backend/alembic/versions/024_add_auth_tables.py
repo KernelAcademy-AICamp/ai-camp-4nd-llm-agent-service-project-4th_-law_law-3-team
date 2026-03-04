@@ -1,7 +1,7 @@
 """인증 테이블 추가 (users, social_accounts, refresh_tokens)
 
 Revision ID: 024_add_auth_tables
-Revises: 023_add_news_articles_table
+Revises: 024
 """
 
 import sqlalchemy as sa
@@ -10,7 +10,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision = "024_add_auth_tables"
-down_revision = "023_add_news_articles_table"
+down_revision = "024"
 branch_labels = None
 depends_on = None
 
