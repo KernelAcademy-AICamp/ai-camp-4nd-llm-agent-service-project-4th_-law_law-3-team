@@ -7,8 +7,9 @@ Design 문서 Section 4.2-4.3 기반 엔드포인트 구현
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from app.core.rate_limit import AI_RATE_LIMIT, limiter
 from app.modules.mock_trial.schema import (
     CASE_TYPES,
     CIVIL_ROLES,
@@ -68,19 +69,21 @@ async def get_roles(case_type: str) -> RolesResponse:
 
 
 @router.post("/search-evidence", response_model=EvidenceSearchResponse)
+@limiter.limit(AI_RATE_LIMIT)
 async def search_evidence(
-    request: EvidenceSearchRequest,
+    request: Request,
+    body: EvidenceSearchRequest,
 ) -> EvidenceSearchResponse:
     """모의재판 전용 판례/법령 검색"""
     searcher = get_evidence_searcher()
     cases: list[dict[str, Any]] = []
     articles: list[dict[str, Any]] = []
 
-    if request.search_type in ("all", "cases"):
-        cases = await searcher.search_cases(request.query, request.limit)
+    if body.search_type in ("all", "cases"):
+        cases = await searcher.search_cases(body.query, body.limit)
 
-    if request.search_type in ("all", "articles"):
-        articles = await searcher.search_articles(request.query, request.limit)
+    if body.search_type in ("all", "articles"):
+        articles = await searcher.search_articles(body.query, body.limit)
 
     return EvidenceSearchResponse(
         cases=[

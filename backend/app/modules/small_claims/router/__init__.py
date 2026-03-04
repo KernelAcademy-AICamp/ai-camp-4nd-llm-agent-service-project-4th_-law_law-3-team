@@ -11,8 +11,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
+from app.core.rate_limit import AI_RATE_LIMIT, limiter
 from app.core.state import get_session_store
 from app.modules.small_claims.schema import (
     CaseInfo,
@@ -111,7 +112,8 @@ def _extract_from_answer(
 # ── Phase 3: 인터뷰 엔드포인트 ──
 
 @router.post("/interview/start", response_model=InterviewResponse)
-async def start_interview(request: InterviewStartRequest) -> InterviewResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def start_interview(request: Request, body: InterviewStartRequest) -> InterviewResponse:
     """자연어 인터뷰 시작 — 첫 번째 질문을 반환하고 세션을 생성합니다."""
     session_id = str(uuid.uuid4())
     store = get_session_store()
@@ -119,10 +121,10 @@ async def start_interview(request: InterviewStartRequest) -> InterviewResponse:
     store.set(
         f"{_INTERVIEW_PREFIX}{session_id}",
         {
-            "case_type": request.case_type,
+            "case_type": body.case_type,
             "question_index": 0,
             "collected": {
-                "dispute_type": request.case_type,
+                "dispute_type": body.case_type,
                 "plaintiff_name": "원고",
                 "plaintiff_address": "",
                 "defendant_name": "",
@@ -146,9 +148,11 @@ async def start_interview(request: InterviewStartRequest) -> InterviewResponse:
 
 
 @router.post("/interview/{session_id}/answer", response_model=InterviewResponse)
+@limiter.limit(AI_RATE_LIMIT)
 async def submit_answer(
+    request: Request,
     session_id: str,
-    request: InterviewAnswerRequest,
+    body: InterviewAnswerRequest,
 ) -> InterviewResponse:
     """인터뷰 답변 제출 — 다음 질문 또는 완료 시 수집된 사건 정보를 반환합니다."""
     store = get_session_store()
@@ -165,7 +169,7 @@ async def submit_answer(
     collected: dict[str, Any] = session_data["collected"]
 
     # 현재 질문의 답변으로 정보 추출
-    collected = _extract_from_answer(question_index, request.answer, collected)
+    collected = _extract_from_answer(question_index, body.answer, collected)
     next_index = question_index + 1
 
     if next_index >= len(INTERVIEW_QUESTIONS):
@@ -210,7 +214,9 @@ async def submit_answer(
 
 
 @router.post("/documents/generate")
+@limiter.limit(AI_RATE_LIMIT)
 async def generate_documents(
+    request: Request,
     session_id: str,
     document_types: List[str],
 ) -> dict[str, Any]:
@@ -227,7 +233,9 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 
 @router.post("/evidence/upload", response_model=EvidenceUploadResponse)
+@limiter.limit(AI_RATE_LIMIT)
 async def upload_evidence(
+    request: Request,
     evidence_item_id: str = "general",
     session_id: str = "default",
     files: List[UploadFile] = File(...),
@@ -286,7 +294,8 @@ async def upload_evidence(
 
 
 @router.post("/evidence/{session_id}/organize", response_model=EvidenceOrganizeResponse)
-async def organize_evidence(session_id: str) -> EvidenceOrganizeResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def organize_evidence(request: Request, session_id: str) -> EvidenceOrganizeResponse:
     """
     증거 자료 타임라인 정리
 
@@ -416,7 +425,8 @@ async def get_dispute_types() -> dict[str, Any]:
 
 
 @router.post("/generate-document", response_model=DocumentResponse)
-async def generate_document(request: DocumentGenerateRequest) -> DocumentResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def generate_document(request: Request, body: DocumentGenerateRequest) -> DocumentResponse:
     """
     서류 생성
 
@@ -428,8 +438,8 @@ async def generate_document(request: DocumentGenerateRequest) -> DocumentRespons
     try:
         from app.tools.llm import get_chat_model
 
-        case_info = request.case_info
-        document_type = request.document_type
+        case_info = body.case_info
+        document_type = body.document_type
         today = datetime.now().strftime("%Y년 %m월 %d일")
 
         if document_type not in SMALL_CLAIMS_TEMPLATES:
@@ -531,7 +541,8 @@ async def generate_document(request: DocumentGenerateRequest) -> DocumentRespons
 
 
 @router.post("/regenerate-document", response_model=DocumentRegenerateResponse)
-async def regenerate_document(request: DocumentRegenerateRequest) -> DocumentRegenerateResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def regenerate_document(request: Request, body: DocumentRegenerateRequest) -> DocumentRegenerateResponse:
     """
     편집된 텍스트로 PDF/DOCX 재생성 (Phase 2B)
 
@@ -546,20 +557,20 @@ async def regenerate_document(request: DocumentRegenerateRequest) -> DocumentReg
         pdf_url: str | None = None
         docx_url: str | None = None
 
-        if "pdf" in request.formats:
+        if "pdf" in body.formats:
             try:
-                filename = f"{request.document_type}_{uuid.uuid4()}.pdf"
+                filename = f"{body.document_type}_{uuid.uuid4()}.pdf"
                 output_path = base_dir / filename
-                doc_service.generate_pdf_from_text(request.content, str(output_path))
+                doc_service.generate_pdf_from_text(body.content, str(output_path))
                 pdf_url = f"/media/documents/{filename}"
             except Exception as e:
                 logger.error("PDF 재생성 실패: %s", e)
 
-        if "docx" in request.formats:
+        if "docx" in body.formats:
             try:
-                docx_filename = f"{request.document_type}_{uuid.uuid4()}.docx"
+                docx_filename = f"{body.document_type}_{uuid.uuid4()}.docx"
                 docx_output_path = base_dir / docx_filename
-                doc_service.generate_docx_from_text(request.content, str(docx_output_path))
+                doc_service.generate_docx_from_text(body.content, str(docx_output_path))
                 docx_url = f"/media/documents/{docx_filename}"
             except Exception as e:
                 logger.error("DOCX 재생성 실패: %s", e)

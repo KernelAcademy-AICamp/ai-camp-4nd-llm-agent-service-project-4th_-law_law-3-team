@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from app.core.database import async_session_factory
+from app.core.rate_limit import AI_RATE_LIMIT, limiter
 from app.modules.workspace.schema import (
     CaseCreateRequest,
     CaseUpdateRequest,
@@ -27,6 +28,7 @@ router = APIRouter()
 
 
 @router.post("/cases", status_code=201)
+@limiter.limit(AI_RATE_LIMIT)
 async def create_case(
     request: Request,
     body: CaseCreateRequest,
@@ -151,6 +153,7 @@ async def get_timeline(
 
 
 @router.post("/cases/{case_id}/timeline/rebuild")
+@limiter.limit(AI_RATE_LIMIT)
 async def rebuild_timeline(
     request: Request,
     case_id: str,

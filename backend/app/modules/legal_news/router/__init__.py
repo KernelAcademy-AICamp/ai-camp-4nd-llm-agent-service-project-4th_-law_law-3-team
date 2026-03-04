@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.rate_limit import AI_RATE_LIMIT, limiter
 from app.modules.legal_news.schema import (
     NewsArticleResponse,
     NewsCategoryStats,
@@ -104,10 +105,12 @@ async def get_news_detail(
     response_model=NewsSearchResponse,
     summary="뉴스 하이브리드 검색",
 )
+@limiter.limit(AI_RATE_LIMIT)
 async def search_news(
-    request: NewsSearchRequest,
+    request: Request,
+    body: NewsSearchRequest,
     db: AsyncSession = Depends(get_db),
 ) -> NewsSearchResponse:
     """v0.3.0: 하이브리드 검색 (Vector + FTS + 리랭커)"""
     from app.modules.legal_news.service import search_news_service
-    return await search_news_service(db, request=request)
+    return await search_news_service(db, request=body)

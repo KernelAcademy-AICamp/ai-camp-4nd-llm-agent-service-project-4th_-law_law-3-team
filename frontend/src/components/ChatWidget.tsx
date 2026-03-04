@@ -1,284 +1,25 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
 import { useStreamingChat } from '@/hooks/useStreamingChat'
 import { useSmallClaimsSync } from '@/hooks/useSmallClaimsSync'
-import { api } from '@/lib/api'
 import axios from 'axios'
-import ReactMarkdown from 'react-markdown'
-import ChatActions, { ChatAction } from './ChatActions'
+import type { ChatAction } from './ChatActions'
 import type { ChatSource } from '@/features/case-precedent/types'
 
-// 판례번호 패턴: 2023다12345, 88도820, 99가합1234 등
-const CASE_NUMBER_PATTERN = /(\d{2,4}[가-힣]{1,3}\d{1,6})/g
-
-// 텍스트에서 판례번호를 클릭 가능한 버튼으로 변환하는 컴포넌트
-function CaseNumberLink({
-  text,
-  onCaseClick,
-  isLightTheme
-}: {
-  text: string
-  onCaseClick: (caseNumber: string) => void
-  isLightTheme: boolean
-}) {
-  const parts = text.split(CASE_NUMBER_PATTERN)
-
-  return (
-    <>
-      {parts.map((part, index) => {
-        if (CASE_NUMBER_PATTERN.test(part)) {
-          // Reset the regex lastIndex
-          CASE_NUMBER_PATTERN.lastIndex = 0
-          return (
-            <button
-              key={index}
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                onCaseClick(part)
-              }}
-              className={`inline px-1 py-0.5 mx-0.5 rounded text-sm font-mono font-bold transition-all hover:scale-105 ${isLightTheme
-                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                : 'bg-blue-500/30 text-blue-300 hover:bg-blue-500/50'
-                }`}
-              title={`${part} 판례 보기`}
-            >
-              {part}
-            </button>
-          )
-        }
-        return <span key={index}>{part}</span>
-      })}
-    </>
-  )
-}
-
-// Memoized markdown components factory to prevent recreation on every render
-function useMarkdownComponents(
-  onCaseClick: (caseNumber: string) => void,
-  isLightTheme: boolean
-) {
-  return useMemo(() => ({
-    p: ({ children }: { children?: React.ReactNode }) => (
-      <p>
-        {typeof children === 'string' ? (
-          <CaseNumberLink
-            text={children}
-            onCaseClick={onCaseClick}
-            isLightTheme={isLightTheme}
-          />
-        ) : Array.isArray(children) ? (
-          children.map((child, i) =>
-            typeof child === 'string' ? (
-              <CaseNumberLink
-                key={i}
-                text={child}
-                onCaseClick={onCaseClick}
-                isLightTheme={isLightTheme}
-              />
-            ) : (
-              <span key={i}>{child}</span>
-            )
-          )
-        ) : (
-          children
-        )}
-      </p>
-    ),
-    li: ({ children }: { children?: React.ReactNode }) => (
-      <li>
-        {typeof children === 'string' ? (
-          <CaseNumberLink
-            text={children}
-            onCaseClick={onCaseClick}
-            isLightTheme={isLightTheme}
-          />
-        ) : Array.isArray(children) ? (
-          children.map((child, i) =>
-            typeof child === 'string' ? (
-              <CaseNumberLink
-                key={i}
-                text={child}
-                onCaseClick={onCaseClick}
-                isLightTheme={isLightTheme}
-              />
-            ) : (
-              <span key={i}>{child}</span>
-            )
-          )
-        ) : (
-          children
-        )}
-      </li>
-    ),
-  }), [onCaseClick, isLightTheme])
-}
-
-interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  actions?: ChatAction[]
-  agentUsed?: string
-  sources?: ChatSource[]  // 참조 자료 (카드 연결용)
-}
-
-interface MultiAgentChatResponse {
-  response: string
-  agent_used: string
-  sources: ChatSource[]
-  actions: ChatAction[]
-  session_data: Record<string, unknown>
-}
-
-// pathname → agent 매핑 (페이지 진입 시 자동 선택)
-const PATHNAME_AGENT_MAP: Record<string, string> = {
-  '/lawyer-finder': 'lawyer_finder',
-  '/storyboard': 'storyboard',
-  '/lawyer-stats': 'lawyer_stats',
-  '/law-study': 'law_study',
-  '/small-claims': 'small_claims',
-  '/statute-hierarchy': 'law_search',
-  // /case-precedent는 기존 ?agent= URL 파라미터 사용
-}
-
-// agent → 이동할 페이지 매핑 (에이전트 선택 시 자동 이동)
-const AGENT_PAGE_MAP: Record<string, string> = {
-  'lawyer_finder': '/lawyer-finder',
-  'case_search': '/case-precedent?agent=case_search',
-  'law_search': '/case-precedent?agent=law_search',
-  'legal_search': '/case-precedent',
-  'legal_answer': '/case-precedent',
-  'storyboard': '/storyboard',
-  'lawyer_stats': '/lawyer-stats',
-  'law_study': '/law-study',
-  'small_claims': '/small-claims',
-}
-
-// agent 한글명 (헤더 표시용)
-const AGENT_DISPLAY_NAMES: Record<string, string> = {
-  'lawyer_finder': '변호사 찾기',
-  'case_search': '판례 검색',
-  'law_search': '법령 검색',
-  'legal_search': '법률 검색',
-  'storyboard': '스토리보드',
-  'lawyer_stats': '변호사 통계',
-  'law_study': '로스쿨 학습',
-  'small_claims': '소액소송',
-  'general': '일반 채팅',
-}
-
-// 에이전트별 초기 인사 메시지
-const AGENT_GREETINGS: Record<string, string> = {
-  'case_search': '안녕하세요! 판례 검색 AI입니다.\n\n**판례에 대해 질문해주세요.**\n- 관련 판례 검색\n- 법률 상담',
-  'law_search': '안녕하세요! 법령 검색 AI입니다.\n\n**법령에 대해 질문해주세요.**\n- 관련 법령 조항 검색\n- 법령 해석 및 적용 사례',
-  'lawyer_finder': '안녕하세요! 변호사 찾기 AI입니다.\n\n**주변 변호사를 찾아드릴게요.**\n- 위치 기반 변호사 검색\n- 전문분야별 추천',
-  'storyboard': '안녕하세요! 스토리보드 AI입니다.\n\n**사건 타임라인을 정리해드릴게요.**\n- 사건 경위 정리\n- 시간순 타임라인 생성',
-  'lawyer_stats': '안녕하세요! 변호사 통계 AI입니다.\n\n**변호사 통계 정보를 안내해드릴게요.**\n- 지역별 변호사 현황\n- 전문분야별 분포',
-  'law_study': '안녕하세요! 법학 학습 AI입니다.\n\n**법학 공부를 도와드릴게요.**\n- 법령 학습 자료\n- 학습 가이드',
-  'small_claims': '안녕하세요! 소액소송 가이드 AI입니다.\n\n**소액소송 절차를 안내해드릴게요.**\n- 내용증명 작성\n- 지급명령 신청\n- 소액심판 절차',
-}
-
-// floating 모드 기본 적용 페이지
-const FLOATING_MODE_PATHS = new Set([
-  '/lawyer-finder',
-  '/small-claims',
-  '/lawyer-stats',
-  '/storyboard',
-  '/statute-hierarchy',
-  '/workspace',
-])
-
-// --- Memoized MessageBubble ---
-
-type MarkdownComponentsType = ReturnType<typeof useMarkdownComponents>
-
-interface MessageBubbleProps {
-  msg: Message
-  isStreamingMessage: boolean
-  messageUserClass: string
-  messageBotClass: string
-  isLightTheme: boolean
-  markdownComponents: MarkdownComponentsType
-  loadingStatus: { title: string; detail: string }
-  onAction: (action: string) => void
-  onRequestLocation: () => void
-}
-
-const MessageBubble = memo(function MessageBubble({
-  msg,
-  isStreamingMessage,
-  messageUserClass,
-  messageBotClass,
-  isLightTheme,
-  markdownComponents,
-  loadingStatus,
-  onAction,
-  onRequestLocation,
-}: MessageBubbleProps) {
-  return (
-    <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-[85%] p-4 rounded-2xl text-base leading-relaxed ${msg.role === 'user'
-          ? `${messageUserClass} rounded-tr-none`
-          : `${messageBotClass} rounded-tl-none`
-          }`}
-      >
-        {msg.role === 'assistant' ? (
-          isStreamingMessage && !msg.content.trim() ? (
-            <div className="space-y-3 min-w-[260px]">
-              <div className="flex items-start gap-3">
-                <div className="mt-1.5 flex h-3 w-3">
-                  <span className="relative inline-flex h-3 w-3">
-                    <span className="absolute inline-flex h-full w-full rounded-full bg-blue-500 opacity-75 animate-ping" />
-                    <span className="relative inline-flex h-3 w-3 rounded-full bg-blue-500" />
-                  </span>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">{loadingStatus.title}</p>
-                  <p className="text-xs opacity-70 mt-1">{loadingStatus.detail}</p>
-                </div>
-              </div>
-              <div className="h-1.5 w-full rounded-full bg-blue-500/20 overflow-hidden">
-                <div className="h-full w-1/3 rounded-full bg-blue-500 animate-pulse" />
-              </div>
-            </div>
-          ) : (
-            <div className={`prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-inherit ${!isLightTheme ? 'prose-invert' : ''}`}>
-              <ReactMarkdown components={markdownComponents}>
-                {msg.content}
-              </ReactMarkdown>
-              {isStreamingMessage && (
-                <span className="inline-block w-2 h-4 bg-current animate-pulse ml-0.5" />
-              )}
-              {msg.actions && msg.actions.length > 0 && (
-                <ChatActions
-                  actions={msg.actions}
-                  onAction={onAction}
-                  onRequestLocation={onRequestLocation}
-                  isLightTheme={isLightTheme}
-                />
-              )}
-            </div>
-          )
-        ) : (
-          <span className="whitespace-pre-wrap">{msg.content}</span>
-        )}
-      </div>
-    </div>
-  )
-}, (prevProps, nextProps) => {
-  // 완료된 메시지는 스트리밍 중 재렌더 방지 (ReactMarkdown 파싱 비용 절감)
-  if (prevProps.msg !== nextProps.msg) return false
-  if (prevProps.isStreamingMessage !== nextProps.isStreamingMessage) return false
-  if (prevProps.isLightTheme !== nextProps.isLightTheme) return false
-  if (prevProps.isStreamingMessage && prevProps.loadingStatus !== nextProps.loadingStatus) return false
-  return true
-})
+import {
+  PATHNAME_AGENT_MAP,
+  AGENT_PAGE_MAP,
+  AGENT_DISPLAY_NAMES,
+  AGENT_GREETINGS,
+  FLOATING_MODE_PATHS,
+} from './chat/constants'
+import type { Message } from './chat/constants'
+import MessageBubble, { useMarkdownComponents } from './chat/MessageBubble'
+import { useLoadingStatus } from './chat/useLoadingStatus'
 
 export default function ChatWidget() {
   const router = useRouter()
@@ -305,10 +46,7 @@ export default function ChatWidget() {
   const { readState, setChatDisputeType, setChatClaimAmount, setChatStep } = useSmallClaimsSync()
 
   // Determine if we are on pages that support floating mode
-  const isMapPage = pathname === '/lawyer-finder'
   const supportsFloatingMode = FLOATING_MODE_PATHS.has(pathname) || pathname.startsWith('/workspace')
-
-  // Global state for view mode is now handled by UIContext
 
   // agent 타입에 따른 초기 메시지 생성
   const getInitialMessage = useCallback((agent: string | null): Message => {
@@ -327,13 +65,17 @@ export default function ChatWidget() {
   // 스트리밍 관련 상태
   const { sendStreamingMessage, isStreaming, abortStream } = useStreamingChat()
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
-  const [requestStartedAt, setRequestStartedAt] = useState<number | null>(null)
-  const [loadingElapsedSeconds, setLoadingElapsedSeconds] = useState(0)
-  const [hasReceivedFirstToken, setHasReceivedFirstToken] = useState(false)
-  const hasReceivedFirstTokenRef = useRef(false)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const {
+    loadingStatus,
+    hasReceivedFirstTokenRef,
+    resetLoadingState,
+    startLoading,
+    markFirstToken,
+  } = useLoadingStatus(isLoading, isStreaming)
 
   const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // 스트리밍 성능 최적화: rAF 기반 배치 업데이트
@@ -352,7 +94,7 @@ export default function ChatWidget() {
   useEffect(() => {
     if (pendingMessage && !isLoading && !isStreaming) {
       handleSend(pendingMessage)
-      setPendingMessage(null) // 메시지 처리 후 초기화
+      setPendingMessage(null)
     }
   }, [pendingMessage, isLoading, isStreaming])
 
@@ -363,19 +105,15 @@ export default function ChatWidget() {
   const isChatHiddenPage = pathname === '/mock-trial'
 
   useEffect(() => {
-    // 같은 페이지에서는 모드 변경 안 함 (사용자가 토글한 상태 유지)
     if (prevPathnameRef.current === pathname) return
     prevPathnameRef.current = pathname
 
     if (isChatHiddenPage) {
-      // 자체 채팅 UI가 있는 페이지에서는 챗봇 최소화
       setChatOpen(false)
     } else if (supportsFloatingMode) {
-      // floating 모드 지원 페이지 첫 진입 시 floating 모드로 시작
       setChatMode('floating')
       setChatOpen(true)
     } else {
-      // 다른 페이지 진입 시 Split 모드 사용
       setChatMode('split')
     }
   }, [pathname, setChatMode, setChatOpen, supportsFloatingMode, isChatHiddenPage])
@@ -386,65 +124,6 @@ export default function ChatWidget() {
     }
   }, [messages, isChatOpen, chatMode, isLoading])
 
-  useEffect(() => {
-    if (!(isLoading || isStreaming) || requestStartedAt === null) {
-      setLoadingElapsedSeconds(0)
-      return
-    }
-
-    const tick = () => {
-      setLoadingElapsedSeconds(Math.floor((Date.now() - requestStartedAt) / 1000))
-    }
-
-    tick()
-    const intervalId = window.setInterval(tick, 1000)
-    return () => window.clearInterval(intervalId)
-  }, [isLoading, isStreaming, requestStartedAt])
-
-  const loadingStatus = useMemo(() => {
-    const elapsedText = `${loadingElapsedSeconds}초 경과`
-
-    if (hasReceivedFirstToken) {
-      return {
-        title: '답변을 완성하는 중입니다...',
-        detail: 'AI가 정보를 정리하여 출력하고 있습니다.',
-      }
-    }
-
-    if (loadingElapsedSeconds < 3) {
-      return {
-        title: '질문 의도를 분석하고 있습니다...',
-        detail: '에이전트가 최적의 도구를 선택하는 중입니다.',
-      }
-    }
-
-    if (loadingElapsedSeconds < 8) {
-      return {
-        title: '관련 데이터를 검색하고 있습니다...',
-        detail: '법령 및 판례 데이터베이스에서 정보를 찾는 중입니다.',
-      }
-    }
-
-    if (loadingElapsedSeconds < 15) {
-      return {
-        title: '검색된 결과를 정제하고 있습니다...',
-        detail: '수집된 정보를 바탕으로 답변을 구성하는 중입니다.',
-      }
-    }
-
-    if (loadingElapsedSeconds < 25) {
-      return {
-        title: '심층 분석을 진행하고 있습니다...',
-        detail: '복잡한 법률 관계를 검토하고 있습니다. 잠시만 기다려주세요.',
-      }
-    }
-
-    return {
-      title: '응답 준비가 거의 완료되었습니다...',
-      detail: '최종 답변을 생성하기 위한 마무리 과정입니다.',
-    }
-  }, [hasReceivedFirstToken, loadingElapsedSeconds])
-
   const handleResetChat = useCallback(() => {
     abortStream()
     if (rafIdRef.current !== null) {
@@ -453,14 +132,11 @@ export default function ChatWidget() {
     }
     setIsLoading(false)
     setStreamingMessageId(null)
-    setRequestStartedAt(null)
-    setLoadingElapsedSeconds(0)
-    setHasReceivedFirstToken(false)
-    hasReceivedFirstTokenRef.current = false
+    resetLoadingState()
     setInput('')
     resetSession()
     setMessages([getInitialMessage(effectiveAgent)])
-  }, [abortStream, effectiveAgent, getInitialMessage, resetSession])
+  }, [abortStream, effectiveAgent, getInitialMessage, resetSession, resetLoadingState])
 
   const handleSend = async (overrideMessage?: string, overrideLocation?: { latitude: number; longitude: number } | null) => {
     const messageToSend = overrideMessage || input
@@ -477,10 +153,7 @@ export default function ChatWidget() {
       setInput('')
     }
     setIsLoading(true)
-    setRequestStartedAt(Date.now())
-    setLoadingElapsedSeconds(0)
-    setHasReceivedFirstToken(false)
-    hasReceivedFirstTokenRef.current = false
+    startLoading()
 
     // 대화 기록 준비 (최근 10개)
     const history = messages.slice(-10).map((msg) => ({
@@ -531,12 +204,11 @@ export default function ChatWidget() {
 
     // Helper to clean AI response for case detail view
     const cleanAIResponse = (text: string) => {
-      let cleaned = text
+      return text
         .replace(/^(안녕하세요|반갑습니다).*?(\n|$)/g, '')
         .replace(/^.*?AI.*?입니다.*?(\n|$)/g, '')
         .replace(/^무엇을 도와드릴까요.*?(\n|$)/g, '')
         .trim()
-      return cleaned
     }
 
     try {
@@ -553,12 +225,10 @@ export default function ChatWidget() {
         },
         {
           onToken: (content) => {
-            if (content && !hasReceivedFirstTokenRef.current) {
-              hasReceivedFirstTokenRef.current = true
-              setHasReceivedFirstToken(true)
+            if (content) {
+              markFirstToken()
             }
             accumulatedContent += content
-            // rAF 기반 배치 업데이트: 토큰마다 setState 대신 프레임당 1회만
             if (rafIdRef.current === null) {
               rafIdRef.current = requestAnimationFrame(() => {
                 setMessages((prev) =>
@@ -574,7 +244,6 @@ export default function ChatWidget() {
           },
           onSources: (sources) => {
             receivedSources = sources
-            // sources가 오면 메시지에 추가
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === streamingMsgId
@@ -596,21 +265,17 @@ export default function ChatWidget() {
             // 소액소송 에이전트 응답 시 UI 동기화
             if (metadata.agent_used === 'small_claims' && metadata.session_data) {
               const sessionDataTyped = metadata.session_data as Record<string, unknown>
-              // 분쟁 유형 동기화
               if (sessionDataTyped.dispute_type) {
                 setChatDisputeType(sessionDataTyped.dispute_type as string)
               }
-              // 청구 금액 동기화
               if (sessionDataTyped.claim_amount) {
                 setChatClaimAmount(sessionDataTyped.claim_amount as number)
               }
-              // 현재 단계 동기화
               if (sessionDataTyped.step) {
                 setChatStep(sessionDataTyped.step as string)
               }
             }
 
-            // 메타데이터 업데이트
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === streamingMsgId
@@ -625,7 +290,6 @@ export default function ChatWidget() {
               cancelAnimationFrame(rafIdRef.current)
               rafIdRef.current = null
             }
-            // 마지막 토큰까지 반영
             if (accumulatedContent) {
               setMessages((prev) =>
                 prev.map((msg) =>
@@ -635,13 +299,9 @@ export default function ChatWidget() {
                 )
               )
             }
-            // 스트리밍 완료
             setStreamingMessageId(null)
             setIsLoading(false)
-            setRequestStartedAt(null)
-            setLoadingElapsedSeconds(0)
-            setHasReceivedFirstToken(false)
-            hasReceivedFirstTokenRef.current = false
+            resetLoadingState()
 
             // conversation_id 추적 (이어가기 지원)
             if (doneData?.conversation_id) {
@@ -680,7 +340,6 @@ export default function ChatWidget() {
               }
 
               newSessionData.aiGeneratedCase = aiCase
-              // 중복 제거: case_number(판례) 또는 law_name(법령) 기준
               const seen = new Set<string>()
               const uniqueSources = (receivedSources || []).filter((ref) => {
                 const key = ref.doc_type === 'law' ? ref.law_name : ref.case_number
@@ -721,8 +380,6 @@ export default function ChatWidget() {
             }
 
             // NAVIGATE 액션이 없으면 에이전트 → 페이지 매핑으로 이동
-            // 단, 현재 페이지가 이미 에이전트 매핑된 페이지라면 리다이렉트하지 않음
-            // (예: /statute-hierarchy에서 법령 검색 시 /case-precedent로 이동 방지)
             const currentPageAgent = PATHNAME_AGENT_MAP[pathname]
             if (!hasNavigated && agentUsed && AGENT_PAGE_MAP[agentUsed] && !currentPageAgent) {
               const targetPage = AGENT_PAGE_MAP[agentUsed]
@@ -747,10 +404,7 @@ export default function ChatWidget() {
             )
             setStreamingMessageId(null)
             setIsLoading(false)
-            setRequestStartedAt(null)
-            setLoadingElapsedSeconds(0)
-            setHasReceivedFirstToken(false)
-            hasReceivedFirstTokenRef.current = false
+            resetLoadingState()
           },
         }
       )
@@ -793,15 +447,11 @@ export default function ChatWidget() {
       )
       setStreamingMessageId(null)
       setIsLoading(false)
-      setRequestStartedAt(null)
-      setLoadingElapsedSeconds(0)
-      setHasReceivedFirstToken(false)
-      hasReceivedFirstTokenRef.current = false
+      resetLoadingState()
     }
   }
 
   const handleAction = async (action: string) => {
-    // 액션에 따른 처리
     switch (action) {
       case 'reset_search':
       case 'reset_session':
@@ -809,7 +459,6 @@ export default function ChatWidget() {
         break
 
       case 'expand_search':
-        // 범위 넓혀 검색 - 메시지로 전달
         handleSend('더 넓은 범위에서 변호사를 검색해주세요')
         break
 
@@ -838,26 +487,23 @@ export default function ChatWidget() {
         break
 
       default:
-        // 기타 액션은 메시지로 전달
         handleSend(action)
     }
   }
 
   const handleRequestLocation = async () => {
-    // 로딩 메시지 표시
     setMessages((prev) => [
       ...prev,
       {
         id: Date.now().toString(),
         role: 'assistant',
-        content: '📍 현재 위치를 확인하고 있습니다...',
+        content: '현재 위치를 확인하고 있습니다...',
       },
     ])
 
     const location = await requestUserLocation()
 
     if (location) {
-      // 위치 획득 성공 - 위치를 직접 전달하여 변호사 검색
       handleSend('현재 위치 주변 변호사를 찾아주세요', location)
     } else {
       setMessages((prev) => [
@@ -872,7 +518,6 @@ export default function ChatWidget() {
     }
   }
 
-  // Toggle view mode manually
   const toggleViewMode = () => {
     setChatMode(chatMode === 'split' ? 'floating' : 'split')
   }
@@ -901,13 +546,12 @@ export default function ChatWidget() {
     roleInactive: 'text-[#86868B] hover:bg-black/[0.04]',
   }
 
-  // Layout classes based on viewMode
   const layoutClasses =
     chatMode === 'split'
       ? 'fixed top-0 right-0 w-1/2 h-screen z-50 flex flex-col animate-in slide-in-from-right duration-500'
       : 'fixed bottom-6 right-6 w-[380px] h-[600px] z-50 rounded-2xl flex flex-col animate-in slide-in-from-bottom zoom-in duration-300'
 
-  // Floating Button (Collapsed) - 자체 채팅 UI가 있는 페이지에서는 버튼도 숨김
+  // Floating Button (Collapsed)
   if (!isChatOpen) {
     if (isChatHiddenPage) return null
     return (
@@ -988,7 +632,7 @@ export default function ChatWidget() {
             초기화
           </button>
 
-          {/* Toggle View Mode Button (floating mode 지원 페이지에서만) */}
+          {/* Toggle View Mode Button */}
           {supportsFloatingMode && (
             <button
               onClick={toggleViewMode}

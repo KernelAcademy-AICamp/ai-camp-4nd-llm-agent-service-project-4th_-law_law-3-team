@@ -18,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sse_starlette.sse import EventSourceResponse
 
 from app.core.database import async_session_factory
+from app.core.policies.legal_safety import check_input_safety
 from app.core.rate_limit import AI_RATE_LIMIT, limiter
 from app.multi_agent import (
     ChatRequest,
@@ -178,6 +179,9 @@ async def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
     적절한 에이전트 노드를 선택하여 응답을 생성합니다.
     """
     try:
+        if not check_input_safety(chat_request.message):
+            raise HTTPException(status_code=400, detail="안전하지 않은 입력입니다")
+
         session_token: str = request.state.session_token
         graph = get_graph()
 
@@ -341,6 +345,15 @@ async def chat_stream(request: Request, chat_request: ChatRequest) -> EventSourc
 
     async def event_generator() -> Any:
         try:
+            if not check_input_safety(chat_request.message):
+                yield {
+                    "event": "error",
+                    "data": json.dumps(
+                        {"message": "안전하지 않은 입력입니다"}, ensure_ascii=False
+                    ),
+                }
+                return
+
             session_token: str = request.state.session_token
             graph = get_graph()
 

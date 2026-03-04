@@ -6,8 +6,15 @@
  */
 
 import { NextRequest } from 'next/server'
+import {
+  BACKEND_URL,
+  SSE_HEADERS,
+  backendErrorResponse,
+  noBodyResponse,
+  pipeBackendStream,
+  apiKeyHeader,
+} from '@/lib/sse-proxy'
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
 const MAX_RETRIES = 3
 const INITIAL_DELAY_MS = 2000
 
@@ -33,7 +40,6 @@ async function fetchWithRetry(
     } catch (error) {
       if (attempt < retries && isConnectionError(error)) {
         const delay = INITIAL_DELAY_MS * Math.pow(2, attempt)
-        // 재시도 로깅은 서버사이드에서만 노출되지만 프로덕션에서는 불필요
         await new Promise(resolve => setTimeout(resolve, delay))
         continue
       }
@@ -49,66 +55,25 @@ export async function POST(request: NextRequest) {
 
     // 클라이언트 쿠키를 백엔드로 전달 (세션 토큰)
     const cookieHeader = request.headers.get('cookie') || ''
-    const apiKey = process.env.API_KEY || ''
 
     const backendResponse = await fetchWithRetry(`${BACKEND_URL}/api/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-        ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+        ...apiKeyHeader(),
       },
       body: JSON.stringify(body),
     })
 
-    if (!backendResponse.ok) {
-      const errorText = await backendResponse.text()
-      console.error('[SSE Proxy] Backend error:', errorText)
-      return new Response(
-        JSON.stringify({ error: 'Backend request failed', detail: errorText }),
-        { status: backendResponse.status, headers: { 'Content-Type': 'application/json' } }
-      )
-    }
+    if (!backendResponse.ok) return backendErrorResponse(backendResponse)
+    if (!backendResponse.body) return noBodyResponse()
 
-    if (!backendResponse.body) {
-      return new Response(
-        JSON.stringify({ error: 'No response body' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // ReadableStream을 사용하여 청크 단위로 전달
     const reader = backendResponse.body.getReader()
-
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) {
-              controller.close()
-              break
-            }
-            // 청크를 그대로 전달
-            controller.enqueue(value)
-          }
-        } catch (error) {
-          console.error('[SSE Proxy] Stream error:', error)
-          controller.error(error)
-        }
-      },
-      cancel() {
-        reader.cancel()
-      },
-    })
+    const stream = pipeBackendStream(reader, { label: 'SSE Proxy' })
 
     // 백엔드 Set-Cookie 헤더를 클라이언트에 전달 (세션 토큰)
-    const responseHeaders: Record<string, string> = {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    }
+    const responseHeaders: Record<string, string> = { ...SSE_HEADERS }
     const setCookie = backendResponse.headers.get('set-cookie')
     if (setCookie) {
       responseHeaders['Set-Cookie'] = setCookie

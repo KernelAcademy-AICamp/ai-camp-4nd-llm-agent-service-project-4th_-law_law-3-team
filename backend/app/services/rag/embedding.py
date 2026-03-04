@@ -123,16 +123,11 @@ def check_embedding_model_availability() -> bool:
 
     if not _embedding_model_available and not _embedding_model_warning_shown:
         _embedding_model_warning_shown = True
-        warning_msg = (
-            "\n" + "=" * 60 + "\n"
-            "[WARNING] 임베딩 모델이 캐시되지 않았습니다.\n"
-            f"모델명: {settings.LOCAL_EMBEDDING_MODEL}\n"
-            "검색 API 사용 전 먼저 모델을 다운로드해주세요:\n"
-            "  uv run python scripts/download_models.py\n"
-            "=" * 60
+        logger.warning(
+            "임베딩 모델 미캐시: %s. "
+            "검색 API 사용 전 uv run python scripts/download_models.py 실행 필요",
+            settings.LOCAL_EMBEDDING_MODEL,
         )
-        print(warning_msg)
-        logger.warning("임베딩 모델 미캐시: %s", settings.LOCAL_EMBEDDING_MODEL)
 
     return _embedding_model_available
 

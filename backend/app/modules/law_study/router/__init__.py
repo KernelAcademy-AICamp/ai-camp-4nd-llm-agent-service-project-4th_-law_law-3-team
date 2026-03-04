@@ -4,7 +4,9 @@
 """
 from typing import Any, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+
+from app.core.rate_limit import AI_RATE_LIMIT, limiter
 
 router = APIRouter()
 
@@ -34,7 +36,8 @@ async def get_case_summary(case_id: str) -> dict[str, Any]:
 
 
 @router.post("/quiz/generate")
-async def generate_quiz(subject: str, count: int = 10) -> dict[str, Any]:
+@limiter.limit(AI_RATE_LIMIT)
+async def generate_quiz(request: Request, subject: str, count: int = 10) -> dict[str, Any]:
     """주제별 퀴즈 생성"""
     return {
         "subject": subject,
@@ -43,7 +46,8 @@ async def generate_quiz(subject: str, count: int = 10) -> dict[str, Any]:
 
 
 @router.post("/quiz/submit")
-async def submit_quiz(quiz_id: str, answers: dict[str, Any]) -> dict[str, Any]:
+@limiter.limit(AI_RATE_LIMIT)
+async def submit_quiz(request: Request, quiz_id: str, answers: dict[str, Any]) -> dict[str, Any]:
     """퀴즈 제출 및 채점"""
     return {
         "quiz_id": quiz_id,

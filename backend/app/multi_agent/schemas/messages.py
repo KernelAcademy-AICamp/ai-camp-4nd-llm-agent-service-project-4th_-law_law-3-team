@@ -6,7 +6,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatMessage(BaseModel):
@@ -19,9 +19,9 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     """채팅 요청"""
 
-    message: str
+    message: str = Field(max_length=10000)
     user_role: str = "user"
-    history: list[ChatMessage] = []
+    history: list[ChatMessage] = Field(default_factory=list, max_length=50)
     session_data: dict[str, Any] = {}
     user_location: dict[str, float] | None = None
     agent: str | None = None  # 에이전트 직접 지정 (라우팅 건너뜀)
