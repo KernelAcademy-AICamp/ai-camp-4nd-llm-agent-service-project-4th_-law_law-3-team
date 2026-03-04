@@ -109,6 +109,13 @@ class NewsArticle(Base):  # type: ignore[misc]
         comment="LanceDB 임베딩 완료 여부",
     )
 
+    # BM25 검색용 (MeCab 토크나이징된 텍스트)
+    search_text = Column(
+        Text,
+        nullable=True,
+        comment="MeCab 토크나이징된 검색용 텍스트 (BM25)",
+    )
+
     # 타임스탬프
     created_at = Column(DateTime, default=datetime.utcnow, comment="레코드 생성일시")
     updated_at = Column(

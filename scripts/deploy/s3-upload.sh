@@ -19,6 +19,16 @@ echo "============================================"
 echo "버킷: ${S3_BUCKET}/${S3_PREFIX}/"
 echo ""
 
+# 0. 뉴스 데이터 JSONL 덤프 (DB → data/news/news_articles.jsonl)
+#    S3 업로드 전에 최신 뉴스 데이터를 덤프하여 data/ 에 포함시킴
+echo "[0/3] 뉴스 데이터 덤프 중..."
+if (cd "${PROJECT_DIR}/backend" && uv run python scripts/dump_news_data.py 2>&1 | tail -5); then
+    echo "  뉴스 덤프 완료"
+else
+    echo "  WARNING: 뉴스 덤프 실패 (계속 진행)"
+fi
+echo ""
+
 # 1. LanceDB 벡터 데이터 (7.7GB)
 echo "[1/3] LanceDB 데이터 업로드 중..."
 aws s3 sync \
