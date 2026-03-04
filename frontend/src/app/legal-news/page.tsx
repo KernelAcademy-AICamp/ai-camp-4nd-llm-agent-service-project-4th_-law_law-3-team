@@ -1,15 +1,37 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import { BackButton } from '@/components/ui/BackButton'
 import { DisclaimerBanner } from '@/features/legal-news/components/DisclaimerBanner'
-import { NewsBarChart } from '@/features/legal-news/components/NewsBarChart'
-import { NewsDonutChart } from '@/features/legal-news/components/NewsDonutChart'
 import { NewsListPanel } from '@/features/legal-news/components/NewsListPanel'
 import { RagContributionCard } from '@/features/legal-news/components/RagContributionCard'
-import { SearchPanel } from '@/features/legal-news/components/SearchPanel'
 import { useNewsStats } from '@/features/legal-news/hooks/useNewsStats'
 import type { NewsTab } from '@/features/legal-news/types'
+
+function ChartSkeleton() {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+      <div className="flex items-center justify-center h-48">
+        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+      </div>
+    </div>
+  )
+}
+
+const NewsBarChart = dynamic(
+  () => import('@/features/legal-news/components/NewsBarChart').then((mod) => mod.NewsBarChart),
+  { ssr: false, loading: () => <ChartSkeleton /> },
+)
+
+const NewsDonutChart = dynamic(
+  () => import('@/features/legal-news/components/NewsDonutChart').then((mod) => mod.NewsDonutChart),
+  { ssr: false, loading: () => <ChartSkeleton /> },
+)
+
+const SearchPanel = dynamic(
+  () => import('@/features/legal-news/components/SearchPanel').then((mod) => mod.SearchPanel),
+)
 
 export default function LegalNewsPage() {
   const [activeTab, setActiveTab] = useState<NewsTab>('list')

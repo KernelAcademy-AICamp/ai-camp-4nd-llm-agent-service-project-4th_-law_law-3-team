@@ -146,14 +146,6 @@ export function SearchPanel() {
         error={detailError}
         onClose={clearSelection}
       />
-
-      {/* 오버레이 */}
-      {(selectedArticle || detailLoading || detailError) && (
-        <div
-          className="fixed inset-0 bg-black/20 z-40"
-          onClick={clearSelection}
-        />
-      )}
     </div>
   )
 }

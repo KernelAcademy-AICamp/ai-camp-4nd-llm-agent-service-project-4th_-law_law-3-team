@@ -31,13 +31,6 @@ export function useNewsList() {
     setFiltersState((prev) => ({ ...prev, ...newFilters }))
   }, [])
 
-  // 하위 호환: 컴포넌트에서 loadList(overrides)를 호출하면 필터 업데이트 → 자동 refetch
-  const loadList = useCallback((overrideFilters?: Partial<NewsListFilters>) => {
-    if (overrideFilters) {
-      setFiltersState((prev) => ({ ...prev, ...overrideFilters }))
-    }
-  }, [])
-
   return {
     items: data?.items ?? [],
     total: data?.total ?? 0,
@@ -46,6 +39,5 @@ export function useNewsList() {
     error: error ? (error instanceof Error ? error.message : '뉴스 목록 조회에 실패했습니다.') : null,
     filters,
     setFilters,
-    loadList,
   }
 }
