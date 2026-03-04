@@ -26,7 +26,7 @@ export function SearchPanel({
   onCaseSelect,
   highlightedCaseNumber,
 }: SearchPanelProps) {
-  const [isProvisionsOpen, setIsProvisionsOpen] = useState(true)
+  const [isProvisionsOpen, setIsProvisionsOpen] = useState(false)
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
   const handleCaseSelect = useCallback((id: string) => {

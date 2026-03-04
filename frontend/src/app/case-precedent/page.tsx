@@ -72,11 +72,7 @@ function CasePrecedentContent() {
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center gap-3">
           <BackButton />
-          <span className="text-2xl">{pageIcon}</span>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">{pageTitle}</h1>
-            <p className="text-sm text-gray-500">{pageDescription}</p>
-          </div>
+          <h1 className="text-xl font-bold text-gray-900">{pageTitle}</h1>
         </div>
       </header>
 
@@ -84,10 +80,10 @@ function CasePrecedentContent() {
         <Suspense fallback={<ViewSkeleton />}>
           {initialCaseId ? (
             <LawyerView initialCaseId={initialCaseId} />
-          ) : isFilterMode ? (
-            <FilterablePrecedentView />
           ) : userRole === 'lawyer' ? (
             <LawyerView />
+          ) : isFilterMode ? (
+            <FilterablePrecedentView />
           ) : (
             <UserView />
           )}
