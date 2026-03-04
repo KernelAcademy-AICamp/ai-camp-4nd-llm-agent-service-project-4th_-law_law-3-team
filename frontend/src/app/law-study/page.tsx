@@ -98,7 +98,7 @@ export default function LawStudyPage() {
         </div>
 
         {/* 중앙-우: 문제 뷰어 + 답안 작성 */}
-        <div className="flex-1 min-w-0 bg-white">
+        <div className="flex-1 min-w-0">
           <ExamViewer
             content={examContentQuery.data?.content}
             isLoading={examContentQuery.isLoading}
@@ -107,6 +107,9 @@ export default function LawStudyPage() {
             onAnswerChange={setAnswerText}
             onRequestFeedback={() => feedbackMutation.mutate()}
             isFeedbackLoading={feedbackMutation.isPending}
+            category={selectedExam?.category}
+            session={selectedExam?.session}
+            year={selectedExam?.year}
           />
         </div>
 
