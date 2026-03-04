@@ -50,6 +50,8 @@ Claude는 모든 코드 작성 시 이 규칙들을 **항상(ALWAYS)** 따라야
 | Python | `ruff check` | `ruff format` | `mypy` |
 | TypeScript | ESLint | Prettier | `tsc --noEmit` |
 
+→ 상세 검증 절차: `rules/code-verification.md` 참조
+
 ## 7. 코드 리뷰 체크리스트
 
 - [ ] 타입 힌트가 모든 함수에 있는가?
@@ -59,24 +61,14 @@ Claude는 모든 코드 작성 시 이 규칙들을 **항상(ALWAYS)** 따라야
 - [ ] 함수가 30줄 이하인가?
 - [ ] 변수명이 명확한가?
 
-## 8. 스킬/에이전트 유지보수
-
-코드 구조(파일 경로, 클래스명, 함수 시그니처)가 변경될 때 관련 스킬/에이전트도 함께 업데이트:
-
-- **경로 변경**: 스킬 내 import 예시, 디렉토리 구조 다이어그램
-- **클래스/함수 변경**: 스킬 내 코드 예시, 패턴 설명
-- **아키텍처 변경**: 관련 스킬의 아키텍처 섹션
-
-확인: `grep -r "변경전_경로" .claude/skills/ .claude/agents/`
-
-## 9. 정보 검색 시 최신 날짜 기준
+## 8. 정보 검색 시 최신 날짜 기준
 
 - 웹 검색 시 **현재 날짜 기준** 최신 정보 검색
 - 검색 쿼리에 연도 포함
 - 2년 이상 된 정보는 교차 확인
 - deprecated API/패턴 사용 금지
 
-## 10. Python 의존성 동기화 (pyproject.toml)
+## 9. Python 의존성 동기화 (pyproject.toml)
 
 `pyproject.toml` 의존성 추가/삭제 시 **두 섹션 반드시 동기화**:
 
