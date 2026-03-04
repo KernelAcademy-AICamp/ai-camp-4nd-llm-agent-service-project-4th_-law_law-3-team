@@ -128,5 +128,38 @@ export interface CitingCasesResponse {
   cases: CitingCaseItem[]
 }
 
+// 판례 필터 검색 타입
+export type DatePreset = 'all' | '3y' | '5y' | '10y' | 'custom'
+export type SortOrder = 'relevance' | 'latest'
+
+export interface PrecedentFilterParams {
+  keyword: string
+  case_type: string        // "" = 전체
+  date_preset: DatePreset
+  date_from: string        // YYYY-MM-DD, custom일 때만
+  date_to: string          // YYYY-MM-DD, custom일 때만
+  offset: number
+  limit: number
+}
+
+export interface FilteredPrecedentItem {
+  id: string
+  serial_number: string
+  case_name: string | null
+  case_number: string | null
+  case_type: string | null
+  court_name: string | null
+  decision_date: string | null
+  summary: string | null
+}
+
+export interface FilteredPrecedentListResponse {
+  keyword: string
+  total: number
+  offset: number
+  limit: number
+  precedents: FilteredPrecedentItem[]
+}
+
 // 법령 계층도 타입
 export * from './hierarchy'

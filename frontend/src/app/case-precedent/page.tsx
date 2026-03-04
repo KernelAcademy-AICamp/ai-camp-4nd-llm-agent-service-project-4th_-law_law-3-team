@@ -17,6 +17,11 @@ const UserView = dynamic(
   { ssr: false }
 )
 
+const FilterablePrecedentView = dynamic(
+  () => import('@/features/case-precedent/components/FilterablePrecedentView').then((m) => m.FilterablePrecedentView),
+  { ssr: false }
+)
+
 function ViewSkeleton() {
   return (
     <div className="flex h-full">
@@ -37,18 +42,26 @@ function ViewSkeleton() {
 }
 
 function CasePrecedentContent() {
-  const { userRole } = useChat()
+  const { userRole, sessionData } = useChat()
   const { isChatOpen } = useUI()
   const searchParams = useSearchParams()
   const agentType = searchParams.get('agent')
   const initialCaseId = searchParams.get('id')
 
   const isLawSearch = agentType === 'law_search'
-  const pageTitle = isLawSearch ? '법령 검색' : '판례 검색'
+
+  // 진입 모드 판단: 채팅에서 aiReferences로 진입했는지 여부
+  const aiReferences = sessionData.aiReferences as unknown[] | undefined
+  const hasChatReferences = Array.isArray(aiReferences) && aiReferences.length > 0
+  const isFilterMode = !hasChatReferences && agentType === 'case_search' && !initialCaseId
+
+  const pageTitle = isFilterMode ? '판례 검색' : isLawSearch ? '법령 검색' : '판례 검색'
   const pageIcon = isLawSearch ? '📖' : '📚'
-  const pageDescription = userRole === 'lawyer'
-    ? (isLawSearch ? '전문가용 법령 검색 및 분석 시스템' : '전문가용 판례 검색 및 분석 시스템')
-    : (isLawSearch ? 'AI 기반 쉬운 법령 열람' : 'AI 기반 쉬운 판례/법령 열람')
+  const pageDescription = isFilterMode
+    ? '사건종류, 기간으로 판례를 검색하세요'
+    : userRole === 'lawyer'
+      ? (isLawSearch ? '전문가용 법령 검색 및 분석 시스템' : '전문가용 판례 검색 및 분석 시스템')
+      : (isLawSearch ? 'AI 기반 쉬운 법령 열람' : 'AI 기반 쉬운 판례/법령 열람')
 
   return (
     <div
@@ -69,10 +82,15 @@ function CasePrecedentContent() {
 
       <div className="flex-1 overflow-hidden">
         <Suspense fallback={<ViewSkeleton />}>
-          {initialCaseId
-            ? <LawyerView initialCaseId={initialCaseId} />
-            : userRole === 'lawyer' ? <LawyerView /> : <UserView />
-          }
+          {initialCaseId ? (
+            <LawyerView initialCaseId={initialCaseId} />
+          ) : isFilterMode ? (
+            <FilterablePrecedentView />
+          ) : userRole === 'lawyer' ? (
+            <LawyerView />
+          ) : (
+            <UserView />
+          )}
         </Suspense>
       </div>
     </div>

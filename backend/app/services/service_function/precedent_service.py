@@ -4,10 +4,11 @@
 PostgreSQL에서 판례 상세 정보 조회
 """
 
+import datetime
 import logging
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import async_session_factory
@@ -153,6 +154,143 @@ class PrecedentService:
         except (SQLAlchemyError, ConnectionError) as e:
             logger.warning("사건번호 검색 실패: %s", e)
             return None
+
+
+    async def search_by_filter(
+        self,
+        keyword: str = "",
+        case_type: Optional[str] = None,
+        date_from: Optional[datetime.date] = None,
+        date_to: Optional[datetime.date] = None,
+        sort: str = "relevance",
+        offset: int = 0,
+        limit: int = 20,
+    ) -> Dict[str, Any]:
+        """
+        필터 조건으로 판례 검색 (PostgreSQL 직접 쿼리)
+
+        Args:
+            keyword: 검색 키워드 (case_name, summary ILIKE)
+            case_type: 사건종류명 (예: "민사", "형사")
+            date_from: 선고일 시작
+            date_to: 선고일 종료
+            sort: 정렬 기준 ("relevance" | "latest")
+            offset: 페이지 오프셋
+            limit: 결과 수
+
+        Returns:
+            {"total": int, "precedents": [dict]}
+        """
+        try:
+            async with async_session_factory() as session:
+                conditions = self._build_filter_conditions(
+                    keyword, case_type, date_from, date_to
+                )
+
+                count_query = (
+                    select(func.count()).select_from(PrecedentDocument)
+                )
+                data_query = (
+                    select(PrecedentDocument)
+                    .offset(offset)
+                    .limit(limit)
+                )
+
+                if conditions:
+                    where_clause = and_(*conditions)
+                    count_query = count_query.where(where_clause)
+                    data_query = data_query.where(where_clause)
+
+                if sort == "relevance" and keyword:
+                    like_pattern = f"%{keyword}%"
+                    relevance_score = (
+                        case(
+                            (PrecedentDocument.case_name.ilike(like_pattern), 3),
+                            else_=0,
+                        )
+                        + case(
+                            (PrecedentDocument.case_number.ilike(like_pattern), 2),
+                            else_=0,
+                        )
+                        + case(
+                            (PrecedentDocument.summary.ilike(like_pattern), 1),
+                            else_=0,
+                        )
+                    )
+                    data_query = data_query.order_by(
+                        relevance_score.desc(),
+                        PrecedentDocument.decision_date.desc(),
+                    )
+                else:
+                    data_query = data_query.order_by(
+                        PrecedentDocument.decision_date.desc()
+                    )
+
+                total = await session.scalar(count_query)
+                result = await session.execute(data_query)
+                precedents = [
+                    self._to_filter_item(p) for p in result.scalars().all()
+                ]
+
+                return {"total": total or 0, "precedents": precedents}
+        except (SQLAlchemyError, ConnectionError) as e:
+            logger.warning("판례 필터 검색 실패: %s", e)
+            return {"total": 0, "precedents": []}
+
+    @staticmethod
+    def _build_filter_conditions(
+        keyword: str,
+        case_type: Optional[str],
+        date_from: Optional[datetime.date],
+        date_to: Optional[datetime.date],
+    ) -> list[Any]:
+        """필터 조건 리스트 생성"""
+        conditions: list[Any] = []
+        if keyword:
+            like_pattern = f"%{keyword}%"
+            conditions.append(
+                or_(
+                    PrecedentDocument.case_name.ilike(like_pattern),
+                    PrecedentDocument.summary.ilike(like_pattern),
+                    PrecedentDocument.case_number.ilike(like_pattern),
+                )
+            )
+        if case_type:
+            conditions.append(PrecedentDocument.case_type == case_type)
+        if date_from:
+            conditions.append(PrecedentDocument.decision_date >= date_from)
+        if date_to:
+            conditions.append(PrecedentDocument.decision_date <= date_to)
+        return conditions
+
+    @staticmethod
+    def _to_filter_item(p: PrecedentDocument) -> Dict[str, Any]:
+        """PrecedentDocument → 필터 결과 아이템 변환"""
+        return {
+            "id": str(p.serial_number),
+            "serial_number": str(p.serial_number),
+            "case_name": p.case_name,
+            "case_number": p.case_number,
+            "case_type": p.case_type,
+            "court_name": p.court_name,
+            "decision_date": str(p.decision_date) if p.decision_date else None,
+            "summary": (p.summary or "")[:300],
+        }
+
+    async def get_case_types(self) -> List[str]:
+        """사건종류명 DISTINCT 목록 조회"""
+        try:
+            async with async_session_factory() as session:
+                result = await session.execute(
+                    select(PrecedentDocument.case_type)
+                    .distinct()
+                    .where(PrecedentDocument.case_type.is_not(None))
+                    .order_by(PrecedentDocument.case_type)
+                )
+                return [row[0] for row in result if row[0]]
+        except (SQLAlchemyError, ConnectionError) as e:
+            logger.warning("사건종류 목록 조회 실패: %s", e)
+            return []
 
 
 _precedent_service: Optional[PrecedentService] = None

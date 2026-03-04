@@ -6,6 +6,7 @@ import type {
   SearchFilters,
   LawFullText,
   CitingCasesResponse,
+  FilteredPrecedentListResponse,
   StatuteSearchResponse,
   StatuteHierarchyResponse,
   StatuteChildrenResponse,
@@ -69,6 +70,33 @@ export const casePrecedentService = {
     const params = new URLSearchParams({ limit: limit.toString() })
     const response = await api.get(`${endpoints.casePrecedent}/statutes/${statuteId}/citing-cases?${params}`)
     return response.data
+  },
+
+  // 판례 필터 검색 API (PostgreSQL 직접 쿼리)
+  filterPrecedents: async (params: {
+    keyword?: string
+    case_type?: string
+    date_from?: string
+    date_to?: string
+    sort?: string
+    offset?: number
+    limit?: number
+  }): Promise<FilteredPrecedentListResponse> => {
+    const searchParams = new URLSearchParams()
+    if (params.keyword) searchParams.append('keyword', params.keyword)
+    if (params.case_type) searchParams.append('case_type', params.case_type)
+    if (params.date_from) searchParams.append('date_from', params.date_from)
+    if (params.date_to) searchParams.append('date_to', params.date_to)
+    if (params.sort) searchParams.append('sort', params.sort)
+    if (params.offset !== undefined) searchParams.append('offset', params.offset.toString())
+    if (params.limit !== undefined) searchParams.append('limit', params.limit.toString())
+    const response = await api.get(`${endpoints.casePrecedent}/precedents/filter?${searchParams}`)
+    return response.data
+  },
+
+  getCaseTypes: async (): Promise<string[]> => {
+    const response = await api.get(`${endpoints.casePrecedent}/precedents/case-types`)
+    return response.data.case_types
   },
 
   getStatuteGraph: async (centerId?: string, limit: number = 100): Promise<{ nodes: GraphNode[]; links: GraphLink[] }> => {
