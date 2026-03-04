@@ -7,7 +7,14 @@ import { useLawStudy } from '@/features/law-study/hooks/useLawStudy'
 import { ExamSelector } from '@/features/law-study/components/ExamSelector'
 import { ExamViewer } from '@/features/law-study/components/ExamViewer'
 import { ReferencePanel } from '@/features/law-study/components/ReferencePanel'
-import { FeedbackPanel } from '@/features/law-study/components/FeedbackPanel'
+import dynamic from 'next/dynamic'
+
+const FeedbackPanel = dynamic(
+  () =>
+    import('@/features/law-study/components/FeedbackPanel').then((mod) => ({
+      default: mod.FeedbackPanel,
+    })),
+)
 
 export default function LawStudyPage() {
   const { isChatOpen, chatMode } = useUI()

@@ -85,7 +85,7 @@ export function ExamSelector({
             문제가 없습니다
           </div>
         ) : (
-          exams
+          [...exams]
             .sort((a, b) => a.session - b.session)
             .map((exam) => {
               const isSelected =

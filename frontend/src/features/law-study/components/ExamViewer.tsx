@@ -1,8 +1,26 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { FileText, Send, Loader2, PenLine } from 'lucide-react'
 import { CATEGORY_MAP } from '../types'
-import { ExamPaperView } from './ExamPaperView'
+
+const ExamPaperView = dynamic(
+  () =>
+    import('./ExamPaperView').then((mod) => ({
+      default: mod.ExamPaperView,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="animate-pulse space-y-3 py-4">
+        <div className="h-4 bg-gray-200 rounded w-3/4" />
+        <div className="h-4 bg-gray-200 rounded w-full" />
+        <div className="h-4 bg-gray-200 rounded w-5/6" />
+        <div className="h-4 bg-gray-200 rounded w-2/3" />
+      </div>
+    ),
+  },
+)
 
 const CATEGORY_BADGE_COLORS: Record<string, string> = {
   CIVIL: 'bg-blue-100 text-blue-800 border-blue-300',
@@ -22,6 +40,13 @@ interface ExamViewerProps {
   session?: number
   year?: number
 }
+
+/** 줄 노트 배경 스타일 (렌더마다 객체 재생성 방지) */
+const LINED_TEXTAREA_STYLE = {
+  backgroundImage:
+    'repeating-linear-gradient(transparent, transparent 27px, #f0f0f0 27px, #f0f0f0 28px)',
+  backgroundPositionY: '15px',
+} as const
 
 export function ExamViewer({
   content,
@@ -116,11 +141,7 @@ export function ExamViewer({
               onChange={(e) => onAnswerChange(e.target.value)}
               placeholder="답안을 작성하세요..."
               className="w-full min-h-[200px] p-4 border border-gray-300 rounded-lg resize-y text-sm leading-7 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-              style={{
-                backgroundImage:
-                  'repeating-linear-gradient(transparent, transparent 27px, #f0f0f0 27px, #f0f0f0 28px)',
-                backgroundPositionY: '15px',
-              }}
+              style={LINED_TEXTAREA_STYLE}
             />
             <div className="flex justify-end mt-3">
               <button
