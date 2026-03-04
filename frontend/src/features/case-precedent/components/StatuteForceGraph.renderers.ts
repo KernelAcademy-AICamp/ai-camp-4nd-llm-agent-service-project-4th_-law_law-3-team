@@ -95,10 +95,13 @@ export function renderNode(
     ctx.textBaseline = 'middle'
 
     const textWidth = ctx.measureText(displayText).width
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'
     ctx.fillRect(n.x - textWidth / 2 - 2, n.y + size + 4, textWidth + 4, fontSize + 4)
+    ctx.strokeStyle = 'rgba(209, 213, 219, 0.6)'
+    ctx.lineWidth = 0.5
+    ctx.strokeRect(n.x - textWidth / 2 - 2, n.y + size + 4, textWidth + 4, fontSize + 4)
 
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = '#374151'
     ctx.fillText(displayText, n.x, n.y + size + fontSize / 2 + 6)
   }
 }
@@ -143,9 +146,12 @@ export function renderHoveredLabel(
   ctx.textBaseline = 'middle'
 
   const textWidth = ctx.measureText(displayText).width
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.9)'
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
   ctx.fillRect(n.x - textWidth / 2 - 4, n.y + size + 4, textWidth + 8, fontSize + 6)
+  ctx.strokeStyle = 'rgba(156, 163, 175, 0.8)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(n.x - textWidth / 2 - 4, n.y + size + 4, textWidth + 8, fontSize + 6)
 
-  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = '#1f2937'
   ctx.fillText(displayText, n.x, n.y + size + fontSize / 2 + 7)
 }

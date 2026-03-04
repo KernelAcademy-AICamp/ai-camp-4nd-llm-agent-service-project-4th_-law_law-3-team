@@ -14,7 +14,7 @@ import {
   getFilterCategory,
   CONSTITUTION_NODE,
 } from './StatuteForceGraph.constants'
-import { renderNode, renderOrbits, renderHoveredLabel, type NodeRenderContext } from './StatuteForceGraph.renderers'
+import { renderNode, renderHoveredLabel, type NodeRenderContext } from './StatuteForceGraph.renderers'
 
 // d3 시뮬레이션 노드 (런타임에 d3가 x, y 등을 주입)
 type ForceNode = GraphNode & SimulationNodeDatum
@@ -418,7 +418,7 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick, visibleTy
   )
 
   const onRenderFramePre = useCallback(
-    (ctx: CanvasRenderingContext2D) => renderOrbits(ctx),
+    (_ctx: CanvasRenderingContext2D) => {},
     [],
   )
 
@@ -470,13 +470,13 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick, visibleTy
       />
 
       {/* 통계 오버레이 */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-black/50 rounded-full px-3 py-1 text-xs text-slate-300 pointer-events-none">
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-white/80 border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-500 pointer-events-none">
         노드 {graphStats.nodeCount}개 · 링크 {graphStats.linkCount}개
       </div>
 
       {/* 범례 */}
-      <div className="absolute bottom-4 left-4 bg-black/70 rounded-lg p-3 text-xs text-white">
-        <div className="font-bold mb-2">법령 계층 (황도 십이궁)</div>
+      <div className="absolute bottom-4 left-4 bg-white/90 border border-gray-200 rounded-lg p-3 text-xs text-gray-700 shadow-sm">
+        <div className="font-bold mb-2">법령 계층</div>
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 rounded-full bg-gradient-to-br from-orange-400 to-red-500 shadow-lg shadow-orange-500/50" />
@@ -495,15 +495,15 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick, visibleTy
             <span>총리령/부령/규칙</span>
           </div>
         </div>
-        <div className="mt-3 pt-2 border-t border-gray-600">
+        <div className="mt-3 pt-2 border-t border-gray-200">
           <div className="font-bold mb-1">관계</div>
           <div className="flex items-center gap-2">
-            <span className="text-amber-400">→</span>
+            <span className="text-amber-500">→</span>
             <span>계급 (하위법 → 상위법)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-slate-400">—</span>
-            <span className="text-slate-400">관련 법령 (호버 시)</span>
+            <span className="text-gray-400">—</span>
+            <span className="text-gray-400">관련 법령 (호버 시)</span>
           </div>
         </div>
       </div>
@@ -512,21 +512,21 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick, visibleTy
       <div className="absolute bottom-4 right-4 flex flex-col gap-1">
         <button
           onClick={handleZoomIn}
-          className="w-8 h-8 bg-black/70 hover:bg-black/90 text-white rounded flex items-center justify-center transition-colors"
+          className="w-8 h-8 bg-white/90 hover:bg-white border border-gray-200 text-gray-600 rounded flex items-center justify-center transition-colors shadow-sm"
           aria-label="확대"
         >
           <Plus className="w-4 h-4" />
         </button>
         <button
           onClick={handleZoomOut}
-          className="w-8 h-8 bg-black/70 hover:bg-black/90 text-white rounded flex items-center justify-center transition-colors"
+          className="w-8 h-8 bg-white/90 hover:bg-white border border-gray-200 text-gray-600 rounded flex items-center justify-center transition-colors shadow-sm"
           aria-label="축소"
         >
           <Minus className="w-4 h-4" />
         </button>
         <button
           onClick={handleZoomFit}
-          className="w-8 h-8 bg-black/70 hover:bg-black/90 text-white rounded flex items-center justify-center transition-colors"
+          className="w-8 h-8 bg-white/90 hover:bg-white border border-gray-200 text-gray-600 rounded flex items-center justify-center transition-colors shadow-sm"
           aria-label="전체 보기"
         >
           <Maximize2 className="w-4 h-4" />

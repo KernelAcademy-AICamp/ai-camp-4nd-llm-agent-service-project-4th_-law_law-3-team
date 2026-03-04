@@ -11,10 +11,10 @@ const StatuteHierarchyView = dynamic(
 
 function ViewSkeleton() {
   return (
-    <div className="flex h-full w-full items-center justify-center bg-slate-900">
+    <div className="flex h-full w-full items-center justify-center bg-gray-100">
       <div className="text-center">
-        <div className="w-16 h-16 bg-slate-700 rounded-full animate-pulse mx-auto mb-4" />
-        <div className="h-4 w-48 bg-slate-700 rounded animate-pulse mx-auto" />
+        <div className="w-16 h-16 bg-gray-300 rounded-full animate-pulse mx-auto mb-4" />
+        <div className="h-4 w-48 bg-gray-300 rounded animate-pulse mx-auto" />
       </div>
     </div>
   )
@@ -25,8 +25,8 @@ export default function StatuteHierarchyPage() {
 
   return (
     <div
-      className={`fixed inset-y-0 left-0 bg-slate-900 transition-all duration-500 ease-in-out ${
-        isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-slate-800' : 'w-full'
+      className={`fixed inset-y-0 left-0 bg-gray-100 transition-all duration-500 ease-in-out ${
+        isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-gray-200' : 'w-full'
       }`}
     >
       <Suspense fallback={<ViewSkeleton />}>
