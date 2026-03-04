@@ -1,8 +1,20 @@
 import os
+from pathlib import Path
 from typing import List
 from urllib.parse import urlparse, urlunparse
 
 from pydantic_settings import BaseSettings
+
+# backend/ 디렉토리 (이 파일 기준: backend/app/core/config.py)
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+_PROJECT_ROOT = _BACKEND_DIR.parent
+
+# Docker 환경 감지: WORKDIR=/app → PROJECT_ROOT=/ (루트)
+# 이 경우 data/는 볼륨 마운트로 /app/data/에 있음
+if _PROJECT_ROOT == Path("/"):
+    RUNTIME_DATA_DIR = _BACKEND_DIR / "data"
+else:
+    RUNTIME_DATA_DIR = _PROJECT_ROOT / "data"
 
 
 class Settings(BaseSettings):

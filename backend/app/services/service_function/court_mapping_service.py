@@ -10,9 +10,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
+from app.core.config import RUNTIME_DATA_DIR
 from app.services.service_function.lawyer_stats_service import (
     DISTRICT_NORMALIZE_MAP,
     PROVINCE_NORMALIZE_MAP,
@@ -21,8 +21,8 @@ from app.services.service_function.lawyer_stats_service import (
 # =============================================================================
 # 상수 정의
 # =============================================================================
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
-SCOURT_JSON_PATH = PROJECT_ROOT / "data" / "scourt_region_courts.json"
+
+SCOURT_JSON_PATH = RUNTIME_DATA_DIR / "scourt_region_courts.json"
 
 # 일반 방위명 지원 (parent city prefix로 정규화 필요)
 GENERIC_BRANCH_NAMES = frozenset({"서부지원", "동부지원"})

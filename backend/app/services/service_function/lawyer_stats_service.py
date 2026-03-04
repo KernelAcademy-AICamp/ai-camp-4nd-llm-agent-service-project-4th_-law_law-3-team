@@ -8,9 +8,9 @@ import json
 import re
 from collections import defaultdict
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
+from app.core.config import RUNTIME_DATA_DIR
 from app.services.service_function.lawyer_service import (
     SPECIALTY_CATEGORIES,
     load_lawyers_data,
@@ -19,10 +19,8 @@ from app.services.service_function.lawyer_service import (
 # =============================================================================
 # 상수 정의
 # =============================================================================
-# __file__ = backend/app/services/service_function/lawyer_stats_service.py
-# 5 parents up = law-3-team/ (프로젝트 루트)
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
-POPULATION_JSON_PATH = PROJECT_ROOT / "data" / "population.json"
+
+POPULATION_JSON_PATH = RUNTIME_DATA_DIR / "population.json"
 
 # 주소에서 지역(시군구) 추출 패턴
 REGION_PATTERN = re.compile(r"^(\S+)\s+(\S+구|\S+시|\S+군)")
