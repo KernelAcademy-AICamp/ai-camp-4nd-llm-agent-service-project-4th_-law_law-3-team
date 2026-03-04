@@ -6,7 +6,6 @@ import { useChat } from '@/context/ChatContext'
 import type {
   PrecedentItem,
   PrecedentDetail,
-  SearchFilters,
   AIQuestionResponse,
 } from '../types'
 
@@ -15,7 +14,6 @@ interface UseCaseSearchReturn {
   searchResults: PrecedentItem[]
   totalResults: number
   isSearching: boolean
-  searchError: string | null
 
   // Detail state
   selectedCase: PrecedentDetail | null
@@ -27,23 +25,11 @@ interface UseCaseSearchReturn {
   isAskingAI: boolean
   aiError: string | null
 
-  // Filters
-  filters: SearchFilters
-  setFilters: (filters: Partial<SearchFilters>) => void
-
   // Actions
-  search: () => Promise<void>
   selectCase: (id: string) => Promise<void>
   clearSelection: () => void
   askAI: (question: string) => Promise<void>
   clearAIResponse: () => void
-}
-
-const DEFAULT_FILTERS: SearchFilters = {
-  keyword: '',
-  docType: '',
-  court: '',
-  limit: 20,
 }
 
 export function useCaseSearch(initialCaseId?: string): UseCaseSearchReturn {
@@ -57,7 +43,6 @@ export function useCaseSearch(initialCaseId?: string): UseCaseSearchReturn {
   const [searchResults, setSearchResults] = useState<PrecedentItem[]>([])
   const [totalResults, setTotalResults] = useState(0)
   const [isSearching, setIsSearching] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
 
   // Detail state
   const [selectedCase, setSelectedCase] = useState<PrecedentDetail | null>(null)
@@ -68,11 +53,6 @@ export function useCaseSearch(initialCaseId?: string): UseCaseSearchReturn {
   const [aiResponse, setAiResponse] = useState<AIQuestionResponse | null>(null)
   const [isAskingAI, setIsAskingAI] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
-
-  // Filters
-  const [filters, setFiltersState] = useState<SearchFilters>(() => ({
-    ...DEFAULT_FILTERS,
-  }))
 
   // Handle AI Generated Cases from Chat
   useEffect(() => {
@@ -140,31 +120,6 @@ export function useCaseSearch(initialCaseId?: string): UseCaseSearchReturn {
     searchResultsRef.current = searchResults
   }, [searchResults])
 
-  const setFilters = useCallback((newFilters: Partial<SearchFilters>) => {
-    setFiltersState((prev) => ({ ...prev, ...newFilters }))
-  }, [])
-
-  const search = useCallback(async () => {
-    if (!filters.keyword.trim()) {
-      setSearchError('검색어를 입력해주세요')
-      return
-    }
-
-    setIsSearching(true)
-    setSearchError(null)
-
-    try {
-      const response = await casePrecedentService.searchPrecedents(filters)
-      setSearchResults(response.precedents)
-      setTotalResults(response.total)
-    } catch (error) {
-      setSearchError('검색 중 오류가 발생했습니다')
-      console.error('Search error:', error)
-    } finally {
-      setIsSearching(false)
-    }
-  }, [filters])
-
   const selectCase = useCallback(async (id: string) => {
     setIsLoadingDetail(true)
     setDetailError(null)
@@ -196,7 +151,7 @@ export function useCaseSearch(initialCaseId?: string): UseCaseSearchReturn {
       const detail = await casePrecedentService.getPrecedentDetail(id)
       setSelectedCase(detail)
     } catch (error) {
-      setDetailError('판례 상세 정보를 불러오는 데 실패했습니다')
+      setDetailError('상세 정보를 불러오는 데 실패했습니다')
       console.error('Detail load error:', error)
     } finally {
       setIsLoadingDetail(false)
@@ -249,16 +204,12 @@ export function useCaseSearch(initialCaseId?: string): UseCaseSearchReturn {
     searchResults,
     totalResults,
     isSearching,
-    searchError,
     selectedCase,
     isLoadingDetail,
     detailError,
     aiResponse,
     isAskingAI,
     aiError,
-    filters,
-    setFilters,
-    search,
     selectCase,
     clearSelection,
     askAI,

@@ -260,6 +260,10 @@ def format_law_sources(
             "law_name": (
                 metadata.get("case_name", "") or metadata.get("title", "")
             ),
+            "law_type": metadata.get("law_type", ""),
+            "ministry": metadata.get("ministry", ""),
+            "article_number": metadata.get("article_number", ""),
+            "article_title": metadata.get("article_title", ""),
             "similarity": round(doc.get("similarity", 0), 3),
             "content": doc.get("content", ""),
         })

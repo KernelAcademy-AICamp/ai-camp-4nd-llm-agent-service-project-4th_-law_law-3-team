@@ -869,6 +869,56 @@ class PgGraphService:
 
         return nodes, links
 
+    async def get_cases_citing_statute(
+        self,
+        law_id: str,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """
+        특정 법령을 인용한 판례 목록 조회 (역방향)
+
+        Args:
+            law_id: 법령 law_id (law_documents.law_id)
+            limit: 최대 반환 개수
+
+        Returns:
+            인용 판례 목록 [{serial_number, case_number, case_name,
+                           decision_date, court_name}, ...]
+        """
+        try:
+            async with async_session_factory() as session:
+                # law_id → law_documents.id(PK) 변환
+                law_pk_stmt = select(LawDocument.id).where(
+                    LawDocument.law_id == law_id
+                )
+                law_pk_result = await session.execute(law_pk_stmt)
+                law_pk = law_pk_result.scalar_one_or_none()
+                if law_pk is None:
+                    return []
+
+                # CaseStatuteCitation 역방향: law_doc_id → case_doc_id → PrecedentDocument
+                stmt = (
+                    select(
+                        PrecedentDocument.serial_number,
+                        PrecedentDocument.case_number,
+                        PrecedentDocument.case_name,
+                        PrecedentDocument.decision_date,
+                        PrecedentDocument.court_name,
+                    )
+                    .join(
+                        CaseStatuteCitation,
+                        CaseStatuteCitation.case_doc_id == PrecedentDocument.id,
+                    )
+                    .where(CaseStatuteCitation.law_doc_id == law_pk)
+                    .order_by(desc(PrecedentDocument.decision_date))
+                    .limit(limit)
+                )
+                result = await session.execute(stmt)
+                return [dict(row._mapping) for row in result]
+        except Exception as e:
+            logger.warning("get_cases_citing_statute 실패: %s", e)
+            return []
+
 
 # 싱글톤 인스턴스
 _pg_graph_service: Optional[PgGraphService] = None

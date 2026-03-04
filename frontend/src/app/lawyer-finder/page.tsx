@@ -13,29 +13,6 @@ import { lawyerFinderService } from '@/features/lawyer-finder/services'
 import { DISTRICT_COORDS, PROVINCE_CENTERS } from '@/features/lawyer-finder/constants'
 import type { Lawyer, Office, ClusterData, ProvinceData } from '@/features/lawyer-finder/types'
 
-const KakaoMap = dynamic(
-  () => import('@/features/lawyer-finder/components/KakaoMap').then((m) => m.MemoizedKakaoMap),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="w-full h-full flex items-center justify-center bg-navy-50">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-navy-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-          <p className="text-sm text-navy-500">지도 로딩 중...</p>
-        </div>
-      </div>
-    ),
-  }
-)
-
-const KAKAO_MAP_API_KEY = process.env.NEXT_PUBLIC_KAKAO_MAP_API_KEY
-
-// 카카오 줌 레벨: 숫자 클수록 줌아웃. 6 이상이면 클러스터 모드
-const CLUSTER_ZOOM_THRESHOLD = 6
-// 지도 드래그 디바운스 (ms)
-const DRAG_DEBOUNCE_MS = 400
-
-// Suspense boundary를 위한 wrapper
 export default function LawyerFinderPageWrapper() {
   return (
     <Suspense fallback={<LawyerFinderLoading />}>

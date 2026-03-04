@@ -36,6 +36,15 @@ export interface PrecedentDetail {
   reference_cases?: string  // 참조판례
   court_name?: string  // 법원명
   decision_date?: string  // 선고일
+  // 법령용 필드 (aiReferences에서 법령 데이터 흐름 지원)
+  law_name?: string
+  law_type?: string
+  article_number?: string
+  article_title?: string
+  ministry?: string
+  // 그래프 보강 정보
+  cited_statutes?: string[]
+  similar_cases?: string[]
 }
 
 export interface ChatSource {
@@ -60,6 +69,9 @@ export interface ChatSource {
   // 법령용 필드
   law_name?: string
   law_type?: string
+  article_number?: string   // 조문번호
+  article_title?: string    // 조문제목
+  ministry?: string         // 소관부처
   // 그래프 보강 정보
   cited_statutes?: string[]
   similar_cases?: string[]
@@ -79,6 +91,42 @@ export interface SearchFilters {
 
 export type DocType = 'precedent' | 'constitutional' | ''
 export type Court = '대법원' | '고등법원' | '지방법원' | '헌법재판소' | ''
+
+// 법령 전문 타입
+export interface LawArticleItem {
+  article_number: string
+  article_title?: string
+  article_content: string
+}
+
+export interface LawFullText {
+  law_id: string
+  law_name: string
+  law_type?: string
+  ministry?: string
+  ai_summary?: string
+  supplementary?: string
+  articles: LawArticleItem[]
+  total_articles: number
+  enforcement_date?: string
+  promulgation_date?: string
+  promulgation_no?: string
+}
+
+// 법령 인용 판례 타입
+export interface CitingCaseItem {
+  serial_number?: string
+  case_number?: string
+  case_name?: string
+  decision_date?: string
+  court_name?: string
+}
+
+export interface CitingCasesResponse {
+  statute_id: string
+  total: number
+  cases: CitingCaseItem[]
+}
 
 // 법령 계층도 타입
 export * from './hierarchy'

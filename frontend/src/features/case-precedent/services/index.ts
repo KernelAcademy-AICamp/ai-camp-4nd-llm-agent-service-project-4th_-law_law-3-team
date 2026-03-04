@@ -4,6 +4,8 @@ import type {
   PrecedentDetail,
   AIQuestionResponse,
   SearchFilters,
+  LawFullText,
+  CitingCasesResponse,
   StatuteSearchResponse,
   StatuteHierarchyResponse,
   StatuteChildrenResponse,
@@ -39,6 +41,12 @@ export const casePrecedentService = {
     return response.data
   },
 
+  // 법령 전문 조회 API
+  getLawFullText: async (lawId: string): Promise<LawFullText> => {
+    const response = await api.get(`${endpoints.casePrecedent}/laws/${lawId}/full-text`)
+    return response.data
+  },
+
   // 법령 계층도 API
   searchStatutes: async (query: string, limit: number = 10): Promise<StatuteSearchResponse> => {
     const params = new URLSearchParams({ query, limit: limit.toString() })
@@ -54,6 +62,12 @@ export const casePrecedentService = {
   getStatuteChildren: async (statuteId: string, limit: number = 20): Promise<StatuteChildrenResponse> => {
     const params = new URLSearchParams({ limit: limit.toString() })
     const response = await api.get(`${endpoints.casePrecedent}/statutes/${statuteId}/children?${params}`)
+    return response.data
+  },
+
+  getCitingCases: async (statuteId: string, limit: number = 10): Promise<CitingCasesResponse> => {
+    const params = new URLSearchParams({ limit: limit.toString() })
+    const response = await api.get(`${endpoints.casePrecedent}/statutes/${statuteId}/citing-cases?${params}`)
     return response.data
   },
 

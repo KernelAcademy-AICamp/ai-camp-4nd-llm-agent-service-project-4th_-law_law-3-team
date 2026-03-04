@@ -11,6 +11,7 @@ export interface Module {
   icon: string
   enabled: boolean
   roles: ('lawyer' | 'user')[]
+  category: string
 }
 
 export const modules: Module[] = [
@@ -22,6 +23,7 @@ export const modules: Module[] = [
     icon: '📍',
     enabled: true,
     roles: ['user'],
+    category: 'problem-solving',
   },
   {
     id: 'lawyer-stats',
@@ -31,6 +33,7 @@ export const modules: Module[] = [
     icon: '📊',
     enabled: true,
     roles: ['lawyer'],
+    category: 'insight',
   },
   {
     id: 'case-precedent',
@@ -40,6 +43,7 @@ export const modules: Module[] = [
     icon: '📚',
     enabled: true,
     roles: ['lawyer', 'user'],
+    category: 'research', // User side will treat this as 'information'
   },
   {
     id: 'law-search',
@@ -49,6 +53,7 @@ export const modules: Module[] = [
     icon: '📖',
     enabled: true,
     roles: ['lawyer', 'user'],
+    category: 'research',
   },
   {
     id: 'storyboard',
@@ -58,6 +63,7 @@ export const modules: Module[] = [
     icon: '🎬',
     enabled: true,
     roles: ['lawyer', 'user'],
+    category: 'case-review', // User side: 'case-management'
   },
   {
     id: 'law-study',
@@ -67,6 +73,7 @@ export const modules: Module[] = [
     icon: '📖',
     enabled: true,
     roles: ['lawyer'],
+    category: 'study',
   },
   {
     id: 'statute-hierarchy',
@@ -76,6 +83,7 @@ export const modules: Module[] = [
     icon: '🔗',
     enabled: true,
     roles: ['lawyer'],
+    category: 'research',
   },
   {
     id: 'small-claims',
@@ -85,6 +93,7 @@ export const modules: Module[] = [
     icon: '⚖️',
     enabled: true,
     roles: ['user'],
+    category: 'problem-solving',
   },
   {
     id: 'mock-trial',
@@ -94,6 +103,7 @@ export const modules: Module[] = [
     icon: '🏛️',
     enabled: true,
     roles: ['user', 'lawyer'],
+    category: 'case-review', // User side: 'problem-solving'
   },
   {
     id: 'content-marketing',
@@ -103,6 +113,7 @@ export const modules: Module[] = [
     icon: '📹',
     enabled: true,
     roles: ['lawyer'],
+    category: 'insight',
   },
   {
     id: 'workspace',
@@ -112,6 +123,7 @@ export const modules: Module[] = [
     icon: '💼',
     enabled: true,
     roles: ['lawyer'],
+    category: 'case-review',
   },
   {
     id: 'legal-news',
@@ -121,8 +133,29 @@ export const modules: Module[] = [
     icon: '📰',
     enabled: true,
     roles: ['lawyer', 'user'],
+    category: 'research',
   },
 ]
 
-export const getEnabledModules = (role?: 'lawyer' | 'user') => 
+export const CATEGORY_NAMES: Record<string, { lawyer: string; user: string }> = {
+  'research': { lawyer: '리서치', user: '정보 찾기' },
+  'case-review': { lawyer: '사건 검토', user: '문제 해결' }, // 'mock-trial' case
+  'insight': { lawyer: '인사이트', user: '인사이트' },
+  'study': { lawyer: '학습', user: '학습' },
+  'problem-solving': { lawyer: '문제 해결', user: '문제 해결' },
+  'case-management': { lawyer: '사건 정리', user: '사건 정리' },
+  'information': { lawyer: '정보 찾기', user: '정보 찾기' },
+}
+
+// Special overrides for grouping
+export const getModuleCategory = (module: Module, role: 'lawyer' | 'user') => {
+  if (role === 'user') {
+    if (module.id === 'case-precedent' || module.id === 'law-search' || module.id === 'legal-news') return 'information'
+    if (module.id === 'storyboard') return 'case-management'
+    if (module.id === 'mock-trial') return 'problem-solving'
+  }
+  return module.category
+}
+
+export const getEnabledModules = (role?: 'lawyer' | 'user') =>
   modules.filter((m) => m.enabled && (!role || m.roles.includes(role)))

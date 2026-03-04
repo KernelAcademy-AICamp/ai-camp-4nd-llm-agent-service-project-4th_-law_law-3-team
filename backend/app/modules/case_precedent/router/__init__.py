@@ -7,8 +7,12 @@ from typing import Any, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 
+from app.core.database import async_session_factory
 from app.core.errors import EmbeddingModelNotFoundError
+from app.models.law_article import LawArticle
+from app.models.law_document import LawDocument
 from app.services.rag import search_relevant_documents_async
 from app.services.service_function.precedent_service import fetch_precedent_details
 from app.tools.graph.pg_graph_service import get_pg_graph_service
@@ -418,6 +422,93 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
 
 
 # ============================================
+# 법령 전문 조회 API (Law Full Text)
+# ============================================
+
+
+class LawArticleItem(BaseModel):
+    """조문 단위 응답"""
+    article_number: str
+    article_title: Optional[str] = None
+    article_content: str
+
+
+class LawFullTextResponse(BaseModel):
+    """법령 전문 응답 (조문 단위)"""
+    law_id: str
+    law_name: str
+    law_type: Optional[str] = None
+    ministry: Optional[str] = None
+    ai_summary: Optional[str] = None
+    supplementary: Optional[str] = None
+    articles: List[LawArticleItem]
+    total_articles: int
+    enforcement_date: Optional[str] = None
+    promulgation_date: Optional[str] = None
+    promulgation_no: Optional[str] = None
+
+
+@router.get("/laws/{law_id}/full-text", response_model=LawFullTextResponse)
+async def get_law_full_text(law_id: str) -> LawFullTextResponse:
+    """
+    법령 전문 조회 API
+
+    law_id로 법령의 조문 목록, 부칙, AI 요약을 반환합니다.
+    law_articles 테이블에서 조문 단위로 조회합니다.
+    """
+    try:
+        async with async_session_factory() as session:
+            # 법령 기본 정보 조회
+            law_result = await session.execute(
+                select(LawDocument).where(LawDocument.law_id == law_id)
+            )
+            law = law_result.scalar_one_or_none()
+
+            if not law:
+                raise HTTPException(status_code=404, detail="법령을 찾을 수 없습니다")
+
+            # 조문 목록 조회 (조문번호 순)
+            articles_result = await session.execute(
+                select(LawArticle)
+                .where(LawArticle.law_id == law_id)
+                .order_by(LawArticle.id)
+            )
+            articles = articles_result.scalars().all()
+
+        return LawFullTextResponse(
+            law_id=law.law_id,
+            law_name=law.law_name,
+            law_type=law.law_type,
+            ministry=law.ministry,
+            ai_summary=law.ai_summary,
+            supplementary=law.supplementary,
+            articles=[
+                LawArticleItem(
+                    article_number=a.article_number,
+                    article_title=a.article_title,
+                    article_content=a.article_content,
+                )
+                for a in articles
+            ],
+            total_articles=len(articles),
+            enforcement_date=(
+                law.enforcement_date.isoformat()
+                if law.enforcement_date
+                else None
+            ),
+            promulgation_date=law.promulgation_date,
+            promulgation_no=law.promulgation_no,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("법령 전문 조회 실패: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="법령 전문 조회 중 오류가 발생했습니다"
+        )
+
+
+# ============================================
 # 법령 계층도 API (Statute Hierarchy)
 # ============================================
 
@@ -452,6 +543,22 @@ class StatuteChildrenResponse(BaseModel):
     """법령 하위 목록 응답"""
     statute_id: str
     children: List[StatuteNodeResponse]
+
+
+class CitingCaseItem(BaseModel):
+    """법령을 인용한 판례 항목"""
+    serial_number: Optional[str] = None
+    case_number: Optional[str] = None
+    case_name: Optional[str] = None
+    decision_date: Optional[str] = None
+    court_name: Optional[str] = None
+
+
+class CitingCasesResponse(BaseModel):
+    """법령을 인용한 판례 목록 응답"""
+    statute_id: str
+    total: int
+    cases: List[CitingCaseItem]
 
 
 class GraphNodeResponse(BaseModel):
@@ -577,6 +684,40 @@ async def get_statute_children(
         logger.error(f"하위 법령 조회 실패: {e}", exc_info=True)
         raise HTTPException(
             status_code=500, detail="하위 법령 조회 중 오류가 발생했습니다"
+        )
+
+
+@router.get("/statutes/{statute_id}/citing-cases", response_model=CitingCasesResponse)
+async def get_citing_cases(
+    statute_id: str,
+    limit: int = Query(10, ge=1, le=50, description="결과 수"),
+) -> CitingCasesResponse:
+    """
+    법령을 인용한 판례 목록 조회
+
+    특정 법령을 참조조문으로 인용한 판례들을 반환합니다.
+    """
+    try:
+        pg = get_pg_graph_service()
+        cases = await pg.get_cases_citing_statute(statute_id, limit)
+        return CitingCasesResponse(
+            statute_id=statute_id,
+            total=len(cases),
+            cases=[
+                CitingCaseItem(
+                    serial_number=c.get("serial_number"),
+                    case_number=c.get("case_number"),
+                    case_name=c.get("case_name"),
+                    decision_date=c.get("decision_date"),
+                    court_name=c.get("court_name"),
+                )
+                for c in cases
+            ],
+        )
+    except Exception as e:
+        logger.error(f"인용 판례 조회 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="인용 판례 조회 중 오류가 발생했습니다"
         )
 
 

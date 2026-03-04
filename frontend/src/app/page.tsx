@@ -1,33 +1,64 @@
 'use client'
 
-import { useEffect, Suspense, useMemo } from 'react'
+import { useEffect, Suspense, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { getEnabledModules } from '@/lib/modules'
+import { getEnabledModules, getModuleCategory, CATEGORY_NAMES } from '@/lib/modules'
 import { useUI } from '@/context/UIContext'
 import { useChat, UserRole } from '@/context/ChatContext'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  Send,
+  Search,
+  BarChart,
+  MapPin,
+  Video,
+  Scale,
+  Gavel
+} from 'lucide-react'
+
+const MODULE_ICONS: Record<string, any> = {
+  'lawyer-finder': MapPin,
+  'lawyer-stats': BarChart,
+  'case-precedent': Search,
+  'storyboard': Video,
+  'small-claims': Scale,
+  'mock-trial': Gavel,
+}
 
 function HomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const role = searchParams.get('role') as 'lawyer' | 'user' | null
 
-  const { isChatOpen, setChatOpen } = useUI()
+  const { isChatOpen, setChatOpen, setPendingMessage } = useUI()
   const { setUserRole } = useChat()
+  const [inputValue, setInputValue] = useState('')
   const enabledModules = useMemo(() => getEnabledModules(role || undefined), [role])
+
+  const modulesByCategory = useMemo(() => {
+    if (!role) return {}
+    const grouped: Record<string, typeof enabledModules> = {}
+    enabledModules.forEach(mod => {
+      const cat = getModuleCategory(mod, role)
+      if (!grouped[cat]) grouped[cat] = []
+      grouped[cat].push(mod)
+    })
+    return grouped
+  }, [enabledModules, role])
 
   useEffect(() => {
     if (!role) {
       setChatOpen(false)
     } else {
-      setChatOpen(true)
+      setChatOpen(false) // 대시보드 진입 시 채팅 자동 열림 방지
       setUserRole(role as UserRole)
     }
   }, [role, setChatOpen, setUserRole])
 
   const handleRoleSelect = (selectedRole: 'lawyer' | 'user') => {
     setUserRole(selectedRole)
-    setChatOpen(true)
+    setChatOpen(false) // 역할 선택 시에도 채팅 자동 열림 방지
     router.push(`/?role=${selectedRole}`)
   }
 
@@ -63,7 +94,7 @@ function HomeContent() {
                 <h2 className="text-2xl font-bold text-apple-text mb-4 tracking-tight">법 관련 종사자입니다</h2>
                 <p className="text-apple-secondary mb-8 leading-relaxed text-base">의뢰인과 연결되고, 전문성을 발휘하여 업무를 관리하세요.</p>
                 <div className="inline-flex items-center text-apple-blue font-bold group-hover:gap-4 gap-2 transition-all text-base">
-                  대시보드 입장 <span className="text-xl">→</span>
+                  전문가 모드 시작 <span className="text-xl">→</span>
                 </div>
               </div>
             </button>
@@ -98,7 +129,7 @@ function HomeContent() {
                 <h2 className="text-2xl font-bold text-apple-text mb-4 tracking-tight">일반인입니다</h2>
                 <p className="text-apple-secondary mb-8 leading-relaxed text-base">나에게 딱 맞는 법률 전문가를 찾고 사건을 해결하세요.</p>
                 <div className="inline-flex items-center text-apple-blue font-bold group-hover:gap-4 gap-2 transition-all text-base">
-                  도움 받기 <span className="text-xl">→</span>
+                  일반인 모드 시작 <span className="text-xl">→</span>
                 </div>
               </div>
             </button>
@@ -108,62 +139,171 @@ function HomeContent() {
     )
   }
 
+  // AI Command Center Layout (when role is selected)
   return (
-    <main className="min-h-screen bg-white p-8 relative overflow-hidden transition-all duration-500 ease-in-out">
+    <div className="min-h-screen bg-[#F5F5F7] pt-12 pb-6 px-6 md:pt-20 md:pb-12 md:px-12 relative transition-all duration-500 ease-in-out">
       <div
-        className={`relative z-10 transition-all duration-500 ease-in-out ${
-          isChatOpen ? 'w-1/2 pr-8' : 'w-full max-w-6xl mx-auto'
-        }`}
+        className={`relative z-10 h-full flex flex-col transition-all duration-500 ease-in-out ${isChatOpen ? 'w-1/2 pr-8' : 'w-full max-w-5xl mx-auto'
+          }`}
       >
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
-          <div>
-            <h1 className="text-3xl font-bold text-[#1D1D1F] mb-2 tracking-tight">
-              LEGAL <span className="text-blue-500">PRESIDENT AI</span>
-            </h1>
-            <p className="text-blue-500/80 font-medium">
-              {role === 'lawyer' ? '변호사님 전용 대시보드' : '사용자 맞춤형 도움 서비스'}
-            </p>
+        {/* Header Section */}
+        <header className="mb-20 shrink-0">
+          <div className="space-y-4">
+            <h2 className="text-5xl font-extrabold text-[#1D1D1F] leading-[1.15] tracking-tighter max-w-2xl">
+              {role === 'lawyer' ? (
+                <><span className="block mb-2 text-[#1D1D1F]">
+                  안녕하세요, <span className="relative inline-block text-blue-600">
+                    변호사님
+                    <span className="absolute -bottom-1 left-0 w-full h-1 bg-blue-600/10 rounded-full" />
+                  </span>
+                </span>어떤 업무를 도와드릴까요?</>
+              ) : (
+                <><span className="block mb-2">안녕하세요.</span>어떤 <span className="relative inline-block text-blue-600">
+                  법률 도움
+                  <span className="absolute -bottom-2 left-0 w-full h-1.5 bg-blue-600/10 rounded-full" />
+                </span>이 필요하신가요?</>
+              )}
+            </h2>
           </div>
-          <button
-            onClick={handleResetRole}
-            className="px-5 py-2.5 text-sm font-semibold text-[#86868B] hover:text-[#1D1D1F] bg-[#F5F5F7] hover:bg-gray-200 border border-black/[0.06] rounded-xl transition-all duration-300 cursor-pointer"
-          >
-            ← 역할 변경
-          </button>
-        </div>
+        </header>
 
-        <div className={`grid gap-5 ${isChatOpen ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
-          {enabledModules.map((module) => (
-            <Link
-              key={module.id}
-              href={module.href}
-              className="group relative block p-6 bg-[#F5F5F7] border border-black/[0.06] rounded-2xl hover:bg-blue-50 hover:border-blue-200 transition-all duration-300 overflow-hidden cursor-pointer"
-            >
-              {/* Subtle card glow on hover */}
-              <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        {/* Interactive Chat Input Hub */}
+        <div className="mb-20 relative group">
+          <div className="p-8 bg-white/90 backdrop-blur-2xl border-2 border-[#D2D2D7] shadow-xl rounded-[2.5rem] overflow-hidden relative">
+            {/* Background Decoration (Logo) */}
+            <div className="absolute bottom-2 right-8 opacity-[0.08] group-hover:opacity-[0.12] transform rotate-12 group-hover:rotate-0 transition-all duration-700 pointer-events-none">
+              <img src="/logo.png" alt="" className="w-32 h-32 object-contain" />
+            </div>
 
-              <div className="relative z-10">
-                <div className="text-4xl mb-4 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300">
-                  {module.icon}
-                </div>
-                <h2 className="text-xl font-bold text-[#1D1D1F] mb-2 group-hover:text-blue-500 transition-colors">
-                  {module.name}
-                </h2>
-                <p className="text-[#86868B] text-sm leading-relaxed group-hover:text-[#3C3C43] transition-colors">
-                  {module.description}
-                </p>
+            <div className="relative z-10">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (!inputValue.trim()) return
+                  setPendingMessage(inputValue)
+                  setChatOpen(true)
+                  setInputValue('')
+                }}
+                className="relative"
+              >
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder='"최근 판결 동향 알려줘" 혹은 "내 주변 변호사 찾아줘"'
+                  className="w-full px-8 py-6 bg-[#F5F5F7] border-none rounded-2xl text-lg font-medium text-[#1D1D1F] placeholder:text-[#86868B] focus:ring-2 focus:ring-blue-600 transition-all shadow-inner"
+                />
+                <button
+                  type="submit"
+                  disabled={!inputValue.trim()}
+                  className="absolute right-3 top-3 bottom-3 px-6 bg-blue-600 hover:bg-blue-500 disabled:bg-[#D2D2D7] text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all active:scale-95 flex items-center gap-2 group/btn"
+                >
+                  요청하기
+                  <Send size={18} className="group-hover/btn:translate-x-1 transition-transform" />
+                </button>
+              </form>
 
-                <div className="mt-4 flex items-center text-xs font-bold uppercase tracking-wider text-blue-500/70 group-hover:text-blue-500">
-                  Explore <span className="ml-1 group-hover:translate-x-1 transition-transform">→</span>
-                </div>
+              <div className="mt-6 flex flex-wrap gap-2">
+                {['최근 판례 검색', '변호사 찾기', '소액 소송 절차', '법리 검토 요청'].map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setInputValue(tag)}
+                    className="px-4 py-2 bg-[#F5F5F7] hover:bg-blue-50 text-[#86868B] hover:text-blue-600 text-xs font-bold rounded-full border border-transparent hover:border-blue-200 transition-all"
+                  >
+                    #{tag}
+                  </button>
+                ))}
               </div>
-            </Link>
-          ))}
+            </div>
+          </div>
         </div>
+
+        {/* Quick Recommendations Section */}
+        <section className="mb-10 mt-auto">
+          <div className="flex items-center mb-6">
+            <h3 className="text-xs font-bold text-[#86868B] uppercase tracking-widest flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+              추천 작업
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {(() => {
+              const lawyerPicks = ['lawyer-stats', 'mock-trial', 'case-precedent', 'storyboard']
+              const userPicks = ['lawyer-finder', 'small-claims', 'case-precedent', 'storyboard']
+              const targetPicks = role === 'lawyer' ? lawyerPicks : userPicks
+
+              const picks = targetPicks
+                .map(id => enabledModules.find(m => m.id === id))
+                .filter(Boolean)
+
+              return picks as Exclude<typeof picks[number], undefined>[]
+            })().map((module) => (
+              <Link
+                key={module.id}
+                href={module.href}
+                className="group relative block p-4 bg-white border border-[#D2D2D7]/50 rounded-2xl hover:shadow-apple-hover hover:border-blue-200 transition-all duration-300 overflow-hidden"
+              >
+                {/* Action / Icon Indicator (Top Right) */}
+                <div className="absolute top-2 right-2 pointer-events-none">
+                  {/* Default Icon Background */}
+                  <div className="opacity-[0.05] group-hover:opacity-0 transition-opacity">
+                    {(() => {
+                      const Icon = MODULE_ICONS[module.id] || Search
+                      return <Icon size={48} strokeWidth={1} />
+                    })()}
+                  </div>
+                </div>
+
+                {/* Hover Action Text (Horizontal) */}
+                <div className="absolute top-[18px] right-3 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all pointer-events-none">
+                  <div className="text-[10px] font-bold text-blue-600 whitespace-nowrap bg-blue-50/80 backdrop-blur-sm px-2 py-1.5 rounded-lg flex items-center gap-1 shadow-sm border border-blue-100">
+                    시작하기 <span className="text-xs">→</span>
+                  </div>
+                </div>
+
+                <div className="relative z-10 flex flex-col h-full">
+                  <div className="flex items-center gap-2.5 mb-2.5">
+                    <div className="p-2 bg-blue-600/5 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-all duration-300 text-blue-600">
+                      {(() => {
+                        const Icon = MODULE_ICONS[module.id] || Search
+                        return <Icon size={18} />
+                      })()}
+                    </div>
+                    <h4 className="text-sm font-bold text-[#1D1D1F]/90 group-hover:text-blue-600 transition-colors line-clamp-1">
+                      {module.name}
+                    </h4>
+                  </div>
+                  <p className="text-[#86868B]/70 group-hover:text-[#86868B] text-[10px] leading-snug line-clamp-2 transition-colors">
+                    {(() => {
+                      const overrides: Record<string, string> = role === 'lawyer'
+                        ? {
+                          'lawyer-stats': '지역·전문분야별 법률시장 구조 분석 대시보드',
+                          'case-precedent': '사건 맥락을 이해하는 AI 판례 분석 에이전트',
+                          'mock-trial': 'AI 에이전트 기반 재판 시뮬레이션',
+                          'storyboard': '사건 사실관계 구조화 및 타임라인 분석'
+                        }
+                        : {
+                          'lawyer-finder': '사건 유형과 위치를 고려한 최적의 변호사 추천',
+                          'case-precedent': '사건 내용을 기반으로 관련 판례를 찾아주는 AI 검색',
+                          'small-claims': '단계별 안내에 따라 소액소송 서류 작성',
+                          'storyboard': '복잡한 사건을 한눈에 정리'
+                        }
+                      return overrides[module.id] || module.description
+                    })()}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
       </div>
-    </main>
+    </div>
+
   )
 }
+
 
 export default function Home() {
   return (

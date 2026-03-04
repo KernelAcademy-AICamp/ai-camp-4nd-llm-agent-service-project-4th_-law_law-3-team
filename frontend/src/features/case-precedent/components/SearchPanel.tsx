@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo, useCallback, KeyboardEvent } from 'react'
-import type { PrecedentItem, PrecedentDetail, SearchFilters } from '../types'
+import { useState, useMemo, useCallback } from 'react'
+import type { PrecedentItem, PrecedentDetail } from '../types'
 import { CaseCard } from './CaseCard'
 
 interface SearchPanelProps {
@@ -9,50 +9,22 @@ interface SearchPanelProps {
   totalResults: number
   isSearching: boolean
   error: string | null
-  filters: SearchFilters
   selectedCaseId: string | null
   selectedCase?: PrecedentDetail | null
-  onFilterChange: (filters: Partial<SearchFilters>) => void
-  onSearch: () => void
   onCaseSelect: (id: string) => void
 }
-
-const DOC_TYPE_OPTIONS = [
-  { value: '', label: '전체 문서' },
-  { value: 'precedent', label: '판례' },
-  { value: 'constitutional', label: '헌재결정' },
-]
-
-const COURT_OPTIONS = [
-  { value: '', label: '전체 법원' },
-  { value: '대법원', label: '대법원' },
-  { value: '고등법원', label: '고등법원' },
-  { value: '지방법원', label: '지방법원' },
-  { value: '헌법재판소', label: '헌법재판소' },
-]
 
 export function SearchPanel({
   results,
   totalResults,
   isSearching,
   error,
-  filters,
   selectedCaseId,
   selectedCase,
-  onFilterChange,
-  onSearch,
   onCaseSelect,
 }: SearchPanelProps) {
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isProvisionsOpen, setIsProvisionsOpen] = useState(true)
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      onSearch()
-    }
-  }
-
-  // Memoized case select handler to prevent CaseCard re-renders
   const handleCaseSelect = useCallback((id: string) => {
     onCaseSelect(id)
   }, [onCaseSelect])
@@ -73,11 +45,9 @@ export function SearchPanel({
         {isSearching ? (
           <span>검색 중...</span>
         ) : results.length > 0 ? (
-          <span>관련 문서</span>
-        ) : filters.keyword ? (
-          <span>검색 결과가 없습니다</span>
+          <span>관련 문서 ({totalResults}건)</span>
         ) : (
-          <span>검색어를 입력하세요</span>
+          <span>관련 문서</span>
         )}
       </div>
 
@@ -103,24 +73,6 @@ export function SearchPanel({
               onSelect={handleCaseSelect}
             />
           ))
-        ) : filters.keyword ? (
-          <div className="text-center text-gray-500 py-8">
-            <svg
-              className="w-12 h-12 mx-auto mb-3 text-gray-300"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <p>검색 결과가 없습니다</p>
-            <p className="text-xs mt-1">다른 키워드로 검색해보세요</p>
-          </div>
         ) : (
           <div className="text-center text-gray-500 py-8">
             <svg
@@ -136,8 +88,8 @@ export function SearchPanel({
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
               />
             </svg>
-            <p>검색어를 입력하여</p>
-            <p>관련 판례를 찾아보세요</p>
+            <p>챗봇에게 법률 질문을 하면</p>
+            <p>관련 문서가 여기에 표시됩니다</p>
           </div>
         )}
       </div>
