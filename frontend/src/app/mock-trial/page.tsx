@@ -61,6 +61,13 @@ const ReferencePanel = dynamic(
     )
 )
 
+const JudgmentDisplay = dynamic(
+  () =>
+    import('@/features/mock-trial/components/JudgmentDisplay').then(
+      (m) => m.JudgmentDisplay
+    )
+)
+
 export default function MockTrialPage() {
   const { isChatOpen, chatMode } = useUI()
   const {
@@ -99,6 +106,9 @@ export default function MockTrialPage() {
     handleNextStage,
     handleEvidenceToggle,
     handleEvidenceSubmit,
+    handleRestart,
+    handleCloseJudgment,
+    judgmentResult,
   } = useMockTrial()
 
   const handleDismissGuide = useCallback(() => setShowStageGuide(false), [setShowStageGuide])
@@ -274,6 +284,15 @@ export default function MockTrialPage() {
           </div>
         ) : null}
       </div>
+
+      {/* 판결 결과 오버레이 */}
+      {phase === 'verdict' && judgmentResult && (
+        <JudgmentDisplay
+          result={judgmentResult}
+          onClose={handleCloseJudgment}
+          onRestart={handleRestart}
+        />
+      )}
     </div>
   )
 }

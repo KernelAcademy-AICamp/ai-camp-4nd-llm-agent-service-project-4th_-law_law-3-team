@@ -13,6 +13,7 @@ import type {
   EmotionType,
   DialogueSpeed,
   PhysicalEvidence,
+  JudgmentResult,
 } from '@/features/mock-trial/types'
 import { CRIMINAL_STAGES, CIVIL_STAGES, DEFAULT_ROLE_EMOTION } from '@/features/mock-trial/types'
 import type { DemoScenario } from '@/features/mock-trial/demo/demo-scenarios'
@@ -50,10 +51,14 @@ export function useMockTrial() {
   // 대화 속도
   const [dialogueSpeed, setDialogueSpeed] = useState<DialogueSpeed>('normal')
 
+  // 판결 결과
+  const [judgmentResult, setJudgmentResult] = useState<JudgmentResult | null>(null)
+
   // 데모 모드 상태
   const [isDemoMode, setIsDemoMode] = useState(false)
   const [demoScenario, setDemoScenario] = useState<DemoScenario | null>(null)
   const demoInputIndexRef = useRef<Record<string, number>>({})
+  const [demoInputTick, setDemoInputTick] = useState(0)
 
   // 일반 모드 SSE 상태
   const { sendStreamingMessage } = useStreamingChat()
@@ -78,14 +83,16 @@ export function useMockTrial() {
     if (!isDemoMode || !currentDemoStage) return null
     const index = demoInputIndexRef.current[currentStageId] ?? 0
     return currentDemoStage.userInputs[index] ?? null
-  }, [isDemoMode, currentDemoStage, currentStageId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDemoMode, currentDemoStage, currentStageId, demoInputTick])
 
   /** 현재 단계의 모든 사용자 입력을 소진했는지 */
   const isDemoStageInputsDone = useMemo(() => {
     if (!isDemoMode || !currentDemoStage) return false
     const index = demoInputIndexRef.current[currentStageId] ?? 0
     return index >= currentDemoStage.userInputs.length
-  }, [isDemoMode, currentDemoStage, currentStageId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDemoMode, currentDemoStage, currentStageId, demoInputTick])
 
   /** 다음 단계 ID를 반환 */
   const getNextStageId = useCallback((): string | null => {
@@ -245,16 +252,24 @@ export function useMockTrial() {
 
   const handleSendMessage = useCallback(
     (text: string) => {
+      const userRole = setupInfoRef.current.userRole || 'user'
       const newMessage: CourtEvent = {
         stage: currentStageId,
-        speaker: 'user',
+        speaker: userRole,
         content: text,
         timestamp: new Date().toISOString(),
+        emotion: DEFAULT_ROLE_EMOTION[userRole] ?? 'neutral',
+        isUser: true,
       }
       setMessages((prev) => [...prev, newMessage])
       setIsWaiting(true)
 
-      eventBus.emit('user:input', { text })
+      // 게임에서 사용자 역할 캐릭터가 발언하도록 전달
+      eventBus.emit('dialogue:enqueue', {
+        agent: userRole,
+        text,
+        emotion: DEFAULT_ROLE_EMOTION[userRole] ?? 'neutral',
+      })
 
       if (isDemoMode && currentDemoStage) {
         playMockResponses(currentDemoStage.mockResponses, currentStageId)
@@ -262,6 +277,7 @@ export function useMockTrial() {
         const currentIndex =
           demoInputIndexRef.current[currentStageId] ?? 0
         demoInputIndexRef.current[currentStageId] = currentIndex + 1
+        setDemoInputTick((t) => t + 1)
       } else {
         const info = setupInfoRef.current
         sendStreamingMessage(
@@ -343,6 +359,20 @@ export function useMockTrial() {
   const handleNextStage = useCallback(() => {
     const nextId = getNextStageId()
     if (!nextId) {
+      if (isDemoMode && demoScenario) {
+        const verdictStage = demoScenario.stages.find(s => s.stageId === 'verdict')
+        if (verdictStage) {
+          playMockResponses(verdictStage.mockResponses, 'verdict')
+          addDemoReferences(verdictStage.references)
+          const judgeSpeech = verdictStage.mockResponses.find(r => r.speaker === 'judge')
+          setJudgmentResult({
+            judgment: judgeSpeech?.content ?? '판결 내용이 없습니다.',
+            feedback: '데모 시나리오에서는 수행 평가가 제공되지 않습니다.',
+            cited_cases: [],
+            cited_articles: [],
+          })
+        }
+      }
       setPhase('verdict')
       return
     }
@@ -372,6 +402,21 @@ export function useMockTrial() {
       }
     }
   }, [getNextStageId, isDemoMode, demoScenario, playMockResponses, addDemoReferences, currentStageId, stages])
+
+  /** 처음부터 다시 시작 */
+  const handleRestart = useCallback(() => {
+    setPhase('setup')
+    setMessages([])
+    setJudgmentResult(null)
+    setCurrentStageId('')
+    setIsDemoMode(false)
+    setDemoScenario(null)
+  }, [])
+
+  /** 판결 모달 닫기 → 재판 화면 복귀 */
+  const handleCloseJudgment = useCallback(() => {
+    setPhase('trial')
+  }, [])
 
   // ── dialogue:queue:empty → isWaiting 해제 ──
   useEffect(() => {
@@ -477,11 +522,13 @@ export function useMockTrial() {
       }),
     })
 
+    const userRole = setupInfoRef.current.userRole || 'user'
     const submitMessage: CourtEvent = {
       stage: currentStageId,
-      speaker: 'user',
+      speaker: userRole,
       content: `증거 ${selectedEvidenceIds.size}건을 제출했습니다.`,
       timestamp: new Date().toISOString(),
+      isUser: true,
     }
     setMessages((prev) => [...prev, submitMessage])
     setIsWaiting(true)
@@ -517,8 +564,14 @@ export function useMockTrial() {
           },
         }
       )
+    } else if (currentDemoStage) {
+      playMockResponses(currentDemoStage.mockResponses, currentStageId)
+      addDemoReferences(currentDemoStage.references)
+      const currentIndex = demoInputIndexRef.current[currentStageId] ?? 0
+      demoInputIndexRef.current[currentStageId] = currentIndex + 1
+      setDemoInputTick((t) => t + 1)
     }
-  }, [evidenceCases, evidenceArticles, selectedEvidenceIds, currentStageId, isDemoMode, sendStreamingMessage, processSSEMetadata])
+  }, [evidenceCases, evidenceArticles, selectedEvidenceIds, currentStageId, isDemoMode, currentDemoStage, playMockResponses, addDemoReferences, sendStreamingMessage, processSSEMetadata])
 
   // ── 파생 상태 ──
 
@@ -564,6 +617,9 @@ export function useMockTrial() {
     showNextStageButton,
     nextStageId,
 
+    // 판결
+    judgmentResult,
+
     // 핸들러
     handleSetupComplete,
     handleSendMessage,
@@ -573,5 +629,7 @@ export function useMockTrial() {
     handleNextStage,
     handleEvidenceToggle,
     handleEvidenceSubmit,
+    handleRestart,
+    handleCloseJudgment,
   }
 }
