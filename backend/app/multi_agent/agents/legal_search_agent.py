@@ -10,7 +10,12 @@ import re
 from collections.abc import AsyncGenerator
 from typing import Any, Literal
 
-from app.multi_agent.agents.base_chat import ActionType, BaseChatAgent, ChatAction
+from app.multi_agent.agents.base_chat import (
+    ActionType,
+    BaseChatAgent,
+    ChatAction,
+    normalize_chunk_content,
+)
 from app.multi_agent.schemas.plan import AgentResult
 from app.services.rag.format_utils import (
     format_law_context,
@@ -420,8 +425,10 @@ class LegalSearchAgent(BaseChatAgent):
         messages = self._build_messages(message, context, history)
 
         async for chunk in model.astream(messages):
-            if chunk.content and isinstance(chunk.content, str):
-                yield ("token", {"content": chunk.content})
+            if chunk.content:
+                text = normalize_chunk_content(chunk.content)
+                if text:
+                    yield ("token", {"content": text})
 
         actions = await self._build_hierarchy_actions(message, sources)
 

@@ -9,7 +9,7 @@ import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from app.multi_agent.agents.base_chat import BaseChatAgent
+from app.multi_agent.agents.base_chat import BaseChatAgent, normalize_chunk_content
 from app.multi_agent.schemas.plan import AgentResult
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,9 @@ class StoryboardAgent(BaseChatAgent):
 
         async for chunk in model.astream(messages):
             if chunk.content:
-                yield ("token", {"content": chunk.content})
+                text = normalize_chunk_content(chunk.content)
+                if text:
+                    yield ("token", {"content": text})
 
         yield ("sources", {"sources": []})
         yield ("metadata", {

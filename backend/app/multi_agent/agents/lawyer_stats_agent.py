@@ -12,7 +12,12 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from app.modules.lawyer_stats.schema import StatsIntent
-from app.multi_agent.agents.base_chat import ActionType, BaseChatAgent, ChatAction
+from app.multi_agent.agents.base_chat import (
+    ActionType,
+    BaseChatAgent,
+    ChatAction,
+    normalize_chunk_content,
+)
 from app.multi_agent.schemas.plan import AgentResult
 from app.tools.llm import get_chat_model
 
@@ -176,8 +181,10 @@ class LawyerStatsAgent(BaseChatAgent):
         messages = self._build_llm_messages(message, intent, stats_data, history)
 
         async for chunk in model.astream(messages):
-            if chunk.content and isinstance(chunk.content, str):
-                yield ("token", {"content": chunk.content})
+            if chunk.content:
+                text = normalize_chunk_content(chunk.content)
+                if text:
+                    yield ("token", {"content": text})
 
         yield ("sources", {"sources": []})
         yield ("metadata", {
