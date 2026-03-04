@@ -10,8 +10,25 @@ import { SearchPanel } from '@/features/lawyer-finder/components/SearchPanel'
 import { OfficeDetailPanel } from '@/features/lawyer-finder/components/OfficeDetailPanel'
 import { useGeolocation } from '@/features/lawyer-finder/hooks/useGeolocation'
 import { lawyerFinderService } from '@/features/lawyer-finder/services'
-import { DISTRICT_COORDS, PROVINCE_CENTERS } from '@/features/lawyer-finder/constants'
+import { CLUSTER_ZOOM_THRESHOLD, DRAG_DEBOUNCE_MS, DISTRICT_COORDS, PROVINCE_CENTERS } from '@/features/lawyer-finder/constants'
 import type { Lawyer, Office, ClusterData, ProvinceData } from '@/features/lawyer-finder/types'
+
+const KakaoMap = dynamic(
+  () => import('@/features/lawyer-finder/components/KakaoMap').then((m) => m.MemoizedKakaoMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-sm text-gray-500">지도 로딩 중...</p>
+        </div>
+      </div>
+    ),
+  }
+)
+
+const KAKAO_MAP_API_KEY = process.env.NEXT_PUBLIC_KAKAO_MAP_API_KEY
 
 export default function LawyerFinderPageWrapper() {
   return (

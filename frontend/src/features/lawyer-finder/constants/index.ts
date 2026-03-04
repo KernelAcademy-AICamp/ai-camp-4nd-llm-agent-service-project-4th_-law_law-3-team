@@ -1,3 +1,9 @@
+// 클러스터 모드 전환 줌 레벨 임계값
+export const CLUSTER_ZOOM_THRESHOLD = 6
+
+// 지도 드래그 디바운스 (ms)
+export const DRAG_DEBOUNCE_MS = 400
+
 // 서울 구별 좌표 데이터
 export const DISTRICT_COORDS: Record<string, { lat: number; lng: number }> = {
   '강남구': { lat: 37.5172, lng: 127.0473 },

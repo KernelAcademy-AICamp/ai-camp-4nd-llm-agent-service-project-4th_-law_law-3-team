@@ -10,8 +10,8 @@ import { SearchPanel } from './SearchPanel'
 import { OfficeDetailPanel } from './OfficeDetailPanel'
 import { useGeolocation } from '../hooks/useGeolocation'
 import { lawyerFinderService } from '../services'
-import { DISTRICT_COORDS } from '../constants'
-import type { Lawyer, Office, ClusterData } from '../types'
+import { CLUSTER_ZOOM_THRESHOLD, DRAG_DEBOUNCE_MS, DISTRICT_COORDS, PROVINCE_CENTERS } from '../constants'
+import type { Lawyer, Office, ClusterData, ProvinceData } from '../types'
 
 const KakaoMap = dynamic(
   () => import('./KakaoMap').then((m) => m.MemoizedKakaoMap),
@@ -29,8 +29,6 @@ const KakaoMap = dynamic(
 )
 
 const KAKAO_MAP_API_KEY = process.env.NEXT_PUBLIC_KAKAO_MAP_API_KEY
-const CLUSTER_ZOOM_THRESHOLD = 6
-const DRAG_DEBOUNCE_MS = 400
 
 interface LawyerFinderMainProps {
   isInline?: boolean
@@ -67,6 +65,10 @@ export function LawyerFinderMain({ isInline = false }: LawyerFinderMainProps) {
     }
     return null
   })
+  const [province, setProvince] = useState(() => {
+    return searchParams.get('province') || '서울'
+  })
+  const [regions, setRegions] = useState<ProvinceData[]>([])
   const [sigungu, setSigungu] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [category, setCategory] = useState('')
@@ -102,6 +104,12 @@ export function LawyerFinderMain({ isInline = false }: LawyerFinderMainProps) {
   useEffect(() => {
     getCurrentPosition()
   }, [getCurrentPosition])
+
+  useEffect(() => {
+    lawyerFinderService.getRegions()
+      .then((data) => setRegions(data.provinces))
+      .catch(() => {}) // fallback: PROVINCE_CENTERS 사용
+  }, [])
 
   useEffect(() => {
     if (!mapReady) return
@@ -320,12 +328,34 @@ export function LawyerFinderMain({ isInline = false }: LawyerFinderMainProps) {
     setMapBounds(bounds)
   }, [])
 
+  const handleProvinceChange = useCallback((newProvince: string) => {
+    setProvince(newProvince)
+    setSigungu('')
+
+    const regionData = regions.find((r) => r.name === newProvince)
+    if (regionData) {
+      setSearchCenter({ lat: regionData.center_lat, lng: regionData.center_lng })
+    } else if (PROVINCE_CENTERS[newProvince]) {
+      setSearchCenter({ lat: PROVINCE_CENTERS[newProvince].lat, lng: PROVINCE_CENTERS[newProvince].lng })
+    }
+
+    const defaultRadius = PROVINCE_CENTERS[newProvince]?.defaultRadius ?? 15000
+    setRadius(defaultRadius)
+  }, [regions])
+
   const handleSigunguChange = useCallback((newSigungu: string) => {
     setSigungu(newSigungu)
-    if (newSigungu && DISTRICT_COORDS[newSigungu]) {
+    if (!newSigungu) return
+
+    const regionData = regions.find((r) => r.name === province)
+    const districtData = regionData?.districts.find((d) => d.name === newSigungu)
+    if (districtData) {
+      setSearchCenter({ lat: districtData.center_lat, lng: districtData.center_lng })
+      setRadius(5000)
+    } else if (DISTRICT_COORDS[newSigungu]) {
       setSearchCenter(DISTRICT_COORDS[newSigungu])
     }
-  }, [])
+  }, [regions, province])
 
   const handleCategoryChange = useCallback((newCategory: string) => {
     setCategory(newCategory)
@@ -390,6 +420,9 @@ export function LawyerFinderMain({ isInline = false }: LawyerFinderMainProps) {
               onSearchReset={handleSearchReset}
               radius={radius}
               totalCount={totalCount}
+              province={province}
+              onProvinceChange={handleProvinceChange}
+              provinces={regions}
               sigungu={sigungu}
               onSigunguChange={handleSigunguChange}
               searchQuery={searchQuery}
