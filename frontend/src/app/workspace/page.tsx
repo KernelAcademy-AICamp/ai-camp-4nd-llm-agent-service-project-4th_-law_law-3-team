@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { BackButton } from '@/components/ui/BackButton'
 import { useUI } from '@/context/UIContext'
 import { listCases, createCase } from '@/features/workspace/services'
@@ -18,30 +19,14 @@ export default function WorkspacePage() {
   const router = useRouter()
   const { isChatOpen, chatMode } = useUI()
 
-  const [data, setData] = useState<PaginatedResponse<WorkspaceCase> | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [page, setPage] = useState(1)
-  const [isLoading, setIsLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   const [newCaseName, setNewCaseName] = useState('')
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const result = await listCases({
-        search: search || undefined,
-        status: statusFilter || undefined,
-        page,
-        page_size: 20,
-      })
-      setData(result)
-    } catch (error) {
-      console.error('사건 목록 조회 실패:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [search, statusFilter, page])
+  // 개발 모드 데모 데이터 오버라이드
+  const [demoData, setDemoData] = useState<PaginatedResponse<WorkspaceCase> | null>(null)
 
   useEffect(() => {
     if (
@@ -50,12 +35,24 @@ export default function WorkspacePage() {
       new URLSearchParams(window.location.search).get('demo') === '1'
     ) {
       const { getDemoCaseList } = require('@/features/workspace/demo/demo-data')
-      setData(getDemoCaseList())
-      setIsLoading(false)
-    } else {
-      fetchData()
+      setDemoData(getDemoCaseList())
     }
-  }, [fetchData])
+  }, [])
+
+  const { data: queryData, isLoading: queryLoading } = useQuery({
+    queryKey: ['workspace-cases', search, statusFilter, page],
+    queryFn: () => listCases({
+      search: search || undefined,
+      status: statusFilter || undefined,
+      page,
+      page_size: 20,
+    }),
+    enabled: !demoData,
+    placeholderData: keepPreviousData,
+  })
+
+  const data = demoData ?? queryData ?? null
+  const isLoading = !demoData && queryLoading
 
   const handleCreate = async () => {
     if (!newCaseName.trim()) return
@@ -94,8 +91,7 @@ export default function WorkspacePage() {
               <button
                 onClick={() => {
                   const { getDemoCaseList } = require('@/features/workspace/demo/demo-data')
-                  setData(getDemoCaseList())
-                  setIsLoading(false)
+                  setDemoData(getDemoCaseList())
                 }}
                 className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
               >
