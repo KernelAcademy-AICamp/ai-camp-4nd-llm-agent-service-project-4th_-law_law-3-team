@@ -25,10 +25,10 @@ from sqlalchemy.orm import Session
 from app.models.news_article import NewsArticle
 from scripts.common.db import create_sync_session_factory
 from scripts.common.logging_config import setup_logging
+from scripts.common.paths import DATA_DIR
 
 logger = setup_logging(__name__)
 
-DATA_DIR = PROJECT_ROOT.parent / "data"
 NEWS_DIR = DATA_DIR / "news"
 DEFAULT_INPUT = NEWS_DIR / "news_articles.jsonl"
 
