@@ -141,7 +141,7 @@ export function FilterableLawView() {
   return (
     <div className="flex h-full">
       {/* 좌측: 필터 + 결과 목록 */}
-      <div className="w-96 flex flex-col bg-white border-r border-gray-200">
+      <div className="w-80 flex flex-col bg-white border-r border-gray-200">
         <LawFilterPanel
           keyword={keyword}
           onKeywordChange={setKeyword}

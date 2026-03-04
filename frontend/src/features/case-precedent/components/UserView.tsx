@@ -20,7 +20,7 @@ export function UserView() {
   const { sessionData, userRole, highlightedCaseNumber, setHighlightedCaseNumber } = useChat()
   const [references, setReferences] = useState<ChatSource[]>([])
   const [selectedRef, setSelectedRef] = useState<ChatSource | null>(null)
-  const [showFilter, setShowFilter] = useState(false)
+  const [showFilter, setShowFilter] = useState(true)
   const isLawyer = userRole === 'lawyer'
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
@@ -130,7 +130,7 @@ export function UserView() {
   return (
     <div className="h-full flex overflow-hidden">
       {/* 왼쪽 패널: LawyerView와 동일한 구조 */}
-      <div className="w-96 bg-white border-r border-gray-200 flex flex-col h-full">
+      <div className="w-80 bg-white border-r border-gray-200 flex flex-col h-full">
         {/* 헤더: 결과 수 + 필터 토글 */}
         <div className="px-4 py-2 bg-gray-50 border-b flex items-center justify-between">
           <span className="text-sm text-gray-600">관련 문서 ({total}건)</span>

@@ -43,7 +43,7 @@ function ViewSkeleton() {
 
 function CasePrecedentContent() {
   const { userRole, sessionData } = useChat()
-  const { isChatOpen } = useUI()
+  const { isChatOpen, chatMode } = useUI()
   const searchParams = useSearchParams()
   const initialCaseId = searchParams.get('id')
 
@@ -56,7 +56,7 @@ function CasePrecedentContent() {
   return (
     <div
       className={`h-screen flex flex-col bg-gray-100 transition-all duration-500 ease-in-out ${
-        isChatOpen ? 'w-1/2 border-r border-gray-200' : 'w-full'
+        isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-gray-200' : 'w-full'
       }`}
     >
       <header className="bg-white border-b border-gray-200 px-6 py-4">

@@ -57,7 +57,7 @@ const MODULE_ICONS: Record<string, any> = {
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { userRole, setUserRole, sessionData } = useChat()
+  const { userRole, setUserRole, sessionData, resetSession } = useChat()
   const { setChatOpen } = useUI()
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -167,6 +167,7 @@ export default function Sidebar() {
                   label={mod.name}
                   isActive={pathname === mod.href}
                   isExpanded={isExpanded}
+                  onNavigate={pathname !== mod.href ? resetSession : undefined}
                 />
               )
             })}
@@ -207,17 +208,20 @@ function NavItem({
   icon: Icon,
   label,
   isActive,
-  isExpanded
+  isExpanded,
+  onNavigate
 }: {
   href: string,
   icon: any,
   label: string,
   isActive: boolean,
-  isExpanded: boolean
+  isExpanded: boolean,
+  onNavigate?: () => void
 }) {
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       className={cn(
         "group flex items-center gap-3 p-3 rounded-xl transition-all relative",
         isActive

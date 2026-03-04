@@ -40,17 +40,7 @@ export function LawyerView({ initialCaseId }: LawyerViewProps) {
   const [clientDateTo, setClientDateTo] = useState('')
   const [clientSortOrder, setClientSortOrder] = useState<SortOrder>('relevance')
 
-  // 필터 토글: 서버 모드에서는 기본 표시, 채팅 모드에서는 기본 숨김
   const [showFilter, setShowFilter] = useState(true)
-
-  // 채팅 참조 도착 시 필터 접기
-  const prevHasChatRef = useRef(hasChatReferences)
-  useEffect(() => {
-    if (!prevHasChatRef.current && hasChatReferences) {
-      setShowFilter(false)
-    }
-    prevHasChatRef.current = hasChatReferences
-  }, [hasChatReferences])
 
   // ── 클라이언트 사이드 필터링 (채팅 참조 모드) ──
   const refMetaMap = useMemo(() => {
@@ -259,7 +249,7 @@ export function LawyerView({ initialCaseId }: LawyerViewProps) {
   return (
     <div className="h-full flex overflow-hidden">
       {/* Left Panel */}
-      <div className="w-96 bg-white border-r border-gray-200 flex flex-col h-full">
+      <div className="w-80 bg-white border-r border-gray-200 flex flex-col h-full">
         {/* 헤더: 결과 수 + 필터 토글 */}
         <div className="px-4 py-2 bg-gray-50 border-b flex items-center justify-between">
           <span className="text-sm text-gray-600">

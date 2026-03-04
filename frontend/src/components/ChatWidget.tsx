@@ -192,6 +192,8 @@ const FLOATING_MODE_PATHS = new Set([
   '/storyboard',
   '/statute-hierarchy',
   '/workspace',
+  '/case-precedent',
+  '/law-search',
 ])
 
 // --- Memoized MessageBubble ---
@@ -1100,7 +1102,7 @@ export default function ChatWidget() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !isLoading && !isStreaming && handleSend()}
-            placeholder={isLoading || isStreaming ? loadingStatus.title : '법률 질문을 입력하세요...'}
+            placeholder="법률 질문을 입력하세요..."
             disabled={isLoading || isStreaming}
             className={`flex-1 rounded-xl px-4 py-3 md:px-6 md:py-4 text-sm md:text-base focus:outline-none transition-all shadow-sm ${themeClasses.input} ${isLoading || isStreaming ? 'opacity-50 cursor-not-allowed' : ''}`}
           />
