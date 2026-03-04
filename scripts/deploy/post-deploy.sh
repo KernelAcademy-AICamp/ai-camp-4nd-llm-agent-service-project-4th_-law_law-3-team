@@ -222,46 +222,42 @@ if [ "$SKIP_DB_LOAD" = false ]; then
         echo ""
     }
 
-    # 6-1. 변호사 데이터 (lawyer_finder + lawyer_stats)
+    # 6-1. 법령/판례 등 21개 타입 DB 적재 (ingest 파이프라인)
+    #      소스: data/ingest_source/*.json (S3 다운로드 포함)
+    #      → law_documents, precedent_documents 등 + FTS search_text 자동 생성
+    run_in_backend "법령/판례 DB 적재 (21개 타입)" \
+        uv run python -m scripts.ingest.cli --type all --step db
+
+    # 6-2. law_articles 데이터 (조문 단위 RAG 컨텍스트)
+    #      소스: data/ingest_source/law_v3.json → law_articles 테이블
+    run_in_backend "법령 조문 데이터 (law_articles)" \
+        uv run python scripts/load_law_articles_data.py
+
+    # 6-3. BM25 인덱스 생성 (키워드 검색)
+    #      전제: 6-1에서 FTS search_text가 적재되어야 함
+    run_in_backend "BM25 인덱스 생성" \
+        uv run python scripts/create_bm25_index.py
+
+    # 6-4. 변호사 데이터 (lawyer_finder + lawyer_stats)
     #      소스: data/lawyers.json (S3 다운로드 포함)
     run_in_backend "변호사 데이터 (17,326건)" \
         uv run python scripts/load_lawyers_data.py
 
-    # 6-2. 재판 통계 (lawyer_stats 수요 분석)
+    # 6-5. 재판 통계 (lawyer_stats 수요 분석)
     #      소스: data/trial_statistics_data/*.csv (S3 다운로드 포함)
     run_in_backend "재판 통계" \
         uv run python scripts/load_trial_statistics_data.py
 
-    # 6-3. 법령 체계도 그래프 (statute_hierarchy + 관련 테이블)
-    #      소스: data/law_hierarchy.json, data/law_abbreviations.json (S3 다운로드 포함)
-    #      전제: law_documents + precedent_documents 테이블에 데이터 있어야 함
-    #            (ingest_source/ 데이터로 --type all --step db 실행 후)
-    if docker exec -u appuser -e UV_CACHE_DIR=/tmp/uv-cache "$BACKEND_CONTAINER" \
-        python -c "
-from sqlalchemy import create_engine, text
-import os
-e = create_engine(os.environ['DATABASE_URL'].replace('+asyncpg',''))
-with e.connect() as c:
-    law = c.execute(text('SELECT count(*) FROM law_documents')).scalar()
-    prec = c.execute(text('SELECT count(*) FROM precedent_documents')).scalar()
-    exit(0 if law > 0 and prec > 0 else 1)
-" 2>/dev/null; then
-        run_in_backend "법령 체계도 그래프" \
-            uv run python -m scripts.ingest.cli --step graph
-    else
-        echo "  [법령 체계도 그래프] law_documents/precedent_documents 비어있음 → 건너뜀"
-        echo "    먼저 법령/판례 DB 적재 후 실행: docker exec $BACKEND_CONTAINER uv run python -m scripts.ingest.cli --step graph"
-    fi
+    # 6-6. 법령 체계도 그래프 (statute_hierarchy + 관련 테이블)
+    #      소스: data/law_hierarchy.json, data/law_abbreviations.json
+    #      전제: 6-1에서 law_documents + precedent_documents 적재 완료
+    run_in_backend "법령 체계도 그래프" \
+        uv run python -m scripts.ingest.cli --step graph
 
-    # 6-4. 법률 용어 사전 (USE_LEGAL_TERM_DICT=true인 경우만 필요)
+    # 6-7. 법률 용어 사전
     #      소스: data/lawterms_v1.json (S3 다운로드 포함)
-    if docker exec -u appuser -e UV_CACHE_DIR=/tmp/uv-cache "$BACKEND_CONTAINER" \
-        python -c "from app.core.config import settings; exit(0 if settings.USE_LEGAL_TERM_DICT else 1)" 2>/dev/null; then
-        run_in_backend "법률 용어 사전 (72,700건)" \
-            uv run python scripts/load_legal_terms_data.py
-    else
-        echo "  [법률 용어 사전] USE_LEGAL_TERM_DICT=false → 건너뜀"
-    fi
+    run_in_backend "법률 용어 사전 (72,700건)" \
+        uv run python scripts/load_legal_terms_data.py
 
     echo "  적재 결과: 성공 ${db_load_ok}건, 실패 ${db_load_fail}건"
 
@@ -269,12 +265,6 @@ with e.connect() as c:
         echo "  WARNING: 일부 적재 실패. 로그를 확인하세요."
         echo "    $DC logs --tail=50 backend"
     fi
-
-    echo ""
-    echo "  참고: 법령/판례 전문 DB 적재 (BM25 키워드 검색용)는 별도 실행 필요:"
-    echo "    docker exec $BACKEND_CONTAINER uv run python -m scripts.ingest.cli --type all --step db"
-    echo "    docker exec $BACKEND_CONTAINER uv run python scripts/create_bm25_index.py"
-    echo "    (ingest_source/ 디렉토리가 컨테이너 내 /app/data/에 있어야 합니다)"
 else
     echo "=== 6. PostgreSQL 데이터 적재 (건너뜀, --skip-db-load로 비활성화) ==="
 fi

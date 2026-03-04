@@ -74,7 +74,7 @@ services:
       LANCEDB_MODE: local
       LANCEDB_URI: ${LANCEDB_URI:-/app/lancedb_data}
       LANCEDB_TABLE_NAME: ${LANCEDB_TABLE_NAME:-legal_chunks}
-      USE_LEGAL_TERM_DICT: ${USE_LEGAL_TERM_DICT:-false}
+      USE_LEGAL_TERM_DICT: ${USE_LEGAL_TERM_DICT:-true}
       # Embedding / Reranker
       USE_LOCAL_EMBEDDING: ${USE_LOCAL_EMBEDDING:-true}
       LOCAL_EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-nlpai-lab/KURE-v1}

@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     AGENT_TIMEOUT_SECONDS: int = 120
 
     # 법률 용어 사전 (MeCab 토크나이저 법률 복합명사 보강)
-    USE_LEGAL_TERM_DICT: bool = False
+    USE_LEGAL_TERM_DICT: bool = True
 
     # 하이브리드 검색 (벡터 + 키워드)
     USE_HYBRID_SEARCH: bool = True
