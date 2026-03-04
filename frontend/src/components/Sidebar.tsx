@@ -2,8 +2,10 @@
 
 import React, { useState, useMemo } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
+import type { LucideIcon } from 'lucide-react'
 import {
   Search,
   ClipboardList,
@@ -29,7 +31,7 @@ import { useUI } from '@/context/UIContext'
 import { modules, getEnabledModules, getModuleCategory, CATEGORY_NAMES } from '@/lib/modules'
 import { cn } from '@/lib/utils'
 
-const CATEGORY_ICONS: Record<string, any> = {
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
   'research': Search,
   'case-review': ClipboardList,
   'insight': BarChart,
@@ -39,7 +41,7 @@ const CATEGORY_ICONS: Record<string, any> = {
   'information': FileText,
 }
 
-const MODULE_ICONS: Record<string, any> = {
+const MODULE_ICONS: Record<string, LucideIcon> = {
   'lawyer-finder': MapPin,
   'lawyer-stats': BarChart,
   'case-precedent': Search,
@@ -92,7 +94,7 @@ export default function Sidebar() {
       {/* Logo Area */}
       <div className="h-16 flex items-center px-4 mb-4 overflow-hidden shrink-0">
         <Link href={`/?role=${userRole}`} className="flex items-center gap-3">
-          <img src="/logo.png" alt="Legal President AI" className="w-8 h-8 shrink-0 object-contain" />
+          <Image src="/logo.png" alt="Legal President AI" width={32} height={32} className="shrink-0 object-contain" />
           <motion.span
             animate={{ opacity: isExpanded ? 1 : 0 }}
             className="font-bold text-[#1D1D1F] whitespace-nowrap"
@@ -210,7 +212,7 @@ function NavItem({
   isExpanded
 }: {
   href: string,
-  icon: any,
+  icon: LucideIcon,
   label: string,
   isActive: boolean,
   isExpanded: boolean

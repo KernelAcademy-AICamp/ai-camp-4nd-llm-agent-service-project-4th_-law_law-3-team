@@ -478,7 +478,7 @@ function TagsTab({ caseData }: { caseData: WorkspaceCaseDetail }) {
           <div className="flex flex-wrap gap-2">
             {tags.map((tag, i) => (
               <div
-                key={i}
+                key={`case-tag-${i}`}
                 className="bg-gray-50 rounded-lg px-3 py-2 text-sm"
               >
                 <span className="font-medium text-gray-900">

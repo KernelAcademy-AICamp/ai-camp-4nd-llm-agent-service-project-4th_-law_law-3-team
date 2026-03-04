@@ -112,7 +112,7 @@ export function TrendDetailView({
             <h3 className="text-sm font-semibold text-gray-500 mb-2">핵심 쟁점</h3>
             <ol className="space-y-1.5">
               {issue.key_points.map((point, index) => (
-                <li key={index} className="text-sm text-gray-700 flex gap-2">
+                <li key={`point-${index}`} className="text-sm text-gray-700 flex gap-2">
                   <span className="text-blue-500 font-medium shrink-0">{index + 1}.</span>
                   {point}
                 </li>
@@ -171,7 +171,7 @@ export function TrendDetailView({
               <div className="space-y-2">
                 {articles.map((article, index) => (
                   <a
-                    key={index}
+                    key={`article-${index}`}
                     href={article.url}
                     target="_blank"
                     rel="noopener noreferrer"

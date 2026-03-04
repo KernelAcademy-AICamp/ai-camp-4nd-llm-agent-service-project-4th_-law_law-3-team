@@ -80,7 +80,7 @@ export function ChatPanel({
             message.emotion ?? DEFAULT_ROLE_EMOTION[message.speaker] ?? 'neutral'
           const emoji = EMOTION_EMOJI[emotionKey] ?? '😐'
           return (
-            <div key={index} className="text-sm">
+            <div key={`msg-${index}`} className="text-sm">
               <span className="font-semibold text-gray-700">
                 [{speakerName} {emoji}]
               </span>{' '}

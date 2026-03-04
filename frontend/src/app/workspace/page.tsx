@@ -243,7 +243,7 @@ export default function WorkspacePage() {
                       <div className="flex flex-wrap gap-1 mt-2">
                         {c.tagged_items.slice(0, 5).map((tag, i) => (
                           <span
-                            key={i}
+                            key={`ws-tag-${i}`}
                             className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs ${
                               TAG_TYPE_COLORS[tag.type] ?? 'bg-gray-100 text-gray-700'
                             }`}

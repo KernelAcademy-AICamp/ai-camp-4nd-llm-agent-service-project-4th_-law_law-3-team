@@ -2,11 +2,13 @@
 
 import { useEffect, Suspense, useMemo, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getEnabledModules, getModuleCategory, CATEGORY_NAMES } from '@/lib/modules'
 import { useUI } from '@/context/UIContext'
 import { useChat, UserRole } from '@/context/ChatContext'
 import { motion, AnimatePresence } from 'framer-motion'
+import type { LucideIcon } from 'lucide-react'
 import {
   Send,
   Search,
@@ -17,7 +19,7 @@ import {
   Gavel
 } from 'lucide-react'
 
-const MODULE_ICONS: Record<string, any> = {
+const MODULE_ICONS: Record<string, LucideIcon> = {
   'lawyer-finder': MapPin,
   'lawyer-stats': BarChart,
   'case-precedent': Search,
@@ -72,10 +74,12 @@ function HomeContent() {
     return (
       <main className="h-screen bg-white flex flex-col items-center justify-end relative overflow-hidden">
         {/* Full-screen Background Image */}
-        <img
+        <Image
           src="/assets/hero-background.png"
           alt="법률 서비스 플랫폼"
-          className="absolute inset-0 w-full h-full object-contain object-center"
+          fill
+          className="object-contain object-center"
+          priority
         />
 
         {/* Role Selection Cards */}
@@ -172,7 +176,7 @@ function HomeContent() {
           <div className="p-8 bg-white/90 backdrop-blur-2xl border-2 border-[#D2D2D7] shadow-xl rounded-[2.5rem] overflow-hidden relative">
             {/* Background Decoration (Logo) */}
             <div className="absolute bottom-2 right-8 opacity-[0.08] group-hover:opacity-[0.12] transform rotate-12 group-hover:rotate-0 transition-all duration-700 pointer-events-none">
-              <img src="/logo.png" alt="" className="w-32 h-32 object-contain" />
+              <Image src="/logo.png" alt="" width={128} height={128} className="object-contain" />
             </div>
 
             <div className="relative z-10">

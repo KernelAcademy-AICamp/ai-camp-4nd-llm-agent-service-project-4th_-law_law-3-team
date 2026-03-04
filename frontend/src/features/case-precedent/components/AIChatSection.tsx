@@ -121,7 +121,7 @@ export function AIChatSection({
                   <div className="flex flex-wrap gap-1">
                     {response.sources.map((source, idx) => (
                       <span
-                        key={idx}
+                        key={`source-${idx}`}
                         className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded"
                       >
                         {source.case_number || source.case_name}

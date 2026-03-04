@@ -22,7 +22,7 @@ function SummarySection({ title, items }: { title: string; items: string[] | nul
       <h4 className="text-sm font-semibold text-gray-700 mb-1">{title}</h4>
       <ul className="space-y-1">
         {items.map((item, index) => (
-          <li key={index} className="text-sm text-gray-600 flex items-start gap-1.5">
+          <li key={`news-${index}`} className="text-sm text-gray-600 flex items-start gap-1.5">
             <span className="text-gray-400 mt-0.5 shrink-0">-</span>
             <span>{item}</span>
           </li>

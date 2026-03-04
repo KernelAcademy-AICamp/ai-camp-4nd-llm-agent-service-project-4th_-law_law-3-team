@@ -140,7 +140,7 @@ export function ScriptGenerator({
           </p>
           <div className="space-y-1">
             {initialNewsArticles.slice(0, 3).map((article, index) => (
-              <p key={index} className="text-xs text-blue-600 truncate">
+              <p key={`script-${index}`} className="text-xs text-blue-600 truncate">
                 {article.title}
               </p>
             ))}

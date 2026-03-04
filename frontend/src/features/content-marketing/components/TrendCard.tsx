@@ -82,7 +82,7 @@ export function TrendCard({ issue, rank, onSelect, onGenerateScript }: TrendCard
         <p className="text-xs font-medium text-gray-500 mb-1">핵심 쟁점:</p>
         <ol className="space-y-0.5">
           {issue.key_points.slice(0, 3).map((point, index) => (
-            <li key={index} className="text-sm text-gray-700 line-clamp-1">
+            <li key={`trend-${index}`} className="text-sm text-gray-700 line-clamp-1">
               {index + 1}. {point}
             </li>
           ))}

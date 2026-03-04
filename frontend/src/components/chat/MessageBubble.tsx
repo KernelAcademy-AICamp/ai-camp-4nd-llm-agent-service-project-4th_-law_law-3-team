@@ -29,7 +29,7 @@ function CaseNumberLink({
           CASE_NUMBER_PATTERN.lastIndex = 0
           return (
             <button
-              key={index}
+              key={`case-${index}`}
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
@@ -45,7 +45,7 @@ function CaseNumberLink({
             </button>
           )
         }
-        return <span key={index}>{part}</span>
+        return <span key={`part-${index}`}>{part}</span>
       })}
     </>
   )
@@ -69,13 +69,13 @@ export function useMarkdownComponents(
           children.map((child, i) =>
             typeof child === 'string' ? (
               <CaseNumberLink
-                key={i}
+                key={`md-${i}`}
                 text={child}
                 onCaseClick={onCaseClick}
                 isLightTheme={isLightTheme}
               />
             ) : (
-              <span key={i}>{child}</span>
+              <span key={`md-${i}`}>{child}</span>
             )
           )
         ) : (
@@ -95,13 +95,13 @@ export function useMarkdownComponents(
           children.map((child, i) =>
             typeof child === 'string' ? (
               <CaseNumberLink
-                key={i}
+                key={`md-${i}`}
                 text={child}
                 onCaseClick={onCaseClick}
                 isLightTheme={isLightTheme}
               />
             ) : (
-              <span key={i}>{child}</span>
+              <span key={`md-${i}`}>{child}</span>
             )
           )
         ) : (
