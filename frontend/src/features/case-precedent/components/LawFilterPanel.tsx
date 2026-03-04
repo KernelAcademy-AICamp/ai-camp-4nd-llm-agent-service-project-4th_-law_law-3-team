@@ -7,8 +7,6 @@ interface LawFilterPanelProps {
   onKeywordChange: (value: string) => void
   lawType: string
   onLawTypeChange: (value: string) => void
-  ministry: string
-  onMinistryChange: (value: string) => void
   promulgationPreset: DatePreset
   onPromulgationPresetChange: (value: DatePreset) => void
   promulgationFrom: string
@@ -22,7 +20,6 @@ interface LawFilterPanelProps {
   enforcementTo: string
   onEnforcementToChange: (value: string) => void
   lawTypes: string[]
-  ministries: string[]
   onSearch: () => void
   isLoading: boolean
 }
@@ -97,14 +94,13 @@ function DatePresetPills({
 export function LawFilterPanel({
   keyword, onKeywordChange,
   lawType, onLawTypeChange,
-  ministry, onMinistryChange,
   promulgationPreset, onPromulgationPresetChange,
   promulgationFrom, onPromulgationFromChange,
   promulgationTo, onPromulgationToChange,
   enforcementPreset, onEnforcementPresetChange,
   enforcementFrom, onEnforcementFromChange,
   enforcementTo, onEnforcementToChange,
-  lawTypes, ministries,
+  lawTypes,
   onSearch,
   isLoading,
 }: LawFilterPanelProps) {
@@ -137,21 +133,6 @@ export function LawFilterPanel({
           <option value="">전체</option>
           {lawTypes.map((type) => (
             <option key={type} value={type}>{type}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* 소관부처 */}
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">소관부처</label>
-        <select
-          value={ministry}
-          onChange={(e) => onMinistryChange(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">전체</option>
-          {ministries.map((m) => (
-            <option key={m} value={m}>{m}</option>
           ))}
         </select>
       </div>

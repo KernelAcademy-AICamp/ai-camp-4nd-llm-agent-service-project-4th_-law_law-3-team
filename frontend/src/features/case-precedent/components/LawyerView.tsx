@@ -18,9 +18,10 @@ function toYear(dateString: string | undefined | null): number | null {
 
 interface LawyerViewProps {
   initialCaseId?: string
+  pageType?: 'precedent' | 'law'
 }
 
-export function LawyerView({ initialCaseId }: LawyerViewProps) {
+export function LawyerView({ initialCaseId, pageType = 'precedent' }: LawyerViewProps) {
   const { highlightedCaseNumber, setHighlightedCaseNumber, sessionData } = useChat()
 
   // ── 데이터 소스 1: 채팅 참조 (aiReferences) ──
@@ -44,13 +45,13 @@ export function LawyerView({ initialCaseId }: LawyerViewProps) {
 
   // ── 클라이언트 사이드 필터링 (채팅 참조 모드) ──
   const refMetaMap = useMemo(() => {
-    const map = new Map<string, { case_type?: string; decision_date?: string }>()
+    const map = new Map<string, { case_type?: string; law_type?: string; decision_date?: string }>()
     const refs = sessionData.aiReferences as ChatSource[] | undefined
     if (refs && Array.isArray(refs)) {
       refs.forEach((ref) => {
         const key = ref.case_number || ref.law_name || ''
         if (key) {
-          map.set(key, { case_type: ref.case_type, decision_date: ref.decision_date })
+          map.set(key, { case_type: ref.case_type, law_type: ref.law_type, decision_date: ref.decision_date })
         }
       })
     }
@@ -60,10 +61,11 @@ export function LawyerView({ initialCaseId }: LawyerViewProps) {
   const clientCaseTypes = useMemo(() => {
     const types = new Set<string>()
     refMetaMap.forEach((meta) => {
-      if (meta.case_type) types.add(meta.case_type)
+      const value = pageType === 'law' ? meta.law_type : meta.case_type
+      if (value) types.add(value)
     })
     return Array.from(types).sort()
-  }, [refMetaMap])
+  }, [refMetaMap, pageType])
 
   const clientDateRange = useMemo(() => {
     if (clientDatePreset === 'all') return { from: null, to: null }
@@ -93,11 +95,11 @@ export function LawyerView({ initialCaseId }: LawyerViewProps) {
     if (clientCaseType) {
       result = result.filter((r) => {
         const meta = refMetaMap.get(r.case_number)
-        return meta?.case_type === clientCaseType
+        return pageType === 'law' ? meta?.law_type === clientCaseType : meta?.case_type === clientCaseType
       })
     }
 
-    if (clientDateRange.from !== null || clientDateRange.to !== null) {
+    if (pageType !== 'law' && (clientDateRange.from !== null || clientDateRange.to !== null)) {
       result = result.filter((r) => {
         const meta = refMetaMap.get(r.case_number)
         const year = toYear(meta?.decision_date || r.date)
@@ -132,7 +134,7 @@ export function LawyerView({ initialCaseId }: LawyerViewProps) {
     }
 
     return result
-  }, [chatSearch.searchResults, clientKeyword, clientCaseType, clientDateRange, clientSortOrder, refMetaMap])
+  }, [chatSearch.searchResults, clientKeyword, clientCaseType, clientDateRange, clientSortOrder, refMetaMap, pageType])
 
   // ── 서버 사이드 결과를 PrecedentItem으로 정규화 ──
   const normalizedServerResults: PrecedentItem[] = useMemo(() =>
@@ -283,6 +285,7 @@ export function LawyerView({ initialCaseId }: LawyerViewProps) {
             caseTypes={caseTypes}
             onSearch={handleSearch}
             isLoading={isLoading}
+            mode={pageType}
           />
         )}
 

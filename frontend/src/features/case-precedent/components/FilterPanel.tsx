@@ -16,6 +16,7 @@ interface FilterPanelProps {
   caseTypes: string[]
   onSearch: () => void
   isLoading: boolean
+  mode?: 'precedent' | 'law'
 }
 
 const DATE_PRESETS: { value: DatePreset; label: string }[] = [
@@ -36,7 +37,9 @@ export function FilterPanel({
   caseTypes,
   onSearch,
   isLoading,
+  mode = 'precedent',
 }: FilterPanelProps) {
+  const isLaw = mode === 'law'
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') onSearch()
   }
@@ -50,14 +53,16 @@ export function FilterPanel({
           value={keyword}
           onChange={(e) => onKeywordChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="검색어를 입력하세요 (사건명, 판시사항, 사건번호, 판결요지)"
+          placeholder={isLaw ? '법령명 또는 키워드를 입력하세요' : '검색어를 입력하세요 (사건명, 판시사항, 사건번호, 판결요지)'}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>
 
-      {/* 사건종류 */}
+      {/* 사건종류 / 법령유형 */}
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">사건종류</label>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          {isLaw ? '법령유형' : '사건종류'}
+        </label>
         <select
           value={caseType}
           onChange={(e) => onCaseTypeChange(e.target.value)}
@@ -70,49 +75,53 @@ export function FilterPanel({
         </select>
       </div>
 
-      {/* 기간 pill 버튼 */}
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">기간</label>
-        <div className="flex gap-1.5 flex-wrap">
-          {DATE_PRESETS.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => onDatePresetChange(value)}
-              className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
-                datePreset === value
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* 기간 pill 버튼 (판례 모드에서만 표시) */}
+      {!isLaw && (
+        <>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">기간</label>
+            <div className="flex gap-1.5 flex-wrap">
+              {DATE_PRESETS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => onDatePresetChange(value)}
+                  className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                    datePreset === value
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      {/* 직접입력 연도 */}
-      {datePreset === 'custom' && (
-        <div className="flex gap-2 items-center">
-          <input
-            type="number"
-            value={dateFrom}
-            onChange={(e) => onDateFromChange(e.target.value)}
-            placeholder="시작 연도"
-            min={1947}
-            max={new Date().getFullYear()}
-            className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <span className="text-gray-400 text-sm">~</span>
-          <input
-            type="number"
-            value={dateTo}
-            onChange={(e) => onDateToChange(e.target.value)}
-            placeholder="종료 연도"
-            min={1947}
-            max={new Date().getFullYear()}
-            className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+          {/* 직접입력 연도 */}
+          {datePreset === 'custom' && (
+            <div className="flex gap-2 items-center">
+              <input
+                type="number"
+                value={dateFrom}
+                onChange={(e) => onDateFromChange(e.target.value)}
+                placeholder="시작 연도"
+                min={1947}
+                max={new Date().getFullYear()}
+                className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-gray-400 text-sm">~</span>
+              <input
+                type="number"
+                value={dateTo}
+                onChange={(e) => onDateToChange(e.target.value)}
+                placeholder="종료 연도"
+                min={1947}
+                max={new Date().getFullYear()}
+                className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
+        </>
       )}
 
       {/* 검색 버튼 */}

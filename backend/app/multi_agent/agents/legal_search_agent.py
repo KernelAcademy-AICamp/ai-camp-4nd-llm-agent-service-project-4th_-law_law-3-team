@@ -186,7 +186,9 @@ class LegalSearchAgent(BaseChatAgent):
 
     @property
     def name(self) -> str:
-        return "legal_search"
+        if self.focus == "law":
+            return "law_search"
+        return "case_search"
 
     @property
     def description(self) -> str:
@@ -421,6 +423,14 @@ class LegalSearchAgent(BaseChatAgent):
 
         context, sources = await self._prepare_rag_data(message)
 
+        # sources를 LLM 스트리밍 전에 먼저 전송 → 프론트 왼쪽 패널 즉시 업데이트
+        yield ("sources", {"sources": sources})
+        yield ("metadata", {
+            "agent_used": self.name,
+            "actions": [],
+            "session_data": {"active_agent": self.name, "focus": self.focus},
+        })
+
         model = get_chat_model()
         messages = self._build_messages(message, context, history)
 
@@ -432,7 +442,7 @@ class LegalSearchAgent(BaseChatAgent):
 
         actions = await self._build_hierarchy_actions(message, sources)
 
-        yield ("sources", {"sources": sources})
+        # actions는 LLM 완료 후 확정되므로 done에 포함
         yield ("metadata", {
             "agent_used": self.name,
             "actions": actions,

@@ -69,13 +69,13 @@ function LawSearchContent() {
       <div className="flex-1 overflow-hidden">
         <Suspense fallback={<ViewSkeleton />}>
           {initialCaseId ? (
-            <LawyerView initialCaseId={initialCaseId} />
+            <LawyerView initialCaseId={initialCaseId} pageType="law" />
           ) : isFilterMode ? (
             <FilterableLawView />
           ) : userRole === 'lawyer' ? (
-            <LawyerView />
+            <LawyerView pageType="law" />
           ) : (
-            <UserView />
+            <UserView pageType="law" />
           )}
         </Suspense>
       </div>

@@ -111,7 +111,6 @@ export function FilterableLawView() {
   const {
     keyword, setKeyword,
     lawType, setLawType,
-    ministry, setMinistry,
     promulgationPreset, setPromulgationPreset,
     promulgationFrom, setPromulgationFrom,
     promulgationTo, setPromulgationTo,
@@ -119,7 +118,7 @@ export function FilterableLawView() {
     enforcementFrom, setEnforcementFrom,
     enforcementTo, setEnforcementTo,
     sortOrder, setSortOrder,
-    lawTypes, ministries,
+    lawTypes,
     laws, total, isLoading, error, hasSearched, hasMore,
     search, loadMore,
     selectedId, selectItem,
@@ -147,8 +146,6 @@ export function FilterableLawView() {
           onKeywordChange={setKeyword}
           lawType={lawType}
           onLawTypeChange={setLawType}
-          ministry={ministry}
-          onMinistryChange={setMinistry}
           promulgationPreset={promulgationPreset}
           onPromulgationPresetChange={setPromulgationPreset}
           promulgationFrom={promulgationFrom}
@@ -162,7 +159,6 @@ export function FilterableLawView() {
           enforcementTo={enforcementTo}
           onEnforcementToChange={setEnforcementTo}
           lawTypes={lawTypes}
-          ministries={ministries}
           onSearch={search}
           isLoading={isLoading}
         />

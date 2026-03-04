@@ -32,7 +32,6 @@ export function useLawFilter() {
   // 필터 상태
   const [keyword, setKeyword] = useState('')
   const [lawType, setLawType] = useState('')
-  const [ministry, setMinistry] = useState('')
   const [promulgationPreset, setPromulgationPreset] = useState<DatePreset>('all')
   const [promulgationFrom, setPromulgationFrom] = useState('')
   const [promulgationTo, setPromulgationTo] = useState('')
@@ -43,7 +42,6 @@ export function useLawFilter() {
 
   // 필터 옵션
   const [lawTypes, setLawTypes] = useState<string[]>([])
-  const [ministries, setMinistries] = useState<string[]>([])
 
   // 결과 상태
   const [laws, setLaws] = useState<FilteredLawItem[]>([])
@@ -64,11 +62,9 @@ export function useLawFilter() {
     casePrecedentService.getLawFilterOptions()
       .then((options) => {
         setLawTypes(options.law_types)
-        setMinistries(options.ministries)
       })
       .catch(() => {
         setLawTypes([])
-        setMinistries([])
       })
   }, [])
 
@@ -118,7 +114,6 @@ export function useLawFilter() {
       const result = await casePrecedentService.filterLaws({
         keyword: keyword || undefined,
         law_type: lawType || undefined,
-        ministry: ministry || undefined,
         promulgation_from: promDates.promulgation_from,
         promulgation_to: promDates.promulgation_to,
         enforcement_from: enfDates.enforcement_from,
@@ -136,7 +131,7 @@ export function useLawFilter() {
     } finally {
       setIsLoading(false)
     }
-  }, [keyword, lawType, ministry, sortOrder, getPromulgationDates, getEnforcementDates])
+  }, [keyword, lawType, sortOrder, getPromulgationDates, getEnforcementDates])
 
   // 더 보기
   const loadMore = useCallback(async () => {
@@ -148,7 +143,6 @@ export function useLawFilter() {
       const result = await casePrecedentService.filterLaws({
         keyword: keyword || undefined,
         law_type: lawType || undefined,
-        ministry: ministry || undefined,
         promulgation_from: promDates.promulgation_from,
         promulgation_to: promDates.promulgation_to,
         enforcement_from: enfDates.enforcement_from,
@@ -164,7 +158,7 @@ export function useLawFilter() {
     } finally {
       setIsLoading(false)
     }
-  }, [offset, keyword, lawType, ministry, sortOrder, getPromulgationDates, getEnforcementDates])
+  }, [offset, keyword, lawType, sortOrder, getPromulgationDates, getEnforcementDates])
 
   // 상세 조회 (법령 전문)
   const selectItem = useCallback(async (id: string) => {
@@ -186,7 +180,6 @@ export function useLawFilter() {
     // 필터 상태
     keyword, setKeyword,
     lawType, setLawType,
-    ministry, setMinistry,
     promulgationPreset, setPromulgationPreset,
     promulgationFrom, setPromulgationFrom,
     promulgationTo, setPromulgationTo,
@@ -194,7 +187,7 @@ export function useLawFilter() {
     enforcementFrom, setEnforcementFrom,
     enforcementTo, setEnforcementTo,
     sortOrder, setSortOrder,
-    lawTypes, ministries,
+    lawTypes,
     // 결과
     laws, total, isLoading, error, hasSearched,
     hasMore: laws.length < total,

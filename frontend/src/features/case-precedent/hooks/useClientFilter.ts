@@ -11,8 +11,9 @@ function toYear(dateString: string | undefined | null): number | null {
 
 /**
  * aiReferences(ChatSource[])에 클라이언트 사이드 필터링을 적용하는 훅
+ * @param filterType 'precedent' → 사건종류/판결일 기준, 'law' → 법령유형 기준
  */
-export function useClientFilter(references: ChatSource[]) {
+export function useClientFilter(references: ChatSource[], filterType: 'precedent' | 'law' = 'precedent') {
   const [keyword, setKeyword] = useState('')
   const [caseType, setCaseType] = useState('')
   const [datePreset, setDatePreset] = useState<DatePreset>('all')
@@ -21,14 +22,15 @@ export function useClientFilter(references: ChatSource[]) {
   const [sortOrder, setSortOrder] = useState<SortOrder>('relevance')
   const [hasSearched, setHasSearched] = useState(false)
 
-  // 참조 목록에서 사건종류 옵션 추출
+  // 참조 목록에서 유형 옵션 추출 (판례: case_type, 법령: law_type)
   const caseTypes = useMemo(() => {
     const types = new Set<string>()
     for (const ref of references) {
-      if (ref.case_type) types.add(ref.case_type)
+      const value = filterType === 'law' ? ref.law_type : ref.case_type
+      if (value) types.add(value)
     }
     return Array.from(types).sort()
-  }, [references])
+  }, [references, filterType])
 
   // 날짜 범위 계산
   const dateRange = useMemo(() => {
@@ -61,13 +63,15 @@ export function useClientFilter(references: ChatSource[]) {
       )
     }
 
-    // 사건종류 필터
+    // 유형 필터 (판례: case_type, 법령: law_type)
     if (caseType) {
-      result = result.filter((ref) => ref.case_type === caseType)
+      result = result.filter((ref) =>
+        filterType === 'law' ? ref.law_type === caseType : ref.case_type === caseType
+      )
     }
 
-    // 날짜 범위 필터
-    if (dateRange.from !== null || dateRange.to !== null) {
+    // 날짜 범위 필터 (판례 모드에서만 적용)
+    if (filterType !== 'law' && (dateRange.from !== null || dateRange.to !== null)) {
       result = result.filter((ref) => {
         const year = toYear(ref.decision_date)
         if (year === null) return false

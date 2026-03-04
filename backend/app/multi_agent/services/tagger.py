@@ -20,6 +20,8 @@ _MAX_RESPONSE_CHARS = 800
 _AGENT_TAG_HINTS: dict[str, str] = {
     "lawyer_finder": "변호사 이름, 전문분야, 지역을 lawyer 태그로 우선 추출",
     "legal_search": "판례번호(예: 2024다12345), 법령명, 판결 요지를 precedent 태그로 우선 추출",
+    "case_search": "판례번호(예: 2024다12345), 법령명, 판결 요지를 precedent 태그로 우선 추출",
+    "law_search": "법령명, 조문, 법령 해석을 precedent 태그로 우선 추출",
     "law_study": "법령명, 조문, 판례를 precedent 태그로 추출",
     "workspace": "타임라인, 당사자, 금액 태그 우선 추출",
     "storyboard": "모든 태그 유형을 균형 있게 추출",

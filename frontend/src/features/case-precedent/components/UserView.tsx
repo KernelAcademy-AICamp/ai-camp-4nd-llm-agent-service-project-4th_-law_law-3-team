@@ -16,7 +16,11 @@ function getRefId(ref: ChatSource): string {
   return ref.doc_type === 'law' ? `law-${ref.law_name}` : `case-${ref.case_number}`
 }
 
-export function UserView() {
+interface UserViewProps {
+  pageType?: 'precedent' | 'law'
+}
+
+export function UserView({ pageType = 'precedent' }: UserViewProps) {
   const { sessionData, userRole, highlightedCaseNumber, setHighlightedCaseNumber } = useChat()
   const [references, setReferences] = useState<ChatSource[]>([])
   const [selectedRef, setSelectedRef] = useState<ChatSource | null>(null)
@@ -35,7 +39,7 @@ export function UserView() {
     filtered,
     total,
     search,
-  } = useClientFilter(references)
+  } = useClientFilter(references, pageType)
 
   // 중복 제거
   useEffect(() => {
@@ -162,6 +166,7 @@ export function UserView() {
             caseTypes={caseTypes}
             onSearch={search}
             isLoading={false}
+            mode={pageType}
           />
         )}
 
