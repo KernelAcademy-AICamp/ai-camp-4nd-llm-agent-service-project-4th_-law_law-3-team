@@ -207,12 +207,28 @@ if [ "$SKIP_DB_LOAD" = false ]; then
     db_load_ok=0
     db_load_fail=0
 
+    # 헬퍼: 컨테이너 생존 확인 + 재시작 (OOM 등으로 크래시 시)
+    ensure_backend_running() {
+        if docker inspect -f '{{.State.Running}}' "$BACKEND_CONTAINER" 2>/dev/null | grep -q true; then
+            return 0
+        fi
+        echo "  ⚠ 컨테이너 중단 감지 → 재시작 대기 중..."
+        $DC up -d --wait --wait-timeout "$WAIT_TIMEOUT"
+        BACKEND_CONTAINER=$($DC ps -q backend)
+        if [ -z "$BACKEND_CONTAINER" ]; then
+            echo "  ERROR: 컨테이너 재시작 실패"
+            return 1
+        fi
+        echo "  ✓ 컨테이너 재시작 완료: $BACKEND_CONTAINER"
+    }
+
     # 헬퍼: 컨테이너 내부에서 Python 스크립트 실행
     run_in_backend() {
         local desc="$1"
         shift
+        ensure_backend_running || return 1
         echo "  [$desc] 시작..."
-        if docker exec -u appuser -e UV_CACHE_DIR=/tmp/uv-cache "$BACKEND_CONTAINER" "$@" 2>&1 | tail -5; then
+        if docker exec -u appuser -e UV_CACHE_DIR=/tmp/uv-cache "$BACKEND_CONTAINER" "$@" 2>&1 | tail -20; then
             echo "  [$desc] 완료"
             db_load_ok=$((db_load_ok + 1))
         else
@@ -225,8 +241,19 @@ if [ "$SKIP_DB_LOAD" = false ]; then
     # 6-1. 법령/판례 등 21개 타입 DB 적재 (ingest 파이프라인)
     #      소스: data/ingest_source/*.json (S3 다운로드 포함)
     #      → law_documents, precedent_documents 등 + FTS search_text 자동 생성
-    run_in_backend "법령/판례 DB 적재 (21개 타입)" \
-        uv run python -m scripts.ingest.cli --type all --step db
+    #      ⚠ --type all 대신 개별 타입으로 분리 실행 (OOM 방지)
+    #        각 타입이 독립 프로세스로 실행되어 메모리 누적 없음
+    INGEST_TYPES=(
+        law precedent admin_rule constitutional administration
+        legislation treaty interpretation_ministry special_admin_appeal
+        dec_privacy dec_employment dec_fair_trade dec_human_rights
+        dec_civil_rights dec_financial dec_labor dec_industrial
+        dec_environment dec_securities dec_media local_ordinance
+    )
+    for itype in "${INGEST_TYPES[@]}"; do
+        run_in_backend "DB 적재: $itype" \
+            uv run python -m scripts.ingest.cli --type "$itype" --step db
+    done
 
     # 6-2. law_articles 데이터 (조문 단위 RAG 컨텍스트)
     #      소스: data/ingest_source/law_v3.json → law_articles 테이블
