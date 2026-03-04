@@ -1,72 +1,42 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { NewsSource, NewsSearchResult, NewsSearchResponse } from '../types'
+import { useCallback, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import type { NewsSource, NewsSearchRequest } from '../types'
 import { searchNews } from '../services'
 
 export function useNewsSearch() {
   const [query, setQuery] = useState('')
   const [sourceFilter, setSourceFilter] = useState<NewsSource | null>(null)
   const [limit, setLimit] = useState(10)
-  const [results, setResults] = useState<NewsSearchResult[]>([])
-  const [totalResults, setTotalResults] = useState(0)
-  const [searching, setSearching] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
-  const abortControllerRef = useRef<AbortController | null>(null)
 
-  const search = useCallback(async (searchQuery?: string) => {
-    const currentQuery = searchQuery ?? query
-    if (!currentQuery.trim() || currentQuery.trim().length < 2) {
-      setSearchError('검색어를 2자 이상 입력해주세요.')
+  // 검색 실행 시점의 파라미터를 별도 상태로 관리 (submit 시에만 갱신)
+  const [submittedParams, setSubmittedParams] = useState<NewsSearchRequest | null>(null)
+  const [validationError, setValidationError] = useState<string | null>(null)
+
+  const { data, isLoading, error: fetchError } = useQuery({
+    queryKey: ['news-search', submittedParams?.query, submittedParams?.source, submittedParams?.limit],
+    queryFn: () => searchNews(submittedParams!),
+    enabled: !!submittedParams,
+  })
+
+  const search = useCallback((searchQuery?: string) => {
+    const currentQuery = (searchQuery ?? query).trim()
+    if (!currentQuery || currentQuery.length < 2) {
+      setValidationError('검색어를 2자 이상 입력해주세요.')
       return
     }
-
-    // 이전 요청 취소
-    abortControllerRef.current?.abort()
-    const controller = new AbortController()
-    abortControllerRef.current = controller
-
-    setSearching(true)
-    setSearchError(null)
-
-    try {
-      const response: NewsSearchResponse = await searchNews(
-        {
-          query: currentQuery.trim(),
-          limit,
-          source: sourceFilter,
-        },
-        controller.signal,
-      )
-
-      if (!controller.signal.aborted) {
-        setResults(response.results)
-        setTotalResults(response.total)
-      }
-    } catch (err) {
-      if (!controller.signal.aborted) {
-        setSearchError(err instanceof Error ? err.message : '검색에 실패했습니다.')
-      }
-    } finally {
-      if (!controller.signal.aborted) {
-        setSearching(false)
-      }
-    }
+    setValidationError(null)
+    setSubmittedParams({ query: currentQuery, limit, source: sourceFilter })
   }, [query, limit, sourceFilter])
 
   const clearResults = useCallback(() => {
-    abortControllerRef.current?.abort()
-    setResults([])
-    setTotalResults(0)
-    setSearchError(null)
+    setSubmittedParams(null)
+    setValidationError(null)
   }, [])
 
-  // 컴포넌트 언마운트 시 정리
-  useEffect(() => {
-    return () => {
-      abortControllerRef.current?.abort()
-    }
-  }, [])
+  const searchError = validationError
+    ?? (fetchError ? (fetchError instanceof Error ? fetchError.message : '검색에 실패했습니다.') : null)
 
   return {
     query,
@@ -75,9 +45,9 @@ export function useNewsSearch() {
     setSourceFilter,
     limit,
     setLimit,
-    results,
-    totalResults,
-    searching,
+    results: data?.results ?? [],
+    totalResults: data?.total ?? 0,
+    searching: isLoading,
     searchError,
     search,
     clearResults,

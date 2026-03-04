@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import case, func, literal, or_, select
+from sqlalchemy import case, func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -352,17 +352,28 @@ async def get_rag_contribution_stats(
     db: AsyncSession,
 ) -> RagContributionStats:
     """RAG 기여도 통계 조회 (Main RAG 21개 테이블 + Assist RAG 뉴스)"""
-    # Main RAG: 21개 원본 문서 테이블 COUNT
-    main_sources: list[MainRagSourceItem] = []
-    main_total = 0
-    for table_name, label in _MAIN_RAG_TABLES:
-        model_cls = _get_model_class(table_name)
-        result = await db.execute(select(func.count()).select_from(model_cls))
-        count = result.scalar_one()
-        main_sources.append(
-            MainRagSourceItem(table_name=table_name, label=label, count=count)
+    # Main RAG: 21개 테이블 COUNT를 UNION ALL로 단일 쿼리 실행 (21회 → 1회)
+    count_subqueries = [
+        select(
+            literal(table_name).label("table_name"),
+            func.count().label("cnt"),
+        ).select_from(_get_model_class(table_name))
+        for table_name, _ in _MAIN_RAG_TABLES
+    ]
+    combined = union_all(*count_subqueries)
+    result = await db.execute(combined)
+    counts = {row.table_name: row.cnt for row in result}
+
+    label_map = {table_name: label for table_name, label in _MAIN_RAG_TABLES}
+    main_sources = [
+        MainRagSourceItem(
+            table_name=table_name,
+            label=label_map[table_name],
+            count=counts.get(table_name, 0),
         )
-        main_total += count
+        for table_name, _ in _MAIN_RAG_TABLES
+    ]
+    main_total = sum(item.count for item in main_sources)
 
     # 건수 내림차순 정렬
     main_sources.sort(key=lambda x: x.count, reverse=True)
