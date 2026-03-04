@@ -75,4 +75,5 @@ export const FLOATING_MODE_PATHS = new Set([
   '/workspace',
   '/chat-history',
   '/profile',
+  '/law-study',
 ])

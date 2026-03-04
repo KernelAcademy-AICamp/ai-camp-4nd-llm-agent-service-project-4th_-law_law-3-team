@@ -61,10 +61,7 @@
       "Bash(lsof:*)"
     ],
     "deny": [
-      "Bash(rm:*)",
       "Bash(rmdir:*)",
-      "Bash(chmod:*)",
-      "Bash(chown:*)",
       "Bash(shutdown:*)",
       "Bash(reboot:*)"
     ]

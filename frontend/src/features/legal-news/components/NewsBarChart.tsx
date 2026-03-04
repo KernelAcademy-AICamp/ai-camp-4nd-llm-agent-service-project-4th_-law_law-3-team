@@ -81,7 +81,7 @@ const PERIOD_OPTIONS = [
 ]
 
 export function NewsBarChart({ items, periodDays, onPeriodChange }: NewsBarChartProps) {
-  const data = transformData(items, periodDays)
+  const data = useMemo(() => transformData(items, periodDays), [items, periodDays])
 
   const totals = useMemo(() => ({
     lawtimes: data.reduce((sum, row) => sum + row.lawtimes, 0),

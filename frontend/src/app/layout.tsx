@@ -48,9 +48,11 @@ export default function RootLayout({
             <Suspense fallback={null}>
               <Sidebar />
             </Suspense>
-            <LayoutWrapper>
-              {children}
-            </LayoutWrapper>
+            <Suspense fallback={null}>
+              <LayoutWrapper>
+                {children}
+              </LayoutWrapper>
+            </Suspense>
           </div>
           <ChatWidget />
         </Providers>

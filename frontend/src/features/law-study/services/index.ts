@@ -1,34 +1,56 @@
 import { api, endpoints } from '@/lib/api'
+import type {
+  AnswerFeedbackRequest,
+  AnswerFeedbackResponse,
+  ExamContentResponse,
+  ExamListResponse,
+  ReferenceSearchRequest,
+  ReferenceSearchResponse,
+} from '../types'
 
 export const lawStudyService = {
-  getStudyCases: async (subject?: string, difficulty?: string, limit?: number) => {
+  /** 시험 문제 목록 조회 */
+  getExamList: async (category?: string): Promise<ExamListResponse> => {
     const params = new URLSearchParams()
-    if (subject) params.append('subject', subject)
-    if (difficulty) params.append('difficulty', difficulty)
-    if (limit) params.append('limit', limit.toString())
-
-    const response = await api.get(`${endpoints.lawStudy}/cases?${params}`)
+    if (category) params.append('category', category)
+    const response = await api.get<ExamListResponse>(
+      `${endpoints.lawStudy}/exams?${params}`,
+    )
     return response.data
   },
 
-  getCaseSummary: async (caseId: string) => {
-    const response = await api.get(`${endpoints.lawStudy}/cases/${caseId}/summary`)
+  /** 시험 문제 전문 조회 */
+  getExamContent: async (
+    category: string,
+    session: number,
+  ): Promise<ExamContentResponse> => {
+    const response = await api.get<ExamContentResponse>(
+      `${endpoints.lawStudy}/exams/${category}/${session}`,
+    )
     return response.data
   },
 
-  generateQuiz: async (subject: string, count?: number) => {
-    const response = await api.post(`${endpoints.lawStudy}/quiz/generate`, {
-      subject,
-      count: count || 10,
-    })
+  /** 판례/법령 참조 검색 */
+  searchReferences: async (
+    body: ReferenceSearchRequest,
+  ): Promise<ReferenceSearchResponse> => {
+    const response = await api.post<ReferenceSearchResponse>(
+      `${endpoints.lawStudy}/reference/search`,
+      body,
+    )
     return response.data
   },
 
-  submitQuiz: async (quizId: string, answers: Record<string, string>) => {
-    const response = await api.post(`${endpoints.lawStudy}/quiz/submit`, {
-      quiz_id: quizId,
-      answers,
-    })
+  /** AI 답안 피드백 요청 */
+  getAnswerFeedback: async (
+    category: string,
+    session: number,
+    body: AnswerFeedbackRequest,
+  ): Promise<AnswerFeedbackResponse> => {
+    const response = await api.post<AnswerFeedbackResponse>(
+      `${endpoints.lawStudy}/exams/${category}/${session}/feedback`,
+      body,
+    )
     return response.data
   },
 }

@@ -1,18 +1,14 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { useCallback } from 'react'
 import { useUI } from '@/context/UIContext'
 import { BackButton } from '@/components/ui/BackButton'
 import { DisclaimerBanner } from '@/features/mock-trial/components/DisclaimerBanner'
-import { MockTrialSetup } from '@/features/mock-trial/components/MockTrialSetup'
 import { StageProgress } from '@/features/mock-trial/components/StageProgress'
-import { ChatPanel } from '@/features/mock-trial/components/ChatPanel'
-import { ChatBottomBar } from '@/features/mock-trial/components/ChatBottomBar'
-import { ReferencePanel } from '@/features/mock-trial/components/ReferencePanel'
-import { EvidencePanel } from '@/features/mock-trial/components/EvidencePanel'
-import { ScenarioBriefing } from '@/features/mock-trial/components/ScenarioBriefing'
 import { DialogueControls } from '@/features/mock-trial/components/DialogueControls'
-import { ChevronLeft, ChevronRight, Info } from 'lucide-react'
+import { StageGuideBanner } from '@/features/mock-trial/components/StageGuideBanner'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useMockTrial } from '@/features/mock-trial/hooks/useMockTrial'
 
 const MockTrialGame = dynamic(
@@ -21,6 +17,55 @@ const MockTrialGame = dynamic(
       (m) => m.MockTrialGame
     ),
   { ssr: false }
+)
+
+const MockTrialSetup = dynamic(
+  () =>
+    import('@/features/mock-trial/components/MockTrialSetup').then(
+      (m) => m.MockTrialSetup
+    )
+)
+
+const ScenarioBriefing = dynamic(
+  () =>
+    import('@/features/mock-trial/components/ScenarioBriefing').then(
+      (m) => m.ScenarioBriefing
+    )
+)
+
+const ChatPanel = dynamic(
+  () =>
+    import('@/features/mock-trial/components/ChatPanel').then(
+      (m) => m.ChatPanel
+    )
+)
+
+const ChatBottomBar = dynamic(
+  () =>
+    import('@/features/mock-trial/components/ChatBottomBar').then(
+      (m) => m.ChatBottomBar
+    )
+)
+
+const EvidencePanel = dynamic(
+  () =>
+    import('@/features/mock-trial/components/EvidencePanel').then(
+      (m) => m.EvidencePanel
+    )
+)
+
+const ReferencePanel = dynamic(
+  () =>
+    import('@/features/mock-trial/components/ReferencePanel').then(
+      (m) => m.ReferencePanel
+    )
+)
+
+const JudgmentDisplay = dynamic(
+  () =>
+    import('@/features/mock-trial/components/JudgmentDisplay').then(
+      (m) => m.JudgmentDisplay
+    )
 )
 
 export default function MockTrialPage() {
@@ -52,6 +97,7 @@ export default function MockTrialPage() {
     isEvidenceStage,
     currentStageInfo,
     showNextStageButton,
+    nextStageId,
     handleSetupComplete,
     handleSendMessage,
     handleDemoStart,
@@ -60,8 +106,12 @@ export default function MockTrialPage() {
     handleNextStage,
     handleEvidenceToggle,
     handleEvidenceSubmit,
-    getNextStageId,
+    handleRestart,
+    handleCloseJudgment,
+    judgmentResult,
   } = useMockTrial()
+
+  const handleDismissGuide = useCallback(() => setShowStageGuide(false), [setShowStageGuide])
 
   return (
     <div
@@ -99,33 +149,10 @@ export default function MockTrialPage() {
 
       {/* 단계 가이드 배너 */}
       {phase === 'trial' && showStageGuide && currentStageInfo && (
-        <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-start gap-2">
-          <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-blue-700">
-                {currentStageInfo.name}
-              </span>
-              <span className="text-[10px] text-blue-500 bg-blue-100 px-1.5 py-0.5 rounded">
-                {currentStageInfo.legal_basis}
-              </span>
-              <span className="text-[10px] text-gray-400">
-                {currentStageInfo.duration_hint}
-              </span>
-            </div>
-            <p className="text-xs text-blue-600 mt-0.5">
-              {currentStageInfo.description} &middot;{' '}
-              <span className="font-medium">{currentStageInfo.user_action}</span>
-            </p>
-          </div>
-          <button
-            onClick={() => setShowStageGuide(false)}
-            className="text-blue-400 hover:text-blue-600 text-xs shrink-0"
-            aria-label="가이드 닫기"
-          >
-            닫기
-          </button>
-        </div>
+        <StageGuideBanner
+          stageInfo={currentStageInfo}
+          onDismiss={handleDismissGuide}
+        />
       )}
 
       {/* 메인 콘텐츠 */}
@@ -136,7 +163,7 @@ export default function MockTrialPage() {
             <div
               className={`${
                 isReferencePanelOpen || isEvidenceStage ? 'w-72' : 'w-0'
-              } transition-all duration-300 overflow-hidden border-r border-gray-200 bg-white`}
+              } transition-[width] duration-300 overflow-hidden border-r border-gray-200 bg-white`}
             >
               <div className="w-72 h-full overflow-y-auto">
                 {isEvidenceStage ? (
@@ -209,7 +236,7 @@ export default function MockTrialPage() {
                 onClick={handleNextStage}
                 className="px-4 py-1.5 text-sm font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
               >
-                {getNextStageId() ? '다음 단계로' : '판결 보기'}
+                {nextStageId ? '다음 단계로' : '판결 보기'}
               </button>
             </div>
           )}
@@ -257,6 +284,15 @@ export default function MockTrialPage() {
           </div>
         ) : null}
       </div>
+
+      {/* 판결 결과 오버레이 */}
+      {phase === 'verdict' && judgmentResult && (
+        <JudgmentDisplay
+          result={judgmentResult}
+          onClose={handleCloseJudgment}
+          onRestart={handleRestart}
+        />
+      )}
     </div>
   )
 }

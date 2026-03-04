@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, memo, useCallback } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import type { EvidenceItem, UserHint, PhysicalEvidence, ReferenceItem } from '../types'
 import { PHYSICAL_EVIDENCE_TYPE_LABEL } from '../types'
@@ -17,20 +17,21 @@ interface EvidencePanelProps {
   references?: ReferenceItem[]
 }
 
-function EvidenceCard({
+const EvidenceCard = memo(function EvidenceCard({
   item,
   isSelected,
   onToggle,
 }: {
   item: EvidenceItem
   isSelected: boolean
-  onToggle: () => void
+  onToggle: (id: string) => void
 }) {
+  const handleClick = useCallback(() => onToggle(item.id), [onToggle, item.id])
   const scorePercent = Math.round(item.relevance_score * 100)
 
   return (
     <button
-      onClick={onToggle}
+      onClick={handleClick}
       className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
         isSelected
           ? 'border-blue-500 bg-blue-50'
@@ -48,22 +49,23 @@ function EvidenceCard({
       <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.summary}</p>
     </button>
   )
-}
+})
 
-function PhysicalEvidenceCard({
+const PhysicalEvidenceCard = memo(function PhysicalEvidenceCard({
   item,
   isSelected,
   onToggle,
 }: {
   item: PhysicalEvidence
   isSelected: boolean
-  onToggle: () => void
+  onToggle: (id: string) => void
 }) {
+  const handleClick = useCallback(() => onToggle(item.id), [onToggle, item.id])
   const typeInfo = PHYSICAL_EVIDENCE_TYPE_LABEL[item.type]
 
   return (
     <button
-      onClick={onToggle}
+      onClick={handleClick}
       className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
         isSelected
           ? 'border-indigo-500 bg-indigo-50'
@@ -83,9 +85,9 @@ function PhysicalEvidenceCard({
       <p className="text-xs text-gray-400 mt-1 line-clamp-2">{item.detail}</p>
     </button>
   )
-}
+})
 
-function HintCard({ hint }: { hint: UserHint }) {
+const HintCard = memo(function HintCard({ hint }: { hint: UserHint }) {
   const scorePercent = Math.round(hint.relevance_score * 100)
   const typeLabel = hint.type === 'case' ? '판례' : '법령'
   const typeBg = hint.type === 'case' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
@@ -109,7 +111,7 @@ function HintCard({ hint }: { hint: UserHint }) {
       <p className="text-xs text-amber-600 mt-1.5 font-medium">{hint.suggestion}</p>
     </div>
   )
-}
+})
 
 export function EvidencePanel({
   cases,
@@ -145,7 +147,7 @@ export function EvidencePanel({
                 key={item.id}
                 item={item}
                 isSelected={selectedIds.has(item.id)}
-                onToggle={() => onToggle(item.id)}
+                onToggle={onToggle}
               />
             ))}
           </div>
@@ -178,7 +180,7 @@ export function EvidencePanel({
                 key={item.id}
                 item={item}
                 isSelected={selectedIds.has(item.id)}
-                onToggle={() => onToggle(item.id)}
+                onToggle={onToggle}
               />
             ))}
           </div>
@@ -197,7 +199,7 @@ export function EvidencePanel({
                 key={item.id}
                 item={item}
                 isSelected={selectedIds.has(item.id)}
-                onToggle={() => onToggle(item.id)}
+                onToggle={onToggle}
               />
             ))}
           </div>

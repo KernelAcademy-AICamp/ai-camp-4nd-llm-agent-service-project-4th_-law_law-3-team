@@ -46,8 +46,8 @@ export function MockTrialGame() {
   }, [])
 
   return (
-    <div className="relative w-full" style={{ maxWidth: 800 }}>
-      <div ref={containerRef} className="w-full" style={{ aspectRatio: '800 / 480' }} />
+    <div className="relative w-full max-w-[800px]">
+      <div ref={containerRef} className="w-full aspect-[800/480]" />
       {!isLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg">
           <p className="text-gray-500">법정 로딩 중...</p>
