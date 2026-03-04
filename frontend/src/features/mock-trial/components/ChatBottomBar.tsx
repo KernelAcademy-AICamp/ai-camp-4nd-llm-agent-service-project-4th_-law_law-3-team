@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Send, Maximize2 } from 'lucide-react'
 import type { CourtEvent } from '../types'
 import { EMOTION_EMOJI, DEFAULT_ROLE_EMOTION } from '../types'
@@ -43,7 +43,10 @@ export function ChatBottomBar({
     }
   }
 
-  const lastAiMessage = [...messages].reverse().find((m) => m.speaker !== 'user')
+  const lastAiMessage = useMemo(
+    () => [...messages].reverse().find((m) => m.speaker !== 'user'),
+    [messages]
+  )
   const lastSpeakerName = lastAiMessage
     ? (CHARACTER_NAMES[lastAiMessage.speaker] ?? lastAiMessage.speaker)
     : null

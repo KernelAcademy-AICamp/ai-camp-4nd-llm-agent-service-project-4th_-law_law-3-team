@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { eventBus } from '@/features/mock-trial/game/EventBus'
 import { useStreamingChat, type ChatMetadata } from '@/hooks/useStreamingChat'
 import { CASE_NUMBER_PATTERN, LAW_REFERENCE_PATTERN } from '@/features/mock-trial/constants'
@@ -74,18 +74,18 @@ export function useMockTrial() {
   )
 
   /** 현재 단계에서 다음으로 입력할 데모 텍스트 */
-  const nextDemoInput = (() => {
+  const nextDemoInput = useMemo(() => {
     if (!isDemoMode || !currentDemoStage) return null
     const index = demoInputIndexRef.current[currentStageId] ?? 0
     return currentDemoStage.userInputs[index] ?? null
-  })()
+  }, [isDemoMode, currentDemoStage, currentStageId])
 
   /** 현재 단계의 모든 사용자 입력을 소진했는지 */
-  const isDemoStageInputsDone = (() => {
+  const isDemoStageInputsDone = useMemo(() => {
     if (!isDemoMode || !currentDemoStage) return false
     const index = demoInputIndexRef.current[currentStageId] ?? 0
     return index >= currentDemoStage.userInputs.length
-  })()
+  }, [isDemoMode, currentDemoStage, currentStageId])
 
   /** 다음 단계 ID를 반환 */
   const getNextStageId = useCallback((): string | null => {
@@ -119,21 +119,21 @@ export function useMockTrial() {
 
       setIsWaiting(true)
 
-      for (const response of responses) {
-        const emotion: EmotionType =
-          response.emotion ?? DEFAULT_ROLE_EMOTION[response.speaker] ?? 'neutral'
-        const event: CourtEvent = {
-          stage: stageId,
-          speaker: response.speaker,
-          content: response.content,
-          timestamp: new Date().toISOString(),
-          emotion,
-        }
-        setMessages((prev) => [...prev, event])
+      const events: CourtEvent[] = responses.map((response) => ({
+        stage: stageId,
+        speaker: response.speaker,
+        content: response.content,
+        timestamp: new Date().toISOString(),
+        emotion: response.emotion ?? DEFAULT_ROLE_EMOTION[response.speaker] ?? 'neutral',
+      }))
+
+      setMessages((prev) => [...prev, ...events])
+
+      for (const event of events) {
         eventBus.emit('dialogue:enqueue', {
-          agent: response.speaker,
-          text: response.content,
-          emotion,
+          agent: event.speaker,
+          text: event.content,
+          emotion: event.emotion,
         })
       }
     },
@@ -523,9 +523,13 @@ export function useMockTrial() {
   // ── 파생 상태 ──
 
   const isEvidenceStage = currentStageId === 'evidence' && phase === 'trial'
-  const currentStageInfo = stages.find((s) => s.id === currentStageId)
+  const currentStageInfo = useMemo(
+    () => stages.find((s) => s.id === currentStageId),
+    [stages, currentStageId]
+  )
   const showNextStageButton =
     isDemoMode && !isWaiting && phase === 'trial' && isDemoStageInputsDone
+  const nextStageId = getNextStageId()
 
   return {
     // 상태
@@ -558,6 +562,7 @@ export function useMockTrial() {
     isEvidenceStage,
     currentStageInfo,
     showNextStageButton,
+    nextStageId,
 
     // 핸들러
     handleSetupComplete,
@@ -568,6 +573,5 @@ export function useMockTrial() {
     handleNextStage,
     handleEvidenceToggle,
     handleEvidenceSubmit,
-    getNextStageId,
   }
 }
