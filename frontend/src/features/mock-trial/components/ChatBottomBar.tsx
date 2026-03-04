@@ -44,7 +44,7 @@ export function ChatBottomBar({
   }
 
   const lastAiMessage = useMemo(
-    () => [...messages].reverse().find((m) => m.speaker !== 'user'),
+    () => [...messages].reverse().find((m) => !m.isUser),
     [messages]
   )
   const lastSpeakerName = lastAiMessage

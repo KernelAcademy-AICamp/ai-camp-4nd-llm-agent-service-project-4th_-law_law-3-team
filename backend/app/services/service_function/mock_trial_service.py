@@ -44,7 +44,7 @@ class LanceDBEvidenceSearcher:
     async def search_cases(
         self, query: str, limit: int = 5
     ) -> list[dict[str, Any]]:
-        """판례 검색 (REST API 호환용)
+        """판례 검색 (doc_type 필터로 DB 레벨에서 판례만 검색)
 
         Args:
             query: 검색 쿼리
@@ -54,11 +54,13 @@ class LanceDBEvidenceSearcher:
             판례 검색 결과 리스트
         """
         try:
-            from app.services.rag import search_relevant_documents_async
-
-            results = await search_relevant_documents_async(
-                query=query, n_results=limit
+            config = PipelineConfig(
+                n_results=limit,
+                doc_type="precedent",
+                enable_rerank=False,
+                enable_rewrite=False,
             )
+            result = await search_with_pipeline_async(query, config)
             return [
                 {
                     "id": doc.get("id", ""),
@@ -67,9 +69,7 @@ class LanceDBEvidenceSearcher:
                     "relevance_score": round(doc.get("similarity", 0.0), 3),
                     "source": "lancedb",
                 }
-                for doc in results
-                if doc.get("metadata", {}).get("doc_type") == "precedent"
-                or not doc.get("metadata", {}).get("doc_type")
+                for doc in result.documents[:limit]
             ]
         except (ValueError, RuntimeError) as e:
             logger.warning("판례 검색 실패: %s", e)
@@ -78,7 +78,7 @@ class LanceDBEvidenceSearcher:
     async def search_articles(
         self, query: str, limit: int = 5
     ) -> list[dict[str, Any]]:
-        """법령 검색 (REST API 호환용)
+        """법령 검색 (doc_type 필터로 DB 레벨에서 법령만 검색)
 
         Args:
             query: 검색 쿼리
@@ -88,11 +88,13 @@ class LanceDBEvidenceSearcher:
             법령 검색 결과 리스트
         """
         try:
-            from app.services.rag import search_relevant_documents_async
-
-            results = await search_relevant_documents_async(
-                query=query, n_results=limit
+            config = PipelineConfig(
+                n_results=limit,
+                doc_type="law",
+                enable_rerank=False,
+                enable_rewrite=False,
             )
+            result = await search_with_pipeline_async(query, config)
             return [
                 {
                     "id": doc.get("id", ""),
@@ -101,9 +103,7 @@ class LanceDBEvidenceSearcher:
                     "relevance_score": round(doc.get("similarity", 0.0), 3),
                     "source": "lancedb",
                 }
-                for doc in results
-                if doc.get("metadata", {}).get("doc_type") == "law"
-                or not doc.get("metadata", {}).get("doc_type")
+                for doc in result.documents[:limit]
             ]
         except (ValueError, RuntimeError) as e:
             logger.warning("법령 검색 실패: %s", e)
@@ -214,25 +214,24 @@ async def search_rebuttal(
         (반박 판례, 반박 법령) 튜플
     """
     rebuttal_query = f"{opponent_statement[:200]} 반박 {case_summary[:100]}"
-    config = PipelineConfig(
+    case_config = PipelineConfig(
         n_results=5,
+        doc_type="precedent",
+        enable_rerank=True,
+        rerank_top_k=2,
+        enable_rewrite=False,
+    )
+    law_config = PipelineConfig(
+        n_results=5,
+        doc_type="law",
         enable_rerank=True,
         rerank_top_k=2,
         enable_rewrite=False,
     )
     try:
-        result = await search_with_pipeline_async(rebuttal_query, config)
-        cases = [
-            d for d in result.documents
-            if d.get("metadata", {}).get("doc_type") == "precedent"
-            or d.get("metadata", {}).get("data_type", "").startswith("판례")
-        ]
-        articles = [
-            d for d in result.documents
-            if d.get("metadata", {}).get("doc_type") == "law"
-            or d.get("metadata", {}).get("data_type", "").startswith("법령")
-        ]
-        return cases, articles
+        case_result = await search_with_pipeline_async(rebuttal_query, case_config)
+        law_result = await search_with_pipeline_async(rebuttal_query, law_config)
+        return case_result.documents, law_result.documents
     except (ValueError, RuntimeError) as e:
         logger.warning("반박 증거 검색 실패: %s", e)
         return [], []
