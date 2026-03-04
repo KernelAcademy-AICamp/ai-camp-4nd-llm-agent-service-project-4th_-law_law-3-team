@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from "react-simple-maps"
-import type { PredictionYear, ViewMode } from "@/app/lawyer-stats/page"
+import type { PredictionYear, ViewMode } from "@/features/lawyer-stats/types"
 import type { CourtDemandMarker, DemandStat, DensityStat, RegionStat } from "../types"
 
 // react-simple-maps 지리 객체 타입

@@ -82,6 +82,19 @@ export interface DemandStatResponse {
   available_categories: string[]
 }
 
+// 페이지 UI 상태 타입
+export type IndicatorGroup = 'supply' | 'demand'
+export type ViewMode = 'count' | 'density' | 'prediction' | 'case_count' | 'burden_index'
+export type PredictionYear = 2030 | 2035 | 2040
+export type DemandCategory = '민사' | '형사' | '가사' | '행정' | '소년보호' | '가정보호'
+
+export const DEMAND_CATEGORIES: DemandCategory[] = ['민사', '형사', '가사', '행정', '소년보호', '가정보호']
+
+export const PROVINCES = [
+  '전체', '서울', '경기', '인천', '부산', '대구', '광주', '대전', '울산',
+  '세종', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주',
+] as const
+
 /** 채팅 에이전트가 sessionData로 전달하는 대시보드 필터 */
 export interface StatsFilter {
   viewMode?: 'count' | 'density' | 'prediction' | 'case_count' | 'burden_index'
