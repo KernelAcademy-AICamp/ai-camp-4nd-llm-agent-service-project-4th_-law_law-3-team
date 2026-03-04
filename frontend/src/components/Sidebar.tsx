@@ -165,7 +165,7 @@ export default function Sidebar() {
                   href={mod.href}
                   icon={Icon}
                   label={mod.name}
-                  isActive={pathname === mod.href.split('?')[0]}
+                  isActive={pathname === mod.href}
                   isExpanded={isExpanded}
                 />
               )

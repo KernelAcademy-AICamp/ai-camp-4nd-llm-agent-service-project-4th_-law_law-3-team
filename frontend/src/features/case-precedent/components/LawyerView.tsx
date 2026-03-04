@@ -5,6 +5,7 @@ import { useChat } from '@/context/ChatContext'
 import { CaseDetailPanel } from './CaseDetailPanel'
 import { CaseCard } from './CaseCard'
 import { FilterPanel } from './FilterPanel'
+import { FilteredResultList } from './FilteredResultList'
 import { useCaseSearch } from '../hooks/useCaseSearch'
 import { usePrecedentFilter } from '../hooks/usePrecedentFilter'
 import type { ChatSource, DatePreset, SortOrder, PrecedentItem } from '../types'
@@ -295,102 +296,108 @@ export function LawyerView({ initialCaseId }: LawyerViewProps) {
           />
         )}
 
-        {/* 정렬 */}
-        {(hasChatReferences || serverSearch.hasSearched) && (
-          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
-            <span className="text-xs text-gray-500">총 {total.toLocaleString()}건</span>
-            <div className="flex gap-1 text-xs">
-              <button
-                onClick={() => setSortOrder('relevance')}
-                className={`px-2 py-0.5 rounded ${
-                  sortOrder === 'relevance'
-                    ? 'text-blue-600 font-medium'
-                    : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                정확도순
-              </button>
-              <span className="text-gray-300">|</span>
-              <button
-                onClick={() => setSortOrder('latest')}
-                className={`px-2 py-0.5 rounded ${
-                  sortOrder === 'latest'
-                    ? 'text-blue-600 font-medium'
-                    : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                최신순
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* 결과 목록 */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-32">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-            </div>
-          ) : results.length > 0 ? (
-            results.map((case_) => {
-              const isHighlighted = !!(
-                highlightedCaseNumber &&
-                case_.case_number &&
-                case_.case_number.includes(highlightedCaseNumber)
-              )
-              return (
-                <div
-                  key={case_.id}
-                  ref={(el) => {
-                    if (el) cardRefs.current.set(case_.id, el)
-                  }}
-                  className={isHighlighted ? 'ring-2 ring-yellow-400 rounded-lg animate-pulse' : ''}
+        {hasChatReferences ? (
+          <>
+            {/* 정렬 (채팅 참조 모드) */}
+            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
+              <span className="text-xs text-gray-500">총 {total.toLocaleString()}건</span>
+              <div className="flex gap-1 text-xs">
+                <button
+                  onClick={() => setSortOrder('relevance')}
+                  className={`px-2 py-0.5 rounded ${
+                    sortOrder === 'relevance'
+                      ? 'text-blue-600 font-medium'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
                 >
-                  <CaseCard
-                    case_={case_}
-                    selected={detail?.id === case_.id}
-                    onSelect={handleSelect}
-                  />
+                  정확도순
+                </button>
+                <span className="text-gray-300">|</span>
+                <button
+                  onClick={() => setSortOrder('latest')}
+                  className={`px-2 py-0.5 rounded ${
+                    sortOrder === 'latest'
+                      ? 'text-blue-600 font-medium'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  최신순
+                </button>
+              </div>
+            </div>
+
+            {/* 결과 목록 (채팅 참조 모드) */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-32">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
                 </div>
-              )
-            })
-          ) : emptyMessage ? (
-            <div className="p-6 text-center text-gray-400">
-              <svg
-                className="w-12 h-12 mx-auto mb-3 text-gray-300"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-              <p className="text-sm">{emptyMessage.main}</p>
-              {emptyMessage.hint && (
-                <p className="text-xs text-gray-400 mt-2">
-                  기간을 &apos;전체&apos;로 변경하면 더 많은 결과를 볼 수 있습니다
-                </p>
+              ) : filteredChatResults.length > 0 ? (
+                filteredChatResults.map((case_) => {
+                  const isHighlighted = !!(
+                    highlightedCaseNumber &&
+                    case_.case_number &&
+                    case_.case_number.includes(highlightedCaseNumber)
+                  )
+                  return (
+                    <div
+                      key={case_.id}
+                      ref={(el) => {
+                        if (el) cardRefs.current.set(case_.id, el)
+                      }}
+                      className={isHighlighted ? 'ring-2 ring-yellow-400 rounded-lg animate-pulse' : ''}
+                    >
+                      <CaseCard
+                        case_={case_}
+                        selected={detail?.id === case_.id}
+                        onSelect={handleSelect}
+                      />
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="p-6 text-center text-gray-400">
+                  <svg
+                    className="w-12 h-12 mx-auto mb-3 text-gray-300"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                  <p className="text-sm">필터 조건에 맞는 결과가 없습니다</p>
+                  {datePreset !== 'all' && (
+                    <p className="text-xs text-gray-400 mt-2">
+                      기간을 &apos;전체&apos;로 변경하면 더 많은 결과를 볼 수 있습니다
+                    </p>
+                  )}
+                </div>
               )}
             </div>
-          ) : null}
-
-          {/* 더 보기 (서버 모드) */}
-          {!hasChatReferences && serverSearch.hasMore && (
-            <div className="p-3">
-              <button
-                onClick={serverSearch.loadMore}
-                disabled={serverSearch.isLoading}
-                className="w-full py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors"
-              >
-                {serverSearch.isLoading ? '불러오는 중...' : '더 보기'}
-              </button>
-            </div>
-          )}
-        </div>
+          </>
+        ) : (
+          /* 서버 검색 모드: FilterablePrecedentView와 동일한 상세 리스트 */
+          <FilteredResultList
+            precedents={serverSearch.precedents}
+            total={serverSearch.total}
+            selectedId={serverSearch.selectedId}
+            onSelect={serverSelectItem}
+            hasMore={serverSearch.hasMore}
+            onLoadMore={serverSearch.loadMore}
+            isLoading={serverSearch.isLoading}
+            error={serverSearch.error}
+            hasSearched={serverSearch.hasSearched}
+            hasDateFilter={serverSearch.datePreset !== 'all'}
+            highlightKeyword={serverSearch.keyword}
+            sortOrder={serverSearch.sortOrder}
+            onSortChange={serverSearch.setSortOrder}
+          />
+        )}
 
         {/* 참조 조문 */}
         {provisions.length > 0 && (

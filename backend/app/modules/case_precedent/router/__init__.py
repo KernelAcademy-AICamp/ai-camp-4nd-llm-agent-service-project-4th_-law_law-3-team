@@ -15,6 +15,9 @@ from app.core.errors import EmbeddingModelNotFoundError
 from app.models.law_article import LawArticle
 from app.models.law_document import LawDocument
 from app.services.rag import search_relevant_documents_async
+from app.services.service_function.law_filter_service import (
+    get_law_filter_service,
+)
 from app.services.service_function.precedent_service import (
     fetch_precedent_details,
     get_precedent_service,
@@ -953,3 +956,95 @@ async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest) ->
     except Exception as e:
         logger.error(f"질문 처리 실패: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="질문 처리 중 오류가 발생했습니다")
+
+
+# ============================================
+# 법령 필터 검색 API (PostgreSQL 직접 쿼리)
+# ============================================
+
+
+class FilteredLawItem(BaseModel):
+    """법령 필터 검색 결과 아이템"""
+    id: str
+    law_name: str
+    law_type: Optional[str] = None
+    ministry: Optional[str] = None
+    enforcement_date: Optional[str] = None
+    promulgation_date: Optional[str] = None
+    abbreviation: Optional[str] = None
+    ai_summary: Optional[str] = None
+
+
+class FilteredLawListResponse(BaseModel):
+    """법령 필터 검색 응답"""
+    keyword: str
+    total: int
+    offset: int
+    limit: int
+    laws: List[FilteredLawItem]
+
+
+class LawFilterOptionsResponse(BaseModel):
+    """법령 필터 옵션 응답"""
+    law_types: List[str]
+    ministries: List[str]
+
+
+@router.get("/laws/filter", response_model=FilteredLawListResponse)
+async def filter_laws(
+    keyword: str = Query("", description="검색 키워드 (법령명, 조문 BM25+ILIKE)"),
+    law_type: Optional[str] = Query(None, description="법령 유형 (예: 법률, 시행령)"),
+    ministry: Optional[str] = Query(None, description="소관부처 (예: 법무부)"),
+    promulgation_from: Optional[str] = Query(None, description="공포일자 시작 (YYYYMMDD)"),
+    promulgation_to: Optional[str] = Query(None, description="공포일자 종료 (YYYYMMDD)"),
+    enforcement_from: Optional[datetime.date] = Query(None, description="시행일자 시작 (YYYY-MM-DD)"),
+    enforcement_to: Optional[datetime.date] = Query(None, description="시행일자 종료 (YYYY-MM-DD)"),
+    sort: str = Query("relevance", description="정렬 기준 (relevance | latest)"),
+    offset: int = Query(0, ge=0, description="페이지 오프셋"),
+    limit: int = Query(20, ge=1, le=100, description="결과 수"),
+) -> FilteredLawListResponse:
+    """
+    법령 필터 검색 (PostgreSQL 직접 쿼리, BM25+ILIKE 하이브리드)
+
+    법령유형, 소관부처, 공포일자, 시행일자, 키워드로 법령을 필터링합니다.
+    """
+    try:
+        service = get_law_filter_service()
+        result = await service.search_by_filter(
+            keyword=keyword,
+            law_type=law_type,
+            ministry=ministry,
+            promulgation_from=promulgation_from,
+            promulgation_to=promulgation_to,
+            enforcement_from=enforcement_from,
+            enforcement_to=enforcement_to,
+            sort=sort,
+            offset=offset,
+            limit=limit,
+        )
+        return FilteredLawListResponse(
+            keyword=keyword,
+            total=result["total"],
+            offset=offset,
+            limit=limit,
+            laws=[FilteredLawItem(**law) for law in result["laws"]],
+        )
+    except Exception as e:
+        logger.error("법령 필터 검색 실패: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="법령 필터 검색 중 오류가 발생했습니다")
+
+
+@router.get("/laws/filter-options", response_model=LawFilterOptionsResponse)
+async def get_law_filter_options() -> LawFilterOptionsResponse:
+    """
+    법령 필터 옵션 조회
+
+    필터 드롭다운에 표시할 법령유형, 소관부처 DISTINCT 목록을 반환합니다.
+    """
+    try:
+        service = get_law_filter_service()
+        options = await service.get_filter_options()
+        return LawFilterOptionsResponse(**options)
+    except Exception as e:
+        logger.error("법령 필터 옵션 조회 실패: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="법령 필터 옵션 조회 중 오류가 발생했습니다")

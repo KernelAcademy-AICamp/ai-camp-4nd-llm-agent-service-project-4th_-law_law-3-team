@@ -143,14 +143,15 @@ const PATHNAME_AGENT_MAP: Record<string, string> = {
   '/law-study': 'law_study',
   '/small-claims': 'small_claims',
   '/statute-hierarchy': 'law_search',
-  // /case-precedent는 기존 ?agent= URL 파라미터 사용
+  '/case-precedent': 'case_search',
+  '/law-search': 'law_search',
 }
 
 // agent → 이동할 페이지 매핑 (에이전트 선택 시 자동 이동)
 const AGENT_PAGE_MAP: Record<string, string> = {
   'lawyer_finder': '/lawyer-finder',
-  'case_search': '/case-precedent?agent=case_search',
-  'law_search': '/case-precedent?agent=law_search',
+  'case_search': '/case-precedent',
+  'law_search': '/law-search',
   'legal_search': '/case-precedent',
   'legal_answer': '/case-precedent',
   'storyboard': '/storyboard',
@@ -1141,11 +1142,6 @@ export default function ChatWidget() {
             )}
           </button>
         </div>
-        {(isLoading || isStreaming) && (
-          <p className="mt-2 text-xs text-[#86868B]">
-            {loadingStatus.detail}
-          </p>
-        )}
       </div>
     </div>
   )

@@ -17,8 +17,8 @@ const UserView = dynamic(
   { ssr: false }
 )
 
-const FilterablePrecedentView = dynamic(
-  () => import('@/features/case-precedent/components/FilterablePrecedentView').then((m) => m.FilterablePrecedentView),
+const FilterableLawView = dynamic(
+  () => import('@/features/case-precedent/components/FilterableLawView').then((m) => m.FilterableLawView),
   { ssr: false }
 )
 
@@ -41,7 +41,7 @@ function ViewSkeleton() {
   )
 }
 
-function CasePrecedentContent() {
+function LawSearchContent() {
   const { userRole, sessionData } = useChat()
   const { isChatOpen } = useUI()
   const searchParams = useSearchParams()
@@ -51,7 +51,7 @@ function CasePrecedentContent() {
   const hasChatReferences = Array.isArray(aiReferences) && aiReferences.length > 0
   const isFilterMode = !hasChatReferences && !initialCaseId
 
-  const pageTitle = '판례 검색'
+  const pageTitle = '법령 검색'
 
   return (
     <div
@@ -71,7 +71,7 @@ function CasePrecedentContent() {
           {initialCaseId ? (
             <LawyerView initialCaseId={initialCaseId} />
           ) : isFilterMode ? (
-            <FilterablePrecedentView />
+            <FilterableLawView />
           ) : userRole === 'lawyer' ? (
             <LawyerView />
           ) : (
@@ -83,10 +83,10 @@ function CasePrecedentContent() {
   )
 }
 
-export default function CasePrecedentPage() {
+export default function LawSearchPage() {
   return (
     <Suspense fallback={<ViewSkeleton />}>
-      <CasePrecedentContent />
+      <LawSearchContent />
     </Suspense>
   )
 }

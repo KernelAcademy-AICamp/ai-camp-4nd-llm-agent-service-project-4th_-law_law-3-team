@@ -161,5 +161,43 @@ export interface FilteredPrecedentListResponse {
   precedents: FilteredPrecedentItem[]
 }
 
+// 법령 필터 검색 타입
+export interface LawFilterParams {
+  keyword?: string
+  law_type?: string
+  ministry?: string
+  promulgation_from?: string   // YYYYMMDD (공포일자 시작)
+  promulgation_to?: string     // YYYYMMDD (공포일자 종료)
+  enforcement_from?: string    // YYYY-MM-DD (시행일자 시작)
+  enforcement_to?: string      // YYYY-MM-DD (시행일자 종료)
+  sort: SortOrder
+  offset: number
+  limit: number
+}
+
+export interface FilteredLawItem {
+  id: string               // law_id
+  law_name: string
+  law_type: string | null
+  ministry: string | null
+  enforcement_date: string | null
+  promulgation_date: string | null
+  abbreviation: string | null
+  ai_summary: string | null
+}
+
+export interface FilteredLawListResponse {
+  keyword: string
+  total: number
+  offset: number
+  limit: number
+  laws: FilteredLawItem[]
+}
+
+export interface LawFilterOptions {
+  law_types: string[]
+  ministries: string[]
+}
+
 // 법령 계층도 타입
 export * from './hierarchy'
