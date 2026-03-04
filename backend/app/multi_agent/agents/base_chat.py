@@ -14,6 +14,22 @@ from pydantic import BaseModel
 from app.multi_agent.schemas.plan import AgentResult
 
 
+def normalize_chunk_content(content: Any) -> str:
+    """LLM 청크의 content를 문자열로 정규화.
+
+    Google Gemini 등은 content가 list[dict] 형태로 올 수 있으므로
+    프로바이더에 관계없이 항상 str을 반환합니다.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            item.get("text", "") if isinstance(item, dict) else str(item)
+            for item in content
+        )
+    return str(content)
+
+
 class ActionType(str, Enum):
     """액션 버튼 타입"""
 
@@ -215,7 +231,9 @@ class SimpleChatAgent(BaseChatAgent):
         # LLM 스트리밍 호출
         async for chunk in model.astream(messages):
             if chunk.content:
-                yield ("token", {"content": chunk.content})
+                text = normalize_chunk_content(chunk.content)
+                if text:
+                    yield ("token", {"content": text})
 
         # sources 전송 (토큰 스트리밍 완료 후)
         yield ("sources", {"sources": []})
