@@ -12,6 +12,34 @@ import ReactMarkdown from 'react-markdown'
 import ChatActions, { ChatAction } from './ChatActions'
 import type { ChatSource } from '@/features/case-precedent/types'
 
+// 글자 순차 반짝이 애니메이션 (Framer Motion)
+import { motion, type Variants } from 'framer-motion'
+
+function ShimmerText({ text, className }: { text: string; className?: string }) {
+  const chars = text.split('')
+  const totalDuration = chars.length * 0.06 + 0.8
+  return (
+    <span className={className} aria-label={text}>
+      {chars.map((char, i) => (
+        <motion.span
+          key={i}
+          className="inline-block"
+          animate={{ opacity: [0.4, 1, 0.4] }}
+          transition={{
+            duration: 0.8,
+            ease: 'easeInOut',
+            delay: i * 0.06,
+            repeat: Infinity,
+            repeatDelay: totalDuration - 0.8,
+          }}
+        >
+          {char === ' ' ? '\u00A0' : char}
+        </motion.span>
+      ))}
+    </span>
+  )
+}
+
 // 판례번호 패턴: 2023다12345, 88도820, 99가합1234 등
 const CASE_NUMBER_PATTERN = /(\d{2,4}[가-힣]{1,3}\d{1,6})/g
 
@@ -207,7 +235,7 @@ interface MessageBubbleProps {
   messageBotClass: string
   isLightTheme: boolean
   markdownComponents: MarkdownComponentsType
-  loadingStatus: { title: string; detail: string }
+  loadingStatus: { title: string }
   onAction: (action: string) => void
   onRequestLocation: () => void
 }
@@ -242,8 +270,7 @@ const MessageBubble = memo(function MessageBubble({
                   </span>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold">{loadingStatus.title}</p>
-                  <p className="text-xs opacity-70 mt-1">{loadingStatus.detail}</p>
+                  <p className="text-sm text-blue-600"><ShimmerText text={loadingStatus.title} /></p>
                 </div>
               </div>
             </div>
@@ -402,47 +429,22 @@ export default function ChatWidget() {
   }, [isLoading, isStreaming, requestStartedAt])
 
   const loadingStatus = useMemo(() => {
-    const elapsedText = `${loadingElapsedSeconds}초 경과`
-
     if (hasReceivedFirstToken) {
-      return {
-        title: '답변을 완성하는 중입니다...',
-        detail: 'AI가 정보를 정리하여 출력하고 있습니다.',
-      }
+      return { title: '답변을 완성하는 중입니다...' }
     }
-
     if (loadingElapsedSeconds < 3) {
-      return {
-        title: '질문 의도를 분석하고 있습니다...',
-        detail: '에이전트가 최적의 도구를 선택하는 중입니다.',
-      }
+      return { title: '질문 의도를 분석하고 있습니다...' }
     }
-
     if (loadingElapsedSeconds < 8) {
-      return {
-        title: '관련 데이터를 검색하고 있습니다...',
-        detail: '법령 및 판례 데이터베이스에서 정보를 찾는 중입니다.',
-      }
+      return { title: '관련 데이터를 검색하고 있습니다...' }
     }
-
     if (loadingElapsedSeconds < 15) {
-      return {
-        title: '검색된 결과를 정제하고 있습니다...',
-        detail: '수집된 정보를 바탕으로 답변을 구성하는 중입니다.',
-      }
+      return { title: '검색된 결과를 정제하고 있습니다...' }
     }
-
     if (loadingElapsedSeconds < 25) {
-      return {
-        title: '심층 분석을 진행하고 있습니다...',
-        detail: '복잡한 법률 관계를 검토하고 있습니다. 잠시만 기다려주세요.',
-      }
+      return { title: '심층 분석을 진행하고 있습니다...' }
     }
-
-    return {
-      title: '응답 준비가 거의 완료되었습니다...',
-      detail: '최종 답변을 생성하기 위한 마무리 과정입니다.',
-    }
+    return { title: '응답 준비가 거의 완료되었습니다...' }
   }, [hasReceivedFirstToken, loadingElapsedSeconds])
 
   const handleResetChat = useCallback(() => {
@@ -1123,7 +1125,7 @@ export default function ChatWidget() {
                   className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
                   style={{ animationDelay: '300ms' }}
                 />
-                <span className="ml-2 text-sm opacity-70">{loadingStatus.title}</span>
+                <span className="ml-2 text-sm text-blue-600"><ShimmerText text={loadingStatus.title} /></span>
               </div>
             </div>
           </div>
