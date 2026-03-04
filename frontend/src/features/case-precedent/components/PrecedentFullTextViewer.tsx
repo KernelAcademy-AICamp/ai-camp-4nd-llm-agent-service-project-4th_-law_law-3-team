@@ -37,6 +37,8 @@ interface PrecedentFullTextViewerProps {
   title?: string
   /** 아코디언 모드일 때 기본 펼침 상태 */
   defaultOpen?: boolean
+  /** RAG 검색 청크 텍스트 (하이라이팅 대상) */
+  highlightContent?: string
 }
 
 /**
@@ -64,6 +66,7 @@ export function PrecedentFullTextViewer({
   mode = 'direct',
   title = '📄 판결문 전체 보기',
   defaultOpen = false,
+  highlightContent,
 }: PrecedentFullTextViewerProps) {
   const viewerProps = mapToPrecedentViewerProps(data)
 
@@ -78,14 +81,14 @@ export function PrecedentFullTextViewer({
             {title}
           </summary>
           <div className="p-4 bg-white">
-            <PrecedentDocumentViewer {...viewerProps} />
+            <PrecedentDocumentViewer {...viewerProps} highlightContent={highlightContent} />
           </div>
         </details>
       </div>
     )
   }
 
-  return <PrecedentDocumentViewer {...viewerProps} />
+  return <PrecedentDocumentViewer {...viewerProps} highlightContent={highlightContent} />
 }
 
 /**

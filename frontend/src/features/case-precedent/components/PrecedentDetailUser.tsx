@@ -85,6 +85,7 @@ export function PrecedentDetailUser({ source }: PrecedentDetailUserProps) {
         data={source}
         mode="accordion"
         title="📄 판결문 전체 보기"
+        highlightContent={source.content}
       />
 
       {/* 그래프 보강 정보 */}

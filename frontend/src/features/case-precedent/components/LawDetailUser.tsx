@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { ChatSource, LawFullText, StatuteHierarchyResponse } from '../types'
 import { casePrecedentService } from '../services'
@@ -73,15 +73,25 @@ export function LawDetailUser({ source }: LawDetailUserProps) {
     })
   }, [])
 
+  const currentArticleRef = useRef<HTMLDivElement | null>(null)
+
   const handleToggleFullText = useCallback(() => {
     if (!fullText && !isLoading) {
-      // 아직 로딩 안 됐으면 에러 표시
       if (!source.doc_id) {
         setError('법령 ID가 없어 전문을 불러올 수 없습니다.')
       }
     }
-    setIsFullTextOpen((prev) => !prev)
-  }, [fullText, isLoading, source.doc_id])
+    setIsFullTextOpen((prev) => {
+      const willOpen = !prev
+      if (willOpen && source.article_number) {
+        // 아코디언 열릴 때 검색된 조문으로 자동 스크롤
+        setTimeout(() => {
+          currentArticleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }, 200)
+      }
+      return willOpen
+    })
+  }, [fullText, isLoading, source.doc_id, source.article_number])
 
   return (
     <div className="space-y-4">
@@ -247,6 +257,7 @@ export function LawDetailUser({ source }: LawDetailUserProps) {
                       currentArticleNumber={source.article_number}
                       expandedSections={expandedSections}
                       onToggle={toggleSection}
+                      currentArticleRef={currentArticleRef}
                     />
                   ) : (
                     <div className="divide-y divide-gray-100">
@@ -255,6 +266,7 @@ export function LawDetailUser({ source }: LawDetailUserProps) {
                         return (
                           <div
                             key={article.article_number}
+                            ref={isCurrentArticle ? currentArticleRef : undefined}
                             className={`px-5 py-4 ${isCurrentArticle ? 'bg-blue-50 border-l-4 border-blue-400' : ''}`}
                           >
                             <h4 className={`text-sm font-bold mb-1 ${isCurrentArticle ? 'text-blue-800' : 'text-gray-800'}`}>
@@ -368,11 +380,13 @@ function ArticleTreeView({
   currentArticleNumber,
   expandedSections,
   onToggle,
+  currentArticleRef,
 }: {
   nodes: ArticleTreeNode[]
   currentArticleNumber?: string
   expandedSections: Set<string>
   onToggle: (label: string) => void
+  currentArticleRef?: React.Ref<HTMLDivElement>
 }) {
   return (
     <div className="divide-y divide-gray-100">
@@ -382,6 +396,7 @@ function ArticleTreeView({
           return (
             <div
               key={node.article.article_number}
+              ref={isCurrentArticle ? currentArticleRef : undefined}
               className={`px-5 py-4 ${isCurrentArticle ? 'bg-blue-50 border-l-4 border-blue-400' : ''}`}
             >
               <h4 className={`text-sm font-bold mb-1 ${isCurrentArticle ? 'text-blue-800' : 'text-gray-800'}`}>
@@ -434,6 +449,7 @@ function ArticleTreeView({
                   currentArticleNumber={currentArticleNumber}
                   expandedSections={expandedSections}
                   onToggle={onToggle}
+                  currentArticleRef={currentArticleRef}
                 />
               </div>
             )}

@@ -9,7 +9,7 @@ export function PrecedentDetailLawyer({ source }: PrecedentDetailLawyerProps) {
   return (
     <div className="space-y-4">
       {/* 판결문 전체 표시 */}
-      <PrecedentFullTextViewer data={source} mode="direct" />
+      <PrecedentFullTextViewer data={source} mode="direct" highlightContent={source.content} />
 
       {/* 그래프 보강 정보 */}
       {(source.cited_statutes?.length || source.similar_cases?.length) ? (

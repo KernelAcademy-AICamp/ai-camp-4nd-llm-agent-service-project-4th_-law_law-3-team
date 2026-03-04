@@ -39,14 +39,12 @@ export function UserView() {
     const matchingRef = references.find(
       (ref) => ref.case_number && ref.case_number.includes(highlightedCaseNumber)
     )
-    if (matchingRef?.case_number) {
-      const cardElement = cardRefs.current.get(matchingRef.case_number)
-      if (cardElement) {
-        cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        setTimeout(() => {
-          setHighlightedCaseNumber(null)
-        }, 3000)
-      }
+    if (matchingRef) {
+      // 상세 뷰로 자동 전환
+      setSelectedRef(matchingRef)
+      setTimeout(() => {
+        setHighlightedCaseNumber(null)
+      }, 3000)
     }
   }, [highlightedCaseNumber, references, setHighlightedCaseNumber])
 
