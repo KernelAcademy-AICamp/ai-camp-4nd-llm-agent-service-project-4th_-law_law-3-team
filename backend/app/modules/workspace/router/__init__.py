@@ -24,6 +24,14 @@ from app.services.workspace.workspace_case_service import WorkspaceCaseService
 router = APIRouter()
 
 
+def _parse_uuid(value: str, label: str = "ID") -> uuid.UUID:
+    """UUID 문자열을 파싱하고, 실패 시 400 에러 반환"""
+    try:
+        return uuid.UUID(value)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail=f"잘못된 {label} 형식입니다: {value}")
+
+
 # ── 사건 CRUD ──
 
 
@@ -85,7 +93,7 @@ async def get_case(
 
     async with async_session_factory() as db:
         result = await WorkspaceCaseService.get_case_detail(
-            db, uuid.UUID(case_id), session_token
+            db, _parse_uuid(case_id, "사건"), session_token
         )
         if not result:
             raise HTTPException(status_code=404, detail="사건을 찾을 수 없습니다.")
@@ -103,7 +111,7 @@ async def update_case(
 
     async with async_session_factory() as db:
         result = await WorkspaceCaseService.update_case(
-            db, uuid.UUID(case_id), session_token, body.model_dump(exclude_none=True)
+            db, _parse_uuid(case_id, "사건"), session_token, body.model_dump(exclude_none=True)
         )
         if not result:
             raise HTTPException(status_code=404, detail="사건을 찾을 수 없습니다.")
@@ -121,7 +129,7 @@ async def delete_case(
 
     async with async_session_factory() as db:
         deleted = await WorkspaceCaseService.delete_case(
-            db, uuid.UUID(case_id), session_token
+            db, _parse_uuid(case_id, "사건"), session_token
         )
         if not deleted:
             raise HTTPException(status_code=404, detail="사건을 찾을 수 없습니다.")
@@ -141,7 +149,7 @@ async def get_timeline(
 
     async with async_session_factory() as db:
         detail = await WorkspaceCaseService.get_case_detail(
-            db, uuid.UUID(case_id), session_token
+            db, _parse_uuid(case_id, "사건"), session_token
         )
         if not detail:
             raise HTTPException(status_code=404, detail="사건을 찾을 수 없습니다.")
@@ -164,7 +172,7 @@ async def rebuild_timeline(
 
     async with async_session_factory() as db:
         detail = await WorkspaceCaseService.get_case_detail(
-            db, uuid.UUID(case_id), session_token
+            db, _parse_uuid(case_id, "사건"), session_token
         )
         if not detail:
             raise HTTPException(status_code=404, detail="사건을 찾을 수 없습니다.")
@@ -179,7 +187,7 @@ async def rebuild_timeline(
 
             conv_result = await db.execute(
                 select(ChatConversation.tagged_items).where(
-                    ChatConversation.case_id == uuid.UUID(case_id),
+                    ChatConversation.case_id == _parse_uuid(case_id, "사건"),
                 )
             )
             for row in conv_result.scalars().all():
@@ -187,12 +195,12 @@ async def rebuild_timeline(
                     all_tags.extend(row)
 
         items = await TimelineEngine.rebuild(
-            db, uuid.UUID(case_id), all_tags, body.include_manual
+            db, _parse_uuid(case_id, "사건"), all_tags, body.include_manual
         )
 
         await ActivityLogger.log(
             db, session_token, "rebuild_timeline",
-            case_id=uuid.UUID(case_id),
+            case_id=_parse_uuid(case_id, "사건"),
             detail={"tag_count": len(all_tags), "item_count": len(items)},
         )
         await db.commit()
@@ -213,7 +221,7 @@ async def update_timeline_item(
     async with async_session_factory() as db:
         # 소유권 확인
         detail = await WorkspaceCaseService.get_case_detail(
-            db, uuid.UUID(case_id), session_token
+            db, _parse_uuid(case_id, "사건"), session_token
         )
         if not detail:
             raise HTTPException(status_code=404, detail="사건을 찾을 수 없습니다.")
@@ -224,8 +232,8 @@ async def update_timeline_item(
 
         result = await db.execute(
             select(WorkspaceCaseTimelineItem).where(
-                WorkspaceCaseTimelineItem.id == uuid.UUID(item_id),
-                WorkspaceCaseTimelineItem.case_id == uuid.UUID(case_id),
+                WorkspaceCaseTimelineItem.id == _parse_uuid(item_id, "항목"),
+                WorkspaceCaseTimelineItem.case_id == _parse_uuid(case_id, "사건"),
             )
         )
         item = result.scalar_one_or_none()
@@ -247,7 +255,7 @@ async def update_timeline_item(
         update_values["updated_at"] = func.now()
         await db.execute(
             update(WorkspaceCaseTimelineItem)
-            .where(WorkspaceCaseTimelineItem.id == uuid.UUID(item_id))
+            .where(WorkspaceCaseTimelineItem.id == _parse_uuid(item_id, "항목"))
             .values(**update_values)
         )
         await db.commit()
@@ -277,7 +285,7 @@ async def export_case(
 
     async with async_session_factory() as db:
         detail = await WorkspaceCaseService.get_case_detail(
-            db, uuid.UUID(case_id), session_token
+            db, _parse_uuid(case_id, "사건"), session_token
         )
         if not detail:
             raise HTTPException(status_code=404, detail="사건을 찾을 수 없습니다.")

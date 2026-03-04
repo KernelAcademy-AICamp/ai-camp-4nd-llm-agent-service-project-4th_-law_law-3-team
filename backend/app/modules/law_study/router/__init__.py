@@ -4,18 +4,18 @@
 """
 from typing import Any, Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
 from app.core.rate_limit import AI_RATE_LIMIT, limiter
 
 router = APIRouter()
 
 
-@router.get("/cases")
+@router.get("/cases", deprecated=True)
 async def get_study_cases(
-    subject: Optional[str] = None,
-    difficulty: Optional[str] = None,
-    limit: int = 20,
+    subject: Optional[str] = Query(default=None, max_length=200),
+    difficulty: Optional[str] = Query(default=None, max_length=50),
+    limit: int = Query(default=20, ge=1, le=50),
 ) -> dict[str, Any]:
     """학습용 판례 목록 조회"""
     return {
@@ -25,7 +25,7 @@ async def get_study_cases(
     }
 
 
-@router.get("/cases/{case_id}/summary")
+@router.get("/cases/{case_id}/summary", deprecated=True)
 async def get_case_summary(case_id: str) -> dict[str, Any]:
     """판례 요약 조회"""
     return {
@@ -35,9 +35,13 @@ async def get_case_summary(case_id: str) -> dict[str, Any]:
     }
 
 
-@router.post("/quiz/generate")
+@router.post("/quiz/generate", deprecated=True)
 @limiter.limit(AI_RATE_LIMIT)
-async def generate_quiz(request: Request, subject: str, count: int = 10) -> dict[str, Any]:
+async def generate_quiz(
+    request: Request,
+    subject: str = Query(max_length=200),
+    count: int = Query(default=10, ge=1, le=50),
+) -> dict[str, Any]:
     """주제별 퀴즈 생성"""
     return {
         "subject": subject,
@@ -45,7 +49,7 @@ async def generate_quiz(request: Request, subject: str, count: int = 10) -> dict
     }
 
 
-@router.post("/quiz/submit")
+@router.post("/quiz/submit", deprecated=True)
 @limiter.limit(AI_RATE_LIMIT)
 async def submit_quiz(request: Request, quiz_id: str, answers: dict[str, Any]) -> dict[str, Any]:
     """퀴즈 제출 및 채점"""

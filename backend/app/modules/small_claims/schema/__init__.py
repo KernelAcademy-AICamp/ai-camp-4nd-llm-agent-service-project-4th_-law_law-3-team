@@ -6,7 +6,7 @@ Pydantic 모델: 요청/응답 + Phase 3 인터뷰/증거/가이드
 
 from typing import Any, List, Optional  # noqa: F401
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # ── 증거 체크리스트 ──
 
@@ -33,8 +33,8 @@ class CaseInfo(BaseModel):
     defendant_name: str
     defendant_address: Optional[str] = None
     defendant_phone: Optional[str] = None
-    amount: int
-    description: str
+    amount: int = Field(ge=0, le=30_000_000)
+    description: str = Field(max_length=5000)
     incident_date: Optional[str] = None
 
 
@@ -114,7 +114,7 @@ class InterviewQuestion(BaseModel):
 
 
 class InterviewAnswerRequest(BaseModel):
-    answer: str
+    answer: str = Field(max_length=3000)
 
 
 class InterviewResponse(BaseModel):

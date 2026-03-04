@@ -65,8 +65,12 @@ class ModuleRegistry:
                 return True
         except ImportError as e:
             logger.error("Failed to import module '%s': %s", module_name, e)
+            if settings.ENVIRONMENT == "production":
+                raise RuntimeError(f"프로덕션 환경에서 모듈 '{module_name}' 임포트 실패: {e}")
         except Exception as e:
             logger.error("Error registering module '%s': %s", module_name, e)
+            if settings.ENVIRONMENT == "production":
+                raise RuntimeError(f"프로덕션 환경에서 모듈 '{module_name}' 등록 실패: {e}")
 
         return False
 

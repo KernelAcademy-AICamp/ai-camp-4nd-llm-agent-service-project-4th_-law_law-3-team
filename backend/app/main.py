@@ -177,12 +177,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await shutdown_checkpointer()
 
 
+_is_production = settings.ENVIRONMENT == "production"
+
 app = FastAPI(
     title=settings.APP_NAME,
     description="법률 서비스 플랫폼 API",
     version="1.0.0",
     lifespan=lifespan,
     dependencies=[Depends(verify_api_key)],
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
 )
 
 # Rate Limiting
@@ -223,4 +228,7 @@ app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 
 @app.get("/health")
 async def health_check() -> dict[str, object]:
-    return {"status": "healthy", "modules": registry.get_registered_modules()}
+    result: dict[str, object] = {"status": "healthy"}
+    if not _is_production:
+        result["modules"] = registry.get_registered_modules()
+    return result

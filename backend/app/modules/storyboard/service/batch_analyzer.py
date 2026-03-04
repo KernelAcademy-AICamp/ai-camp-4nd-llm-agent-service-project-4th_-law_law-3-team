@@ -284,8 +284,8 @@ class BatchAnalyzer:
             for raw in raw_items:
                 try:
                     items.append(TimelineItem(**raw))
-                except Exception:
-                    pass
+                except (TypeError, ValueError) as exc:
+                    logger.debug("이미지 타임라인 항목 파싱 실패: %s", exc)
             return items
         except Exception as exc:
             logger.warning("이미지 분석 실패 (file=%s): %s", vfile.original_filename, exc)

@@ -19,7 +19,7 @@ from app.core.config import settings
 # Async Engine 생성
 engine = create_async_engine(
     settings.DATABASE_URL_ASYNC,
-    echo=settings.DEBUG,  # SQL 로깅 (개발 시)
+    echo=False,
     pool_size=5,
     max_overflow=10,
     pool_pre_ping=True,  # 연결 유효성 검사
@@ -39,7 +39,7 @@ async_session_factory = async_sessionmaker(
 # 동시에 여러 sync 세션이 필요하므로 기본값(5)보다 크게 설정
 sync_engine = create_engine(
     settings.DATABASE_URL,
-    echo=settings.DEBUG,
+    echo=False,
     pool_size=10,
     max_overflow=10,
     pool_pre_ping=True,

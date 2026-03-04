@@ -14,7 +14,8 @@ from starlette.responses import Response
 from app.core.config import settings
 
 SESSION_COOKIE_NAME = "session_token"
-SESSION_MAX_AGE = 30 * 24 * 60 * 60  # 30일
+SESSION_MAX_AGE = 7 * 24 * 60 * 60  # 7일
+_VALID_TOKEN_LENGTH = 64  # secrets.token_hex(32) → 64자 hex
 
 
 class SessionMiddleware(BaseHTTPMiddleware):
@@ -25,11 +26,22 @@ class SessionMiddleware(BaseHTTPMiddleware):
     - 쿠키가 없으면 신규 토큰 생성 + Set-Cookie
     """
 
+    @staticmethod
+    def _is_valid_token(token: str) -> bool:
+        """토큰이 64자 hex 형식인지 검증"""
+        if len(token) != _VALID_TOKEN_LENGTH:
+            return False
+        try:
+            int(token, 16)
+        except ValueError:
+            return False
+        return True
+
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         token = request.cookies.get(SESSION_COOKIE_NAME)
         is_new = False
 
-        if not token:
+        if not token or not self._is_valid_token(token):
             token = secrets.token_hex(32)
             is_new = True
 
@@ -42,7 +54,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
                 key=SESSION_COOKIE_NAME,
                 value=token,
                 httponly=True,
-                secure=not settings.DEBUG,
+                secure=settings.ENVIRONMENT != "development",
                 samesite="lax",
                 max_age=SESSION_MAX_AGE,
                 path="/",

@@ -107,7 +107,7 @@ async def init_checkpointer(conn_string: str) -> None:
         _compiled_graph = None  # 재컴파일 필요
         logger.info("PostgreSQL 체크포인터 초기화 완료")
     except Exception as e:
-        logger.warning("PostgreSQL 체크포인터 초기화 실패, InMemorySaver 사용: %s", e)
+        logger.error("PostgreSQL 체크포인터 초기화 실패, InMemorySaver 폴백 사용 (대화 기록 유실 위험): %s", e)
         _checkpointer = InMemorySaver()
         _checkpointer_context = None
         _compiled_graph = None

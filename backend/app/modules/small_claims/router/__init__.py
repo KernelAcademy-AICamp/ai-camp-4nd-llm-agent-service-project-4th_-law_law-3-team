@@ -50,6 +50,8 @@ from app.services.service_function.small_claims_service import (
 
 logger = logging.getLogger(__name__)
 
+_SAFE_PATH_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
 router = APIRouter()
 
 # ── 인터뷰 세션 키 접두사 ──
@@ -246,7 +248,16 @@ async def upload_evidence(
     파일을 서버에 저장하고 메타데이터를 반환합니다.
     지원 형식: PDF, HWP, DOC, 이미지, XLS, TXT (최대 10MB)
     """
-    upload_dir = Path("data/uploads/small_claims") / session_id / evidence_item_id
+    # Path traversal 방어: session_id, evidence_item_id 검증
+    if not _SAFE_PATH_RE.match(session_id):
+        raise HTTPException(status_code=400, detail="잘못된 session_id 형식입니다.")
+    if not _SAFE_PATH_RE.match(evidence_item_id):
+        raise HTTPException(status_code=400, detail="잘못된 evidence_item_id 형식입니다.")
+
+    base_dir = Path("data/uploads/small_claims").resolve()
+    upload_dir = (base_dir / session_id / evidence_item_id).resolve()
+    if not str(upload_dir).startswith(str(base_dir)):
+        raise HTTPException(status_code=400, detail="잘못된 경로입니다.")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     uploaded: list[EvidenceUploadFile] = []

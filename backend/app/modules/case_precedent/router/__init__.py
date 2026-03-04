@@ -14,6 +14,19 @@ from app.core.errors import EmbeddingModelNotFoundError
 from app.core.rate_limit import AI_RATE_LIMIT, limiter
 from app.models.law_article import LawArticle
 from app.models.law_document import LawDocument
+from app.modules.case_precedent.schema import (
+    AIQuestionResponse,
+    AskQuestionRequest,
+    ChatRequest,
+    ChatResponse,
+    ChatSource,
+    PrecedentDetailResponse,
+    PrecedentItem,
+    PrecedentListResponse,
+    SearchRequest,
+    SearchResponse,
+    SearchResult,
+)
 from app.services.rag import search_relevant_documents_async
 from app.services.service_function.precedent_service import fetch_precedent_details
 from app.tools.graph.pg_graph_service import get_pg_graph_service
@@ -32,116 +45,6 @@ def _map_data_type(data_type: str) -> str:
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-# Request/Response 스키마
-class ChatMessage(BaseModel):
-    role: str  # "user" or "assistant"
-    content: str
-
-
-class ChatRequest(BaseModel):
-    message: str
-    history: Optional[List[ChatMessage]] = None
-
-
-class ChatSource(BaseModel):
-    """
-    챗봇 응답의 출처 정보
-
-    판례와 법령 모두 지원 (필드가 각각 다름)
-    """
-
-    # 판례 필드 (법령일 때는 없음)
-    case_name: Optional[str] = None
-    case_number: Optional[str] = None
-
-    # 법령 필드 (판례일 때는 없음)
-    law_name: Optional[str] = None
-    law_type: Optional[str] = None
-
-    # 공통 필드
-    doc_type: str
-    similarity: float
-    summary: Optional[str] = None
-    content: Optional[str] = None
-
-    # 그래프 보강 정보 (optional)
-    cited_statutes: Optional[List[str]] = None
-    similar_cases: Optional[List[str]] = None
-
-
-class ChatResponse(BaseModel):
-    response: str
-    sources: List[ChatSource]
-
-
-class SearchRequest(BaseModel):
-    query: str
-    n_results: Optional[int] = 5
-    doc_type: Optional[str] = None
-
-
-class SearchResult(BaseModel):
-    id: str
-    content: str
-    case_name: str
-    case_number: str
-    doc_type: str
-    similarity: float
-
-
-class SearchResponse(BaseModel):
-    query: str
-    results: List[SearchResult]
-
-
-# 판례 검색 전용 스키마
-class PrecedentItem(BaseModel):
-    id: str
-    case_name: str
-    case_number: str
-    doc_type: str
-    court: Optional[str] = None
-    date: Optional[str] = None
-    summary: str
-    similarity: float
-
-
-class PrecedentListResponse(BaseModel):
-    keyword: str
-    total: int
-    precedents: List[PrecedentItem]
-
-
-class PrecedentDetailResponse(BaseModel):
-    id: str
-    case_name: str
-    case_number: str
-    doc_type: str
-    court: Optional[str] = None
-    date: Optional[str] = None
-    content: str
-    summary: str
-    # 판례 상세 필드 (PostgreSQL 조회)
-    ruling: Optional[str] = None  # 주문
-    claim: Optional[str] = None  # 청구취지
-    reasoning: Optional[str] = None  # 판결요지
-    full_reason: Optional[str] = None  # 이유
-    full_text: Optional[str] = None  # 전문
-    reference_provisions: Optional[str] = None  # 참조조문
-    reference_cases: Optional[str] = None  # 참조판례
-    court_name: Optional[str] = None  # 법원명
-    decision_date: Optional[str] = None  # 선고일
-
-
-class AskQuestionRequest(BaseModel):
-    question: str
-
-
-class AIQuestionResponse(BaseModel):
-    answer: str
-    sources: List[ChatSource]
 
 
 # API 엔드포인트
@@ -279,7 +182,7 @@ async def search(request: Request, body: SearchRequest) -> SearchResponse:
         raise HTTPException(status_code=500, detail="검색 중 오류가 발생했습니다")
 
 
-@router.post("/analyze")
+@router.post("/analyze", deprecated=True)
 @limiter.limit(AI_RATE_LIMIT)
 async def analyze_case(request: Request, description: str) -> dict[str, Any]:
     """사용자 상황 분석 및 관련 판례 검색"""
