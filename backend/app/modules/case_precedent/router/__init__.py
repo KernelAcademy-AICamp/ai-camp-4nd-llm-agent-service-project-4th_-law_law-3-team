@@ -324,7 +324,7 @@ class CaseTypesResponse(BaseModel):
 
 @router.get("/precedents/filter", response_model=FilteredPrecedentListResponse)
 async def filter_precedents(
-    keyword: str = Query("", description="검색 키워드 (사건명, 판시사항, 사건번호 ILIKE)"),
+    keyword: str = Query("", description="검색 키워드 (사건명, 판시사항, 사건번호, 판결요지 ILIKE)"),
     case_type: Optional[str] = Query(None, description="사건종류명 (예: 민사, 형사)"),
     date_from: Optional[datetime.date] = Query(None, description="선고일 시작 (YYYY-MM-DD)"),
     date_to: Optional[datetime.date] = Query(None, description="선고일 종료 (YYYY-MM-DD)"),

@@ -12,6 +12,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import async_session_factory
+from app.models.fts_index import FtsIndex
 from app.models.precedent_document import PrecedentDocument
 
 logger = logging.getLogger(__name__)
@@ -167,10 +168,14 @@ class PrecedentService:
         limit: int = 20,
     ) -> Dict[str, Any]:
         """
-        필터 조건으로 판례 검색 (PostgreSQL 직접 쿼리)
+        필터 조건으로 판례 검색 (BM25 + ILIKE 하이브리드)
+
+        텍스트 필드(사건명, 판시사항, 판결요지)는 BM25 검색,
+        사건번호는 ILIKE 패턴 매칭으로 검색합니다.
+        BM25 불가 시 전체 ILIKE로 fallback합니다.
 
         Args:
-            keyword: 검색 키워드 (case_name, summary ILIKE)
+            keyword: 검색 키워드
             case_type: 사건종류명 (예: "민사", "형사")
             date_from: 선고일 시작
             date_to: 선고일 종료
@@ -183,8 +188,15 @@ class PrecedentService:
         """
         try:
             async with async_session_factory() as session:
+                # BM25로 텍스트 매칭 source_id 조회
+                bm25_source_ids: list[str] = []
+                if keyword:
+                    bm25_source_ids = await self._bm25_match_ids(
+                        session, keyword
+                    )
+
                 conditions = self._build_filter_conditions(
-                    keyword, case_type, date_from, date_to
+                    keyword, case_type, date_from, date_to, bm25_source_ids
                 )
 
                 count_query = (
@@ -202,24 +214,8 @@ class PrecedentService:
                     data_query = data_query.where(where_clause)
 
                 if sort == "relevance" and keyword:
-                    like_pattern = f"%{keyword}%"
-                    relevance_score = (
-                        case(
-                            (PrecedentDocument.case_name.ilike(like_pattern), 3),
-                            else_=0,
-                        )
-                        + case(
-                            (PrecedentDocument.case_number.ilike(like_pattern), 2),
-                            else_=0,
-                        )
-                        + case(
-                            (PrecedentDocument.summary.ilike(like_pattern), 1),
-                            else_=0,
-                        )
-                    )
-                    data_query = data_query.order_by(
-                        relevance_score.desc(),
-                        PrecedentDocument.decision_date.desc(),
+                    data_query = self._apply_relevance_order(
+                        data_query, keyword, bm25_source_ids
                     )
                 else:
                     data_query = data_query.order_by(
@@ -238,23 +234,82 @@ class PrecedentService:
             return {"total": 0, "precedents": []}
 
     @staticmethod
+    async def _bm25_match_ids(
+        session: Any,
+        keyword: str,
+        max_results: int = 500,
+    ) -> list[str]:
+        """BM25로 텍스트 매칭되는 판례 source_id 목록 반환.
+
+        BM25 인덱스 미사용이거나 실패 시 빈 리스트 반환 (ILIKE fallback 유도).
+        """
+        try:
+            from app.services.rag.keyword_search import (
+                _BM25_INDEX_NAME,
+                _tokenize,
+                is_fts_available,
+            )
+
+            if not await is_fts_available():
+                return []
+
+            tokens = _tokenize(keyword)
+            if not tokens:
+                return []
+
+            search_query = " ".join(tokens)
+            bm25_query = func.to_bm25query(search_query, _BM25_INDEX_NAME)
+            score_expr = FtsIndex.search_text.op("<@>")(bm25_query)
+
+            stmt = (
+                select(FtsIndex.source_id)
+                .where(FtsIndex.data_type == "판례")
+                .order_by(score_expr.asc())
+                .limit(max_results)
+            )
+
+            result = await session.execute(stmt)
+            return [row.source_id for row in result.all()]
+        except Exception as e:
+            logger.warning("BM25 매칭 실패, ILIKE fallback: %s", e)
+            return []
+
+    @staticmethod
     def _build_filter_conditions(
         keyword: str,
         case_type: Optional[str],
         date_from: Optional[datetime.date],
         date_to: Optional[datetime.date],
+        bm25_source_ids: Optional[list[str]] = None,
     ) -> list[Any]:
-        """필터 조건 리스트 생성"""
+        """필터 조건 리스트 생성.
+
+        BM25 source_id가 있으면 텍스트는 BM25, 사건번호는 ILIKE.
+        BM25 불가(빈 리스트)면 전체 ILIKE fallback.
+        """
         conditions: list[Any] = []
         if keyword:
             like_pattern = f"%{keyword}%"
-            conditions.append(
-                or_(
-                    PrecedentDocument.case_name.ilike(like_pattern),
-                    PrecedentDocument.summary.ilike(like_pattern),
-                    PrecedentDocument.case_number.ilike(like_pattern),
+            if bm25_source_ids:
+                # BM25 텍스트 매칭 OR 사건번호 ILIKE
+                conditions.append(
+                    or_(
+                        PrecedentDocument.serial_number.in_(
+                            bm25_source_ids
+                        ),
+                        PrecedentDocument.case_number.ilike(like_pattern),
+                    )
                 )
-            )
+            else:
+                # BM25 불가 시 전체 ILIKE fallback
+                conditions.append(
+                    or_(
+                        PrecedentDocument.case_name.ilike(like_pattern),
+                        PrecedentDocument.summary.ilike(like_pattern),
+                        PrecedentDocument.case_number.ilike(like_pattern),
+                        PrecedentDocument.reasoning.ilike(like_pattern),
+                    )
+                )
         if case_type:
             conditions.append(PrecedentDocument.case_type == case_type)
         if date_from:
@@ -262,6 +317,62 @@ class PrecedentService:
         if date_to:
             conditions.append(PrecedentDocument.decision_date <= date_to)
         return conditions
+
+    @staticmethod
+    def _apply_relevance_order(
+        query: Any,
+        keyword: str,
+        bm25_source_ids: list[str],
+    ) -> Any:
+        """관련성 정렬 적용.
+
+        BM25 매칭(가중치 2) + 사건번호 매칭(가중치 1) 합산 후 정렬.
+        BM25 불가 시 기존 필드별 ILIKE 가중치 방식 사용.
+        """
+        like_pattern = f"%{keyword}%"
+        if bm25_source_ids:
+            relevance_score = (
+                case(
+                    (
+                        PrecedentDocument.serial_number.in_(
+                            bm25_source_ids
+                        ),
+                        2,
+                    ),
+                    else_=0,
+                )
+                + case(
+                    (PrecedentDocument.case_number.ilike(like_pattern), 1),
+                    else_=0,
+                )
+            )
+        else:
+            # ILIKE fallback 가중치
+            relevance_score = (
+                case(
+                    (PrecedentDocument.case_name.ilike(like_pattern), 4),
+                    else_=0,
+                )
+                + case(
+                    (
+                        PrecedentDocument.case_number.ilike(like_pattern),
+                        3,
+                    ),
+                    else_=0,
+                )
+                + case(
+                    (PrecedentDocument.summary.ilike(like_pattern), 2),
+                    else_=0,
+                )
+                + case(
+                    (PrecedentDocument.reasoning.ilike(like_pattern), 1),
+                    else_=0,
+                )
+            )
+        return query.order_by(
+            relevance_score.desc(),
+            PrecedentDocument.decision_date.desc(),
+        )
 
     @staticmethod
     def _to_filter_item(p: PrecedentDocument) -> Dict[str, Any]:
