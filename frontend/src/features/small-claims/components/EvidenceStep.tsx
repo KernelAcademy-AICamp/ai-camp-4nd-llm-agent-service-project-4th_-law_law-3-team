@@ -9,6 +9,7 @@ interface EvidenceStepProps {
   items: EvidenceItem[]
   checkedItems: Set<string>
   isLoading: boolean
+  error?: string | null
   uploadedFiles: Map<string, UploadedFile[]>
   onToggle: (id: string) => void
   onFileUpload: (evidenceItemId: string, files: File[]) => Promise<void>
@@ -21,6 +22,7 @@ export function EvidenceStep({
   items,
   checkedItems,
   isLoading,
+  error,
   uploadedFiles,
   onToggle,
   onFileUpload,
@@ -41,6 +43,40 @@ export function EvidenceStep({
           <div className="text-center">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-3" />
             <p className="text-gray-500">증거 체크리스트를 불러오는 중...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg
+                className="w-5 h-5 text-red-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <p className="text-red-600 font-medium mb-1">데이터 로드 실패</p>
+            <p className="text-sm text-gray-500 mb-4">{error}</p>
+            <button
+              onClick={onPrevious}
+              className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+            >
+              이전 단계로 돌아가기
+            </button>
           </div>
         </div>
       </div>
