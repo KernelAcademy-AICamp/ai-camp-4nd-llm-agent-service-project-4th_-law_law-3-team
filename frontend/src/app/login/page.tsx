@@ -2,12 +2,12 @@
 
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { getGoogleOAuthUrl, getKakaoOAuthUrl } from '@/features/auth/services'
 
-export default function LoginPage() {
-  const { login } = useAuth()
+function LoginContent() {
+  const { login, isAuthenticated, isLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
   const returnUrl = searchParams.get('returnUrl') || '/'
@@ -16,6 +16,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // 이미 인증된 상태면 홈으로 리다이렉트
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.replace('/')
+    }
+  }, [isLoading, isAuthenticated, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -159,5 +166,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-gray-50" />}>
+      <LoginContent />
+    </Suspense>
   )
 }

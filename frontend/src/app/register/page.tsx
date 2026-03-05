@@ -2,19 +2,27 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 
 export default function RegisterPage() {
-  const { register } = useAuth()
+  const { register, isAuthenticated, isLoading } = useAuth()
   const router = useRouter()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [role, setRole] = useState<'user' | 'lawyer'>('user')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // 이미 인증된 상태면 홈으로 리다이렉트
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.replace('/')
+    }
+  }, [isLoading, isAuthenticated, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,7 +41,7 @@ export default function RegisterPage() {
     setIsSubmitting(true)
 
     try {
-      await register(email, password, displayName || undefined)
+      await register(email, password, displayName || undefined, role)
       router.replace('/')
     } catch {
       setError('이미 등록된 이메일이거나 회원가입에 실패했습니다.')
@@ -84,6 +92,36 @@ export default function RegisterPage() {
               maxLength={100}
             />
           </div>
+
+          <fieldset className="space-y-2">
+            <legend className="block text-sm font-medium text-gray-700">역할 선택</legend>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setRole('user')}
+                className={`rounded-lg border-2 p-3 text-left transition-all ${
+                  role === 'user'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                <div className="text-sm font-semibold text-gray-900">일반인</div>
+                <div className="mt-1 text-xs text-gray-500">법률 상담 및 변호사 찾기</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRole('lawyer')}
+                className={`rounded-lg border-2 p-3 text-left transition-all ${
+                  role === 'lawyer'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                <div className="text-sm font-semibold text-gray-900">변호사</div>
+                <div className="mt-1 text-xs text-gray-500">사건 관리 및 전문가 도구</div>
+              </button>
+            </div>
+          </fieldset>
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700">

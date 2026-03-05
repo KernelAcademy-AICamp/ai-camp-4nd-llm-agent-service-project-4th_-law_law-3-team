@@ -3,10 +3,10 @@
 import { useEffect, Suspense, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { useRouter, useSearchParams } from 'next/navigation'
 import { getEnabledModules, getModuleCategory, CATEGORY_NAMES } from '@/lib/modules'
 import { useUI } from '@/context/UIContext'
 import { useChat, UserRole } from '@/context/ChatContext'
+import { useAuth } from '@/context/AuthContext'
 import type { LucideIcon } from 'lucide-react'
 import {
   Send,
@@ -28,17 +28,15 @@ const MODULE_ICONS: Record<string, LucideIcon> = {
 }
 
 function HomeContent() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const role = searchParams.get('role') as 'lawyer' | 'user' | null
-
+  const { user } = useAuth()
   const { isChatOpen, setChatOpen, setPendingMessage } = useUI()
   const { setUserRole } = useChat()
   const [inputValue, setInputValue] = useState('')
-  const enabledModules = useMemo(() => getEnabledModules(role || undefined), [role])
+
+  const role = (user?.role === 'lawyer' ? 'lawyer' : 'user') as 'lawyer' | 'user'
+  const enabledModules = useMemo(() => getEnabledModules(role), [role])
 
   const modulesByCategory = useMemo(() => {
-    if (!role) return {}
     const grouped: Record<string, typeof enabledModules> = {}
     enabledModules.forEach(mod => {
       const cat = getModuleCategory(mod, role)
@@ -49,100 +47,15 @@ function HomeContent() {
   }, [enabledModules, role])
 
   useEffect(() => {
-    if (!role) {
-      setChatOpen(false)
-    } else {
-      setChatOpen(false) // 대시보드 진입 시 채팅 자동 열림 방지
-      setUserRole(role as UserRole)
+    if (user?.role) {
+      setUserRole(user.role === 'lawyer' ? 'lawyer' : 'user')
     }
-  }, [role, setChatOpen, setUserRole])
-
-  const handleRoleSelect = (selectedRole: 'lawyer' | 'user') => {
-    setUserRole(selectedRole)
-    setChatOpen(false) // 역할 선택 시에도 채팅 자동 열림 방지
-    router.push(`/?role=${selectedRole}`)
-  }
-
-  const handleResetRole = () => {
-    setUserRole('user')
     setChatOpen(false)
-    router.push('/')
-  }
+  }, [user?.role, setUserRole, setChatOpen])
 
-  if (!role) {
-    return (
-      <main className="h-screen bg-white flex flex-col items-center justify-end relative overflow-hidden">
-        {/* Full-screen Background Image */}
-        <Image
-          src="/assets/hero-background.png"
-          alt="법률 서비스 플랫폼"
-          fill
-          className="object-contain object-center"
-          priority
-        />
+  const displayName = user?.display_name || user?.email?.split('@')[0] || ''
 
-        {/* Role Selection Cards */}
-        <div className="relative z-10 w-full max-w-7xl mx-auto px-6 pb-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Lawyer Card */}
-            <button
-              onClick={() => handleRoleSelect('lawyer')}
-              className="group relative p-8 rounded-3xl bg-white/70 backdrop-blur-xl shadow-apple hover:shadow-apple-hover hover:bg-white/85 transition-all duration-500 text-left overflow-hidden hover:-translate-y-2 cursor-pointer"
-            >
-              <div className="absolute top-0 right-0 p-6 opacity-[0.08] group-hover:opacity-[0.12] transition-opacity">
-                <span className="text-8xl">⚖️</span>
-              </div>
-              <div className="relative z-10">
-                <div className="text-5xl mb-6">👨‍💼</div>
-                <h2 className="text-2xl font-bold text-apple-text mb-4 tracking-tight">법 관련 종사자입니다</h2>
-                <p className="text-apple-secondary mb-8 leading-relaxed text-base">의뢰인과 연결되고, 전문성을 발휘하여 업무를 관리하세요.</p>
-                <div className="inline-flex items-center text-apple-blue font-bold group-hover:gap-4 gap-2 transition-all text-base">
-                  전문가 모드 시작 <span className="text-xl">→</span>
-                </div>
-              </div>
-            </button>
-
-            {/* Public Institution Card */}
-            <button
-              className="group relative p-8 rounded-3xl bg-white/50 backdrop-blur-xl shadow-apple-sm transition-all duration-500 text-left overflow-hidden cursor-default"
-            >
-              <div className="absolute top-0 right-0 p-6 opacity-[0.06]">
-                <span className="text-8xl">🏛️</span>
-              </div>
-              <div className="relative z-10 opacity-60">
-                <div className="text-5xl mb-6">🏢</div>
-                <h2 className="text-2xl font-bold text-apple-text mb-4 tracking-tight">공공기관입니다</h2>
-                <p className="text-apple-secondary mb-8 leading-relaxed text-base">공공 업무 효율화를 위한 맞춤형 법률 AI 솔루션을 활용하세요.</p>
-                <div className="inline-flex items-center text-apple-secondary font-bold gap-2 text-base">
-                  서비스 준비중 <span className="text-xl">🔒</span>
-                </div>
-              </div>
-            </button>
-
-            {/* User Card */}
-            <button
-              onClick={() => handleRoleSelect('user')}
-              className="group relative p-8 rounded-3xl bg-white/70 backdrop-blur-xl shadow-apple hover:shadow-apple-hover hover:bg-white/85 transition-all duration-500 text-left overflow-hidden hover:-translate-y-2 cursor-pointer"
-            >
-              <div className="absolute top-0 right-0 p-6 opacity-[0.08] group-hover:opacity-[0.12] transition-opacity">
-                <span className="text-8xl">🤝</span>
-              </div>
-              <div className="relative z-10">
-                <div className="text-5xl mb-6">👤</div>
-                <h2 className="text-2xl font-bold text-apple-text mb-4 tracking-tight">일반인입니다</h2>
-                <p className="text-apple-secondary mb-8 leading-relaxed text-base">나에게 딱 맞는 법률 전문가를 찾고 사건을 해결하세요.</p>
-                <div className="inline-flex items-center text-apple-blue font-bold group-hover:gap-4 gap-2 transition-all text-base">
-                  일반인 모드 시작 <span className="text-xl">→</span>
-                </div>
-              </div>
-            </button>
-          </div>
-        </div>
-      </main>
-    )
-  }
-
-  // AI Command Center Layout (when role is selected)
+  // AI Command Center Layout
   return (
     <div className="min-h-screen bg-[#F5F5F7] pt-12 pb-6 px-6 md:pt-20 md:pb-12 md:px-12 relative transition-all duration-500 ease-in-out">
       <div
@@ -156,12 +69,12 @@ function HomeContent() {
               {role === 'lawyer' ? (
                 <><span className="block mb-2 text-[#1D1D1F]">
                   안녕하세요, <span className="relative inline-block text-blue-600">
-                    변호사님
+                    {displayName} 변호사님
                     <span className="absolute -bottom-1 left-0 w-full h-1 bg-blue-600/10 rounded-full" />
                   </span>
                 </span>어떤 업무를 도와드릴까요?</>
               ) : (
-                <><span className="block mb-2">안녕하세요.</span>어떤 <span className="relative inline-block text-blue-600">
+                <><span className="block mb-2">안녕하세요, {displayName}님.</span>어떤 <span className="relative inline-block text-blue-600">
                   법률 도움
                   <span className="absolute -bottom-2 left-0 w-full h-1.5 bg-blue-600/10 rounded-full" />
                 </span>이 필요하신가요?</>

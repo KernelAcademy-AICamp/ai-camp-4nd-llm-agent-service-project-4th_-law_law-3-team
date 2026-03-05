@@ -49,6 +49,7 @@ class AuthService:
         email: str,
         password: str,
         display_name: str | None = None,
+        role: str = "user",
     ) -> User:
         """이메일 회원가입"""
         existing = await cls.get_user_by_email(db, email)
@@ -59,6 +60,7 @@ class AuthService:
             email=email,
             hashed_password=cls.hash_password(password),
             display_name=display_name or email.split("@")[0],
+            role=role,
         )
         db.add(user)
         await db.commit()

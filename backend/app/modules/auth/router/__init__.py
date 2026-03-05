@@ -93,7 +93,7 @@ async def register(
 ) -> AuthResponse:
     """이메일 회원가입"""
     try:
-        user = await AuthService.register(db, body.email, body.password, body.display_name)
+        user = await AuthService.register(db, body.email, body.password, body.display_name, body.role)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
 

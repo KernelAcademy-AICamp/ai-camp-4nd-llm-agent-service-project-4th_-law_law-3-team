@@ -5,6 +5,7 @@ import '../styles/globals.css'
 import { Providers } from './providers'
 import Sidebar from '@/components/Sidebar'
 import LayoutWrapper from '@/components/LayoutWrapper'
+import { ProtectedRoute } from '@/components/ProtectedRoute'
 
 const ChatWidget = dynamic(() => import('@/components/ChatWidget'), {
   ssr: false,
@@ -44,17 +45,19 @@ export default function RootLayout({
       </head>
       <body>
         <Providers>
-          <div className="flex min-h-screen relative">
-            <Suspense fallback={null}>
-              <Sidebar />
-            </Suspense>
-            <Suspense fallback={null}>
-              <LayoutWrapper>
-                {children}
-              </LayoutWrapper>
-            </Suspense>
-          </div>
-          <ChatWidget />
+          <ProtectedRoute>
+            <div className="flex min-h-screen relative">
+              <Suspense fallback={null}>
+                <Sidebar />
+              </Suspense>
+              <Suspense fallback={null}>
+                <LayoutWrapper>
+                  {children}
+                </LayoutWrapper>
+              </Suspense>
+            </div>
+            <ChatWidget />
+          </ProtectedRoute>
         </Providers>
       </body>
     </html>
