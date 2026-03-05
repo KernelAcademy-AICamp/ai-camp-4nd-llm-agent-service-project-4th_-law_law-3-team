@@ -106,16 +106,6 @@ export default function Sidebar() {
 
       {/* Navigation Groups */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 space-y-6 pt-2">
-        {/* Dashboard Link */}
-        <NavItem
-          href={`/?role=${userRole}`}
-          icon={LayoutDashboard}
-          label="대시보드"
-          isActive={pathname === '/'}
-          isExpanded={isExpanded}
-        />
-
-
         {categories.map(cat => (
           <div key={cat} className="space-y-1">
             <div
