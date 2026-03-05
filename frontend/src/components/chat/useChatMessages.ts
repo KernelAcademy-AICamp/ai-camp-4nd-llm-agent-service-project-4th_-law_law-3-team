@@ -241,12 +241,59 @@ export function useChatMessages() {
                   : msg
               )
             )
+
+            // 판례/법령 검색 에이전트: sources 도착 즉시 왼쪽 패널 업데이트
+            // (LLM 답변 스트리밍 전에 검색 결과를 먼저 표시)
+            const currentAgent = agentUsed || effectiveAgent || ''
+            const searchAgents = ['legal_search', 'case_search', 'legal_answer', 'law_search']
+            if (sources?.length > 0 && searchAgents.includes(currentAgent)) {
+              const mainSource = sources[0]
+              const aiCase = {
+                id: 'ai-generated-' + Date.now(),
+                case_name: mainSource?.case_name || '',
+                case_number: mainSource?.case_number || '',
+                doc_type: mainSource?.doc_type || 'precedent',
+                content: mainSource?.content || '',
+                summary: mainSource?.summary || '',
+                court: mainSource?.court_name || '',
+                court_name: mainSource?.court_name || '',
+                date: mainSource?.decision_date || '',
+                decision_date: mainSource?.decision_date || '',
+                reasoning: mainSource?.reasoning || '',
+                ruling: mainSource?.ruling || '',
+                claim: mainSource?.claim || '',
+                full_reason: mainSource?.full_reason || '',
+                full_text: mainSource?.full_text || '',
+                reference_provisions: mainSource?.reference_provisions || '',
+                reference_cases: mainSource?.reference_cases || '',
+              }
+
+              const seen = new Set<string>()
+              const uniqueSources = sources.filter((ref) => {
+                const key = ref.doc_type === 'law' ? ref.law_name : ref.case_number
+                if (!key || seen.has(key)) return false
+                seen.add(key)
+                return true
+              })
+
+              setSessionData({
+                ...sessionData,
+                aiGeneratedCase: aiCase,
+                aiReferences: uniqueSources,
+              })
+            }
           },
           onMetadata: (metadata) => {
             agentUsed = metadata.agent_used
             receivedActions = metadata.actions
             receivedSessionData = metadata.session_data
 
+            // 에이전트 활성화 상태 즉시 반영 (답변 출력 전)
+            if (metadata.agent_used) {
+              setSessionData({ ...sessionData, active_agent: metadata.agent_used })
+            }
+
+            // Proactive UI Trigger: lawyer_finder 자동으로 패널 열기
             if (metadata.agent_used === 'lawyer_finder' && activePanel !== 'lawyer-finder') {
               setActivePanel('lawyer-finder')
             }
