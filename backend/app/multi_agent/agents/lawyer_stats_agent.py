@@ -447,8 +447,8 @@ class LawyerStatsAgent(BaseChatAgent):
             for h in history[-4:]:
                 messages.append((h.get("role", "user"), h.get("content", "")))
 
-        # 데이터를 컨텍스트로 직렬화 (크기 제한)
-        data_context = self._serialize_stats_data(stats_data)
+        # 데이터를 컨텍스트로 직렬화 (지역 필터 + 크기 제한)
+        data_context = self._serialize_stats_data(stats_data, intent)
 
         user_message = f"## 데이터\n{data_context}\n\n## 사용자 질문\n{message}"
         messages.append(("user", user_message))
@@ -475,8 +475,12 @@ class LawyerStatsAgent(BaseChatAgent):
             ).strip()
         return str(content)
 
-    def _serialize_stats_data(self, stats_data: dict[str, Any]) -> str:
+    def _serialize_stats_data(
+        self, stats_data: dict[str, Any], intent: StatsIntent | None = None,
+    ) -> str:
         """통계 데이터를 LLM 컨텍스트용 문자열로 직렬화 (크기 제한)"""
+        # 지역 필터: intent에 province가 있으면 해당 지역 데이터 우선
+        target_province = intent.province if intent else None
         parts: list[str] = []
 
         if "overview" in stats_data and stats_data["overview"]:
@@ -484,10 +488,13 @@ class LawyerStatsAgent(BaseChatAgent):
 
         if "density" in stats_data and stats_data["density"]:
             density = stats_data["density"]
-            # 리스트인 경우 상위 10개만
             if isinstance(density, list):
-                density = density[:10]
-            parts.append(f"### 밀도 (상위 10)\n{json.dumps(density, ensure_ascii=False, indent=2)}")
+                if target_province:
+                    filtered = [d for d in density if d.get("region") == target_province]
+                    density = filtered if filtered else density[:10]
+                else:
+                    density = density[:10]
+            parts.append(f"### 밀도\n{json.dumps(density, ensure_ascii=False, indent=2)}")
 
         if "specialty" in stats_data and stats_data["specialty"]:
             specialty = stats_data["specialty"]
@@ -514,7 +521,16 @@ class LawyerStatsAgent(BaseChatAgent):
         if "demand" in stats_data and stats_data["demand"]:
             demand = stats_data["demand"]
             if isinstance(demand, dict):
-                demand_data = demand.get("data", [])[:10]
+                demand_data = demand.get("data", [])
+                # 특정 지역이 요청된 경우 해당 지역만 필터링
+                if target_province and demand_data:
+                    demand_data = [
+                        d for d in demand_data
+                        if d.get("province") == target_province
+                           or d.get("region", "").startswith(target_province)
+                    ]
+                if not demand_data:
+                    demand_data = demand.get("data", [])[:10]
                 demand = {
                     "data": demand_data,
                     "category": demand.get("category", ""),
@@ -525,7 +541,11 @@ class LawyerStatsAgent(BaseChatAgent):
         if "region" in stats_data and stats_data["region"]:
             region = stats_data["region"]
             if isinstance(region, list):
-                region = region[:10]
+                if target_province:
+                    filtered = [r for r in region if r.get("region") == target_province]
+                    region = filtered if filtered else region[:10]
+                else:
+                    region = region[:10]
             parts.append(f"### 지역별\n{json.dumps(region, ensure_ascii=False, indent=2)}")
 
         return "\n\n".join(parts) if parts else "데이터 없음"
