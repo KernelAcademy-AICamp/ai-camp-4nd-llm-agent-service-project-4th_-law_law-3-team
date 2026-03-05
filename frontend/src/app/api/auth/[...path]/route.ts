@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
+const SERVER_API_KEY = process.env.API_KEY || ''
+
+function isOAuthCallbackPath(path: string): boolean {
+  return path === '/api/auth/oauth/google/callback' || path === '/api/auth/oauth/kakao/callback'
+}
 
 /**
  * 인증 API 프록시 — /api/auth/* 요청을 백엔드로 전달
@@ -23,9 +28,12 @@ async function proxyRequest(request: NextRequest): Promise<NextResponse> {
   }
 
   // API 키 전달
-  const apiKey = request.headers.get('X-API-Key')
-  if (apiKey) {
-    headers.set('X-API-Key', apiKey)
+  const requestApiKey = request.headers.get('X-API-Key')
+  if (requestApiKey) {
+    headers.set('X-API-Key', requestApiKey)
+  } else if (SERVER_API_KEY) {
+    // middleware 미적용 케이스 대비: 서버 환경변수 API_KEY 직접 주입
+    headers.set('X-API-Key', SERVER_API_KEY)
   }
 
   // User-Agent 전달
@@ -55,6 +63,14 @@ async function proxyRequest(request: NextRequest): Promise<NextResponse> {
 
   // Set-Cookie 헤더 전달 (인증 쿠키)
   const setCookieHeaders = backendResponse.headers.getSetCookie()
+  if (isOAuthCallbackPath(path) && backendResponse.ok) {
+    const redirectResponse = NextResponse.redirect(new URL('/', request.nextUrl.origin), 302)
+    for (const setCookie of setCookieHeaders) {
+      redirectResponse.headers.append('Set-Cookie', setCookie)
+    }
+    return redirectResponse
+  }
+
   for (const setCookie of setCookieHeaders) {
     responseHeaders.append('Set-Cookie', setCookie)
   }
