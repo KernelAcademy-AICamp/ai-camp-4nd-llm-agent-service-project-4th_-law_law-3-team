@@ -148,12 +148,12 @@ export function PrecedentDocumentViewer({
   return (
     <div className="bg-white py-6">
       {/* 문서 헤더 */}
-      <div className="text-center mb-10 mt-10">
+      <div className="text-center mb-10 mt-10 max-w-4xl mx-auto px-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-3">
           {headerTitle}
         </h1>
         {caseName && (
-          <p className="text-lg text-gray-600 mb-2">[{caseName}]</p>
+          <p className="text-lg text-gray-600 mb-2 break-all">[{caseName}]</p>
         )}
         <p className="text-base text-gray-400">대법원 종합법률정보</p>
       </div>
