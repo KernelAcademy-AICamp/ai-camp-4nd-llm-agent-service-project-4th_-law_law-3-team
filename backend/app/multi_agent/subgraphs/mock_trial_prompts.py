@@ -299,6 +299,74 @@ ENRICHMENT_SYSTEM_PROMPT = """당신은 모의 법정 시나리오 작성 전문
 - 사건 개요만 출력하고 다른 설명은 붙이지 마세요"""
 
 
+
+# ── 시나리오 생성 프롬프트 ──
+
+_CRIMINAL_SCENARIO_RULES = """[형사 사건 시나리오 규칙]
+- 피고인의 구체적인 범행 동기와 방법을 포함
+- 피해자와 피고인의 관계를 명확히 설정
+- 공소사실에 해당하는 법조문을 암시
+- 증거는 검찰/변호 양측에 유리한 것을 균형 있게 배치
+- 양형에 영향을 줄 수 있는 정상참작 사유 포함"""
+
+_CIVIL_SCENARIO_RULES = """[민사 사건 시나리오 규칙]
+- 원고와 피고의 계약/거래 관계를 구체적으로 설정
+- 손해 발생의 인과관계를 명확히 포함
+- 청구 금액의 산정 근거를 암시
+- 원고/피고 양측의 주장 근거가 될 증거를 균형 있게 배치
+- 과실상계, 기여과실 등 쟁점이 될 수 있는 요소 포함"""
+
+SCENARIO_GENERATION_SYSTEM_PROMPT = """당신은 모의 법정 시나리오 작성 전문가입니다.
+사용자가 입력한 사건 개요를 바탕으로 모의 재판에 적합한 상세 시나리오를 생성하세요.
+
+사건 유형: {{case_type_label}}
+세부 유형: {{case_category}}
+사용자 역할: {{user_role_label}}
+
+{{scenario_rules}}
+
+[출력 형식]
+반드시 아래 JSON 형식으로만 출력하세요. JSON 외 다른 텍스트를 포함하지 마세요.
+
+{{
+  "title": "시나리오 제목 (20자 이내)",
+  "background": "사건 배경 및 경위 (200~400자)",
+  "characters": [
+    {{
+      "role": "judge",
+      "name": "캐릭터 이름",
+      "description": "역할 설명 (30자 이내)"
+    }}
+  ],
+  "issues": ["쟁점 1", "쟁점 2", "쟁점 3"],
+  "evidence_hints": [
+    {{
+      "type": "document",
+      "title": "증거 제목",
+      "description": "증거 설명",
+      "favorable_to": "prosecutor"
+    }}
+  ],
+  "objectives": ["사용자 목표 1", "사용자 목표 2"]
+}}
+
+[characters 규칙]
+- judge, prosecutor, attorney, defendant 4명 필수
+- 사용자 역할에 해당하는 캐릭터의 description에 "(사용자 역할)" 포함
+
+[evidence_hints 규칙]
+- type: document, video, financial, photo, testimony, other 중 선택
+- favorable_to: prosecutor 또는 attorney
+- 최소 3개, 최대 6개
+- 양측에 유리한 증거를 균형 있게 배치
+
+[issues 규칙]
+- 최소 2개, 최대 4개
+- 법적 쟁점을 구체적으로 기술
+
+면책 고지: 이 시나리오는 교육 목적의 모의재판입니다."""
+
+
 def filter_llm_output(text: str) -> str:
     """LLM 출력에서 개인정보 패턴을 마스킹합니다 (FR-40).
 

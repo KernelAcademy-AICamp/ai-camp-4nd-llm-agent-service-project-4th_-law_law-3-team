@@ -38,6 +38,7 @@ from app.multi_agent.subgraphs.mock_trial_prompts import (
 )
 from app.multi_agent.subgraphs.mock_trial_utils import (
     MAX_LLM_CALLS_PER_SESSION,
+    _build_fallback_scenario,
     _build_rebuttal_context,
     _build_stage_rag_context,
     _case_type_actions,
@@ -45,6 +46,7 @@ from app.multi_agent.subgraphs.mock_trial_utils import (
     _enrich_case_summary,
     _generate_clarification_questions,
     _generate_feedback,
+    _generate_scenario,
     _get_agent,
     _get_opponent_role,
     _init_agents,
@@ -82,6 +84,7 @@ class MockTrialState(TypedDict, total=False):
     case_category: str
     user_role: str
     case_summary: str
+    generated_scenario: dict[str, Any]
 
     # 에이전트 상태
     agents: dict[str, dict[str, Any]]
@@ -163,6 +166,48 @@ async def setup_node(state: MockTrialState) -> Command[str]:
         except Exception:
             logger.warning("setup_node 구체화 실패, 원본 개요로 진행")
 
+    # 시나리오 생성 → 사용자 확인 (데모 모드가 아닌 경우)
+    is_demo = bool(user_input.get("is_demo", False))
+    if not is_demo:
+        try:
+            scenario = await _generate_scenario(
+                case_summary, case_type, user_role, case_category
+            )
+        except Exception:
+            logger.warning("setup_node 시나리오 생성 실패, fallback 사용")
+            scenario = _build_fallback_scenario(case_summary, case_type, user_role)
+
+        # interrupt #3: 시나리오 미리보기
+        while True:
+            scenario_input = interrupt({
+                "response": "시나리오가 생성되었습니다. 확인 후 재판을 시작하세요.",
+                "step": "scenario_preview",
+                "scenario": scenario,
+                "speaking_agent": "judge",
+            })
+
+            scenario_action = ""
+            if isinstance(scenario_input, dict):
+                scenario_action = str(scenario_input.get("action", ""))
+            elif isinstance(scenario_input, str):
+                scenario_action = scenario_input
+
+            if scenario_action == "regenerate_scenario":
+                try:
+                    scenario = await _generate_scenario(
+                        case_summary, case_type, user_role, case_category
+                    )
+                except Exception:
+                    logger.warning("시나리오 재생성 실패, fallback 사용")
+                    scenario = _build_fallback_scenario(
+                        case_summary, case_type, user_role
+                    )
+                continue
+            # confirm_scenario 또는 기타 → 재판 시작
+            break
+    else:
+        scenario = {}
+
     agents = _init_agents(case_type)
 
     # RAG 검색: 첫 단계부터 참조 판례/법령을 제공하기 위해 setup에서 실행
@@ -206,6 +251,7 @@ async def setup_node(state: MockTrialState) -> Command[str]:
             "case_category": case_category,
             "user_role": user_role,
             "case_summary": case_summary,
+            "generated_scenario": scenario,
             "agents": agents,
             "stage": "setup",
             "current_round": 1,
@@ -483,4 +529,6 @@ __all__ = [
     "_needs_clarification",
     "_generate_clarification_questions",
     "_enrich_case_summary",
+    "_generate_scenario",
+    "_build_fallback_scenario",
 ]

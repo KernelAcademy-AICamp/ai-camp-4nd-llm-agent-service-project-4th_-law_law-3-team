@@ -153,6 +153,20 @@ export interface TrialSetup {
   case_summary: string
 }
 
+export interface GeneratedScenario {
+  title: string
+  background: string
+  characters: Array<{ role: string; name: string; description: string }>
+  issues: string[]
+  evidence_hints: Array<{
+    type: string
+    title: string
+    description: string
+    favorable_to: string
+  }>
+  objectives: string[]
+}
+
 export interface JudgmentResult {
   judgment: string
   feedback: string

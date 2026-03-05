@@ -14,6 +14,7 @@ import type {
   DialogueSpeed,
   PhysicalEvidence,
   JudgmentResult,
+  GeneratedScenario,
 } from '@/features/mock-trial/types'
 import { CRIMINAL_STAGES, CIVIL_STAGES, DEFAULT_ROLE_EMOTION } from '@/features/mock-trial/types'
 import type { DemoScenario } from '@/features/mock-trial/demo/demo-scenarios'
@@ -63,6 +64,10 @@ export function useMockTrial() {
   // 구체화 질문 상태
   const [clarificationQuestion, setClarificationQuestion] = useState<string | null>(null)
   const [isClarifying, setIsClarifying] = useState(false)
+
+  // LLM 생성 시나리오 상태
+  const [generatedScenario, setGeneratedScenario] = useState<GeneratedScenario | null>(null)
+  const [isGeneratingScenario, setIsGeneratingScenario] = useState(false)
 
   // 일반 모드 SSE 상태
   const { sendStreamingMessage } = useStreamingChat()
@@ -201,6 +206,13 @@ export function useMockTrial() {
         return
       }
 
+      if (metadata.step === 'scenario_preview' && metadata.scenario) {
+        setGeneratedScenario(metadata.scenario as GeneratedScenario)
+        setIsGeneratingScenario(false)
+        setPhase('briefing')
+        return
+      }
+
       // clarification이 아닌 경우 → 일반 trial 진행
       const info = setupInfoRef.current
       setCaseType(info.caseType as CaseType)
@@ -286,6 +298,86 @@ export function useMockTrial() {
     },
     [sendStreamingMessage, processSetupSSEMetadata]
   )
+
+  /** 시나리오 확인 → 재판 시작 */
+  const handleScenarioConfirm = useCallback(() => {
+    setIsGeneratingScenario(true)
+
+    const info = setupInfoRef.current
+    sendStreamingMessage(
+      {
+        message: JSON.stringify({ action: 'confirm_scenario' }),
+        agent: 'mock_trial',
+        session_data: {
+          ...sessionDataRef.current,
+          stage: 'setup',
+          case_type: info.caseType,
+          case_category: info.caseCategory,
+          user_role: info.userRole,
+          case_summary: info.caseSummary,
+        },
+      },
+      {
+        onToken: (content) => {
+          tokenBufferRef.current += content
+        },
+        onMetadata: processSetupSSEMetadata,
+        onDone: () => {
+          setIsGeneratingScenario(false)
+        },
+        onError: (error) => {
+          console.error('[MockTrial] Scenario confirm SSE error:', error)
+          setIsGeneratingScenario(false)
+          // 에러 시 원본 개요로 직접 재판 시작
+          const fallbackInfo = setupInfoRef.current
+          setCaseType(fallbackInfo.caseType as CaseType)
+          setCurrentStageId(
+            fallbackInfo.caseType === 'criminal' ? 'identity' : 'pretrial'
+          )
+          setPhase('trial')
+          eventBus.emit('setup:complete', {
+            caseType: fallbackInfo.caseType,
+            userRole: fallbackInfo.userRole,
+            caseSummary: fallbackInfo.caseSummary,
+          })
+        },
+      }
+    )
+  }, [sendStreamingMessage, processSetupSSEMetadata])
+
+  /** 시나리오 재생성 */
+  const handleScenarioRegenerate = useCallback(() => {
+    setIsGeneratingScenario(true)
+
+    const info = setupInfoRef.current
+    sendStreamingMessage(
+      {
+        message: JSON.stringify({ action: 'regenerate_scenario' }),
+        agent: 'mock_trial',
+        session_data: {
+          ...sessionDataRef.current,
+          stage: 'setup',
+          case_type: info.caseType,
+          case_category: info.caseCategory,
+          user_role: info.userRole,
+          case_summary: info.caseSummary,
+        },
+      },
+      {
+        onToken: (content) => {
+          tokenBufferRef.current += content
+        },
+        onMetadata: processSetupSSEMetadata,
+        onDone: () => {
+          setIsGeneratingScenario(false)
+        },
+        onError: (error) => {
+          console.error('[MockTrial] Scenario regenerate SSE error:', error)
+          setIsGeneratingScenario(false)
+        },
+      }
+    )
+  }, [sendStreamingMessage, processSetupSSEMetadata])
 
   /** SSE 메타데이터 응답 처리 (일반 모드 공용) */
   const processSSEMetadata = useCallback(
@@ -520,6 +612,7 @@ export function useMockTrial() {
     setCurrentStageId('')
     setIsDemoMode(false)
     setDemoScenario(null)
+    setGeneratedScenario(null)
   }, [])
 
   /** 판결 모달 닫기 → 재판 화면 복귀 */
@@ -733,6 +826,10 @@ export function useMockTrial() {
     clarificationQuestion,
     isClarifying,
 
+    // LLM 생성 시나리오
+    generatedScenario,
+    isGeneratingScenario,
+
     // 핸들러
     handleSetupComplete,
     handleSendMessage,
@@ -745,5 +842,7 @@ export function useMockTrial() {
     handleRestart,
     handleCloseJudgment,
     handleClarificationSubmit,
+    handleScenarioConfirm,
+    handleScenarioRegenerate,
   }
 }

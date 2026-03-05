@@ -14,9 +14,12 @@ from langgraph.types import Command
 from app.multi_agent.agents.base_chat import ActionType, ChatAction
 from app.multi_agent.subgraphs.mock_trial_agents import CourtAgent
 from app.multi_agent.subgraphs.mock_trial_prompts import (
+    _CIVIL_SCENARIO_RULES,
+    _CRIMINAL_SCENARIO_RULES,
     AGENT_CONFIGS,
     CLARIFICATION_SYSTEM_PROMPT,
     ENRICHMENT_SYSTEM_PROMPT,
+    SCENARIO_GENERATION_SYSTEM_PROMPT,
     SYSTEM_PROMPTS,
     build_system_prompt,
 )
@@ -275,6 +278,133 @@ async def _generate_clarification_questions(
         timeout=30,
     )
     return str(response.content)
+
+
+def _build_fallback_scenario(
+    case_summary: str,
+    case_type: str,
+    user_role: str,
+) -> dict[str, Any]:
+    """LLM 없이 최소 시나리오 구조를 생성합니다.
+
+    Args:
+        case_summary: 사건 개요
+        case_type: 사건 유형
+        user_role: 사용자 역할
+
+    Returns:
+        최소 시나리오 dict
+    """
+    is_criminal = case_type == "criminal"
+    user_role_label = "검사" if user_role == "prosecutor" else "변호인"
+    user_desc = f"{user_role_label} (사용자 역할)"
+    opponent_desc = "변호인" if user_role == "prosecutor" else "검사"
+
+    return {
+        "title": "사용자 설정 시나리오",
+        "background": case_summary,
+        "characters": [
+            {"role": "judge", "name": "김재판", "description": "재판장"},
+            {
+                "role": "prosecutor",
+                "name": "이검사" if is_criminal else "박원고",
+                "description": user_desc if user_role == "prosecutor" else opponent_desc,
+            },
+            {
+                "role": "attorney",
+                "name": "박변호" if is_criminal else "최피고",
+                "description": user_desc if user_role == "attorney" else opponent_desc,
+            },
+            {
+                "role": "defendant",
+                "name": "최피고" if is_criminal else "당사자",
+                "description": "피고인" if is_criminal else "피고",
+            },
+        ],
+        "issues": ["사실관계 확인", "법적 책임 여부"],
+        "evidence_hints": [],
+        "objectives": [
+            f"{user_role_label}으로서 사건의 핵심 쟁점을 파악하세요.",
+            "관련 판례와 법령을 활용하여 주장을 뒷받침하세요.",
+        ],
+    }
+
+
+async def _generate_scenario(
+    case_summary: str,
+    case_type: str,
+    user_role: str,
+    case_category: str,
+) -> dict[str, Any]:
+    """LLM으로 상세 시나리오를 생성합니다.
+
+    Args:
+        case_summary: 사건 개요
+        case_type: 사건 유형
+        user_role: 사용자 역할
+        case_category: 세부 유형
+
+    Returns:
+        시나리오 dict
+    """
+    import asyncio
+    import json
+    import re
+
+    from app.tools.llm import get_chat_model
+
+    is_criminal = case_type == "criminal"
+    case_type_label = "형사" if is_criminal else "민사"
+    user_role_label = "검사" if user_role == "prosecutor" else "변호인"
+    scenario_rules = _CRIMINAL_SCENARIO_RULES if is_criminal else _CIVIL_SCENARIO_RULES
+
+    system_prompt = SCENARIO_GENERATION_SYSTEM_PROMPT.replace(
+        "{{case_type_label}}", case_type_label
+    ).replace(
+        "{{case_category}}", case_category
+    ).replace(
+        "{{user_role_label}}", user_role_label
+    ).replace(
+        "{{scenario_rules}}", scenario_rules
+    )
+
+    model = get_chat_model(temperature=0.7)
+    user_message = f"사건 개요: {case_summary}"
+
+    try:
+        response = await asyncio.wait_for(
+            model.ainvoke([
+                ("system", system_prompt),
+                ("user", user_message),
+            ]),
+            timeout=45,
+        )
+        raw = str(response.content).strip()
+
+        # JSON 블록 추출 시도
+        json_match = re.search(r"\{[\s\S]*\}", raw)
+        if json_match:
+            raw = json_match.group(0)
+
+        scenario = json.loads(raw)
+
+        # 필수 키 검증
+        required_keys = {"title", "background", "characters", "issues", "evidence_hints", "objectives"}
+        if not required_keys.issubset(scenario.keys()):
+            logger.warning("시나리오 생성 결과에 필수 키 누락, fallback 사용")
+            return _build_fallback_scenario(case_summary, case_type, user_role)
+
+        return dict(scenario)
+
+    except asyncio.TimeoutError:
+        logger.warning("시나리오 생성 타임아웃 (45초), fallback 사용")
+        return _build_fallback_scenario(case_summary, case_type, user_role)
+    except (json.JSONDecodeError, ValueError) as exc:
+        logger.warning("시나리오 JSON 파싱 실패: %s, fallback 사용", exc)
+        return _build_fallback_scenario(case_summary, case_type, user_role)
+    except Exception:
+        logger.warning("시나리오 생성 실패, fallback 사용", exc_info=True)
+        return _build_fallback_scenario(case_summary, case_type, user_role)
 
 
 async def _enrich_case_summary(
