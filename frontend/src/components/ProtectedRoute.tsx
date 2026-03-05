@@ -1,8 +1,17 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
+import Sidebar from '@/components/Sidebar'
+import LayoutWrapper from '@/components/LayoutWrapper'
 import { useAuth } from '@/context/AuthContext'
+
+const ChatWidget = dynamic(() => import('@/components/ChatWidget'), {
+  ssr: false,
+})
+
+const PUBLIC_PATHS = new Set(['/login', '/register'])
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -13,7 +22,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const router = useRouter()
   const pathname = usePathname()
 
-  const isPublicPage = pathname === '/login' || pathname === '/register'
+  const isPublicPage = PUBLIC_PATHS.has(pathname)
 
   useEffect(() => {
     if (!isPublicPage && !isLoading && !isAuthenticated) {
@@ -22,6 +31,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     }
   }, [isAuthenticated, isLoading, router, isPublicPage, pathname])
 
+  // 공개 페이지 (로그인, 회원가입): Sidebar 없는 깔끔한 레이아웃
   if (isPublicPage) return <>{children}</>
 
   if (isLoading) {
@@ -36,5 +46,20 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return null
   }
 
-  return <>{children}</>
+  // 인증된 페이지: Sidebar + ChatWidget 포함 전체 레이아웃
+  return (
+    <>
+      <div className="flex min-h-screen relative">
+        <Suspense fallback={null}>
+          <Sidebar />
+        </Suspense>
+        <Suspense fallback={null}>
+          <LayoutWrapper>
+            {children}
+          </LayoutWrapper>
+        </Suspense>
+      </div>
+      <ChatWidget />
+    </>
+  )
 }

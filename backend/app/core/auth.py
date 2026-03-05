@@ -35,6 +35,10 @@ async def verify_api_key(
     if request.url.path in public_paths:
         return
 
+    # 인증 엔드포인트는 API 키 불필요 (사용자 인증으로 보호)
+    if request.url.path.startswith("/api/auth/"):
+        return
+
     if not api_key or not hmac.compare_digest(
         api_key.encode("utf-8"),
         settings.API_KEY.encode("utf-8"),

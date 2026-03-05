@@ -1,15 +1,7 @@
 import type { Metadata } from 'next'
-import dynamic from 'next/dynamic'
-import { Suspense } from 'react'
 import '../styles/globals.css'
 import { Providers } from './providers'
-import Sidebar from '@/components/Sidebar'
-import LayoutWrapper from '@/components/LayoutWrapper'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
-
-const ChatWidget = dynamic(() => import('@/components/ChatWidget'), {
-  ssr: false,
-})
 
 export const metadata: Metadata = {
   title: '법률 서비스 플랫폼',
@@ -46,17 +38,7 @@ export default function RootLayout({
       <body>
         <Providers>
           <ProtectedRoute>
-            <div className="flex min-h-screen relative">
-              <Suspense fallback={null}>
-                <Sidebar />
-              </Suspense>
-              <Suspense fallback={null}>
-                <LayoutWrapper>
-                  {children}
-                </LayoutWrapper>
-              </Suspense>
-            </div>
-            <ChatWidget />
+            {children}
           </ProtectedRoute>
         </Providers>
       </body>
