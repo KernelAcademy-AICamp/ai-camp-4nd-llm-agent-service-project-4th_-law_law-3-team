@@ -107,6 +107,9 @@ class PrecedentDetailResponse(BaseModel):
     reference_cases: Optional[str] = None  # 참조판례
     court_name: Optional[str] = None  # 법원명
     decision_date: Optional[str] = None  # 선고일
+    # 법령 전용 필드 (doc_type == "law" 시)
+    doc_id: Optional[str] = None  # 법령 ID (getLawFullText 호출용)
+    law_name: Optional[str] = None  # 법령명
 
 
 class AskQuestionRequest(BaseModel):

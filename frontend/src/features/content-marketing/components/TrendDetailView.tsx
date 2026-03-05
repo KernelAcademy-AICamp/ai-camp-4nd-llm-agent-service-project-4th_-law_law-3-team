@@ -143,10 +143,15 @@ export function TrendDetailView({
                     key={law.law_id}
                     className="flex items-center justify-between text-sm bg-blue-50 rounded-lg px-3 py-2"
                   >
-                    <span className="text-gray-700">📜 {law.law_name}</span>
-                    <span className="text-blue-600 font-medium">
-                      관련도: {(law.relevance_score * 100).toFixed(0)}%
-                    </span>
+                    <span className="text-gray-700 truncate mr-2">📜 {law.law_name}</span>
+                    <a
+                      href={`/law-search?id=${law.law_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 text-xs text-blue-600 hover:underline"
+                    >
+                      원본 보기
+                    </a>
                   </div>
                 ))}
               </div>
@@ -171,12 +176,17 @@ export function TrendDetailView({
                     key={caseItem.case_id}
                     className="flex items-center justify-between text-sm bg-purple-50 rounded-lg px-3 py-2"
                   >
-                    <span className="text-gray-700">
+                    <span className="text-gray-700 truncate mr-2">
                       ⚖️ {caseItem.case_number} ({caseItem.case_name})
                     </span>
-                    <span className="text-purple-600 font-medium">
-                      관련도: {(caseItem.relevance_score * 100).toFixed(0)}%
-                    </span>
+                    <a
+                      href={`/case-precedent?id=${caseItem.case_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 text-xs text-purple-600 hover:underline"
+                    >
+                      원본 보기
+                    </a>
                   </div>
                 ))}
               </div>
