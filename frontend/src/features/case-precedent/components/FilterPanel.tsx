@@ -53,7 +53,7 @@ export function FilterPanel({
           value={keyword}
           onChange={(e) => onKeywordChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={isLaw ? '법령명 또는 키워드를 입력하세요' : '검색어를 입력하세요 (사건명, 판시사항, 사건번호, 판결요지)'}
+          placeholder={isLaw ? '법령명 또는 키워드를 입력하세요' : '검색어를 입력하세요'}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>

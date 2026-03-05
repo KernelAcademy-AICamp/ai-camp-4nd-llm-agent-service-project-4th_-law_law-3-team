@@ -256,13 +256,8 @@ export function UserView({ pageType = 'precedent' }: UserViewProps) {
       <div className="flex-1 overflow-hidden bg-white">
         {selectedRef ? (
           <div className="h-full flex flex-col">
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <span className="font-bold text-gray-900">상세 내용</span>
-              <span className={`px-2 py-1 rounded text-xs font-medium ${
-                isLawyer ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
-              }`}>
-                {isLawyer ? '변호사 모드' : '일반인 모드'}
-              </span>
+            <div className="px-4 py-2 bg-gray-50 border-b flex items-center justify-between">
+              <span className="text-sm font-bold text-gray-900">상세 내용</span>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 md:p-8">
