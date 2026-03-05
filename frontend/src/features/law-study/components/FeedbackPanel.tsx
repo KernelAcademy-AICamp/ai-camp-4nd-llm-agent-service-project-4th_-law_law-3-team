@@ -1,7 +1,10 @@
 'use client'
 
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { X, Loader2, MessageSquare } from 'lucide-react'
+
+const REMARK_PLUGINS = [remarkGfm]
 
 interface FeedbackPanelProps {
   feedback: string | undefined
@@ -53,8 +56,10 @@ export function FeedbackPanel({
         )}
 
         {feedback && !isLoading && (
-          <div className="prose prose-sm max-w-none text-gray-800">
-            <ReactMarkdown>{feedback}</ReactMarkdown>
+          <div className="prose prose-sm max-w-none text-gray-800 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:my-3 prose-headings:text-gray-900 prose-strong:text-gray-900 prose-table:text-sm prose-th:bg-gray-50 prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-blue-700 prose-code:before:content-none prose-code:after:content-none prose-blockquote:border-blue-400 prose-blockquote:bg-blue-50/50 prose-blockquote:py-0.5 prose-blockquote:rounded-r-lg prose-hr:my-4">
+            <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>
+              {feedback}
+            </ReactMarkdown>
           </div>
         )}
       </div>
