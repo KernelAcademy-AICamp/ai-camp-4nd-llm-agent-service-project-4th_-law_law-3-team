@@ -222,7 +222,16 @@ class LawyerStatsAgent(BaseChatAgent):
 
         try:
             response = await model.ainvoke(messages)
-            content = response.content if isinstance(response.content, str) else str(response.content)
+
+            # content 추출 (str | list[dict] 대응)
+            raw_content = response.content
+            if isinstance(raw_content, list):
+                content = "".join(
+                    block.get("text", "") if isinstance(block, dict) else str(block)
+                    for block in raw_content
+                ).strip()
+            else:
+                content = str(raw_content).strip()
 
             # JSON 파싱 (```json ... ``` 블록 처리)
             cleaned = content.strip()
@@ -459,7 +468,12 @@ class LawyerStatsAgent(BaseChatAgent):
 
         response = await model.ainvoke(messages)
         content = response.content
-        return content if isinstance(content, str) else str(content)
+        if isinstance(content, list):
+            return "".join(
+                block.get("text", "") if isinstance(block, dict) else str(block)
+                for block in content
+            ).strip()
+        return str(content)
 
     def _serialize_stats_data(self, stats_data: dict[str, Any]) -> str:
         """통계 데이터를 LLM 컨텍스트용 문자열로 직렬화 (크기 제한)"""
