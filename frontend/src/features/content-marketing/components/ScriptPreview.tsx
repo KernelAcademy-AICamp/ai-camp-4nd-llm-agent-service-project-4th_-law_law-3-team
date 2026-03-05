@@ -1,5 +1,6 @@
 'use client'
 
+import ReactMarkdown from 'react-markdown'
 import type { StageInfo } from '../hooks/useScript'
 import type { SectionType } from '../types'
 
@@ -78,8 +79,8 @@ export function ScriptPreview({
                 <span className="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
               )}
             </h3>
-            <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-              {content}
+            <div className="text-sm text-gray-700 leading-relaxed prose prose-sm max-w-none prose-headings:text-gray-800 prose-headings:text-sm prose-headings:mt-3 prose-headings:mb-1 prose-p:my-1.5 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5">
+              <ReactMarkdown>{content}</ReactMarkdown>
               {isActive && (
                 <span className="inline-block w-1 h-4 bg-blue-500 animate-pulse ml-0.5 align-middle" />
               )}

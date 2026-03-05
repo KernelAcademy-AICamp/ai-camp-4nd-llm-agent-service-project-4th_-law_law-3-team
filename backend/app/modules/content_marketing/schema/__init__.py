@@ -668,6 +668,8 @@ class WebtoonStreamEvent(BaseModel):
     scene_description: str | None = None
     image_url: str | None = None
     error: str | None = None
+    message: str | None = None
+    progress: int | None = None
 
 
 class WebtoonJobStatusResponse(BaseModel):

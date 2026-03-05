@@ -28,12 +28,25 @@ export function TrendDetailView({
   loadDetail,
 }: TrendDetailViewProps) {
   const [detail, setDetail] = useState<TrendDetailResponse | null>(null)
+  const [detailError, setDetailError] = useState(false)
 
   useEffect(() => {
-    loadDetail(issue.id).then(setDetail)
+    setDetailError(false)
+    loadDetail(issue.id).then((result) => {
+      setDetail(result)
+      if (!result) setDetailError(true)
+    })
   }, [issue.id, loadDetail])
 
   const articles = detail?.source_articles ?? issue.source_articles
+
+  const relatedLaws = detail?.related_laws_detail?.length
+    ? detail.related_laws_detail
+    : (detail?.issue?.related_laws ?? issue.related_laws)
+
+  const relatedCases = detail?.related_cases_detail?.length
+    ? detail.related_cases_detail
+    : (detail?.issue?.related_cases ?? issue.related_cases)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -121,11 +134,11 @@ export function TrendDetailView({
           </section>
 
           {/* 관련 법령 */}
-          {issue.related_laws.length > 0 && (
-            <section>
-              <h3 className="text-sm font-semibold text-gray-500 mb-2">관련 법령</h3>
+          <section>
+            <h3 className="text-sm font-semibold text-gray-500 mb-2">관련 법령</h3>
+            {relatedLaws.length > 0 ? (
               <div className="space-y-1.5">
-                {issue.related_laws.map((law) => (
+                {relatedLaws.map((law) => (
                   <div
                     key={law.law_id}
                     className="flex items-center justify-between text-sm bg-blue-50 rounded-lg px-3 py-2"
@@ -137,15 +150,23 @@ export function TrendDetailView({
                   </div>
                 ))}
               </div>
-            </section>
-          )}
+            ) : (
+              <p className="text-xs text-gray-400">
+                {detailError
+                  ? '상세 데이터를 불러올 수 없습니다. 트렌드를 다시 조회해 주세요.'
+                  : !detail
+                    ? '로딩 중...'
+                    : '관련 법령이 없습니다.'}
+              </p>
+            )}
+          </section>
 
           {/* 관련 판례 */}
-          {issue.related_cases.length > 0 && (
-            <section>
-              <h3 className="text-sm font-semibold text-gray-500 mb-2">관련 판례</h3>
+          <section>
+            <h3 className="text-sm font-semibold text-gray-500 mb-2">관련 판례</h3>
+            {relatedCases.length > 0 ? (
               <div className="space-y-1.5">
-                {issue.related_cases.map((caseItem) => (
+                {relatedCases.map((caseItem) => (
                   <div
                     key={caseItem.case_id}
                     className="flex items-center justify-between text-sm bg-purple-50 rounded-lg px-3 py-2"
@@ -159,8 +180,16 @@ export function TrendDetailView({
                   </div>
                 ))}
               </div>
-            </section>
-          )}
+            ) : (
+              <p className="text-xs text-gray-400">
+                {detailError
+                  ? '상세 데이터를 불러올 수 없습니다. 트렌드를 다시 조회해 주세요.'
+                  : !detail
+                    ? '로딩 중...'
+                    : '관련 판례가 없습니다.'}
+              </p>
+            )}
+          </section>
 
           {/* 원본 기사 */}
           {articles.length > 0 && (

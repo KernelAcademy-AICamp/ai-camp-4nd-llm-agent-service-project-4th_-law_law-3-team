@@ -263,6 +263,7 @@ async def split_script_to_scenes(
     topic: str,
     sections: dict[str, str],
     target_panels: int | None = None,
+    on_progress: Any | None = None,
 ) -> list[WebtoonPanel]:
     """대본을 웹툰 패널로 분할 (Solar Pro2)"""
     # 입력 sanitize
@@ -300,8 +301,14 @@ async def split_script_to_scenes(
     last_error: Exception | None = None
     for attempt in range(_MAX_RETRIES + 1):
         try:
+            if on_progress:
+                on_progress("llm_start", attempt + 1)
             panels = await _try_split_once(llm, prompt)
+            if on_progress:
+                on_progress("llm_done", attempt + 1)
             if panels:
+                if on_progress:
+                    on_progress("validate", attempt + 1)
                 # panel_number 재정렬
                 for i, panel in enumerate(panels):
                     panel.panel_number = i + 1

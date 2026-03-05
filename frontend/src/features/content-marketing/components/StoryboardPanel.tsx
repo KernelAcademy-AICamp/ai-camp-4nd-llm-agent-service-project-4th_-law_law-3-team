@@ -68,7 +68,7 @@ export function StoryboardPanel({
       {phase === 'scene_split' && (
         <div className="flex items-center gap-2 text-xs text-indigo-600 px-2 py-3 bg-indigo-50 rounded-lg">
           <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-          AI가 대본을 장면으로 분할하고 있습니다...
+          {progress.label || 'AI가 대본을 장면으로 분할하고 있습니다...'}
         </div>
       )}
 
