@@ -181,9 +181,10 @@ export function LawyerView({ initialCaseId, pageType = 'precedent' }: LawyerView
     }
   }, [hasChatReferences, chatSelectCase, serverSelectItem])
 
-  const detail = hasChatReferences ? chatSearch.selectedCase : serverSearch.detail
-  const isDetailLoading = hasChatReferences ? chatSearch.isLoadingDetail : serverSearch.isDetailLoading
-  const detailError = hasChatReferences ? chatSearch.detailError : serverSearch.detailError
+  const useChatDetail = hasChatReferences || !!initialCaseId
+  const detail = useChatDetail ? chatSearch.selectedCase : serverSearch.detail
+  const isDetailLoading = useChatDetail ? chatSearch.isLoadingDetail : serverSearch.isDetailLoading
+  const detailError = useChatDetail ? chatSearch.detailError : serverSearch.detailError
 
   // 서버 모드: 정렬 변경 시 재검색
   const isFirstRender = useRef(true)
