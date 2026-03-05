@@ -8,7 +8,7 @@ import datetime
 import logging
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, func, literal, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import async_session_factory
@@ -188,12 +188,20 @@ class PrecedentService:
         """
         try:
             async with async_session_factory() as session:
-                # BM25로 텍스트 매칭 source_id 조회
+                # BM25 스코어 서브쿼리 생성
+                bm25_subquery = None
                 bm25_source_ids: list[str] = []
                 if keyword:
-                    bm25_source_ids = await self._bm25_match_ids(
+                    bm25_subquery = await self._bm25_score_subquery(
                         session, keyword
                     )
+                    if bm25_subquery is not None:
+                        result = await session.execute(
+                            select(bm25_subquery.c.source_id)
+                        )
+                        bm25_source_ids = [
+                            row.source_id for row in result.all()
+                        ]
 
                 conditions = self._build_filter_conditions(
                     keyword, case_type, date_from, date_to, bm25_source_ids
@@ -202,10 +210,8 @@ class PrecedentService:
                 count_query = (
                     select(func.count()).select_from(PrecedentDocument)
                 )
-                data_query = (
-                    select(PrecedentDocument)
-                    .offset(offset)
-                    .limit(limit)
+                data_query = select(PrecedentDocument).offset(offset).limit(
+                    limit
                 )
 
                 if conditions:
@@ -213,10 +219,25 @@ class PrecedentService:
                     count_query = count_query.where(where_clause)
                     data_query = data_query.where(where_clause)
 
-                if sort == "relevance" and keyword:
-                    data_query = self._apply_relevance_order(
-                        data_query, keyword, bm25_source_ids
+                if sort == "relevance" and keyword and bm25_subquery is not None:
+                    # BM25 스코어 JOIN → 스코어순 정렬
+                    data_query = (
+                        data_query.outerjoin(
+                            bm25_subquery,
+                            PrecedentDocument.serial_number
+                            == bm25_subquery.c.source_id,
+                        )
+                        .order_by(
+                            func.coalesce(
+                                bm25_subquery.c.bm25_score,
+                                literal(999999),
+                            ).asc(),
+                            PrecedentDocument.decision_date.desc(),
+                        )
                     )
+                elif sort == "relevance" and keyword:
+                    # BM25 불가 시 ILIKE fallback
+                    data_query = self._apply_ilike_order(data_query, keyword)
                 else:
                     data_query = data_query.order_by(
                         PrecedentDocument.decision_date.desc()
@@ -234,14 +255,15 @@ class PrecedentService:
             return {"total": 0, "precedents": []}
 
     @staticmethod
-    async def _bm25_match_ids(
+    async def _bm25_score_subquery(
         session: Any,
         keyword: str,
         max_results: int = 500,
-    ) -> list[str]:
-        """BM25로 텍스트 매칭되는 판례 source_id 목록 반환.
+    ) -> Any:
+        """BM25 스코어 서브쿼리 반환 (source_id, bm25_score).
 
-        BM25 인덱스 미사용이거나 실패 시 빈 리스트 반환 (ILIKE fallback 유도).
+        BM25 인덱스 미사용이거나 실패 시 None 반환 (ILIKE fallback 유도).
+        session 인자는 FTS 가용 여부 확인에 사용.
         """
         try:
             from app.services.rag.keyword_search import (
@@ -251,28 +273,29 @@ class PrecedentService:
             )
 
             if not await is_fts_available():
-                return []
+                return None
 
             tokens = _tokenize(keyword)
             if not tokens:
-                return []
+                return None
 
             search_query = " ".join(tokens)
             bm25_query = func.to_bm25query(search_query, _BM25_INDEX_NAME)
             score_expr = FtsIndex.search_text.op("<@>")(bm25_query)
 
-            stmt = (
-                select(FtsIndex.source_id)
+            return (
+                select(
+                    FtsIndex.source_id,
+                    score_expr.label("bm25_score"),
+                )
                 .where(FtsIndex.data_type == "판례")
                 .order_by(score_expr.asc())
                 .limit(max_results)
+                .subquery("bm25_scores")
             )
-
-            result = await session.execute(stmt)
-            return [row.source_id for row in result.all()]
         except Exception as e:
-            logger.warning("BM25 매칭 실패, ILIKE fallback: %s", e)
-            return []
+            logger.warning("BM25 서브쿼리 생성 실패, ILIKE fallback: %s", e)
+            return None
 
     @staticmethod
     def _build_filter_conditions(
@@ -319,56 +342,27 @@ class PrecedentService:
         return conditions
 
     @staticmethod
-    def _apply_relevance_order(
-        query: Any,
-        keyword: str,
-        bm25_source_ids: list[str],
-    ) -> Any:
-        """관련성 정렬 적용.
-
-        BM25 매칭(가중치 2) + 사건번호 매칭(가중치 1) 합산 후 정렬.
-        BM25 불가 시 기존 필드별 ILIKE 가중치 방식 사용.
-        """
+    def _apply_ilike_order(query: Any, keyword: str) -> Any:
+        """BM25 불가 시 ILIKE boolean 가중치 fallback 정렬."""
         like_pattern = f"%{keyword}%"
-        if bm25_source_ids:
-            relevance_score = (
-                case(
-                    (
-                        PrecedentDocument.serial_number.in_(
-                            bm25_source_ids
-                        ),
-                        2,
-                    ),
-                    else_=0,
-                )
-                + case(
-                    (PrecedentDocument.case_number.ilike(like_pattern), 1),
-                    else_=0,
-                )
+        relevance_score = (
+            case(
+                (PrecedentDocument.case_name.ilike(like_pattern), 4),
+                else_=0,
             )
-        else:
-            # ILIKE fallback 가중치
-            relevance_score = (
-                case(
-                    (PrecedentDocument.case_name.ilike(like_pattern), 4),
-                    else_=0,
-                )
-                + case(
-                    (
-                        PrecedentDocument.case_number.ilike(like_pattern),
-                        3,
-                    ),
-                    else_=0,
-                )
-                + case(
-                    (PrecedentDocument.summary.ilike(like_pattern), 2),
-                    else_=0,
-                )
-                + case(
-                    (PrecedentDocument.reasoning.ilike(like_pattern), 1),
-                    else_=0,
-                )
+            + case(
+                (PrecedentDocument.case_number.ilike(like_pattern), 3),
+                else_=0,
             )
+            + case(
+                (PrecedentDocument.summary.ilike(like_pattern), 2),
+                else_=0,
+            )
+            + case(
+                (PrecedentDocument.reasoning.ilike(like_pattern), 1),
+                else_=0,
+            )
+        )
         return query.order_by(
             relevance_score.desc(),
             PrecedentDocument.decision_date.desc(),

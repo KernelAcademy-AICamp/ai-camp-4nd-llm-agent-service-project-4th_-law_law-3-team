@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
 import { usePrecedentFilter } from '../hooks/usePrecedentFilter'
 import { FilterPanel } from './FilterPanel'
 import { FilteredResultList } from './FilteredResultList'
@@ -13,25 +12,13 @@ export function FilterablePrecedentView() {
     datePreset, setDatePreset,
     dateFrom, setDateFrom,
     dateTo, setDateTo,
-    sortOrder, setSortOrder,
+    sortOrder,
     caseTypes,
     precedents, total, isLoading, error, hasSearched, hasMore,
-    search, loadMore,
+    search, loadMore, cancelSearch, handleSortChange,
     selectedId, selectItem,
     detail, isDetailLoading, detailError,
   } = usePrecedentFilter()
-
-  // 정렬 변경 시 자동 재검색 (검색 결과가 있을 때만)
-  const isFirstRender = useRef(true)
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false
-      return
-    }
-    if (hasSearched) {
-      search()
-    }
-  }, [sortOrder]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex h-full">
@@ -50,6 +37,7 @@ export function FilterablePrecedentView() {
           onDateToChange={setDateTo}
           caseTypes={caseTypes}
           onSearch={search}
+          onCancel={cancelSearch}
           isLoading={isLoading}
         />
         <FilteredResultList
@@ -65,7 +53,7 @@ export function FilterablePrecedentView() {
           hasDateFilter={datePreset !== 'all'}
           highlightKeyword={keyword}
           sortOrder={sortOrder}
-          onSortChange={setSortOrder}
+          onSortChange={handleSortChange}
         />
       </div>
 
