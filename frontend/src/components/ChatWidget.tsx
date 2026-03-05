@@ -29,6 +29,7 @@ export default function ChatWidget() {
     chatMode,
     supportsFloatingMode,
     isChatHiddenPage,
+    isRouting,
 
     // 사용자/세션
     userRole,
@@ -134,7 +135,7 @@ export default function ChatWidget() {
 
   // Floating Button (Collapsed)
   if (!isChatOpen) {
-    if (isChatHiddenPage) return null
+    if (isChatHiddenPage || isRouting) return null
     if (!position) return null
     return (
       <div

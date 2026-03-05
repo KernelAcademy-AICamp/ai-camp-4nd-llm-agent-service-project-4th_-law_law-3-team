@@ -10,6 +10,7 @@ const ChatWidget = dynamic(() => import('@/components/ChatWidget'), {
   ssr: false,
 })
 
+
 export const metadata: Metadata = {
   title: '법률 서비스 플랫폼',
   description: '변호사 추천, 판례 검색, 소액 소송 지원 서비스',

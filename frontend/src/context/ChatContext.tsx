@@ -20,6 +20,7 @@ interface ChatContextType {
   setUserRole: (role: UserRole) => void
   sessionData: SessionData
   setSessionData: (data: SessionData) => void
+  mergeSessionData: (updates: Partial<SessionData>) => void
   userLocation: UserLocation | null
   setUserLocation: (location: UserLocation | null) => void
   resetSession: () => void
@@ -43,6 +44,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [highlightedCaseNumber, setHighlightedCaseNumber] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [caseId, setCaseId] = useState<string | null>(null)
+
+  const mergeSessionData = useCallback((updates: Partial<SessionData>) => {
+    setSessionData(prev => ({ ...prev, ...updates }))
+  }, [])
 
   const resetSession = useCallback(() => {
     setSessionData({})
@@ -87,6 +92,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setUserRole,
         sessionData,
         setSessionData,
+        mergeSessionData,
         userLocation,
         setUserLocation,
         resetSession,

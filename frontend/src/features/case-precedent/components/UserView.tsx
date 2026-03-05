@@ -113,6 +113,18 @@ export function UserView({ pageType = 'precedent' }: UserViewProps) {
     }
   }, [highlightedCaseNumber, references, setHighlightedCaseNumber])
 
+  const isLoadingSources = sessionData.isLoadingSources as boolean | undefined
+
+  // 소스 로딩 중
+  if (isLoadingSources) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-gray-50 text-center p-8">
+        <div className="animate-spin rounded-full h-10 w-10 border-4 border-gray-200 border-t-blue-600 mb-4" />
+        <p className="text-sm text-gray-500">관련 판례와 법령을 검색하고 있습니다...</p>
+      </div>
+    )
+  }
+
   // 빈 상태
   if (references.length === 0) {
     return (

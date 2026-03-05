@@ -294,7 +294,7 @@ class LawyerStatsAgent(BaseChatAgent):
             result["overview"] = overview
             result["cross"] = cross
         else:
-            # DB 모드
+            # DB 모드 — 각 쿼리에 별도 세션 사용 (async session 동시 사용 불가)
             from app.core.database import async_session_factory
             from app.services.service_function.lawyer_stats_db_service import (
                 calculate_by_specialty_db,
@@ -304,25 +304,33 @@ class LawyerStatsAgent(BaseChatAgent):
                 calculate_overview_db,
             )
 
-            async with async_session_factory() as db:
-                density_task = calculate_density_by_region_db(db)
-                specialty_task = calculate_by_specialty_db(db)
-                overview_task = calculate_overview_db(db)
+            async def _density() -> Any:
+                async with async_session_factory() as db:
+                    return await calculate_density_by_region_db(db)
 
-                if intent.province:
-                    cross_task = calculate_cross_analysis_by_province_db(
-                        db, intent.province
-                    )
-                else:
-                    cross_task = calculate_cross_analysis_db(db)
+            async def _specialty() -> Any:
+                async with async_session_factory() as db:
+                    return await calculate_by_specialty_db(db)
 
-                density, specialty, overview, cross = await asyncio.gather(
-                    density_task, specialty_task, overview_task, cross_task
-                )
-                result["density"] = density
-                result["specialty"] = specialty
-                result["overview"] = overview
-                result["cross"] = cross
+            async def _overview() -> Any:
+                async with async_session_factory() as db:
+                    return await calculate_overview_db(db)
+
+            async def _cross() -> Any:
+                async with async_session_factory() as db:
+                    if intent.province:
+                        return await calculate_cross_analysis_by_province_db(
+                            db, intent.province
+                        )
+                    return await calculate_cross_analysis_db(db)
+
+            density, specialty, overview, cross = await asyncio.gather(
+                _density(), _specialty(), _overview(), _cross()
+            )
+            result["density"] = density
+            result["specialty"] = specialty
+            result["overview"] = overview
+            result["cross"] = cross
 
         # 수요 데이터 (항상 DB 필요)
         try:
