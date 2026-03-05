@@ -259,7 +259,7 @@ export function LawDetailLawyer({ source }: LawDetailLawyerProps) {
 
           {isLoading ? (
             <div className="p-6 flex items-center justify-center gap-2">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-500" />
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
               <span className="text-sm text-gray-500">전문을 불러오는 중...</span>
             </div>
           ) : error ? (
@@ -327,7 +327,7 @@ export function LawDetailLawyer({ source }: LawDetailLawyerProps) {
       {/* 그래프 보강 정보 (관련 법령) */}
       {(source.cited_statutes?.length || source.similar_cases?.length) ? (
         <div className="mt-6 pt-4 border-t border-gray-200">
-          <h3 className="font-bold text-gray-700 mb-3">관련 정보</h3>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">관련 정보</h3>
           {source.cited_statutes && source.cited_statutes.length > 0 && (
             <p className="text-sm text-gray-600 mb-2">
               <span className="font-medium">관련 법령:</span>{' '}
