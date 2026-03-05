@@ -4,7 +4,7 @@ export { TimelineCard } from './TimelineCard'
 export { TimelineView } from './TimelineView'
 export { TimelineToolbar } from './TimelineToolbar'
 export { TimelineItemEditor } from './TimelineItemEditor'
-export { VideoGenerationModal } from './VideoGenerationModal'
+
 export { GanttChartView } from './GanttChartView'
 export { GanttDetailPanel } from './GanttDetailPanel'
 export { EvidenceUploadPanel } from './EvidenceUploadPanel'

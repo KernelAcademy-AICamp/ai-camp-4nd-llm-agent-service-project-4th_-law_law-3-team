@@ -9,6 +9,7 @@ import { TimelineToolbar } from '@/features/storyboard/components/TimelineToolba
 import { useTimelineState } from '@/features/storyboard/hooks'
 import type { TimelineItem, ViewMode } from '@/features/storyboard/types'
 
+
 // Dynamic imports for heavy components (reduces initial bundle size)
 const MultiInputPanel = dynamic(
   () => import('@/features/storyboard/components/MultiInputPanel').then(m => m.MultiInputPanel),
@@ -35,11 +36,6 @@ const GanttDetailPanel = dynamic(
   { ssr: false }
 )
 
-const VideoGenerationModal = dynamic(
-  () => import('@/features/storyboard/components/VideoGenerationModal').then(m => m.VideoGenerationModal),
-  { ssr: false }
-)
-
 export default function StoryboardPage() {
   const { isChatOpen, chatMode } = useUI()
   const { resetSession } = useChat()
@@ -58,17 +54,12 @@ export default function StoryboardPage() {
     generatingImageIds,
     isGeneratingBatch,
     batchProgress,
-    itemsWithImagesCount,
-    isGeneratingVideo,
-    generatedVideoUrl,
-    showVideoModal,
-    setShowVideoModal,
+    cancelBatchGeneration,
     extractTimeline,
     extractFromVoice,
     extractFromImage,
     generateItemImage,
     generateAllImages,
-    generateVideo,
     setTitle,
     addItem,
     updateItem,
@@ -131,11 +122,6 @@ export default function StoryboardPage() {
     resetSession()
   }, [resetTimeline, resetSession])
 
-  // 영상 생성 모달 열기
-  const handleOpenVideoModal = useCallback(() => {
-    setShowVideoModal(true)
-  }, [setShowVideoModal])
-
   return (
     <div
       className={`h-screen flex flex-col bg-[#F5F5F7] overflow-hidden relative transition-all duration-500 ease-in-out ${
@@ -148,29 +134,17 @@ export default function StoryboardPage() {
           <div className="flex items-center gap-4">
             <BackButton />
             <div>
-              <h1 className="text-2xl font-bold text-[#1D1D1F] tracking-tight flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-[#1D1D1F] tracking-tight">
                 스토리보드
-                <span className="text-xs px-2 py-0.5 rounded-full bg-[#007AFF]/10 text-[#007AFF] font-medium border border-[#007AFF]/20">BETA</span>
               </h1>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            {summary && (
-              <div className="text-right hidden md:block">
-                <span className="text-xs font-bold text-[#007AFF] uppercase tracking-wider">Case Summary</span>
-                <p className="text-sm font-medium text-[#3C3C43] max-w-xl truncate">{summary}</p>
-              </div>
-            )}
-            {items.length > 0 && (
-              <button
-                type="button"
-                onClick={handleNewTimeline}
-                className="flex-shrink-0 px-4 py-2 bg-white border border-black/[0.08] rounded-xl text-sm font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] transition-colors shadow-sm"
-              >
-                새 사건 타임라인 만들기
-              </button>
-            )}
-          </div>
+          {summary && (
+            <div className="text-right hidden md:block">
+              <span className="text-xs font-bold text-[#007AFF] uppercase tracking-wider">Case Summary</span>
+              <p className="text-sm font-medium text-[#3C3C43] max-w-xl truncate">{summary}</p>
+            </div>
+          )}
         </div>
       </header>
 
@@ -193,6 +167,7 @@ export default function StoryboardPage() {
               onExtractVoice={extractFromVoice}
               onExtractImage={extractFromImage}
               onImport={importFromJson}
+              onNewTimeline={handleNewTimeline}
               isExtracting={isExtracting}
               error={extractError}
             />
@@ -248,15 +223,34 @@ export default function StoryboardPage() {
                 onExport={exportToJson}
                 onReset={resetTimeline}
                 onGenerateAllImages={generateAllImages}
-                onGenerateVideo={handleOpenVideoModal}
+                onCancelBatchGeneration={cancelBatchGeneration}
                 hasItems={items.length > 0}
-                hasImages={itemsWithImagesCount >= 2}
                 isGeneratingBatch={isGeneratingBatch}
                 batchProgress={batchProgress}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
               />
             </div>
+
+            {/* 타임라인 추출 진행 표시 */}
+            {isExtracting && (
+              <div className="flex-shrink-0 px-8 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-[#007AFF] rounded-full animate-[indeterminate_1.5s_ease-in-out_infinite]"
+                      style={{ width: '40%' }}
+                    />
+                  </div>
+                  <span className="text-sm text-[#86868B] font-medium whitespace-nowrap">타임라인 생성 중...</span>
+                </div>
+                <style jsx>{`
+                  @keyframes indeterminate {
+                    0% { transform: translateX(-100%); }
+                    100% { transform: translateX(350%); }
+                  }
+                `}</style>
+              </div>
+            )}
 
             {/* 타임라인 뷰 */}
             {viewMode === 'gantt' ? (
@@ -304,15 +298,6 @@ export default function StoryboardPage() {
         />
       )}
 
-      {/* 영상 생성 모달 */}
-      <VideoGenerationModal
-        isOpen={showVideoModal}
-        onClose={() => setShowVideoModal(false)}
-        items={items}
-        onGenerate={generateVideo}
-        isGenerating={isGeneratingVideo}
-        videoUrl={generatedVideoUrl}
-      />
     </div>
   )
 }

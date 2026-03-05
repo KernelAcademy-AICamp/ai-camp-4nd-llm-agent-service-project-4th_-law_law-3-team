@@ -4,7 +4,6 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import type { TimelineItem, TimelineData, EditMode } from '../types'
 import { storyboardService } from '../services'
 import { useImageGeneration } from './useImageGeneration'
-import { useVideoGeneration } from './useVideoGeneration'
 import { generateId } from '../utils/generateId'
 import { loadPersistedState, clearPersistedState, useTimelinePersistence } from './useTimelinePersistence'
 
@@ -32,7 +31,7 @@ export function useTimelineState() {
   const [isExtracting, setIsExtracting] = useState(false)
   const [extractError, setExtractError] = useState<string | null>(null)
 
-  // 이미지/영상 생성 에러 상태
+  // 이미지 생성 에러 상태
   const [actionError, setActionError] = useState<string | null>(null)
 
   // 이미지 생성 서브 훅
@@ -42,16 +41,8 @@ export function useTimelineState() {
     batchProgress,
     generateItemImage,
     generateAllImages,
+    cancelBatchGeneration,
   } = useImageGeneration({ itemsRef, setItems, setActionError })
-
-  // 영상 생성 서브 훅
-  const {
-    isGeneratingVideo,
-    generatedVideoUrl,
-    showVideoModal,
-    setShowVideoModal,
-    generateVideo,
-  } = useVideoGeneration({ setActionError })
 
   // AI 타임라인 추출 (텍스트)
   const extractTimeline = useCallback(async (text: string) => {
@@ -267,12 +258,6 @@ export function useTimelineState() {
     batchProgress,
     itemsWithImagesCount,
 
-    // 영상 생성 상태
-    isGeneratingVideo,
-    generatedVideoUrl,
-    showVideoModal,
-    setShowVideoModal,
-
     // 추출 액션
     extractTimeline,
     extractFromVoice,
@@ -281,9 +266,7 @@ export function useTimelineState() {
     // 이미지 생성 액션
     generateItemImage,
     generateAllImages,
-
-    // 영상 생성 액션
-    generateVideo,
+    cancelBatchGeneration,
 
     // 기본 액션
     setTitle,

@@ -4,8 +4,6 @@ import type {
   ExtractTimelineResponse,
   GenerateImageResponse,
   GenerateImagesBatchResponse,
-  GenerateVideoRequest,
-  GenerateVideoResponse,
   JobStatusResponse,
   Participant,
   ParticipantRole,
@@ -270,16 +268,4 @@ export const storyboardService = {
   },
 
 
-  /**
-   * 이미지들을 결합하여 영상 생성
-   */
-  generateVideo: async (
-    request: GenerateVideoRequest
-  ): Promise<GenerateVideoResponse> => {
-    const response = await api.post<GenerateVideoResponse>(
-      `${BASE_URL}/generate-video`,
-      request
-    )
-    return response.data
-  },
 }
