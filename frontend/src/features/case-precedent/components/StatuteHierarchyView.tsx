@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Network, Search, X, Loader2, ChevronRight } from 'lucide-react'
-import { BackButton } from '@/components/ui/BackButton'
+import { ArrowLeft } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { StatuteForceGraph } from './StatuteForceGraph'
 import { StatuteDetailPanel } from './StatuteDetailPanel'
@@ -276,7 +276,13 @@ export function StatuteHierarchyView() {
       <div className="px-6 py-4 border-b border-amber-100/60 bg-gradient-to-r from-amber-50 via-white to-orange-50 shrink-0">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <BackButton />
+            <button
+              onClick={() => router.back()}
+              className="p-2 mr-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors flex items-center justify-center shrink-0"
+              aria-label="뒤로 가기"
+            >
+              <ArrowLeft size={20} />
+            </button>
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm shadow-amber-200/50">
               <Network className="w-4 h-4 text-white" />
             </div>
