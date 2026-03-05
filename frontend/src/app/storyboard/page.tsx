@@ -152,9 +152,6 @@ export default function StoryboardPage() {
                 스토리보드
                 <span className="text-xs px-2 py-0.5 rounded-full bg-[#007AFF]/10 text-[#007AFF] font-medium border border-[#007AFF]/20">BETA</span>
               </h1>
-              <p className="text-sm text-[#86868B] mt-1 font-light">
-                사건의 흐름을 시각화하고 AI로 이미지와 영상을 생성합니다
-              </p>
             </div>
           </div>
           <div className="flex items-center gap-4">

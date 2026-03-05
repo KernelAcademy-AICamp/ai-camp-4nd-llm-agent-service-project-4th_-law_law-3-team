@@ -51,7 +51,7 @@ export function useChatMessages() {
   const { readState, setChatDisputeType, setChatClaimAmount, setChatStep } = useSmallClaimsSync()
 
   const supportsFloatingMode = FLOATING_MODE_PATHS.has(pathname) || pathname.startsWith('/workspace')
-  const isChatHiddenPage = pathname === '/mock-trial'
+  const isChatHiddenPage = pathname === '/mock-trial' || (pathname === '/' && !searchParams.get('role'))
 
   const getInitialMessage = useCallback((agent: string | null): Message => {
     if (agent && AGENT_GREETINGS[agent]) {
@@ -104,14 +104,9 @@ export function useChatMessages() {
     if (prevPathnameRef.current === pathname) return
     prevPathnameRef.current = pathname
 
-    if (isChatHiddenPage) {
-      setChatOpen(false)
-    } else if (supportsFloatingMode) {
-      setChatMode('floating')
-      setChatOpen(true)
-    } else {
-      setChatMode('split')
-    }
+    setChatOpen(false)
+    if (isChatHiddenPage) return
+    setChatMode('floating')
   }, [pathname, setChatMode, setChatOpen, supportsFloatingMode, isChatHiddenPage])
 
   // 자동 스크롤

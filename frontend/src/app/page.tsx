@@ -4,7 +4,7 @@ import { useEffect, Suspense, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { getEnabledModules, getModuleCategory, CATEGORY_NAMES } from '@/lib/modules'
+import { getEnabledModules } from '@/lib/modules'
 import { useUI } from '@/context/UIContext'
 import { useChat, UserRole } from '@/context/ChatContext'
 import type { LucideIcon } from 'lucide-react'
@@ -37,17 +37,6 @@ function HomeContent() {
   const [inputValue, setInputValue] = useState('')
   const enabledModules = useMemo(() => getEnabledModules(role || undefined), [role])
 
-  const modulesByCategory = useMemo(() => {
-    if (!role) return {}
-    const grouped: Record<string, typeof enabledModules> = {}
-    enabledModules.forEach(mod => {
-      const cat = getModuleCategory(mod, role)
-      if (!grouped[cat]) grouped[cat] = []
-      grouped[cat].push(mod)
-    })
-    return grouped
-  }, [enabledModules, role])
-
   useEffect(() => {
     if (!role) {
       setChatOpen(false)
@@ -61,12 +50,6 @@ function HomeContent() {
     setUserRole(selectedRole)
     setChatOpen(false) // 역할 선택 시에도 채팅 자동 열림 방지
     router.push(`/?role=${selectedRole}`)
-  }
-
-  const handleResetRole = () => {
-    setUserRole('user')
-    setChatOpen(false)
-    router.push('/')
   }
 
   if (!role) {

@@ -55,9 +55,6 @@ export default function LawStudyPage() {
             <h1 className="text-lg font-bold text-gray-900 truncate">
               변호사시험 기록형 연습
             </h1>
-            <p className="text-xs text-gray-500">
-              기록형 문제 풀이 + 판례/법령 오픈북 + AI 피드백
-            </p>
           </div>
         </div>
       </header>
