@@ -31,7 +31,31 @@ export function useTrends() {
 
   const loadDetail = useCallback(async (trendId: string): Promise<TrendDetailResponse | null> => {
     try {
-      return await fetchTrendDetail(trendId)
+      const detail = await fetchTrendDetail(trendId)
+      if (!detail) return null
+
+      // 상세 조회에서 받은 법령/판례를 trends 상태에 반영 (카드에 유지)
+      const hasLaws = detail.related_laws_detail?.length > 0
+      const hasCases = detail.related_cases_detail?.length > 0
+      if (hasLaws || hasCases) {
+        setTrends((prev) =>
+          prev.map((t) =>
+            t.id === trendId
+              ? {
+                  ...t,
+                  related_laws: hasLaws
+                    ? detail.related_laws_detail
+                    : t.related_laws,
+                  related_cases: hasCases
+                    ? detail.related_cases_detail
+                    : t.related_cases,
+                }
+              : t,
+          ),
+        )
+      }
+
+      return detail
     } catch {
       return null
     }
