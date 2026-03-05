@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { Network, Search, X, Loader2 } from 'lucide-react'
+import { Network, Search, X, Loader2, ChevronRight } from 'lucide-react'
 import { BackButton } from '@/components/ui/BackButton'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { StatuteForceGraph } from './StatuteForceGraph'
@@ -22,6 +22,7 @@ export function StatuteHierarchyView() {
   const [selectedStatute, setSelectedStatute] = useState<StatuteNode | null>(null)
   const [detailData, setDetailData] = useState<StatuteHierarchyResponse | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [isPanelOpen, setIsPanelOpen] = useState(true)
 
   // 법령 유형별 필터
   const ALL_STATUTE_TYPES = ['헌법', '법률', '대통령령', '총리령·부령', '규칙'] as const
@@ -213,6 +214,7 @@ export function StatuteHierarchyView() {
   // 법령 선택 (URL에 추가하여 뒤로가기 지원)
   const handleSelect = useCallback((statute: StatuteNode) => {
     setShowDropdown(false)
+    setIsPanelOpen(true)
     const params = new URLSearchParams()
     params.set('id', statute.id)
     params.set('name', statute.name)
@@ -255,6 +257,7 @@ export function StatuteHierarchyView() {
 
   // 그래프에서 노드 클릭 (URL에 추가하여 뒤로가기 지원)
   const handleNodeClick = useCallback((node: GraphNode) => {
+    setIsPanelOpen(true)
     const params = new URLSearchParams()
     params.set('id', node.id)
     params.set('name', node.name)
@@ -359,12 +362,12 @@ export function StatuteHierarchyView() {
       {/* 상세 패널 (좌측) + 그래프 */}
       <div className="flex flex-1 overflow-hidden">
         {/* 상세 사이드 패널 (좌측) */}
-        {(detailData || detailLoading) && (
+        {isPanelOpen && (detailData || detailLoading) && (
           <div className="relative z-10 h-full">
             <StatuteDetailPanel
               data={detailData || { root: null, upper: [], lower: [], related: [] }}
               loading={detailLoading}
-              onClose={handleClear}
+              onClose={() => setIsPanelOpen(false)}
               onNodeClick={handlePanelNodeClick}
             />
           </div>
@@ -372,6 +375,17 @@ export function StatuteHierarchyView() {
 
         {/* 그래프 영역 */}
         <div className="relative flex-1 overflow-hidden">
+          {/* 패널 열기 버튼 (패널이 닫혀 있고 데이터가 있을 때) */}
+          {!isPanelOpen && detailData && (
+            <button
+              onClick={() => setIsPanelOpen(true)}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-white/90 backdrop-blur-sm border border-gray-200/60 border-l-0
+                         rounded-r-lg px-1 py-3 shadow-sm hover:bg-amber-50 transition-colors"
+              aria-label="패널 열기"
+            >
+              <ChevronRight className="w-4 h-4 text-amber-600" />
+            </button>
+          )}
           <div className="absolute inset-0">
             <StatuteForceGraph
               centerId={selectedStatute?.id}
