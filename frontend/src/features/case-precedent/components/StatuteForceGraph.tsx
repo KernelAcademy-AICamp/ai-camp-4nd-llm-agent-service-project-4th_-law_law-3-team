@@ -41,8 +41,8 @@ const ForceGraph2D = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="w-full h-full flex items-center justify-center bg-slate-900">
-        <div className="text-white">그래프 엔진 로딩 중...</div>
+      <div className="w-full h-full flex items-center justify-center bg-gray-100">
+        <div className="text-gray-500">그래프 엔진 로딩 중...</div>
       </div>
     )
   }
@@ -431,14 +431,14 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick, visibleTy
 
   if (isLoading || dimensions.width === 0 || !ForceGraph2D) {
     return (
-      <div ref={containerRef} className="w-full h-full flex items-center justify-center bg-slate-900">
-        <div className="text-white">그래프 로딩 중...</div>
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center bg-gray-100">
+        <div className="text-gray-500">그래프 로딩 중...</div>
       </div>
     )
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-slate-900">
+    <div ref={containerRef} className="w-full h-full relative bg-gray-100">
       <ForceGraph2D
         graphRef={handleGraphRef as React.Ref<never>}
         width={dimensions.width}

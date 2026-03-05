@@ -8,31 +8,7 @@ import { FilteredLawResultList } from './FilteredLawResultList'
 import type { LawFullText } from '../types'
 import { buildArticleTree, hasTreeStructure } from '../utils/articleTreeParser'
 import type { ArticleTreeNode } from '../utils/articleTreeParser'
-
-/** ai_summary 평문/마크다운 텍스트를 ReactMarkdown용으로 정규화 */
-function normalizeSummaryMarkdown(text: string): string {
-  let result = text
-
-  if (!text.includes('### ')) {
-    result = result.replace(/(\d{1,2})\.\s+([가-힣])/g, '\n\n### $1. $2')
-  }
-
-  result = result
-    .replace(/([^\n])\s*(###\s)/g, '$1\n\n$2')
-    .replace(/([^\n])\s*(- )/g, '$1\n$2')
-    .replace(/([^\n])(※)/g, '$1\n\n$2')
-    .trim()
-
-  const firstHeading = result.indexOf('\n\n###')
-  if (firstHeading > 0) {
-    const title = result.slice(0, firstHeading).trim()
-    if (title && !title.startsWith('#') && !title.startsWith('**')) {
-      result = `**${title}**${result.slice(firstHeading)}`
-    }
-  }
-
-  return result
-}
+import { normalizeSummaryMarkdown } from '../utils/normalizeSummaryMarkdown'
 
 // 세션 내 LLM 요약 완료 캐시 (법령 이동 후 복귀 시 유지)
 const summarizedDocIds = new Set<string>()
