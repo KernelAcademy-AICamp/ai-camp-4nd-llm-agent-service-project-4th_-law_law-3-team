@@ -77,6 +77,7 @@ export function useChatMessages() {
   } = useLoadingStatus(isLoading, isStreaming)
 
   const [input, setInput] = useState('')
+  const [pendingNavTarget, setPendingNavTarget] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const rafIdRef = useRef<number | null>(null)
 
@@ -88,6 +89,14 @@ export function useChatMessages() {
       }
     }
   }, [])
+
+  // SSE 콜백에서 설정된 네비게이션 대상을 React 라이프사이클에서 실행
+  useEffect(() => {
+    if (pendingNavTarget) {
+      router.push(pendingNavTarget)
+      setPendingNavTarget(null)
+    }
+  }, [pendingNavTarget, router])
 
   // pendingMessage 감지 시 자동 전송
   useEffect(() => {
@@ -169,6 +178,7 @@ export function useChatMessages() {
     let receivedActions: ChatAction[] = []
     let receivedSessionData: Record<string, unknown> = {}
     let agentUsed = ''
+    let hasNavigatedOnRouting = false
 
     const isSmallClaims = effectiveAgent === 'small_claims' || sessionData.active_agent === 'small_claims'
     let finalSessionData = { ...sessionData }
@@ -231,6 +241,16 @@ export function useChatMessages() {
             if (data.selected_agent) {
               agentUsed = data.selected_agent
               setSessionData({ ...sessionData, active_agent: data.selected_agent })
+
+              // 라우팅 즉시 페이지 전환 (React 라이프사이클에서 실행)
+              const targetPage = AGENT_PAGE_MAP[data.selected_agent]
+              if (targetPage) {
+                const targetPathname = targetPage.split('?')[0]
+                if (pathname !== targetPathname) {
+                  setPendingNavTarget(targetPage)
+                  hasNavigatedOnRouting = true
+                }
+              }
             }
           },
           onSources: (sources) => {
@@ -406,16 +426,15 @@ export function useChatMessages() {
                 })
                 fullUrl = `${navigateAction.url}?${urlSearchParams.toString()}`
               }
-              router.push(fullUrl)
+              setPendingNavTarget(fullUrl)
               hasNavigated = true
             }
 
-            const currentPageAgent = PATHNAME_AGENT_MAP[pathname]
-            if (!hasNavigated && agentUsed && AGENT_PAGE_MAP[agentUsed] && !currentPageAgent) {
+            if (!hasNavigated && !hasNavigatedOnRouting && agentUsed && AGENT_PAGE_MAP[agentUsed]) {
               const targetPage = AGENT_PAGE_MAP[agentUsed]
               const targetPathname = targetPage.split('?')[0]
               if (pathname !== targetPathname) {
-                router.push(targetPage)
+                setPendingNavTarget(targetPage)
               }
             }
           },
