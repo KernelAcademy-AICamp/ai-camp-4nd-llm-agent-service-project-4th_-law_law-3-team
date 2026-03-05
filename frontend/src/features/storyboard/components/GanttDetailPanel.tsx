@@ -139,7 +139,7 @@ export function GanttDetailPanel({
                 const roleConfig = PARTICIPANT_ROLE_CONFIG[p.role]
                 return (
                   <span
-                    key={idx}
+                    key={`participant-${idx}`}
                     className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${roleConfig.bgColor} ${roleConfig.color}`}
                   >
                     {p.name}
@@ -158,7 +158,7 @@ export function GanttDetailPanel({
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">참여자</h3>
             <div className="flex flex-wrap gap-2">
               {selectedItem.participants.map((name, idx) => (
-                <span key={idx} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+                <span key={`legacy-participant-${idx}`} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
                   {name}
                 </span>
               ))}

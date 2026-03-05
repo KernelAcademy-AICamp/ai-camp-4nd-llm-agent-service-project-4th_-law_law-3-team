@@ -201,7 +201,10 @@ app/
 │   ├── subgraphs/       # 서브그래프
 │   │   ├── small_claims.py           # 소액소송 서브그래프
 │   │   ├── storyboard.py            # 스토리보드 서브그래프 (태그 수집, 타임라인 생성)
-│   │   ├── mock_trial.py             # 모의 법정 서브그래프 (MockTrialState.emotion 포함)
+│   │   ├── mock_trial.py             # 모의 법정 서브그래프 (MockTrialState, 그래프 빌드)
+│   │   ├── mock_trial_utils.py       # 모의 법정 헬퍼 함수
+│   │   ├── mock_trial_criminal.py    # 모의 법정 형사 노드
+│   │   ├── mock_trial_civil.py       # 모의 법정 민사 노드
 │   │   ├── mock_trial_agents.py      # 모의 법정 에이전트 (generate→tuple[str, str], _parse_emotion)
 │   │   └── mock_trial_prompts.py     # 모의 법정 프롬프트 (EMOTION_TAG_INSTRUCTION 포함)
 │   └── schemas/         # 스키마
@@ -211,7 +214,9 @@ app/
 ├── services/            # 비즈니스 로직
 │   ├── rag/
 │   │   ├── embedding.py  # 임베딩 모델
-│   │   ├── retrieval.py  # 벡터 검색 + 원문/요약문 배치 조회
+│   │   ├── retrieval.py  # 벡터 검색 (테이블 레지스트리/문서 조회는 아래 파일로 분리)
+│   │   ├── table_registry.py  # 테이블 레지스트리 (TableConfig, DOCUMENT_TABLE_REGISTRY)
+│   │   ├── document_fetcher.py  # 문서 콘텐츠 배치 조회 (fetch_document_contents, fetch_ai_summaries)
 │   │   ├── rerank.py     # 리랭킹
 │   │   ├── query_rewrite.py  # 쿼리 리라이팅
 │   │   ├── keyword_search.py  # BM25 키워드 검색 (pg_textsearch)
@@ -490,6 +495,12 @@ from app.services.service_function.lawyer_stats_service import (
 - Pydantic v2 문법 사용 (`model_validator`, `field_validator`)
 - 타입 힌트 필수 (mypy strict 모드)
 - ruff 린터 규칙: E, F, I, N, W
+
+### 보안
+
+- **Rate Limiting**: 모든 모듈 라우터의 POST 엔드포인트에 `@limiter.limit(AI_RATE_LIMIT)` 적용 (`app/core/rate_limit.py`)
+- **입력 길이 제한**: `ChatRequest.message` max_length=10,000, `history` max_length=50 (`multi_agent/schemas/messages.py`)
+- **Prompt Injection 방어**: `/api/chat`, `/api/chat/stream` 엔드포인트에서 `check_input_safety()` 호출 (`core/policies/legal_safety.py`)
 
 ## Tests
 

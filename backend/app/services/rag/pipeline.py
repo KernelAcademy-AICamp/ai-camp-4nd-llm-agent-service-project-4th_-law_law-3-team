@@ -389,7 +389,8 @@ class RAGPipeline:
         """focus 모드: 리라이팅 1회 → 임베딩·tsquery 1회 → focus + supplementary 병렬 검색."""
         pipeline_start = time.monotonic()
         sup_config = config.supplementary_config
-        assert sup_config is not None  # noqa: S101
+        if sup_config is None:
+            raise ValueError("supplementary_config는 Focus+Supplementary 모드에서 필수입니다.")
 
         result = PipelineResult(original_query=query)
         metrics = result.metrics

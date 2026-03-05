@@ -1,9 +1,13 @@
+import logging
 import os
 from pathlib import Path
 from typing import List
 from urllib.parse import urlparse, urlunparse
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+_config_logger = logging.getLogger(__name__)
 
 # backend/ 디렉토리 (이 파일 기준: backend/app/core/config.py)
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
@@ -224,6 +228,30 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MINUTE: int = 30
     RATE_LIMIT_AI_PER_MINUTE: int = 10
     RATE_LIMIT_STORAGE_URI: str = "memory://"  # 프로덕션: "redis://localhost:6379"
+
+    @model_validator(mode="after")
+    def _validate_production_settings(self) -> "Settings":
+        """프로덕션 환경에서 필수 설정이 누락되면 시작 시 에러 발생"""
+        if self.ENVIRONMENT == "production":
+            missing: list[str] = []
+            if not self.DATABASE_URL:
+                missing.append("DATABASE_URL")
+            if not self.API_KEY:
+                missing.append("API_KEY")
+            if missing:
+                raise ValueError(
+                    f"프로덕션 환경에서 필수 설정이 누락되었습니다: {', '.join(missing)}"
+                )
+            if self.DEBUG:
+                _config_logger.warning(
+                    "프로덕션 환경에서 DEBUG=True가 설정되어 있습니다. 보안상 권장하지 않습니다."
+                )
+            if self.RATE_LIMIT_STORAGE_URI == "memory://":
+                _config_logger.warning(
+                    "프로덕션 환경에서 RATE_LIMIT_STORAGE_URI=memory:// 사용 중입니다. "
+                    "다중 인스턴스 배포 시 Redis 등 외부 저장소를 권장합니다."
+                )
+        return self
 
     class Config:
         env_file = ".env"

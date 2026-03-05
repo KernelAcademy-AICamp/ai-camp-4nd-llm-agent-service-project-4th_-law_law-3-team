@@ -1,35 +1,15 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import { useCallback } from 'react'
 import { useUI } from '@/context/UIContext'
 import { BackButton } from '@/components/ui/BackButton'
 import { DisclaimerBanner } from '@/features/mock-trial/components/DisclaimerBanner'
-import { MockTrialSetup } from '@/features/mock-trial/components/MockTrialSetup'
 import { StageProgress } from '@/features/mock-trial/components/StageProgress'
-import { ChatPanel } from '@/features/mock-trial/components/ChatPanel'
-import { ChatBottomBar } from '@/features/mock-trial/components/ChatBottomBar'
-import { ReferencePanel } from '@/features/mock-trial/components/ReferencePanel'
-import { EvidencePanel } from '@/features/mock-trial/components/EvidencePanel'
-import { ScenarioBriefing } from '@/features/mock-trial/components/ScenarioBriefing'
-import { eventBus } from '@/features/mock-trial/game/EventBus'
-import { useStreamingChat, type ChatMetadata } from '@/hooks/useStreamingChat'
-import { ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import { DialogueControls } from '@/features/mock-trial/components/DialogueControls'
-import type {
-  CaseType,
-  CaseCategory,
-  UserRole,
-  CourtEvent,
-  ReferenceItem,
-  EvidenceItem,
-  UserHint,
-  EmotionType,
-  DialogueSpeed,
-  PhysicalEvidence,
-} from '@/features/mock-trial/types'
-import { CRIMINAL_STAGES, CIVIL_STAGES, DEFAULT_ROLE_EMOTION } from '@/features/mock-trial/types'
-import type { DemoScenario } from '@/features/mock-trial/demo/demo-scenarios'
+import { StageGuideBanner } from '@/features/mock-trial/components/StageGuideBanner'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useMockTrial } from '@/features/mock-trial/hooks/useMockTrial'
 
 const MockTrialGame = dynamic(
   () =>
@@ -39,562 +19,99 @@ const MockTrialGame = dynamic(
   { ssr: false }
 )
 
-type TrialPhase = 'setup' | 'briefing' | 'trial' | 'verdict'
+const MockTrialSetup = dynamic(
+  () =>
+    import('@/features/mock-trial/components/MockTrialSetup').then(
+      (m) => m.MockTrialSetup
+    )
+)
 
-/** 데모 모드에서 mock AI 응답 간 딜레이 (ms) */
-const DEMO_RESPONSE_DELAY = 1200
+const ScenarioBriefing = dynamic(
+  () =>
+    import('@/features/mock-trial/components/ScenarioBriefing').then(
+      (m) => m.ScenarioBriefing
+    )
+)
 
-/** 판례번호 패턴 (예: 2023다12345) */
-const CASE_NUMBER_PATTERN = /(\d{2,4}[가-힣]{1,3}\d{1,6})/g
+const ChatPanel = dynamic(
+  () =>
+    import('@/features/mock-trial/components/ChatPanel').then(
+      (m) => m.ChatPanel
+    )
+)
 
-/** 법령 참조 패턴 (예: 형사소송법 제284조, 도로교통법 제50조) */
-const LAW_REFERENCE_PATTERN =
-  /([가-힣]{2,}(?:법|규칙|령|조례)(?:시행령|시행규칙)?)\s*(?:제?\s*(\d+)조(?:의\s*\d+)?)/g
+const ChatBottomBar = dynamic(
+  () =>
+    import('@/features/mock-trial/components/ChatBottomBar').then(
+      (m) => m.ChatBottomBar
+    )
+)
+
+const EvidencePanel = dynamic(
+  () =>
+    import('@/features/mock-trial/components/EvidencePanel').then(
+      (m) => m.EvidencePanel
+    )
+)
+
+const ReferencePanel = dynamic(
+  () =>
+    import('@/features/mock-trial/components/ReferencePanel').then(
+      (m) => m.ReferencePanel
+    )
+)
+
+const JudgmentDisplay = dynamic(
+  () =>
+    import('@/features/mock-trial/components/JudgmentDisplay').then(
+      (m) => m.JudgmentDisplay
+    )
+)
 
 export default function MockTrialPage() {
   const { isChatOpen, chatMode } = useUI()
+  const {
+    phase,
+    currentStageId,
+    messages,
+    isWaiting,
+    references,
+    isReferencePanelOpen,
+    setIsReferencePanelOpen,
+    chatDisplayMode,
+    setChatDisplayMode,
+    evidenceCases,
+    evidenceArticles,
+    selectedEvidenceIds,
+    isEvidenceLoading,
+    physicalEvidence,
+    userHints,
+    showStageGuide,
+    setShowStageGuide,
+    dialogueSpeed,
+    setDialogueSpeed,
+    isDemoMode,
+    demoScenario,
+    stages,
+    nextDemoInput,
+    isEvidenceStage,
+    currentStageInfo,
+    showNextStageButton,
+    nextStageId,
+    handleSetupComplete,
+    handleSendMessage,
+    handleDemoStart,
+    handleBriefingComplete,
+    handleDemoInput,
+    handleNextStage,
+    handleEvidenceToggle,
+    handleEvidenceSubmit,
+    handleRestart,
+    handleCloseJudgment,
+    judgmentResult,
+  } = useMockTrial()
 
-  const [phase, setPhase] = useState<TrialPhase>('setup')
-  const [caseType, setCaseType] = useState<CaseType | null>(null)
-  const [currentStageId, setCurrentStageId] = useState('identity')
-  const [messages, setMessages] = useState<CourtEvent[]>([])
-  const [isWaiting, setIsWaiting] = useState(false)
-  const [references, setReferences] = useState<ReferenceItem[]>([])
-  const referenceIdsRef = useRef<Set<string>>(new Set())
-
-  // 패널 토글 상태
-  const [isReferencePanelOpen, setIsReferencePanelOpen] = useState(false)
-  const [chatDisplayMode, setChatDisplayMode] = useState<'bar' | 'panel'>('bar')
-
-  // H3: 증거 선택 상태
-  const [evidenceCases, setEvidenceCases] = useState<EvidenceItem[]>([])
-  const [evidenceArticles, setEvidenceArticles] = useState<EvidenceItem[]>([])
-  const [selectedEvidenceIds, setSelectedEvidenceIds] = useState<Set<string>>(new Set())
-  const [isEvidenceLoading, setIsEvidenceLoading] = useState(false)
-
-  // 물적 증거 (시나리오 기반)
-  const [physicalEvidence, setPhysicalEvidence] = useState<PhysicalEvidence[]>([])
-
-  // RAG 사용자 힌트
-  const [userHints, setUserHints] = useState<UserHint[]>([])
-
-  // H5: 단계 가이드 표시
-  const [showStageGuide, setShowStageGuide] = useState(true)
-
-  // 대화 속도
-  const [dialogueSpeed, setDialogueSpeed] = useState<DialogueSpeed>('normal')
-
-  // 데모 모드 상태
-  const [isDemoMode, setIsDemoMode] = useState(false)
-  const [demoScenario, setDemoScenario] = useState<DemoScenario | null>(null)
-  /** 각 단계별 사용자 입력 인덱스 (몇 번째 입력을 사용할 차례인지) */
-  const demoInputIndexRef = useRef<Record<string, number>>({})
-
-  // 일반 모드 SSE 상태
-  const { sendStreamingMessage } = useStreamingChat()
-  const sessionDataRef = useRef<Record<string, unknown>>({})
-  const tokenBufferRef = useRef('')
-  const setupInfoRef = useRef({
-    caseType: '',
-    caseCategory: '',
-    userRole: '',
-    caseSummary: '',
-  })
-
-  const stages = caseType === 'civil' ? CIVIL_STAGES : CRIMINAL_STAGES
-
-  /** 현재 단계의 데모 데이터 */
-  const currentDemoStage = demoScenario?.stages.find(
-    (s) => s.stageId === currentStageId
-  )
-
-  /** 현재 단계에서 다음으로 입력할 데모 텍스트 */
-  const nextDemoInput = (() => {
-    if (!isDemoMode || !currentDemoStage) return null
-    const index = demoInputIndexRef.current[currentStageId] ?? 0
-    return currentDemoStage.userInputs[index] ?? null
-  })()
-
-  /** 현재 단계의 모든 사용자 입력을 소진했는지 */
-  const isDemoStageInputsDone = (() => {
-    if (!isDemoMode || !currentDemoStage) return false
-    const index = demoInputIndexRef.current[currentStageId] ?? 0
-    return index >= currentDemoStage.userInputs.length
-  })()
-
-  /** 다음 단계 ID를 반환 */
-  const getNextStageId = useCallback((): string | null => {
-    const currentIndex = stages.findIndex((s) => s.id === currentStageId)
-    if (currentIndex < 0 || currentIndex >= stages.length - 1) return null
-    return stages[currentIndex + 1].id
-  }, [stages, currentStageId])
-
-  /** 데모 mock AI 응답을 대화 큐에 일괄 추가 */
-  const playMockResponses = useCallback(
-    (
-      responses: { speaker: string; content: string; emotion?: EmotionType }[],
-      stageId: string
-    ) => {
-      if (responses.length === 0) {
-        setIsWaiting(false)
-        return
-      }
-
-      setIsWaiting(true)
-
-      // 모든 응답을 ChatPanel 메시지에 추가 + dialogue:enqueue로 큐에 추가
-      for (const response of responses) {
-        const emotion: EmotionType =
-          response.emotion ?? DEFAULT_ROLE_EMOTION[response.speaker] ?? 'neutral'
-        const event: CourtEvent = {
-          stage: stageId,
-          speaker: response.speaker,
-          content: response.content,
-          timestamp: new Date().toISOString(),
-          emotion,
-        }
-        setMessages((prev) => [...prev, event])
-        eventBus.emit('dialogue:enqueue', {
-          agent: response.speaker,
-          text: response.content,
-          emotion,
-        })
-      }
-    },
-    []
-  )
-
-  // ── 일반 모드 핸들러 ──
-
-  const handleSetupComplete = useCallback(
-    (setup: {
-      caseType: CaseType
-      caseCategory: CaseCategory
-      userRole: UserRole
-      caseSummary: string
-    }) => {
-      setCaseType(setup.caseType)
-      setCurrentStageId(
-        setup.caseType === 'criminal' ? 'identity' : 'pretrial'
-      )
-      setPhase('trial')
-
-      eventBus.emit('setup:complete', {
-        caseType: setup.caseType,
-        userRole: setup.userRole,
-        caseSummary: setup.caseSummary,
-      })
-
-      setupInfoRef.current = {
-        caseType: setup.caseType,
-        caseCategory: setup.caseCategory,
-        userRole: setup.userRole,
-        caseSummary: setup.caseSummary,
-      }
-    },
-    []
-  )
-
-  /** SSE 메타데이터 응답 처리 (일반 모드 공용) */
-  const processSSEMetadata = useCallback(
-    (metadata: ChatMetadata) => {
-      const content = tokenBufferRef.current
-      tokenBufferRef.current = ''
-
-      if (metadata.session_data) {
-        sessionDataRef.current = {
-          thread_id: metadata.session_data.thread_id,
-          session_secret: metadata.session_data.session_secret,
-        }
-      }
-
-      const speaker = metadata.speaking_agent || 'judge'
-      const emotion =
-        metadata.emotion || DEFAULT_ROLE_EMOTION[speaker] || 'neutral'
-
-      if (content) {
-        const event: CourtEvent = {
-          stage: currentStageId,
-          speaker,
-          content,
-          timestamp: new Date().toISOString(),
-          emotion: emotion as EmotionType,
-        }
-        setMessages((prev) => [...prev, event])
-        eventBus.emit('dialogue:enqueue', {
-          agent: speaker,
-          text: content,
-          emotion: emotion as EmotionType,
-        })
-      }
-
-      if (metadata.evidence) {
-        setEvidenceCases(metadata.evidence.cases as EvidenceItem[])
-        setEvidenceArticles(metadata.evidence.articles as EvidenceItem[])
-      }
-
-      if (metadata.user_hints) {
-        setUserHints(metadata.user_hints as UserHint[])
-      }
-
-      // RAG 검색 결과를 ReferencePanel에 추가
-      if (metadata.references && metadata.references.length > 0) {
-        const newRefs: ReferenceItem[] = []
-        for (const ref of metadata.references) {
-          if (!referenceIdsRef.current.has(ref.id)) {
-            referenceIdsRef.current.add(ref.id)
-            newRefs.push({
-              id: ref.id,
-              type: ref.type as 'case' | 'law',
-              title: ref.title,
-              summary: ref.summary,
-              relevance_score: ref.relevance_score,
-              source: ref.source,
-              matched_text: ref.title,
-            })
-          }
-        }
-        if (newRefs.length > 0) {
-          setReferences((prev) => [...prev, ...newRefs])
-          setIsReferencePanelOpen(true)
-        }
-      }
-
-      if (metadata.stage && metadata.stage !== currentStageId) {
-        setCurrentStageId(metadata.stage)
-      }
-    },
-    [currentStageId]
-  )
-
-  const handleSendMessage = useCallback(
-    (text: string) => {
-      const newMessage: CourtEvent = {
-        stage: currentStageId,
-        speaker: 'user',
-        content: text,
-        timestamp: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, newMessage])
-      setIsWaiting(true)
-
-      eventBus.emit('user:input', { text })
-
-      if (isDemoMode && currentDemoStage) {
-        // 데모 모드: mock AI 응답 재생
-        playMockResponses(currentDemoStage.mockResponses, currentStageId)
-        // 데모 참조 판례/법령 추가
-        if (currentDemoStage.references) {
-          const newRefs = currentDemoStage.references.filter(
-            (r) => !referenceIdsRef.current.has(r.id)
-          )
-          for (const r of newRefs) referenceIdsRef.current.add(r.id)
-          if (newRefs.length > 0) {
-            setReferences((prev) => [...prev, ...newRefs])
-            setIsReferencePanelOpen(true)
-          }
-        }
-        // 사용자 입력 인덱스 증가
-        const currentIndex =
-          demoInputIndexRef.current[currentStageId] ?? 0
-        demoInputIndexRef.current[currentStageId] = currentIndex + 1
-      } else {
-        // 일반 모드: 백엔드 SSE 호출
-        const info = setupInfoRef.current
-        sendStreamingMessage(
-          {
-            message: text,
-            agent: 'mock_trial',
-            session_data: {
-              ...sessionDataRef.current,
-              stage: currentStageId,
-              case_type: info.caseType,
-              user_role: info.userRole,
-              case_summary: info.caseSummary,
-            },
-          },
-          {
-            onToken: (content) => {
-              tokenBufferRef.current += content
-            },
-            onMetadata: processSSEMetadata,
-            onDone: () => {
-              setIsWaiting(false)
-            },
-            onError: (error) => {
-              console.error('[MockTrial] SSE error:', error)
-              setIsWaiting(false)
-            },
-          }
-        )
-      }
-    },
-    [currentStageId, isDemoMode, currentDemoStage, playMockResponses, sendStreamingMessage, processSSEMetadata]
-  )
-
-  // ── 데모 모드 핸들러 ──
-
-  const handleDemoStart = useCallback(
-    (scenario: DemoScenario) => {
-      setIsDemoMode(true)
-      setDemoScenario(scenario)
-      setPhysicalEvidence(scenario.evidence ?? [])
-      demoInputIndexRef.current = {}
-      setPhase('briefing')
-    },
-    []
-  )
-
-  /** 브리핑 완료 → 재판 시작 */
-  const handleBriefingComplete = useCallback(() => {
-    if (!demoScenario) return
-    const { setup } = demoScenario
-    handleSetupComplete({
-      caseType: setup.caseType,
-      caseCategory: setup.caseCategory,
-      userRole: setup.userRole,
-      caseSummary: setup.caseSummary,
-    })
-
-    // 첫 단계가 자동 진행 단계(userInputs 없음)이면 법정 입장 완료 후 재생
-    const firstStageId =
-      setup.caseType === 'criminal' ? 'identity' : 'pretrial'
-    const firstStage = demoScenario.stages.find(
-      (s) => s.stageId === firstStageId
-    )
-    if (firstStage && firstStage.userInputs.length === 0) {
-      const unsub = eventBus.on('court:entrance:complete', () => {
-        unsub()
-        playMockResponses(firstStage.mockResponses, firstStageId)
-        // 데모 참조 판례/법령 추가
-        if (firstStage.references) {
-          const newRefs = firstStage.references.filter(
-            (r) => !referenceIdsRef.current.has(r.id)
-          )
-          for (const r of newRefs) referenceIdsRef.current.add(r.id)
-          if (newRefs.length > 0) {
-            setReferences((prev) => [...prev, ...newRefs])
-            setIsReferencePanelOpen(true)
-          }
-        }
-      })
-    }
-  }, [demoScenario, handleSetupComplete, playMockResponses])
-
-  /** 데모 자동 입력 버튼 클릭 */
-  const handleDemoInput = useCallback(() => {
-    if (!nextDemoInput) return
-    handleSendMessage(nextDemoInput)
-  }, [nextDemoInput, handleSendMessage])
-
-  /** 다음 단계로 이동 */
-  const handleNextStage = useCallback(() => {
-    const nextId = getNextStageId()
-    if (!nextId) {
-      setPhase('verdict')
-      return
-    }
-
-    setCurrentStageId(nextId)
-    setShowStageGuide(true)
-    // 증거 상태 초기화 (증거조사 단계를 벗어날 때)
-    if (currentStageId === 'evidence') {
-      setSelectedEvidenceIds(new Set())
-    }
-    const nextIndex = stages.findIndex((s) => s.id === nextId)
-    eventBus.emit('stage:change', {
-      from: currentStageId,
-      to: nextId,
-      stageNumber: nextIndex + 1,
-      totalStages: stages.length,
-    })
-
-    // 데모 모드: 자동 진행 단계면 mock 응답 자동 재생
-    if (isDemoMode && demoScenario) {
-      const nextStage = demoScenario.stages.find(
-        (s) => s.stageId === nextId
-      )
-      if (nextStage && nextStage.userInputs.length === 0) {
-        setTimeout(() => {
-          playMockResponses(nextStage.mockResponses, nextId)
-          // 데모 참조 판례/법령 추가
-          if (nextStage.references) {
-            const newRefs = nextStage.references.filter(
-              (r) => !referenceIdsRef.current.has(r.id)
-            )
-            for (const r of newRefs) referenceIdsRef.current.add(r.id)
-            if (newRefs.length > 0) {
-              setReferences((prev) => [...prev, ...newRefs])
-              setIsReferencePanelOpen(true)
-            }
-          }
-        }, 500)
-      }
-    }
-  }, [getNextStageId, isDemoMode, demoScenario, playMockResponses, currentStageId, stages])
-
-  // ── dialogue:queue:empty → isWaiting 해제 ──
-  useEffect(() => {
-    const unsub = eventBus.on('dialogue:queue:empty', () => {
-      setIsWaiting(false)
-    })
-    return unsub
-  }, [])
-
-  // ── Space 키보드 리스너 (dialogue:advance) ──
-  useEffect(() => {
-    if (phase !== 'trial') return
-
-    const handleKeyDown = (e: KeyboardEvent): void => {
-      if (e.code !== 'Space') return
-      // input/textarea에 포커스 중이면 무시
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      e.preventDefault()
-      eventBus.emit('dialogue:advance', {} as Record<string, never>)
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [phase])
-
-  // ── 참조 추출 ──
-
-  /** 메시지에서 판례번호/법령 참조를 감지하여 참조 목록에 추가 */
-  useEffect(() => {
-    if (messages.length === 0) return
-    const lastMessage = messages[messages.length - 1]
-    if (lastMessage.speaker === 'user') return
-
-    const content = lastMessage.content
-    const newReferences: ReferenceItem[] = []
-
-    // 판례번호 감지
-    for (const match of Array.from(content.matchAll(CASE_NUMBER_PATTERN))) {
-      const matchedText = match[1]
-      const id = `case-${matchedText}`
-      if (!referenceIdsRef.current.has(id)) {
-        referenceIdsRef.current.add(id)
-        newReferences.push({
-          id,
-          type: 'case',
-          title: matchedText,
-          summary: `${matchedText} 판결문 - 재판 중 언급됨`,
-          relevance_score: 0.8,
-          source: '재판 기록',
-          matched_text: matchedText,
-        })
-      }
-    }
-
-    // 법령 참조 감지
-    for (const match of Array.from(content.matchAll(LAW_REFERENCE_PATTERN))) {
-      const lawName = match[1]
-      const article = match[2]
-      const matchedText = match[0]
-      const id = `law-${lawName}-${article}`
-      if (!referenceIdsRef.current.has(id)) {
-        referenceIdsRef.current.add(id)
-        newReferences.push({
-          id,
-          type: 'law',
-          title: `${lawName} 제${article}조`,
-          summary: `${lawName} 제${article}조 - 재판 중 언급됨`,
-          relevance_score: 0.9,
-          source: lawName,
-          matched_text: matchedText,
-        })
-      }
-    }
-
-    if (newReferences.length > 0) {
-      setReferences((prev) => [...prev, ...newReferences])
-      setIsReferencePanelOpen(true)
-    }
-  }, [messages])
-
-  // H3: 증거 토글 핸들러
-  const handleEvidenceToggle = useCallback((id: string) => {
-    setSelectedEvidenceIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
-  }, [])
-
-  // H3: 증거 제출 핸들러
-  const handleEvidenceSubmit = useCallback(() => {
-    const allIds = [
-      ...evidenceCases.map((c) => c.id),
-      ...evidenceArticles.map((a) => a.id),
-    ]
-    const excludedIds = allIds.filter((id) => !selectedEvidenceIds.has(id))
-
-    // 백엔드에 선택 결과 전달
-    eventBus.emit('user:input', {
-      text: JSON.stringify({
-        selected_ids: Array.from(selectedEvidenceIds),
-        excluded_ids: excludedIds,
-        text: `증거 ${selectedEvidenceIds.size}건 제출`,
-      }),
-    })
-
-    const submitMessage: CourtEvent = {
-      stage: currentStageId,
-      speaker: 'user',
-      content: `증거 ${selectedEvidenceIds.size}건을 제출했습니다.`,
-      timestamp: new Date().toISOString(),
-    }
-    setMessages((prev) => [...prev, submitMessage])
-    setIsWaiting(true)
-
-    if (!isDemoMode) {
-      const info = setupInfoRef.current
-      sendStreamingMessage(
-        {
-          message: JSON.stringify({
-            selected_ids: Array.from(selectedEvidenceIds),
-            excluded_ids: excludedIds,
-            text: `증거 ${selectedEvidenceIds.size}건 제출`,
-          }),
-          agent: 'mock_trial',
-          session_data: {
-            ...sessionDataRef.current,
-            stage: currentStageId,
-            case_type: info.caseType,
-            user_role: info.userRole,
-          },
-        },
-        {
-          onToken: (content) => {
-            tokenBufferRef.current += content
-          },
-          onMetadata: processSSEMetadata,
-          onDone: () => {
-            setIsWaiting(false)
-          },
-          onError: (error) => {
-            console.error('[MockTrial] SSE error:', error)
-            setIsWaiting(false)
-          },
-        }
-      )
-    }
-  }, [evidenceCases, evidenceArticles, selectedEvidenceIds, currentStageId, isDemoMode, sendStreamingMessage, processSSEMetadata])
-
-  /** 현재 단계가 증거조사인지 여부 */
-  const isEvidenceStage = currentStageId === 'evidence' && phase === 'trial'
-
-  /** 현재 단계의 StageInfo */
-  const currentStageInfo = stages.find((s) => s.id === currentStageId)
-
-  /** 현재 단계에서 "다음 단계" 버튼을 보여줄지 여부 */
-  const showNextStageButton =
-    isDemoMode && !isWaiting && phase === 'trial' && isDemoStageInputsDone
+  const handleDismissGuide = useCallback(() => setShowStageGuide(false), [setShowStageGuide])
 
   return (
     <div
@@ -630,47 +147,23 @@ export default function MockTrialPage() {
         <StageProgress stages={stages} currentStageId={currentStageId} />
       )}
 
-      {/* H5: 단계 가이드 배너 */}
+      {/* 단계 가이드 배너 */}
       {phase === 'trial' && showStageGuide && currentStageInfo && (
-        <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-start gap-2">
-          <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-blue-700">
-                {currentStageInfo.name}
-              </span>
-              <span className="text-[10px] text-blue-500 bg-blue-100 px-1.5 py-0.5 rounded">
-                {currentStageInfo.legal_basis}
-              </span>
-              <span className="text-[10px] text-gray-400">
-                {currentStageInfo.duration_hint}
-              </span>
-            </div>
-            <p className="text-xs text-blue-600 mt-0.5">
-              {currentStageInfo.description} &middot;{' '}
-              <span className="font-medium">{currentStageInfo.user_action}</span>
-            </p>
-          </div>
-          <button
-            onClick={() => setShowStageGuide(false)}
-            className="text-blue-400 hover:text-blue-600 text-xs shrink-0"
-            aria-label="가이드 닫기"
-          >
-            닫기
-          </button>
-        </div>
+        <StageGuideBanner
+          stageInfo={currentStageInfo}
+          onDismiss={handleDismissGuide}
+        />
       )}
 
-      {/* 메인 콘텐츠 - MockTrialGame은 한 번만 렌더링하여 씬 전환 유지 */}
+      {/* 메인 콘텐츠 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 좌: 참조/증거 패널 토글 (trial phase에서만 표시) */}
+        {/* 좌: 참조/증거 패널 토글 */}
         {phase === 'trial' && (
           <>
-            {/* 참조/증거 패널 (접기/펴기) */}
             <div
               className={`${
                 isReferencePanelOpen || isEvidenceStage ? 'w-72' : 'w-0'
-              } transition-all duration-300 overflow-hidden border-r border-gray-200 bg-white`}
+              } transition-[width] duration-300 overflow-hidden border-r border-gray-200 bg-white`}
             >
               <div className="w-72 h-full overflow-y-auto">
                 {isEvidenceStage ? (
@@ -691,7 +184,7 @@ export default function MockTrialPage() {
               </div>
             </div>
 
-            {/* 토글 버튼 (증거조사 단계에서는 항상 열림) */}
+            {/* 토글 버튼 */}
             {!isEvidenceStage && (
               <button
                 onClick={() => setIsReferencePanelOpen((prev) => !prev)}
@@ -725,7 +218,7 @@ export default function MockTrialPage() {
             <MockTrialGame />
           </div>
 
-          {/* 대화 컨트롤 (trial phase에서만) */}
+          {/* 대화 컨트롤 */}
           {phase === 'trial' && (
             <DialogueControls
               currentSpeed={dialogueSpeed}
@@ -733,7 +226,7 @@ export default function MockTrialPage() {
             />
           )}
 
-          {/* 다음 단계 버튼 (데모 모드, trial phase) */}
+          {/* 다음 단계 버튼 (데모 모드) */}
           {showNextStageButton && (
             <div className="px-4 py-2 bg-amber-50 border-t border-amber-200 flex items-center justify-between">
               <span className="text-sm text-amber-700">
@@ -743,12 +236,12 @@ export default function MockTrialPage() {
                 onClick={handleNextStage}
                 className="px-4 py-1.5 text-sm font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
               >
-                {getNextStageId() ? '다음 단계로' : '판결 보기'}
+                {nextStageId ? '다음 단계로' : '판결 보기'}
               </button>
             </div>
           )}
 
-          {/* 하단 채팅 바 (trial phase, bar 모드일 때) */}
+          {/* 하단 채팅 바 */}
           {phase === 'trial' && chatDisplayMode === 'bar' && (
             <ChatBottomBar
               messages={messages}
@@ -762,7 +255,7 @@ export default function MockTrialPage() {
           )}
         </div>
 
-        {/* 우: setup phase → 설정 UI / trial phase + panel 모드 → 채팅 패널 */}
+        {/* 우: setup/briefing/chat 패널 */}
         {phase === 'setup' ? (
           <div className="w-96 border-l border-gray-200 bg-white overflow-y-auto p-6">
             <MockTrialSetup
@@ -791,6 +284,15 @@ export default function MockTrialPage() {
           </div>
         ) : null}
       </div>
+
+      {/* 판결 결과 오버레이 */}
+      {phase === 'verdict' && judgmentResult && (
+        <JudgmentDisplay
+          result={judgmentResult}
+          onClose={handleCloseJudgment}
+          onRestart={handleRestart}
+        />
+      )}
     </div>
   )
 }

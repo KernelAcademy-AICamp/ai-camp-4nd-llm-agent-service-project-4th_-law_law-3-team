@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { ReferenceItem } from '../types'
 
 interface ReferencePanelProps {
@@ -13,10 +13,19 @@ export function ReferencePanel({ references }: ReferencePanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>('case')
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  const filteredReferences = references.filter((r) => r.type === activeTab)
-
-  const caseCount = references.filter((r) => r.type === 'case').length
-  const lawCount = references.filter((r) => r.type === 'law').length
+  const { filteredReferences, caseCount, lawCount } = useMemo(() => {
+    let cases = 0
+    let laws = 0
+    for (const r of references) {
+      if (r.type === 'case') cases++
+      else laws++
+    }
+    return {
+      filteredReferences: references.filter((r) => r.type === activeTab),
+      caseCount: cases,
+      lawCount: laws,
+    }
+  }, [references, activeTab])
 
   const toggleExpand = (id: string): void => {
     setExpandedId((prev) => (prev === id ? null : id))

@@ -61,6 +61,11 @@ src/features/<module-name>/
 
 `src/components/ChatWidget.tsx` — SSE 스트리밍 채팅, 에이전트 응답 후 자동 네비게이션.
 
+**분리된 훅/컴포넌트:** `src/components/chat/`
+- `constants.ts` — 인터페이스 (`Message`, `MultiAgentChatResponse`), 상수 매핑 (`PATHNAME_AGENT_MAP`, `AGENT_PAGE_MAP`, `AGENT_DISPLAY_NAMES`, `AGENT_GREETINGS`, `FLOATING_MODE_PATHS`)
+- `MessageBubble.tsx` — 메시지 버블 컴포넌트 (`CaseNumberLink`, `useMarkdownComponents`, `MessageBubble`)
+- `useLoadingStatus.ts` — 로딩 상태 관리 훅 (경과 시간 기반 상태 메시지)
+
 **세션 관리:** 쿠키 기반 `session_token` (HttpOnly). `conversation_id`와 `case_id`를 ChatContext에서 관리하여 대화 이어가기 및 워크스페이스 연동 지원.
 
 **네비게이션 우선순위:** NAVIGATE 액션 (좌표/파라미터 포함) > AGENT_PAGE_MAP (기본 페이지 이동)
@@ -80,9 +85,26 @@ src/features/<module-name>/
 - `initialLevel` prop (optional, 기본값 5) — 초기 줌 레벨
 - `prevInitialLevelRef`로 줌 레벨 변경 감지, 드래그 시 리셋 방지
 
+### SSE 프록시 공통 유틸
+
+`src/lib/sse-proxy.ts` — SSE 스트리밍 프록시 API Route의 공통 유틸리티.
+- `BACKEND_URL`, `SSE_HEADERS` — 백엔드 URL, SSE 응답 헤더 상수
+- `backendErrorResponse()`, `noBodyResponse()`, `proxyErrorResponse()` — 에러 응답 헬퍼
+- `pipeBackendStream(reader, options)` — ReadableStream 파이핑 (`onChunk`/`onCleanup` 콜백)
+- `apiKeyHeader()` — API 키 헤더 생성
+
+사용처: `src/app/api/chat/stream/`, `src/app/api/content-marketing/*/stream/`
+
+### 에러 바운더리
+
+- `src/app/error.tsx` — 클라이언트 에러 바운더리 (retry 버튼)
+- `src/app/loading.tsx` — 글로벌 로딩 스피너
+- `src/app/not-found.tsx` — 404 페이지 (홈 링크)
+
 ### API 프록시
 
 `next.config.js`의 rewrites 설정으로 `/api/*` 요청이 백엔드(localhost:8000)로 프록시됩니다.
+보안 헤더(`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`)가 모든 응답에 포함됩니다.
 
 ## Features
 

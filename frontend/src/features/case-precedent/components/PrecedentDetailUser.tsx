@@ -75,7 +75,7 @@ export function PrecedentDetailUser({ source }: PrecedentDetailUserProps) {
             <ul className="px-4 pb-3 space-y-1 max-h-48 overflow-y-auto">
               {provisions.map((provision, idx) => (
                 <li
-                  key={idx}
+                  key={`provision-${idx}`}
                   className="text-sm text-gray-700 py-1.5 px-3 rounded hover:bg-gray-50 cursor-default"
                 >
                   {provision}

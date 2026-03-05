@@ -8,7 +8,7 @@ import { useWizardState } from '@/features/small-claims/hooks/useWizardState'
 import { DISPUTE_TYPE_OPTIONS } from '@/features/small-claims/types'
 import { BackButton } from '@/components/ui/BackButton'
 import { useUI } from '@/context/UIContext'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 
 const CaseInfoStep = dynamic(
   () => import('@/features/small-claims/components/CaseInfoStep').then((m) => m.CaseInfoStep),
@@ -72,6 +72,7 @@ export default function SmallClaimsPage() {
     generateDocument,
     relatedCases,
     isLoadingRelatedCases,
+    evidenceError,
     resetWizard,
   } = useWizardState()
 
@@ -107,6 +108,7 @@ export default function SmallClaimsPage() {
             items={evidenceItems}
             checkedItems={checkedEvidence}
             isLoading={isLoadingEvidence}
+            error={evidenceError}
             uploadedFiles={uploadedFiles}
             onToggle={toggleEvidence}
             onFileUpload={handleFileUpload}

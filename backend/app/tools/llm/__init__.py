@@ -90,6 +90,7 @@ def _get_openai_model(
         max_tokens=max_tokens,
         api_key=api_key,  # type: ignore[arg-type]
         timeout=settings.LLM_TIMEOUT_SECONDS,
+        max_retries=3,
         **kwargs,
     )
 
@@ -121,6 +122,7 @@ def _get_anthropic_model(
         max_tokens=max_tokens,
         api_key=api_key,  # type: ignore[arg-type]
         timeout=float(settings.LLM_TIMEOUT_SECONDS),
+        max_retries=3,
         **kwargs,
     )
 
@@ -151,6 +153,7 @@ def _get_google_model(
         temperature=temperature,
         max_output_tokens=max_tokens,
         google_api_key=api_key,
+        max_retries=3,
         **kwargs,
     )
 
@@ -177,6 +180,7 @@ def _get_upstage_model(
         api_key=api_key,  # type: ignore[arg-type]
         base_url="https://api.upstage.ai/v1/solar",
         timeout=settings.LLM_TIMEOUT_SECONDS,
+        max_retries=3,
         **kwargs,
     )
 

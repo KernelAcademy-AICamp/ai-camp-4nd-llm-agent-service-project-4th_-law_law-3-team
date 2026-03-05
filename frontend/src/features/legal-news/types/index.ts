@@ -62,16 +62,16 @@ export interface NewsSearchRequest {
 // ── 검색 결과 항목 ──
 
 export interface NewsSearchResult {
-  chunk_id: string
-  doc_id: string
+  id: string
   title: string
-  chunk_text: string
-  chunk_type: string
   source: NewsSource
   publisher: string
   url: string
   published_at: string | null
-  rerank_score: number | null
+  summary_one_liner: string
+  section: string | null
+  tags: string[] | null
+  relevance_score: number | null
 }
 
 // ── 검색 응답 ──

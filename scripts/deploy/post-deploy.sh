@@ -286,6 +286,19 @@ if [ "$SKIP_DB_LOAD" = false ]; then
     run_in_backend "법률 용어 사전 (72,700건)" \
         uv run python scripts/load_legal_terms_data.py
 
+    # 6-8. 뉴스 기사 데이터
+    #      소스: data/news/news_articles.jsonl (S3 다운로드 포함)
+    #      → news_articles 테이블 (ON CONFLICT DO UPDATE, 멱등성 보장)
+    run_in_backend "뉴스 기사 데이터" \
+        uv run python scripts/load_news_data.py
+
+    # 6-9. 뉴스 BM25 search_text 적재
+    #      전제: 6-8에서 news_articles 데이터 적재 완료
+    #      → news_articles.search_text 컬럼에 MeCab 토크나이징 텍스트 저장
+    #      → idx_news_bm25 인덱스는 마이그레이션 024에서 자동 생성됨
+    run_in_backend "뉴스 BM25 search_text 적재" \
+        uv run python scripts/build_news_search_text.py
+
     echo "  적재 결과: 성공 ${db_load_ok}건, 실패 ${db_load_fail}건"
 
     if [ "$db_load_fail" -gt 0 ]; then

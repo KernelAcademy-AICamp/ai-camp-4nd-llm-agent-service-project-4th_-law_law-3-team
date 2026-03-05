@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { smallClaimsService } from '../services'
 import type {
   WizardStep,
@@ -11,11 +11,18 @@ import type {
   RelatedCaseItem,
   DocumentType,
   UploadedFile,
-  WIZARD_STEPS,
 } from '../types'
-import { MAX_FILE_SIZE_BYTES } from '../types'
+import { MAX_FILE_SIZE_BYTES, REQUIRED_CASE_FIELDS } from '../types'
 
 const STORAGE_KEY = 'small_claims_wizard_state'
+
+const VALID_DISPUTE_TYPES = new Set<string>([
+  'product_payment',
+  'fraud',
+  'deposit',
+  'service_payment',
+  'wage',
+])
 
 interface UseWizardStateReturn {
   // Step management
@@ -39,6 +46,7 @@ interface UseWizardStateReturn {
   checkedEvidence: Set<string>
   toggleEvidence: (id: string) => void
   isLoadingEvidence: boolean
+  evidenceError: string | null
   uploadedFiles: Map<string, UploadedFile[]>
   handleFileUpload: (evidenceItemId: string, files: File[]) => Promise<void>
   removeUploadedFile: (evidenceItemId: string, fileId: string) => void
@@ -52,6 +60,7 @@ interface UseWizardStateReturn {
   // Related cases
   relatedCases: RelatedCaseItem[]
   isLoadingRelatedCases: boolean
+  relatedCasesError: string | null
 
   // Reset
   resetWizard: () => void
@@ -69,6 +78,7 @@ export function useWizardState(): UseWizardStateReturn {
   // Evidence state
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([])
   const [isLoadingEvidence, setIsLoadingEvidence] = useState(false)
+  const [evidenceError, setEvidenceError] = useState<string | null>(null)
   const [uploadedFiles, setUploadedFiles] = useState<Map<string, UploadedFile[]>>(new Map())
 
   // Document state
@@ -78,6 +88,18 @@ export function useWizardState(): UseWizardStateReturn {
   // Related cases state
   const [relatedCases, setRelatedCases] = useState<RelatedCaseItem[]>([])
   const [isLoadingRelatedCases, setIsLoadingRelatedCases] = useState(false)
+  const [relatedCasesError, setRelatedCasesError] = useState<string | null>(null)
+
+  // Refs for event handler (avoid stale closures)
+  const currentStepRef = useRef(currentStep)
+  const disputeTypeRef = useRef(disputeType)
+  const caseInfoRef = useRef(caseInfo)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Keep refs in sync
+  currentStepRef.current = currentStep
+  disputeTypeRef.current = disputeType
+  caseInfoRef.current = caseInfo
 
   // Load saved state from sessionStorage
   useEffect(() => {
@@ -113,9 +135,14 @@ export function useWizardState(): UseWizardStateReturn {
             '용역대금': 'service_payment',
             '임금체불': 'wage',
           }
-          const targetDisputeType = disputeTypeMapping[newState.chatDisputeType] || newState.chatDisputeType
-          
-          if (targetDisputeType && targetDisputeType !== disputeType) {
+          const targetDisputeType =
+            disputeTypeMapping[newState.chatDisputeType] || newState.chatDisputeType
+
+          if (
+            targetDisputeType &&
+            VALID_DISPUTE_TYPES.has(targetDisputeType) &&
+            targetDisputeType !== disputeTypeRef.current
+          ) {
             setDisputeTypeState(targetDisputeType as DisputeType)
             setCheckedEvidence(new Set())
             setGeneratedDocument(null)
@@ -125,15 +152,15 @@ export function useWizardState(): UseWizardStateReturn {
         // 챗봇에서 단계 변경 시 UI 업데이트 (매핑 필요)
         if (newState.chatStep) {
           const stepMapping: Record<string, WizardStep> = {
-            'init': 'dispute_type',
-            'gather_info': 'case_info',
-            'evidence': 'evidence',
-            'demand_letter': 'document',
-            'court': 'document',
-            'complete': 'document'
+            init: 'dispute_type',
+            gather_info: 'case_info',
+            evidence: 'evidence',
+            demand_letter: 'document',
+            court: 'document',
+            complete: 'document',
           }
           const targetStep = stepMapping[newState.chatStep]
-          if (targetStep && targetStep !== currentStep) {
+          if (targetStep && targetStep !== currentStepRef.current) {
             setCurrentStep(targetStep)
           }
         }
@@ -149,11 +176,17 @@ export function useWizardState(): UseWizardStateReturn {
     return () => {
       window.removeEventListener('wizardStateChange', handleWizardStateChange as EventListener)
     }
-  }, [currentStep, disputeType])
+  }, [])
 
-  // Save state to sessionStorage
+  // Save state to sessionStorage (debounced 500ms)
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+    }
+
+    saveTimerRef.current = setTimeout(() => {
       const state = {
         currentStep,
         disputeType,
@@ -161,31 +194,48 @@ export function useWizardState(): UseWizardStateReturn {
         checkedEvidence: Array.from(checkedEvidence),
       }
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    }, 500)
+
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+      }
     }
   }, [currentStep, disputeType, caseInfo, checkedEvidence])
 
-  // Load evidence checklist and related cases in parallel when dispute type changes
+  // Load evidence checklist and related cases when dispute type changes
   useEffect(() => {
-    if (disputeType) {
-      setIsLoadingEvidence(true)
-      setIsLoadingRelatedCases(true)
+    if (!disputeType) return
 
-      // 병렬로 두 API 호출 실행
-      Promise.all([
-        smallClaimsService.getEvidenceChecklist(disputeType),
-        smallClaimsService.getRelatedCases(disputeType),
-      ])
-        .then(([evidenceResponse, casesResponse]) => {
-          setEvidenceItems(evidenceResponse.items)
-          setRelatedCases(casesResponse.cases)
-        })
-        .catch((error) => {
-          console.error('Failed to load data:', error)
-        })
-        .finally(() => {
-          setIsLoadingEvidence(false)
-          setIsLoadingRelatedCases(false)
-        })
+    const controller = new AbortController()
+    setIsLoadingEvidence(true)
+    setIsLoadingRelatedCases(true)
+    setEvidenceError(null)
+    setRelatedCasesError(null)
+
+    Promise.all([
+      smallClaimsService.getEvidenceChecklist(disputeType),
+      smallClaimsService.getRelatedCases(disputeType),
+    ])
+      .then(([evidenceResponse, casesResponse]) => {
+        if (controller.signal.aborted) return
+        setEvidenceItems(evidenceResponse.items)
+        setRelatedCases(casesResponse.cases)
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return
+        console.error('Failed to load data:', error)
+        setEvidenceError('증거 체크리스트를 불러오지 못했습니다')
+        setRelatedCasesError('유사 판례를 불러오지 못했습니다')
+      })
+      .finally(() => {
+        if (controller.signal.aborted) return
+        setIsLoadingEvidence(false)
+        setIsLoadingRelatedCases(false)
+      })
+
+    return () => {
+      controller.abort()
     }
   }, [disputeType])
 
@@ -274,8 +324,8 @@ export function useWizardState(): UseWizardStateReturn {
         return
       }
 
-      const requiredFields = ['plaintiff_name', 'plaintiff_address', 'defendant_name', 'amount', 'description']
-      const missingFields = requiredFields.filter((field) => !caseInfo[field as keyof CaseInfo])
+      const currentCaseInfo = caseInfoRef.current
+      const missingFields = REQUIRED_CASE_FIELDS.filter((field) => !currentCaseInfo[field])
 
       if (missingFields.length > 0) {
         setGenerateError('필수 정보를 모두 입력해주세요')
@@ -288,15 +338,15 @@ export function useWizardState(): UseWizardStateReturn {
       try {
         const fullCaseInfo: CaseInfo = {
           dispute_type: disputeType,
-          plaintiff_name: caseInfo.plaintiff_name!,
-          plaintiff_address: caseInfo.plaintiff_address!,
-          plaintiff_phone: caseInfo.plaintiff_phone,
-          defendant_name: caseInfo.defendant_name!,
-          defendant_address: caseInfo.defendant_address,
-          defendant_phone: caseInfo.defendant_phone,
-          amount: caseInfo.amount!,
-          description: caseInfo.description!,
-          incident_date: caseInfo.incident_date,
+          plaintiff_name: currentCaseInfo.plaintiff_name!,
+          plaintiff_address: currentCaseInfo.plaintiff_address!,
+          plaintiff_phone: currentCaseInfo.plaintiff_phone,
+          defendant_name: currentCaseInfo.defendant_name!,
+          defendant_address: currentCaseInfo.defendant_address,
+          defendant_phone: currentCaseInfo.defendant_phone,
+          amount: currentCaseInfo.amount!,
+          description: currentCaseInfo.description!,
+          incident_date: currentCaseInfo.incident_date,
         }
 
         const document = await smallClaimsService.generateDocument(documentType, fullCaseInfo)
@@ -308,7 +358,7 @@ export function useWizardState(): UseWizardStateReturn {
         setIsGenerating(false)
       }
     },
-    [disputeType, caseInfo]
+    [disputeType]
   )
 
   const resetWizard = useCallback(() => {
@@ -320,6 +370,8 @@ export function useWizardState(): UseWizardStateReturn {
     setGeneratedDocument(null)
     setEvidenceItems([])
     setRelatedCases([])
+    setEvidenceError(null)
+    setRelatedCasesError(null)
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem(STORAGE_KEY)
     }
@@ -340,6 +392,7 @@ export function useWizardState(): UseWizardStateReturn {
     checkedEvidence,
     toggleEvidence,
     isLoadingEvidence,
+    evidenceError,
     uploadedFiles,
     handleFileUpload,
     removeUploadedFile,
@@ -349,6 +402,7 @@ export function useWizardState(): UseWizardStateReturn {
     generateDocument,
     relatedCases,
     isLoadingRelatedCases,
+    relatedCasesError,
     resetWizard,
   }
 }

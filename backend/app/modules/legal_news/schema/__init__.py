@@ -67,18 +67,20 @@ class NewsSearchRequest(BaseModel):
 
 
 class NewsSearchResult(BaseModel):
-    """검색 결과 항목"""
+    """검색 결과 항목 (BM25 기반)"""
 
-    chunk_id: str
-    doc_id: str
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    id: str = Field(description="기사 ID (SHA256)")
     title: str
-    chunk_text: str
-    chunk_type: str
     source: str
     publisher: str
     url: str
-    published_at: str | None = None
-    rerank_score: float | None = None
+    published_at: datetime | None = None
+    summary_one_liner: str = Field(default="", description="한줄 요약")
+    section: str | None = None
+    tags: list[str] | None = None
+    relevance_score: float | None = Field(default=None, description="BM25 점수")
 
 
 class NewsSearchResponse(BaseModel):

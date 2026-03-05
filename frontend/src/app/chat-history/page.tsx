@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useUI } from '@/context/UIContext'
 import { useChat } from '@/context/ChatContext'
 import { listConversations } from '@/features/workspace/services'
-import type { ConversationListItem, PaginatedResponse } from '@/features/workspace/types'
 
 const AGENT_LABELS: Record<string, string> = {
   legal_search: '판례/법령 검색',
@@ -27,30 +27,18 @@ export default function ChatHistoryPage() {
   const { isChatOpen, chatMode } = useUI()
   const { setConversationId } = useChat()
 
-  const [data, setData] = useState<PaginatedResponse<ConversationListItem> | null>(null)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
-  const [isLoading, setIsLoading] = useState(true)
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const result = await listConversations({
-        search: search || undefined,
-        page,
-        page_size: 20,
-      })
-      setData(result)
-    } catch (error) {
-      console.error('대화 목록 조회 실패:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [search, page])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const { data, isLoading } = useQuery({
+    queryKey: ['conversations', search, page],
+    queryFn: () => listConversations({
+      search: search || undefined,
+      page,
+      page_size: 20,
+    }),
+    placeholderData: keepPreviousData,
+  })
 
   const handleContinue = (conversationId: string) => {
     setConversationId(conversationId)

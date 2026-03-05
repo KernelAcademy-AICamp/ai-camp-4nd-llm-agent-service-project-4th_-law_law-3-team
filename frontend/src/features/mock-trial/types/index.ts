@@ -142,6 +142,8 @@ export interface CourtEvent {
   content: string
   timestamp: string
   emotion?: EmotionType
+  /** 사용자가 보낸 메시지인지 여부 (역할 speaker와 구분) */
+  isUser?: boolean
 }
 
 export interface TrialSetup {

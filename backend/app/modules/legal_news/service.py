@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import case, func, literal, or_, select
+from sqlalchemy import case, func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -84,36 +84,50 @@ async def search_news_service(
     *,
     request: NewsSearchRequest,
 ) -> NewsSearchResponse:
-    """뉴스 하이브리드 검색 서비스 (v0.3.0)"""
-    from app.tools.news_pipeline.chunker import Chunker
-    from app.tools.news_pipeline.config import NewsPipelineConfig
+    """뉴스 BM25 키워드 검색 서비스 (v0.4.0)
 
-    config = NewsPipelineConfig.from_settings()
-    results = await Chunker.hybrid_search(
-        query=request.query,
-        lancedb_table_name=config.lancedb_table,
-        limit=request.limit * 2,
-        rerank_top_k=request.limit,
+    PostgreSQL pg_textsearch BM25 인덱스를 사용하여
+    news_articles.search_text 컬럼에서 키워드 검색.
+    """
+    from app.services.rag.keyword_search import _tokenize
+
+    tokens = _tokenize(request.query)
+    if not tokens:
+        return NewsSearchResponse(results=[], query=request.query, total=0)
+
+    search_query = " ".join(tokens)
+
+    # BM25 쿼리 (기존 fts_index 패턴과 동일)
+    bm25_query = func.to_bm25query(search_query, "idx_news_bm25")
+    score_expr = NewsArticle.search_text.op("<@>")(bm25_query)
+
+    stmt = select(NewsArticle, score_expr.label("rank")).where(
+        NewsArticle.search_text.isnot(None)
     )
 
-    # 소스 필터 적용
+    # 소스 필터
     if request.source:
-        results = [r for r in results if r.get("source") == request.source]
+        stmt = stmt.where(NewsArticle.source == request.source)
+
+    # BMW 최적화: ORDER BY <@> ASC LIMIT n
+    stmt = stmt.order_by(score_expr.asc()).limit(request.limit)
+
+    rows = (await db.execute(stmt)).all()
 
     search_results = [
         NewsSearchResult(
-            chunk_id=r.get("chunk_id", ""),
-            doc_id=r.get("doc_id", ""),
-            title=r.get("title", ""),
-            chunk_text=r.get("chunk_text", ""),
-            chunk_type=r.get("chunk_type", ""),
-            source=r.get("source", ""),
-            publisher=r.get("publisher", ""),
-            url=r.get("url", ""),
-            published_at=r.get("published_at"),
-            rerank_score=r.get("rerank_score"),
+            id=article.id,
+            title=article.title,
+            source=article.source,
+            publisher=article.publisher,
+            url=article.url,
+            published_at=article.published_at,
+            summary_one_liner=article.summary_one_liner,
+            section=article.section,
+            tags=article.tags,
+            relevance_score=abs(rank) if rank is not None else None,
         )
-        for r in results
+        for article, rank in rows
     ]
 
     return NewsSearchResponse(
@@ -352,17 +366,28 @@ async def get_rag_contribution_stats(
     db: AsyncSession,
 ) -> RagContributionStats:
     """RAG 기여도 통계 조회 (Main RAG 21개 테이블 + Assist RAG 뉴스)"""
-    # Main RAG: 21개 원본 문서 테이블 COUNT
-    main_sources: list[MainRagSourceItem] = []
-    main_total = 0
-    for table_name, label in _MAIN_RAG_TABLES:
-        model_cls = _get_model_class(table_name)
-        result = await db.execute(select(func.count()).select_from(model_cls))
-        count = result.scalar_one()
-        main_sources.append(
-            MainRagSourceItem(table_name=table_name, label=label, count=count)
+    # Main RAG: 21개 테이블 COUNT를 UNION ALL로 단일 쿼리 실행 (21회 → 1회)
+    count_subqueries = [
+        select(
+            literal(table_name).label("table_name"),
+            func.count().label("cnt"),
+        ).select_from(_get_model_class(table_name))
+        for table_name, _ in _MAIN_RAG_TABLES
+    ]
+    combined = union_all(*count_subqueries)
+    result = await db.execute(combined)
+    counts = {row.table_name: row.cnt for row in result}
+
+    label_map = {table_name: label for table_name, label in _MAIN_RAG_TABLES}
+    main_sources = [
+        MainRagSourceItem(
+            table_name=table_name,
+            label=label_map[table_name],
+            count=counts.get(table_name, 0),
         )
-        main_total += count
+        for table_name, _ in _MAIN_RAG_TABLES
+    ]
+    main_total = sum(item.count for item in main_sources)
 
     # 건수 내림차순 정렬
     main_sources.sort(key=lambda x: x.count, reverse=True)

@@ -1,8 +1,8 @@
 # Skills & Agents Catalog
 
-스킬 35개, 에이전트 5개, 규칙 7개의 분류 및 의존관계 인덱스.
+스킬 37개, 에이전트 5개, 규칙 11개의 분류 및 의존관계 인덱스.
 
-> 최종 업데이트: 2026-02-24
+> 최종 업데이트: 2026-03-05
 
 ---
 
@@ -14,9 +14,9 @@
 | [코드 품질](#2-코드-품질) | 5 | 1 | 검증, 코딩 표준, TDD, 에러 처리 |
 | [프론트엔드](#3-프론트엔드) | 6 | - | React/Next.js, 성능, UI/UX, 모의 법정 |
 | [RAG/검색](#4-rag검색) | 5 | 1 | 파일 리네임, RAG 패턴, 평가, 실험 추적, 인제스트 |
-| [데이터/DB](#5-데이터db) | 4 | - | PostgreSQL, Alembic, 위치검색, 요약감사 |
+| [데이터/DB](#5-데이터db) | 5 | - | PostgreSQL, Alembic, 위치검색, 요약감사, Neo4j 그래프 |
 | [도메인 지식](#6-도메인-지식) | 1 | - | 한국 법률 도메인 지식 |
-| [멀티에이전트](#7-멀티에이전트) | 3 | - | LangGraph 패턴, 디버깅, 프롬프트 엔지니어링 |
+| [멀티에이전트](#7-멀티에이전트) | 4 | - | LangGraph 패턴, 디버깅, 프롬프트, 에이전트 개발 |
 | [외부 CLI](#8-외부-cli) | 3 | 1 | Gemini, Codex, CLI 조합 |
 | [보안/성능](#9-보안성능) | 2 | - | 인증/보안, 캐싱 전략 |
 | [운영](#10-운영) | 2 | 2 | Docker, Google Drive, 의존성 감사, E2E 테스트 |
@@ -110,6 +110,7 @@ PostgreSQL 마이그레이션, 공간 쿼리, 데이터 품질.
 | `alembic-migration-safety` | 166 | 마이그레이션 작성 시 | 롤백/데이터 손실/인덱스 검증 |
 | `spatial-query-patterns` | 133 | 위치 검색 시 | Bounding Box, Haversine (PostGIS 없이) |
 | `summary-quality-audit` | 179 | 요약 검증 시 | LLM 요약 품질 감사 프로토콜 |
+| `neo4j-graph-construction` | 357 | 그래프DB 구축 시 | Neo4j 데이터 모델링, 법령 계급, LangGraph 연동 |
 
 **규칙 연동**: `rules/database-operations.md`
 **의존관계**: `postgresql-migration` → `alembic-migration-safety` (마이그레이션 작성 후 안전성 검증)
@@ -133,10 +134,11 @@ LangGraph 기반 멀티 에이전트 시스템.
 | 스킬 | 줄 수 | 적용 시점 | 설명 |
 |------|------|----------|------|
 | `multi-agent-patterns` | 797 | 에이전트 추가/수정 시 | BaseChatAgent, StateGraph, Command |
+| `agent-development-guide` | 725 | 에이전트 구현 시 | RAG 파이프라인, format_utils, LLM 호출, 스트리밍 |
 | `langgraph-debugging` | 225 | 에이전트 디버깅 시 | 라우팅/상태 전파 디버깅 |
 | `prompt-engineering` | 280 | 프롬프트 작성/최적화 시 | 시스템 프롬프트, 역할 기반, 온도 설계, 쿼리 리라이팅 |
 
-**관계**: `multi-agent-patterns` (구현) → `prompt-engineering` (프롬프트 최적화) → `langgraph-debugging` (디버깅)
+**관계**: `multi-agent-patterns` (구조/등록) → `agent-development-guide` (구현 규칙) → `prompt-engineering` (프롬프트 최적화) → `langgraph-debugging` (디버깅)
 
 ---
 
@@ -203,6 +205,10 @@ Docker 컨테이너, 배포, 의존성 관리, Google Drive 백업/복원.
 | `cli-tool-routing.md` | CLI 사용 시 | 도구 선택 매트릭스, Fallback |
 | `google-drive-operations.md` | 백업/복원/동기화 시 | rclone 사전 검증, copy vs sync, 민감 파일 보호 |
 | `wsl2-docker.md` | Docker 실행 시 | WSL2 환경 docker.exe 규칙 |
+| `triple-review-workflow.md` | 기획/구현 시 | 3중 검증 워크플로우 (Agent Team + Red Team + Consultant) |
+| `agent-team-model.md` | 팀 구성 시 | 7명 팀 구성, 모델 배정 (Opus/Sonnet/Haiku) |
+| `failure-log-protocol.md` | 실패 발생 시 | 실패 로그 기록 프로토콜, 에스컬레이션 |
+| `environment-feature-guard.md` | 기능 추가 시 | 개발 전용 vs 데모/체험 기능 구분, NODE_ENV 가드 |
 
 ---
 
@@ -210,11 +216,12 @@ Docker 컨테이너, 배포, 의존성 관리, Google Drive 백업/복원.
 
 ```
 700+ 줄 : multi-agent-patterns (797), court-dialog-system (753)
+           agent-development-guide (725)
 600+ 줄 : court-eventbus-patterns (665), error-handling-patterns (626)
            langchain-rag-patterns (601), phaser-nextjs-integration (598)
 400+ 줄 : multi-cli-integration (496), code-verification (463), korean-legal-domain (443)
 300+ 줄 : codex-cli-delegation (381), ui-ux-pro-max (377)
-           docker-containerization (360)
+           docker-containerization (360), neo4j-graph-construction (357)
            caching-strategy (340), security-authentication (310)
            python-coding-standards (298), update-docs (292), prompt-engineering (280)
 200+ 줄 : gemini-cli-delegation (249), google-drive-operations (239)
@@ -228,4 +235,4 @@ Docker 컨테이너, 배포, 의존성 관리, Google Drive 백업/복원.
  ~64 줄 : project-review (64)
 ```
 
-**총 줄 수**: ~11,113줄 (평균 318줄/스킬, 35개)
+**총 줄 수**: ~12,195줄 (평균 330줄/스킬, 37개)

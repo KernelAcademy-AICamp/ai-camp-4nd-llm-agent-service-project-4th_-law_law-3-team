@@ -34,7 +34,7 @@ export function MetadataPanel({ metadata, onRefresh }: MetadataPanelProps) {
         <div className="flex flex-wrap gap-1.5">
           {metadata.tags.map((tag, index) => (
             <span
-              key={index}
+              key={`tag-${index}`}
               className="px-2 py-0.5 text-xs bg-blue-50 text-blue-600 rounded-full"
             >
               {tag}

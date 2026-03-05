@@ -1,10 +1,11 @@
 """변호사 통계 모듈 - API 라우터"""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.rate_limit import AI_RATE_LIMIT, limiter
 from app.modules.lawyer_stats.schema import (
     CrossAnalysisRequest,
     CrossAnalysisResponse,
@@ -160,8 +161,10 @@ async def get_demand_by_region(
 
 
 @router.post("/cross-analysis/regions", response_model=CrossAnalysisResponse)
+@limiter.limit(AI_RATE_LIMIT)
 async def get_cross_analysis_by_regions(
-    request: CrossAnalysisRequest,
+    request: Request,
+    body: CrossAnalysisRequest,
     db: AsyncSession = Depends(get_db),
 ) -> CrossAnalysisResponse:
     """선택된 지역 목록에 대한 교차 분석 조회."""
@@ -169,7 +172,7 @@ async def get_cross_analysis_by_regions(
         from app.services.service_function.lawyer_stats_db_service import (
             calculate_cross_analysis_by_regions_db,
         )
-        data = await calculate_cross_analysis_by_regions_db(db, request.regions)
+        data = await calculate_cross_analysis_by_regions_db(db, body.regions)
     else:
-        data = calculate_cross_analysis_by_regions(request.regions)
+        data = calculate_cross_analysis_by_regions(body.regions)
     return CrossAnalysisResponse(**data)

@@ -1,15 +1,17 @@
 /**
  * 키워드 수집 SSE 스트리밍 프록시 API Route
- *
- * Next.js rewrites가 SSE를 버퍼링하는 문제를 우회하기 위해
- * API Route에서 직접 스트리밍 프록시합니다.
- *
- * 참고: /api/chat/stream, /api/content-marketing/script/generate 와 동일한 패턴
  */
 
 import { NextRequest } from 'next/server'
-
-const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
+import {
+  BACKEND_URL,
+  SSE_HEADERS,
+  backendErrorResponse,
+  noBodyResponse,
+  proxyErrorResponse,
+  pipeBackendStream,
+  apiKeyHeader,
+} from '@/lib/sse-proxy'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -41,13 +43,12 @@ export async function GET(request: NextRequest) {
 
     let backendResponse: Response
     try {
-      const apiKey = process.env.API_KEY || ''
       backendResponse = await fetch(backendUrl, {
         method: 'GET',
         headers: {
           Accept: 'text/event-stream',
           'Cache-Control': 'no-cache',
-          ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+          ...apiKeyHeader(),
         },
         signal: controller.signal,
       })
@@ -62,63 +63,16 @@ export async function GET(request: NextRequest) {
       throw error
     }
 
-    // 연결 성공 시 타임아웃 해제 (스트리밍 중에는 불필요)
     clearTimeout(timeoutId)
 
-    if (!backendResponse.ok) {
-      const errorText = await backendResponse.text()
-      return new Response(
-        JSON.stringify({ error: 'Backend request failed', detail: errorText }),
-        {
-          status: backendResponse.status,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      )
-    }
-
-    if (!backendResponse.body) {
-      return new Response(
-        JSON.stringify({ error: 'No response body' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } },
-      )
-    }
+    if (!backendResponse.ok) return backendErrorResponse(backendResponse)
+    if (!backendResponse.body) return noBodyResponse()
 
     const reader = backendResponse.body.getReader()
+    const stream = pipeBackendStream(reader, { label: 'Keyword SSE Proxy' })
 
-    const stream = new ReadableStream({
-      async start(streamController) {
-        try {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) {
-              streamController.close()
-              break
-            }
-            streamController.enqueue(value)
-          }
-        } catch (error) {
-          console.error('[Keyword SSE Proxy] Stream error:', error)
-          streamController.error(error)
-        }
-      },
-      cancel() {
-        reader.cancel()
-      },
-    })
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      },
-    })
+    return new Response(stream, { headers: SSE_HEADERS })
   } catch (error) {
-    console.error('[Keyword SSE Proxy] Error:', error)
-    return new Response(
-      JSON.stringify({ error: 'Proxy error', detail: String(error) }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } },
-    )
+    return proxyErrorResponse(error, 'Keyword SSE Proxy')
   }
 }

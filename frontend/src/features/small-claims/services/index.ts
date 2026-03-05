@@ -16,29 +16,6 @@ export interface EvidenceUploadResponse {
 }
 
 export const smallClaimsService = {
-  startInterview: async (caseType: string) => {
-    const response = await api.post(`${endpoints.smallClaims}/interview/start`, {
-      case_type: caseType,
-    })
-    return response.data
-  },
-
-  submitAnswer: async (sessionId: string, answer: string) => {
-    const response = await api.post(
-      `${endpoints.smallClaims}/interview/${sessionId}/answer`,
-      { answer }
-    )
-    return response.data
-  },
-
-  generateDocuments: async (sessionId: string, documentTypes: string[]) => {
-    const response = await api.post(`${endpoints.smallClaims}/documents/generate`, {
-      session_id: sessionId,
-      document_types: documentTypes,
-    })
-    return response.data
-  },
-
   uploadEvidence: async (
     files: File[],
     evidenceItemId: string,
@@ -55,24 +32,8 @@ export const smallClaimsService = {
     return response.data
   },
 
-  organizeEvidence: async (sessionId: string) => {
-    const response = await api.post(`${endpoints.smallClaims}/evidence/${sessionId}/organize`)
-    return response.data
-  },
-
-  getLawsuitGuide: async (caseType: string) => {
-    const response = await api.get(`${endpoints.smallClaims}/guide/${caseType}`)
-    return response.data
-  },
-
-  // New endpoints
   getEvidenceChecklist: async (disputeType: DisputeType): Promise<EvidenceChecklistResponse> => {
     const response = await api.get(`${endpoints.smallClaims}/evidence-checklist/${disputeType}`)
-    return response.data
-  },
-
-  getDisputeTypes: async () => {
-    const response = await api.get(`${endpoints.smallClaims}/dispute-types`)
     return response.data
   },
 

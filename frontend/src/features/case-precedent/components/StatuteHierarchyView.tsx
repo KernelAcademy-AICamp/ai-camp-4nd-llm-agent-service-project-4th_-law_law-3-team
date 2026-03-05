@@ -1,18 +1,17 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
-import { Network, Search, X, Loader2, ArrowLeft } from 'lucide-react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { Network, Search, X, Loader2 } from 'lucide-react'
+import { BackButton } from '@/components/ui/BackButton'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { StatuteForceGraph } from './StatuteForceGraph'
 import { StatuteDetailPanel } from './StatuteDetailPanel'
 import { casePrecedentService, type GraphNode } from '../services'
-import { useChat } from '@/context/ChatContext'
 import type { StatuteNode, StatuteHierarchyResponse } from '../types'
 
 export function StatuteHierarchyView() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { userRole } = useChat()
   const statuteId = searchParams.get('id')
   const statuteName = searchParams.get('name')
   const statuteType = searchParams.get('type')
@@ -41,14 +40,14 @@ export function StatuteHierarchyView() {
   }, [])
 
   const TYPE_BADGE_COLORS: Record<string, string> = useMemo(() => ({
-    '헌법': 'bg-orange-500/20 text-orange-400 border-orange-500/40',
-    '법률': 'bg-amber-500/20 text-amber-400 border-amber-500/40',
-    '대통령령': 'bg-blue-500/20 text-blue-400 border-blue-500/40',
-    '총리령·부령': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
-    '규칙': 'bg-violet-500/20 text-violet-400 border-violet-500/40',
+    '헌법': 'bg-orange-50 text-orange-700 border-orange-200',
+    '법률': 'bg-amber-50 text-amber-700 border-amber-200',
+    '대통령령': 'bg-blue-50 text-blue-700 border-blue-200',
+    '총리령·부령': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    '규칙': 'bg-violet-50 text-violet-700 border-violet-200',
   }), [])
 
-  // URL 파라미터에서 선택된 법령 복원
+  // URL 파라미터에서 선택된 법령 복원 + 상세 데이터 동시 로드 (API 워터폴 제거)
   useEffect(() => {
     let isCancelled = false
     const normalizeName = (value: string): string =>
@@ -60,9 +59,6 @@ export function StatuteHierarchyView() {
           const detail = await casePrecedentService.getStatuteHierarchy(statuteId)
           if (!detail.root) return
           const normalizedTargetName = normalizeName(statuteName)
-          if (!detail.root) {
-            throw new Error('법령 루트 데이터가 없습니다')
-          }
           const normalizeRootName = normalizeName(detail.root.name)
           const normalizedAbbreviation = detail.root.abbreviation
             ? normalizeName(detail.root.abbreviation)
@@ -81,6 +77,8 @@ export function StatuteHierarchyView() {
                 citation_count: detail.root.citation_count,
               })
               setSearchQuery(detail.root.name)
+              // 이미 받은 hierarchy 응답을 detailData에 직접 저장 (중복 API 호출 방지)
+              setDetailData(detail)
             }
             return
           }
@@ -177,20 +175,6 @@ export function StatuteHierarchyView() {
     }
   }, [statuteId, statuteName, statuteType])
 
-  const handleBack = useCallback(() => {
-    // 선택된 법령이 있으면 브라우저 히스토리로 뒤로가기
-    if (selectedStatute) {
-      router.back()
-    } else {
-      // 선택된 법령이 없으면 (초기 상태) 홈으로
-      if (userRole) {
-        router.push(`/?role=${userRole}`)
-      } else {
-        router.push('/')
-      }
-    }
-  }, [router, userRole, selectedStatute])
-
   // 검색 실행
   const handleSearch = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -212,16 +196,18 @@ export function StatuteHierarchyView() {
     }
   }, [])
 
-  // 검색어 변경 (디바운스)
+  // 검색어 변경 (디바운스 — useRef로 타이머 관리)
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setSearchQuery(value)
 
-    // 간단한 디바운스
-    const timer = setTimeout(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+    debounceTimerRef.current = setTimeout(() => {
       handleSearch(value)
     }, 300)
-    return () => clearTimeout(timer)
   }, [handleSearch])
 
   // 법령 선택 (URL에 추가하여 뒤로가기 지원)
@@ -256,14 +242,16 @@ export function StatuteHierarchyView() {
     }
   }, [])
 
-  // URL 파라미터에서 선택된 법령의 상세 정보도 로드
+  // URL 파라미터에서 선택된 법령의 상세 정보 로드 (이미 로드된 경우 스킵)
   useEffect(() => {
     if (selectedStatute?.id) {
+      // 첫 번째 useEffect에서 이미 detailData를 로드한 경우 중복 호출 방지
+      if (detailData?.root?.id === selectedStatute.id) return
       loadDetail(selectedStatute.id)
     } else {
       setDetailData(null)
     }
-  }, [selectedStatute?.id, loadDetail])
+  }, [selectedStatute?.id, loadDetail, detailData?.root?.id])
 
   // 그래프에서 노드 클릭 (URL에 추가하여 뒤로가기 지원)
   const handleNodeClick = useCallback((node: GraphNode) => {
@@ -280,74 +268,68 @@ export function StatuteHierarchyView() {
   }, [handleNodeClick])
 
   return (
-    <div className="h-full w-full flex flex-col bg-slate-900">
+    <div className="h-full w-full flex flex-col bg-gray-100">
       {/* 헤더 */}
-      <div className="p-4 border-b border-slate-700 bg-slate-800 shrink-0">
+      <div className="px-6 py-4 border-b border-gray-200 bg-white shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleBack}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-full transition-colors"
-              aria-label="뒤로 가기"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <Network className="w-5 h-5 text-amber-400" />
-            <h2 className="text-lg font-semibold text-white">법령 체계도</h2>
+            <BackButton />
+            <Network className="w-5 h-5 text-amber-500" />
+            <h2 className="text-lg font-semibold text-gray-900">법령 체계도</h2>
           </div>
           {selectedStatute && (
             <div className="flex items-center gap-2 text-sm">
-              <span className="px-2 py-1 bg-amber-500/20 text-amber-400 rounded">
+              <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded">
                 {selectedStatute.type}
               </span>
-              <span className="text-white font-medium">{selectedStatute.name}</span>
+              <span className="text-gray-900 font-medium">{selectedStatute.name}</span>
             </div>
           )}
         </div>
 
         {/* 검색바 */}
         <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={handleInputChange}
             onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
             placeholder="법령명 또는 약칭 검색 (민법, 민소법, 특가법...)"
-            className="w-full pl-10 pr-10 py-2 bg-slate-700 border border-slate-600 rounded-lg
-                       text-white placeholder-slate-400
+            className="w-full pl-10 pr-10 py-2 bg-white border border-gray-300 rounded-lg
+                       text-gray-900 placeholder-gray-400
                        focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
           />
           {isSearching && (
-            <Loader2 className="absolute right-10 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 animate-spin" />
+            <Loader2 className="absolute right-10 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
           )}
           {(searchQuery || selectedStatute) && (
             <button
               onClick={handleClear}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-600 rounded"
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
             >
-              <X className="w-4 h-4 text-slate-400" />
+              <X className="w-4 h-4 text-gray-400" />
             </button>
           )}
 
           {/* 검색 결과 드롭다운 */}
           {showDropdown && searchResults.length > 0 && (
-            <div className="absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+            <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
               {searchResults.map((statute) => (
                 <button
                   key={statute.id}
                   onClick={() => handleSelect(statute)}
-                  className="w-full px-4 py-2 text-left hover:bg-slate-700 flex items-center justify-between"
+                  className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center justify-between"
                 >
                   <div className="flex flex-col">
-                    <span className="text-sm font-medium text-white">{statute.name}</span>
-                    <span className="text-xs text-slate-400">
+                    <span className="text-sm font-medium text-gray-900">{statute.name}</span>
+                    <span className="text-xs text-gray-500">
                       {statute.type}
                       {statute.abbreviation && ` (${statute.abbreviation})`}
                     </span>
                   </div>
                   {statute.citation_count > 0 && (
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-gray-400">
                       인용 {statute.citation_count.toLocaleString()}
                     </span>
                   )}
@@ -359,8 +341,8 @@ export function StatuteHierarchyView() {
       </div>
 
       {/* 유형 필터 */}
-      <div className="px-4 py-2 border-b border-slate-700 bg-slate-800/50 flex items-center gap-2 shrink-0">
-        <span className="text-xs text-slate-400 mr-1">유형 필터:</span>
+      <div className="px-4 py-2 border-b border-gray-200 bg-white flex items-center gap-2 shrink-0">
+        <span className="text-xs text-gray-500 mr-1">유형 필터:</span>
         {ALL_STATUTE_TYPES.map((type) => (
           <button
             key={type}
@@ -368,7 +350,7 @@ export function StatuteHierarchyView() {
             className={`px-2 py-0.5 text-xs rounded border transition-colors ${
               visibleTypes.has(type)
                 ? TYPE_BADGE_COLORS[type]
-                : 'bg-slate-800 text-slate-600 border-slate-700'
+                : 'bg-gray-100 text-gray-400 border-gray-200'
             }`}
           >
             {type}
@@ -376,8 +358,20 @@ export function StatuteHierarchyView() {
         ))}
       </div>
 
-      {/* 그래프 + 상세 패널 */}
+      {/* 상세 패널 (좌측) + 그래프 */}
       <div className="flex flex-1 overflow-hidden">
+        {/* 상세 사이드 패널 (좌측) */}
+        {(detailData || detailLoading) && (
+          <div className="relative z-10 h-full">
+            <StatuteDetailPanel
+              data={detailData || { root: null, upper: [], lower: [], related: [] }}
+              loading={detailLoading}
+              onClose={() => setDetailData(null)}
+              onNodeClick={handlePanelNodeClick}
+            />
+          </div>
+        )}
+
         {/* 그래프 영역 */}
         <div className="relative flex-1 overflow-hidden">
           <div className="absolute inset-0">
@@ -390,18 +384,6 @@ export function StatuteHierarchyView() {
             />
           </div>
         </div>
-
-        {/* 상세 사이드 패널 */}
-        {(detailData || detailLoading) && (
-          <div className="relative z-10 h-full">
-            <StatuteDetailPanel
-              data={detailData || { root: null, upper: [], lower: [], related: [] }}
-              loading={detailLoading}
-              onClose={() => setDetailData(null)}
-              onNodeClick={handlePanelNodeClick}
-            />
-          </div>
-        )}
       </div>
     </div>
   )

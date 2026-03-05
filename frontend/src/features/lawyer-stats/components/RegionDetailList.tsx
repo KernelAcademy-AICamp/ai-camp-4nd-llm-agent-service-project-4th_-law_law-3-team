@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, memo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { PredictionYear, ViewMode } from '@/app/lawyer-stats/page'
+import type { PredictionYear, ViewMode } from '@/features/lawyer-stats/types'
 import type { CourtDemandMarker, DemandStat, DensityStat, RegionStat, SpecialtyStat } from '../types'
 import { fetchRegionSpecialties } from '../services'
 

@@ -6,14 +6,28 @@ import datetime
 import logging
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.core.database import async_session_factory
 from app.core.errors import EmbeddingModelNotFoundError
+from app.core.rate_limit import AI_RATE_LIMIT, limiter
 from app.models.law_article import LawArticle
 from app.models.law_document import LawDocument
+from app.modules.case_precedent.schema import (
+    AIQuestionResponse,
+    AskQuestionRequest,
+    ChatRequest,
+    ChatResponse,
+    ChatSource,
+    PrecedentDetailResponse,
+    PrecedentItem,
+    PrecedentListResponse,
+    SearchRequest,
+    SearchResponse,
+    SearchResult,
+)
 from app.services.rag import search_relevant_documents_async
 from app.services.service_function.law_filter_service import (
     get_law_filter_service,
@@ -40,119 +54,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# Request/Response 스키마
-class ChatMessage(BaseModel):
-    role: str  # "user" or "assistant"
-    content: str
-
-
-class ChatRequest(BaseModel):
-    message: str
-    history: Optional[List[ChatMessage]] = None
-
-
-class ChatSource(BaseModel):
-    """
-    챗봇 응답의 출처 정보
-
-    판례와 법령 모두 지원 (필드가 각각 다름)
-    """
-
-    # 판례 필드 (법령일 때는 없음)
-    case_name: Optional[str] = None
-    case_number: Optional[str] = None
-
-    # 법령 필드 (판례일 때는 없음)
-    law_name: Optional[str] = None
-    law_type: Optional[str] = None
-
-    # 공통 필드
-    doc_type: str
-    similarity: float
-    summary: Optional[str] = None
-    content: Optional[str] = None
-
-    # 그래프 보강 정보 (optional)
-    cited_statutes: Optional[List[str]] = None
-    similar_cases: Optional[List[str]] = None
-
-
-class ChatResponse(BaseModel):
-    response: str
-    sources: List[ChatSource]
-
-
-class SearchRequest(BaseModel):
-    query: str
-    n_results: Optional[int] = 5
-    doc_type: Optional[str] = None
-
-
-class SearchResult(BaseModel):
-    id: str
-    content: str
-    case_name: str
-    case_number: str
-    doc_type: str
-    similarity: float
-
-
-class SearchResponse(BaseModel):
-    query: str
-    results: List[SearchResult]
-
-
-# 판례 검색 전용 스키마
-class PrecedentItem(BaseModel):
-    id: str
-    case_name: str
-    case_number: str
-    doc_type: str
-    court: Optional[str] = None
-    date: Optional[str] = None
-    summary: str
-    similarity: float
-
-
-class PrecedentListResponse(BaseModel):
-    keyword: str
-    total: int
-    precedents: List[PrecedentItem]
-
-
-class PrecedentDetailResponse(BaseModel):
-    id: str
-    case_name: str
-    case_number: str
-    doc_type: str
-    court: Optional[str] = None
-    date: Optional[str] = None
-    content: str
-    summary: str
-    # 판례 상세 필드 (PostgreSQL 조회)
-    ruling: Optional[str] = None  # 주문
-    claim: Optional[str] = None  # 청구취지
-    reasoning: Optional[str] = None  # 판결요지
-    full_reason: Optional[str] = None  # 이유
-    full_text: Optional[str] = None  # 전문
-    reference_provisions: Optional[str] = None  # 참조조문
-    reference_cases: Optional[str] = None  # 참조판례
-    court_name: Optional[str] = None  # 법원명
-    decision_date: Optional[str] = None  # 선고일
-
-
-class AskQuestionRequest(BaseModel):
-    question: str
-
-
-class AIQuestionResponse(BaseModel):
-    answer: str
-    sources: List[ChatSource]
-
-
 # API 엔드포인트
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def chat(request: Request, body: ChatRequest) -> ChatResponse:
     """
     RAG 기반 법률 챗봇
 
@@ -164,7 +69,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
         # 1. RAG 검색 (판례 + 법령)
         search_results = await search_relevant_documents_async(
-            query=request.message,
+            query=body.message,
             n_results=5,
         )
 
@@ -205,12 +110,12 @@ async def chat(request: ChatRequest) -> ChatResponse:
             },
             {
                 "role": "user",
-                "content": f"[참고 자료]\n{context_text}\n\n[질문]\n{request.message}",
+                "content": f"[참고 자료]\n{context_text}\n\n[질문]\n{body.message}",
             },
         ]
-        if request.history:
+        if body.history:
             # 대화 기록을 system과 user 사이에 삽입
-            history_messages = [{"role": msg.role, "content": msg.content} for msg in request.history]
+            history_messages = [{"role": msg.role, "content": msg.content} for msg in body.history]
             messages = [messages[0]] + history_messages + [messages[1]]
 
         ai_response = await chat_model.ainvoke(messages)
@@ -246,7 +151,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
 
 @router.post("/search", response_model=SearchResponse)
-async def search(request: SearchRequest) -> SearchResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def search(request: Request, body: SearchRequest) -> SearchResponse:
     """
     법률 문서 유사도 검색
 
@@ -254,9 +160,9 @@ async def search(request: SearchRequest) -> SearchResponse:
     """
     try:
         results = await search_relevant_documents_async(
-            query=request.query,
-            n_results=request.n_results or 5,
-            doc_type=request.doc_type,
+            query=body.query,
+            n_results=body.n_results or 5,
+            doc_type=body.doc_type,
         )
 
         search_results = [
@@ -271,7 +177,7 @@ async def search(request: SearchRequest) -> SearchResponse:
             for doc in results
         ]
 
-        return SearchResponse(query=request.query, results=search_results)
+        return SearchResponse(query=body.query, results=search_results)
     except EmbeddingModelNotFoundError as e:
         logger.error(f"임베딩 모델 없음: {e}")
         raise HTTPException(
@@ -283,8 +189,9 @@ async def search(request: SearchRequest) -> SearchResponse:
         raise HTTPException(status_code=500, detail="검색 중 오류가 발생했습니다")
 
 
-@router.post("/analyze")
-async def analyze_case(description: str) -> dict[str, Any]:
+@router.post("/analyze", deprecated=True)
+@limiter.limit(AI_RATE_LIMIT)
+async def analyze_case(request: Request, description: str) -> dict[str, Any]:
     """사용자 상황 분석 및 관련 판례 검색"""
     return {
         "analysis": "사용자 상황 분석 결과",
@@ -571,17 +478,17 @@ async def get_law_full_text(law_id: str) -> LawFullTextResponse:
             articles = articles_result.scalars().all()
 
         return LawFullTextResponse(
-            law_id=law.law_id,
-            law_name=law.law_name,
-            law_type=law.law_type,
-            ministry=law.ministry,
-            ai_summary=law.ai_summary,
-            supplementary=law.supplementary,
+            law_id=str(law.law_id),
+            law_name=str(law.law_name),
+            law_type=str(law.law_type) if law.law_type is not None else None,
+            ministry=str(law.ministry) if law.ministry is not None else None,
+            ai_summary=str(law.ai_summary) if law.ai_summary is not None else None,
+            supplementary=str(law.supplementary) if law.supplementary is not None else None,
             articles=[
                 LawArticleItem(
-                    article_number=a.article_number,
-                    article_title=a.article_title,
-                    article_content=a.article_content,
+                    article_number=str(a.article_number),
+                    article_title=str(a.article_title) if a.article_title is not None else None,
+                    article_content=str(a.article_content),
                 )
                 for a in articles
             ],
@@ -591,8 +498,8 @@ async def get_law_full_text(law_id: str) -> LawFullTextResponse:
                 if law.enforcement_date
                 else None
             ),
-            promulgation_date=law.promulgation_date,
-            promulgation_no=law.promulgation_no,
+            promulgation_date=str(law.promulgation_date) if law.promulgation_date is not None else None,
+            promulgation_no=str(law.promulgation_no) if law.promulgation_no is not None else None,
         )
     except HTTPException:
         raise
@@ -859,7 +766,8 @@ async def get_statute_graph(
 
 
 @router.post("/precedents/{precedent_id}/ask", response_model=AIQuestionResponse)
-async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest) -> AIQuestionResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def ask_about_precedent(request: Request, precedent_id: str, body: AskQuestionRequest) -> AIQuestionResponse:
     """
     특정 판례에 대해 AI에게 질문
 
@@ -920,7 +828,7 @@ async def ask_about_precedent(precedent_id: str, request: AskQuestionRequest) ->
 {content[:3000]}
 
 [질문]
-{request.question}
+{body.question}
 
 위 판례 내용을 바탕으로 질문에 답변해주세요."""
 

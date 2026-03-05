@@ -37,8 +37,8 @@ export function SearchPanel() {
     search()
   }, [search])
 
-  const handleResultClick = useCallback((docId: string) => {
-    selectArticle(docId)
+  const handleResultClick = useCallback((articleId: string) => {
+    selectArticle(articleId)
   }, [selectArticle])
 
   return (
@@ -114,7 +114,7 @@ export function SearchPanel() {
         <div className="space-y-3">
           {results.map((result) => (
             <SearchResultCard
-              key={result.chunk_id}
+              key={result.id}
               result={result}
               onClick={handleResultClick}
             />
@@ -127,7 +127,7 @@ export function SearchPanel() {
         <div className="text-center text-gray-500 py-12">
           <Search className="mx-auto mb-3 text-gray-300" size={40} />
           <p className="text-lg mb-1">법률 뉴스를 검색해보세요</p>
-          <p className="text-sm">하이브리드 검색 (Vector + FTS + 리랭커)</p>
+          <p className="text-sm">BM25 키워드 검색</p>
         </div>
       )}
 
@@ -146,14 +146,6 @@ export function SearchPanel() {
         error={detailError}
         onClose={clearSelection}
       />
-
-      {/* 오버레이 */}
-      {(selectedArticle || detailLoading || detailError) && (
-        <div
-          className="fixed inset-0 bg-black/20 z-40"
-          onClick={clearSelection}
-        />
-      )}
     </div>
   )
 }

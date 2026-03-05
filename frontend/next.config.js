@@ -20,7 +20,21 @@ const nextConfig = {
 
   // 프록시 타임아웃 설정 (LLM 응답 대기)
   experimental: {
-    proxyTimeout: 120000, // 120초
+    proxyTimeout: 180000, // 180초 (axios timeout과 일치)
+    optimizePackageImports: ['lucide-react'],
+  },
+
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
+      },
+    ]
   },
 
   async rewrites() {

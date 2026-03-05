@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect } from 'react'
+import { useCallback } from 'react'
 import type { NewsArticleSummary, NewsSource } from '../types'
 import { useNewsList } from '../hooks/useNewsList'
 import { useNewsDetail } from '../hooks/useNewsDetail'
@@ -17,7 +17,6 @@ export function NewsListPanel() {
     error,
     filters,
     setFilters,
-    loadList,
   } = useNewsList()
 
   const {
@@ -28,26 +27,17 @@ export function NewsListPanel() {
     clearSelection,
   } = useNewsDetail()
 
-  useEffect(() => {
-    loadList()
-  }, [loadList])
-
   const handleSourceChange = useCallback((value: string) => {
-    const newSource = (value || null) as NewsSource | null
-    setFilters({ source: newSource, page: 1 })
-    loadList({ source: newSource, page: 1, published_date: filters.published_date, page_size: filters.page_size })
-  }, [setFilters, loadList, filters.published_date, filters.page_size])
+    setFilters({ source: (value || null) as NewsSource | null, page: 1 })
+  }, [setFilters])
 
   const handleDateChange = useCallback((date: string) => {
-    const newDate = date || null
-    setFilters({ published_date: newDate, page: 1 })
-    loadList({ published_date: newDate, page: 1, source: filters.source, page_size: filters.page_size })
-  }, [setFilters, loadList, filters.source, filters.page_size])
+    setFilters({ published_date: date || null, page: 1 })
+  }, [setFilters])
 
   const handlePageChange = useCallback((page: number) => {
     setFilters({ page })
-    loadList({ ...filters, page })
-  }, [setFilters, loadList, filters])
+  }, [setFilters])
 
   const currentPage = filters.page
   const totalPages = Math.ceil(total / filters.page_size) || 1
@@ -137,21 +127,13 @@ export function NewsListPanel() {
         </div>
       )}
 
-      {/* 상세 패널 */}
+      {/* 상세 패널 (Portal로 body에 렌더링) */}
       <NewsDetailPanel
         article={selectedArticle}
         loading={detailLoading}
         error={detailError}
         onClose={clearSelection}
       />
-
-      {/* 오버레이 */}
-      {(selectedArticle || detailLoading || detailError) && (
-        <div
-          className="fixed inset-0 bg-black/20 z-40"
-          onClick={clearSelection}
-        />
-      )}
     </div>
   )
 }

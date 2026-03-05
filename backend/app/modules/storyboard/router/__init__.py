@@ -5,8 +5,10 @@ import logging
 import uuid as _uuid_module
 from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 from sse_starlette.sse import EventSourceResponse
+
+from app.core.rate_limit import AI_RATE_LIMIT, limiter
 
 from ..schema import (
     AnalyzeBatchResponse,
@@ -56,7 +58,8 @@ router = APIRouter()
 
 
 @router.post("/extract", response_model=ExtractTimelineResponse)
-async def extract_timeline(request: ExtractTimelineRequest) -> ExtractTimelineResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def extract_timeline(request: Request, body: ExtractTimelineRequest) -> ExtractTimelineResponse:
     """
     텍스트에서 타임라인 자동 추출
 
@@ -65,7 +68,7 @@ async def extract_timeline(request: ExtractTimelineRequest) -> ExtractTimelineRe
     - **text**: 사건 내용 텍스트 (최소 10자)
     """
     try:
-        result = await extract_timeline_from_text(request.text)
+        result = await extract_timeline_from_text(body.text)
         return result
     except Exception as e:
         logger.error(f"타임라인 추출 실패: {e}", exc_info=True)
@@ -73,14 +76,15 @@ async def extract_timeline(request: ExtractTimelineRequest) -> ExtractTimelineRe
 
 
 @router.post("/validate", response_model=ValidateTimelineResponse)
-async def validate_timeline(request: ValidateTimelineRequest) -> ValidateTimelineResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def validate_timeline(request: Request, body: ValidateTimelineRequest) -> ValidateTimelineResponse:
     """
     가져온 JSON 데이터 유효성 검사
 
     클라이언트에서 파일을 로드한 후 서버에서 스키마 유효성을 검증합니다.
     """
     try:
-        is_valid = validate_timeline_data(request.timeline.model_dump())
+        is_valid = validate_timeline_data(body.timeline.model_dump())
         return ValidateTimelineResponse(
             valid=is_valid,
             message="유효한 타임라인 데이터입니다" if is_valid else "잘못된 형식입니다",
@@ -91,7 +95,9 @@ async def validate_timeline(request: ValidateTimelineRequest) -> ValidateTimelin
 
 
 @router.post("/transcribe", response_model=TranscribeResponse)
+@limiter.limit(AI_RATE_LIMIT)
 async def transcribe_audio_endpoint(
+    request: Request,
     audio: UploadFile = File(..., description="음성 파일 (wav, mp3, webm, m4a)"),
     language: str = Form(default="ko", description="언어 코드"),
 ) -> TranscribeResponse:
@@ -121,7 +127,9 @@ async def transcribe_audio_endpoint(
 
 
 @router.post("/analyze-image", response_model=AnalyzeImageResponse)
+@limiter.limit(AI_RATE_LIMIT)
 async def analyze_image_endpoint(
+    request: Request,
     image: UploadFile = File(..., description="이미지 파일 (jpg, png, gif, webp)"),
     context: str = Form(default="", description="추가 컨텍스트 설명"),
 ) -> AnalyzeImageResponse:
@@ -164,7 +172,8 @@ async def analyze_image_endpoint(
 
 
 @router.post("/generate-image", response_model=GenerateImageResponse)
-async def generate_image_endpoint(request: GenerateImageRequest) -> GenerateImageResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def generate_image_endpoint(request: Request, body: GenerateImageRequest) -> GenerateImageResponse:
     """
     타임라인 항목에 대한 스토리보드 이미지 생성
 
@@ -172,20 +181,20 @@ async def generate_image_endpoint(request: GenerateImageRequest) -> GenerateImag
     확장 필드(장소, 시간대, 참여자 역할, 분위기)가 있으면 더 상세한 이미지를 생성합니다.
     """
     try:
-        _uuid_module.UUID(request.item_id)
+        _uuid_module.UUID(body.item_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="item_id가 유효한 UUID 형식이 아닙니다")
 
     try:
         result = await generate_image(
-            item_id=request.item_id,
-            title=request.title,
-            description=request.description,
-            participants=request.participants,
-            location=request.location,
-            time_of_day=request.time_of_day,
-            participants_detailed=request.participants_detailed,
-            mood=request.mood,
+            item_id=body.item_id,
+            title=body.title,
+            description=body.description,
+            participants=body.participants,
+            location=body.location,
+            time_of_day=body.time_of_day,
+            participants_detailed=body.participants_detailed,
+            mood=body.mood,
         )
 
         if result["success"]:
@@ -196,14 +205,14 @@ async def generate_image_endpoint(request: GenerateImageRequest) -> GenerateImag
             )
         else:
             fallback_result = await generate_image_fallback(
-                item_id=request.item_id,
-                title=request.title,
-                description=request.description,
-                participants=request.participants,
-                location=request.location,
-                time_of_day=request.time_of_day,
-                participants_detailed=request.participants_detailed,
-                mood=request.mood,
+                item_id=body.item_id,
+                title=body.title,
+                description=body.description,
+                participants=body.participants,
+                location=body.location,
+                time_of_day=body.time_of_day,
+                participants_detailed=body.participants_detailed,
+                mood=body.mood,
             )
             return GenerateImageResponse(
                 success=True,
@@ -217,13 +226,14 @@ async def generate_image_endpoint(request: GenerateImageRequest) -> GenerateImag
 
 
 @router.post("/generate-images-batch", response_model=GenerateImagesBatchResponse)
-async def generate_images_batch_endpoint(request: GenerateImagesBatchRequest) -> GenerateImagesBatchResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def generate_images_batch_endpoint(request: Request, body: GenerateImagesBatchRequest) -> GenerateImagesBatchResponse:
     """
     여러 타임라인 항목에 대한 스토리보드 이미지 일괄 생성
 
     비동기로 처리되며, job_id를 통해 진행 상태를 확인할 수 있습니다.
     """
-    if not request.items:
+    if not body.items:
         raise HTTPException(
             status_code=400,
             detail="최소 1개 이상의 타임라인 항목이 필요합니다",
@@ -231,10 +241,10 @@ async def generate_images_batch_endpoint(request: GenerateImagesBatchRequest) ->
 
     try:
         # 작업 생성
-        job_id = job_manager.create_job(total_steps=len(request.items))
+        job_id = job_manager.create_job(total_steps=len(body.items))
 
         # 백그라운드에서 실행
-        items_dict = [item.model_dump() for item in request.items]
+        items_dict = [item.model_dump() for item in body.items]
         asyncio.create_task(
             run_batch_image_generation(
                 job_id=job_id,
@@ -304,7 +314,9 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
 
 
 @router.post("/analyze-batch", response_model=AnalyzeBatchResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(AI_RATE_LIMIT)
 async def analyze_batch_endpoint(
+    request: Request,
     files: list[UploadFile] = File(..., description="증거 파일 (최대 10개)"),
     context: str = Form(default="", description="추가 컨텍스트"),
     session_id: str = Form(default="", description="세션 ID (증거 소유권 추적)"),
@@ -362,7 +374,9 @@ async def analyze_batch_endpoint(
 
 
 @router.post("/merge", response_model=MergeTimelineResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(AI_RATE_LIMIT)
 async def merge_timeline_endpoint(
+    request: Request,
     existing_timeline: str = Form(..., description="기존 타임라인 JSON (MergeTimelineRequest)"),
     files: list[UploadFile] = File(default=[], description="추가 증거 파일"),
     text: str = Form(default="", description="추가 텍스트 입력"),
@@ -461,13 +475,14 @@ async def get_evidence_file(evidence_id: str) -> dict[str, Any]:
 
 
 @router.post("/generate-video", response_model=GenerateVideoResponse)
-async def generate_video_endpoint(request: GenerateVideoRequest) -> GenerateVideoResponse:
+@limiter.limit(AI_RATE_LIMIT)
+async def generate_video_endpoint(request: Request, body: GenerateVideoRequest) -> GenerateVideoResponse:
     """
     이미지들을 결합하여 영상 생성
 
     moviepy를 사용하여 여러 이미지를 30초 영상으로 변환합니다.
     """
-    if len(request.image_urls) < 2:
+    if len(body.image_urls) < 2:
         raise HTTPException(
             status_code=400,
             detail="최소 2개 이상의 이미지가 필요합니다",
@@ -475,12 +490,12 @@ async def generate_video_endpoint(request: GenerateVideoRequest) -> GenerateVide
 
     try:
         result = await generate_video(
-            timeline_id=request.timeline_id,
-            image_urls=request.image_urls,
-            duration_per_image=request.duration_per_image,
-            transition=request.transition.value,
-            transition_duration=request.transition_duration,
-            resolution=(request.resolution[0], request.resolution[1]),
+            timeline_id=body.timeline_id,
+            image_urls=body.image_urls,
+            duration_per_image=body.duration_per_image,
+            transition=body.transition.value,
+            transition_duration=body.transition_duration,
+            resolution=(body.resolution[0], body.resolution[1]),
         )
 
         if result["success"]:

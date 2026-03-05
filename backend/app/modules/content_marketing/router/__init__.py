@@ -10,11 +10,12 @@ v3.0: Webtoon Storyboard API 4개 추가
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.rate_limit import AI_RATE_LIMIT, limiter
 from app.modules.content_marketing.schema import (
     ChatHistoryCountResponse,
     KeywordCollectRequest,
@@ -78,25 +79,29 @@ TEMP_USER_ID = "temp_user_001"
 
 
 @router.post("/persona/analyze", response_model=PersonaAnalysisResponse)
+@limiter.limit(AI_RATE_LIMIT)
 async def analyze_persona_endpoint(
-    request: PersonaAnalysisRequest,
+    request: Request,
+    body: PersonaAnalysisRequest,
     db: AsyncSession = Depends(get_db),
 ) -> PersonaAnalysisResponse:
     """Track 1: 대화 이력 기반 자동 페르소나 분석"""
     # TODO: user_id = Depends(get_current_user).id (Auth 구현 시 교체)
     user_id = TEMP_USER_ID
-    persona, insights = await analyze_persona(db, user_id, request)
+    persona, insights = await analyze_persona(db, user_id, body)
     return PersonaAnalysisResponse(persona=persona, analysis_insights=insights)
 
 
 @router.post("/persona/onboarding", response_model=LawyerPersona)
+@limiter.limit(AI_RATE_LIMIT)
 async def onboarding_endpoint(
-    request: PersonaOnboardingRequest,
+    request: Request,
+    body: PersonaOnboardingRequest,
     db: AsyncSession = Depends(get_db),
 ) -> LawyerPersona:
     """Track 2: 온보딩 결과로 페르소나 생성"""
     user_id = TEMP_USER_ID
-    return await create_persona_from_onboarding(db, user_id, request)
+    return await create_persona_from_onboarding(db, user_id, body)
 
 
 @router.get("/persona/current")
@@ -125,12 +130,14 @@ async def update_persona_endpoint(
 
 
 @router.post("/persona/feedback", status_code=201)
+@limiter.limit(AI_RATE_LIMIT)
 async def feedback_endpoint(
-    request: PersonaFeedbackRequest,
+    request: Request,
+    body: PersonaFeedbackRequest,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     """대본 생성 후 피드백 저장"""
-    await save_persona_feedback(db, request)
+    await save_persona_feedback(db, body)
     return {"status": "saved"}
 
 
@@ -155,12 +162,14 @@ async def chat_history_count_endpoint(
 
 
 @router.post("/trends", response_model=TrendResponse)
+@limiter.limit(AI_RATE_LIMIT)
 async def get_trends(
-    request: TrendRequest,
+    request: Request,
+    body: TrendRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TrendResponse:
     """트렌드 이슈 수집 및 스코어링 (v2.0: persona_id로 fitness_score 계산)"""
-    return await collect_trends(request, db=db)
+    return await collect_trends(body, db=db)
 
 
 @router.get("/trends/{trend_id}", response_model=TrendDetailResponse)
@@ -179,13 +188,15 @@ async def get_trend_detail_view(trend_id: str) -> TrendDetailResponse:
 
 
 @router.post("/script/generate")
+@limiter.limit(AI_RATE_LIMIT)
 async def generate_script(
-    request: ScriptRequest,
+    request: Request,
+    body: ScriptRequest,
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """대본 SSE 스트리밍 생성 (v2.0: persona_id → PersonaTone 해석)"""
     return StreamingResponse(
-        generate_script_stream(request, db=db),
+        generate_script_stream(body, db=db),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -195,11 +206,13 @@ async def generate_script(
 
 
 @router.post("/script/metadata", response_model=ScriptMetadata)
+@limiter.limit(AI_RATE_LIMIT)
 async def generate_script_metadata(
-    request: MetadataRequest,
+    request: Request,
+    body: MetadataRequest,
 ) -> ScriptMetadata:
     """대본 메타데이터 재생성"""
-    return await generate_metadata(request)
+    return await generate_metadata(body)
 
 
 # ── Keyword Flow API (v2.1 NEW) ──
@@ -239,8 +252,10 @@ async def collect_keywords_stream_endpoint(
 
 
 @router.post("/keywords/collect", response_model=KeywordCollectResponse)
+@limiter.limit(AI_RATE_LIMIT)
 async def collect_keywords_endpoint(
-    request: KeywordCollectRequest,
+    request: Request,
+    body: KeywordCollectRequest,
 ) -> KeywordCollectResponse:
     """커뮤니티 트렌드 키워드 수집 + 4차원 스코어링
 
@@ -249,7 +264,7 @@ async def collect_keywords_endpoint(
     """
     user_id = TEMP_USER_ID
     try:
-        return await collect_keywords(request, user_id=user_id)
+        return await collect_keywords(body, user_id=user_id)
     except RateLimitExceededError as exc:
         raise HTTPException(
             status_code=429,
@@ -277,9 +292,11 @@ async def clear_keywords_cache_endpoint() -> dict[str, int | str]:
     "/keywords/{keyword_id}/news",
     response_model=KeywordNewsResponse,
 )
+@limiter.limit(AI_RATE_LIMIT)
 async def search_keyword_news_endpoint(
+    request: Request,
     keyword_id: str,
-    request: KeywordNewsRequest,
+    body: KeywordNewsRequest,
 ) -> KeywordNewsResponse:
     """선택한 키워드로 뉴스 기사 검색
 
@@ -288,7 +305,7 @@ async def search_keyword_news_endpoint(
     """
     user_id = TEMP_USER_ID
     try:
-        return await search_keyword_news(keyword_id, request, user_id=user_id)
+        return await search_keyword_news(keyword_id, body, user_id=user_id)
     except KeywordNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except RateLimitExceededError as exc:
@@ -303,16 +320,18 @@ async def search_keyword_news_endpoint(
 
 
 @router.post("/script/webtoon", response_model=WebtoonJobResponse)
+@limiter.limit(AI_RATE_LIMIT)
 async def create_webtoon_job(
-    request: WebtoonGenerateRequest,
+    request: Request,
+    body: WebtoonGenerateRequest,
 ) -> WebtoonJobResponse:
     """웹툰 스토리보드 Job 생성 → 백그라운드 파이프라인 시작"""
     job_id = webtoon_job_manager.create_job(total_steps=1)
-    asyncio.create_task(run_webtoon_pipeline(job_id, request))
+    asyncio.create_task(run_webtoon_pipeline(job_id, body))
     return WebtoonJobResponse(
         job_id=job_id,
         status="accepted",
-        estimated_panels=request.panel_count or 10,
+        estimated_panels=body.panel_count or 10,
     )
 
 
@@ -347,12 +366,14 @@ async def get_webtoon_job_status(job_id: str) -> WebtoonJobStatusResponse:
 
 
 @router.post("/script/webtoon/{job_id}/regenerate")
+@limiter.limit(AI_RATE_LIMIT)
 async def regenerate_webtoon_panel(
+    request: Request,
     job_id: str,
-    request: WebtoonRegenerateRequest,
+    body: WebtoonRegenerateRequest,
 ) -> WebtoonStreamEvent:
     """개별 패널 이미지 재생성"""
     job = webtoon_job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job을 찾을 수 없습니다.")
-    return await regenerate_single_panel(job_id, request.panel_number)
+    return await regenerate_single_panel(job_id, body.panel_number)
