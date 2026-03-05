@@ -104,6 +104,8 @@ export function useImageGeneration({
 
   const cancelBatchGeneration = useCallback(() => {
     cancelledRef.current = true
+    setIsGeneratingBatch(false)
+    setBatchProgress(undefined)
   }, [])
 
   return {
