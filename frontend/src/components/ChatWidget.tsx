@@ -8,6 +8,7 @@ import { useStreamingChat } from '@/hooks/useStreamingChat'
 import { useSmallClaimsSync } from '@/hooks/useSmallClaimsSync'
 import { api } from '@/lib/api'
 import axios from 'axios'
+import { Scale } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import ChatActions, { ChatAction } from './ChatActions'
 import type { ChatSource } from '@/features/case-precedent/types'
@@ -214,6 +215,7 @@ const AGENT_GREETINGS: Record<string, string> = {
 
 // floating 모드 기본 적용 페이지
 const FLOATING_MODE_PATHS = new Set([
+  '/',
   '/lawyer-finder',
   '/small-claims',
   '/lawyer-stats',
@@ -631,6 +633,11 @@ export default function ChatWidget() {
             receivedActions = metadata.actions
             receivedSessionData = metadata.session_data
 
+            // 에이전트 활성화 상태 즉시 반영 (답변 출력 전)
+            if (metadata.agent_used) {
+              setSessionData({ ...sessionData, active_agent: metadata.agent_used })
+            }
+
             // Proactive UI Trigger: lawyer_finder 자동으로 패널 열기
             if (metadata.agent_used === 'lawyer_finder' && activePanel !== 'lawyer-finder') {
               setActivePanel('lawyer-finder')
@@ -977,51 +984,33 @@ export default function ChatWidget() {
       <div
         className={`p-4 md:p-6 flex justify-between items-center ${themeClasses.header} ${chatMode === 'floating' ? 'rounded-t-2xl' : ''}`}
       >
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            </svg>
-          </div>
-          <div>
-            <h3 className={`font-bold text-lg ${themeClasses.headerTitle}`}>AI 법률 상담</h3>
-            <p className={`text-xs font-bold uppercase tracking-widest ${themeClasses.headerSubtitle}`}>
-              {sessionData.active_agent
-                ? AGENT_DISPLAY_NAMES[sessionData.active_agent as string] || 'Active Now'
-                : 'Active Now'}
-            </p>
+        <div className="flex items-start gap-2">
+          <Scale className="w-5 h-5 shrink-0" style={{ marginTop: '0.2em' }} />
+          <div className="flex flex-col gap-2">
+            <h3 className={`font-bold text-lg leading-tight ${themeClasses.headerTitle}`}>
+              AI 법률 어시스턴트
+            </h3>
+            {sessionData.active_agent ? (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-green-50 border border-green-200 rounded-md w-fit">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                </span>
+                <span className="text-xs font-medium text-green-600">
+                  {AGENT_DISPLAY_NAMES[sessionData.active_agent as string] || sessionData.active_agent} 모드
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-50 border border-red-200 rounded-md w-fit">
+                <span className="relative flex h-2 w-2">
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+                </span>
+                <span className="text-xs font-medium text-red-500">에이전트 대기 중</span>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Role Selector */}
-          <div
-            className={`flex rounded-lg border text-xs ${themeClasses.roleSelector}`}
-          >
-            <button
-              onClick={() => setUserRole('user')}
-              className={`px-2 py-1 rounded-l-md transition-colors ${userRole === 'user'
-                ? themeClasses.roleActive
-                : themeClasses.roleInactive
-                }`}
-            >
-              일반인
-            </button>
-            <button
-              onClick={() => setUserRole('lawyer')}
-              className={`px-2 py-1 rounded-r-md transition-colors ${userRole === 'lawyer'
-                ? themeClasses.roleActive
-                : themeClasses.roleInactive
-                }`}
-            >
-              변호사
-            </button>
-          </div>
-
           {/* Reset Button */}
           <button
             onClick={handleResetChat}

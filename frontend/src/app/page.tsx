@@ -31,7 +31,7 @@ function HomeContent() {
   const searchParams = useSearchParams()
   const role = searchParams.get('role') as 'lawyer' | 'user' | null
 
-  const { isChatOpen, setChatOpen, setPendingMessage } = useUI()
+  const { isChatOpen, setChatOpen, setPendingMessage, chatMode } = useUI()
   const { setUserRole } = useChat()
   const [inputValue, setInputValue] = useState('')
   const enabledModules = useMemo(() => getEnabledModules(role || undefined), [role])
@@ -143,7 +143,7 @@ function HomeContent() {
   return (
     <div className="min-h-screen bg-[#F5F5F7] pt-12 pb-6 px-6 md:pt-20 md:pb-12 md:px-12 relative transition-all duration-500 ease-in-out">
       <div
-        className={`relative z-10 h-full flex flex-col transition-all duration-500 ease-in-out ${isChatOpen ? 'w-1/2 pr-8' : 'w-full max-w-5xl mx-auto'
+        className={`relative z-10 h-full flex flex-col transition-all duration-500 ease-in-out ${isChatOpen && chatMode === 'split' ? 'w-1/2 pr-8' : 'w-full max-w-5xl mx-auto'
           }`}
       >
         {/* Header Section */}
@@ -190,7 +190,10 @@ function HomeContent() {
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder='"최근 판결 동향 알려줘" 혹은 "내 주변 변호사 찾아줘"'
+                  placeholder={role === 'lawyer'
+                    ? '"사무실 개업할 지역과 전문분야 추천해줘" 혹은 "전세 계약 관련 판례 검색해줘"'
+                    : '"내 주변 변호사 찾아줘" 혹은 "소액소송 가이드 해줘"'
+                  }
                   className="w-full px-8 py-6 bg-[#F5F5F7] border-none rounded-2xl text-lg font-medium text-[#1D1D1F] placeholder:text-[#86868B] focus:ring-2 focus:ring-blue-600 transition-all shadow-inner"
                 />
                 <button
@@ -204,7 +207,10 @@ function HomeContent() {
               </form>
 
               <div className="mt-6 flex flex-wrap gap-2">
-                {['최근 판례 검색', '변호사 찾기', '소액 소송 절차', '법리 검토 요청'].map((tag) => (
+                {(role === 'lawyer'
+                  ? ['개업 지역 추천', '판례 검색', '법리 검토 요청', '변호사 통계']
+                  : ['변호사 찾기', '소액소송 가이드', '판례 검색', '법령 검색']
+                ).map((tag) => (
                   <button
                     key={tag}
                     type="button"
