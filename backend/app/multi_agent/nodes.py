@@ -221,11 +221,12 @@ async def _run_nonstreaming_node(
 # ──────────────────────────────────────────────
 
 
-def router_node(state: ChatState) -> Command[str]:
+def router_node(state: ChatState, writer: StreamWriter) -> Command[str]:
     """라우팅 노드: 메시지를 분석하여 적절한 에이전트 노드로 라우팅
 
     Args:
         state: 현재 그래프 상태
+        writer: 스트리밍 이벤트 전송용 writer
 
     Returns:
         Command with goto target node
@@ -292,6 +293,10 @@ def router_node(state: ChatState) -> Command[str]:
         logger.info(
             "Agent directly specified: %s -> %s", agent_override, target_node
         )
+        writer({
+            "event": "routing",
+            "data": {"selected_agent": agent_override},
+        })
         return Command(
             update={
                 "selected_agent": agent_override,
@@ -330,6 +335,10 @@ def router_node(state: ChatState) -> Command[str]:
         plan.reason,
     )
 
+    writer({
+        "event": "routing",
+        "data": {"selected_agent": plan.agent_type},
+    })
     return Command(
         update={
             "selected_agent": plan.agent_type,

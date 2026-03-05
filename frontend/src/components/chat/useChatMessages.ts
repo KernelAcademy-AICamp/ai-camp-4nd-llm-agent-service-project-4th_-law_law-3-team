@@ -232,6 +232,12 @@ export function useChatMessages() {
               })
             }
           },
+          onRouting: (data) => {
+            if (data.selected_agent) {
+              agentUsed = data.selected_agent
+              setSessionData({ ...sessionData, active_agent: data.selected_agent })
+            }
+          },
           onSources: (sources) => {
             receivedSources = sources
             setMessages((prev) =>

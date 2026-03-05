@@ -31,6 +31,7 @@ export interface ChatMetadata {
 interface StreamingChatOptions {
   onToken?: (content: string) => void
   onSources?: (sources: ChatSource[]) => void
+  onRouting?: (data: { selected_agent: string }) => void
   onMetadata?: (metadata: ChatMetadata) => void
   onDone?: (data?: Record<string, unknown>) => void
   onError?: (error: string) => void
@@ -139,6 +140,9 @@ export function useStreamingChat(): UseStreamingChatReturn {
                   break
                 case 'sources':
                   options.onSources?.(data.sources || [])
+                  break
+                case 'routing':
+                  options.onRouting?.(data as { selected_agent: string })
                   break
                 case 'metadata':
                   options.onMetadata?.(data as ChatMetadata)
