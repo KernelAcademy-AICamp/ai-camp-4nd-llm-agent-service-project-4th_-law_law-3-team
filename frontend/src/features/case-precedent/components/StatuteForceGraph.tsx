@@ -3,7 +3,7 @@
 import { useRef, useCallback, useEffect, useState, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import NextImage from 'next/image'
-import { Plus, Minus, Maximize2 } from 'lucide-react'
+import { Plus, Minus, Maximize2, Loader2 } from 'lucide-react'
 import { casePrecedentService, type GraphNode, type GraphLink } from '../services'
 import type { SimulationNodeDatum } from 'd3-force'
 import { forceCollide, forceManyBody, forceRadial } from 'd3-force'
@@ -41,8 +41,8 @@ const ForceGraph2D = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="w-full h-full flex items-center justify-center bg-gray-100">
-        <div className="text-gray-500">그래프 엔진 로딩 중...</div>
+      <div className="w-full h-full flex items-center justify-center bg-slate-50">
+        <div className="text-gray-400 text-sm font-medium">그래프 엔진 로딩 중...</div>
       </div>
     )
   }
@@ -431,14 +431,19 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick, visibleTy
 
   if (isLoading || dimensions.width === 0 || !ForceGraph2D) {
     return (
-      <div ref={containerRef} className="w-full h-full flex items-center justify-center bg-gray-100">
-        <div className="text-gray-500">그래프 로딩 중...</div>
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center animate-pulse">
+            <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
+          </div>
+          <span className="text-sm text-gray-400 font-medium">그래프 로딩 중...</span>
+        </div>
       </div>
     )
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-gray-100">
+    <div ref={containerRef} className="w-full h-full relative bg-slate-50">
       <ForceGraph2D
         graphRef={handleGraphRef as React.Ref<never>}
         width={dimensions.width}
@@ -470,63 +475,67 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick, visibleTy
       />
 
       {/* 통계 오버레이 */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-white/80 border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-500 pointer-events-none">
-        노드 {graphStats.nodeCount}개 · 링크 {graphStats.linkCount}개
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-white/70 backdrop-blur-sm border border-gray-200/50 rounded-full px-4 py-1.5 text-[11px] text-gray-500 pointer-events-none shadow-sm font-medium">
+        <span className="text-amber-600">{graphStats.nodeCount}</span> 법령 · <span className="text-amber-600">{graphStats.linkCount}</span> 관계
       </div>
 
       {/* 범례 */}
-      <div className="absolute bottom-4 left-4 bg-white/90 border border-gray-200 rounded-lg p-3 text-xs text-gray-700 shadow-sm">
-        <div className="font-bold mb-2">법령 계층</div>
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-orange-400 to-red-500 shadow-lg shadow-orange-500/50" />
-            <span>헌법 (태양/중심)</span>
+      <div className="absolute bottom-4 left-4 bg-white/85 backdrop-blur-sm border border-gray-200/60 rounded-xl p-3.5 text-xs text-gray-600 shadow-md shadow-gray-200/30">
+        <div className="font-bold text-gray-700 mb-2 text-[11px] tracking-wide uppercase">법령 계층</div>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-orange-400 to-red-500 shadow-md shadow-orange-400/40 shrink-0" />
+            <span className="text-gray-600">헌법</span>
           </div>
-          <div className="flex items-center gap-2">
-            <NextImage src="/data/logo/National_Assembly.png" alt="국회" width={20} height={20} className="object-contain bg-white rounded-full p-0.5" />
-            <span>법률</span>
+          <div className="flex items-center gap-2.5">
+            <NextImage src="/data/logo/National_Assembly.png" alt="국회" width={20} height={20} className="object-contain bg-white rounded-full p-0.5 shadow-sm shrink-0" />
+            <span className="text-gray-600">법률</span>
           </div>
-          <div className="flex items-center gap-2">
-            <NextImage src="/data/logo/president.svg" alt="대통령" width={20} height={20} className="object-contain bg-white rounded-full p-0.5" />
-            <span>대통령령</span>
+          <div className="flex items-center gap-2.5">
+            <NextImage src="/data/logo/president.svg" alt="대통령" width={20} height={20} className="object-contain bg-white rounded-full p-0.5 shadow-sm shrink-0" />
+            <span className="text-gray-600">대통령령</span>
           </div>
-          <div className="flex items-center gap-2">
-            <NextImage src="/data/logo/government_of_Korea.svg" alt="정부" width={20} height={20} className="object-contain bg-white rounded-full p-0.5" />
-            <span>총리령/부령/규칙</span>
+          <div className="flex items-center gap-2.5">
+            <NextImage src="/data/logo/government_of_Korea.svg" alt="정부" width={20} height={20} className="object-contain bg-white rounded-full p-0.5 shadow-sm shrink-0" />
+            <span className="text-gray-600">총리령/부령/규칙</span>
           </div>
         </div>
-        <div className="mt-3 pt-2 border-t border-gray-200">
-          <div className="font-bold mb-1">관계</div>
-          <div className="flex items-center gap-2">
-            <span className="text-amber-500">→</span>
-            <span>계급 (하위법 → 상위법)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400">—</span>
-            <span className="text-gray-400">관련 법령 (호버 시)</span>
+        <div className="mt-3 pt-2.5 border-t border-gray-200/60">
+          <div className="font-bold text-gray-700 mb-1.5 text-[11px] tracking-wide uppercase">관계</div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2.5">
+              <div className="w-5 flex justify-center"><span className="text-amber-500 text-sm">→</span></div>
+              <span>계급 관계</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <div className="w-5 flex justify-center"><span className="text-gray-300 text-sm">—</span></div>
+              <span className="text-gray-400">관련 법령 (호버 시)</span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* 줌 컨트롤 */}
-      <div className="absolute bottom-4 right-4 flex flex-col gap-1">
+      <div className="absolute bottom-4 right-4 flex flex-col gap-1 bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl p-1 shadow-md shadow-gray-200/30">
         <button
           onClick={handleZoomIn}
-          className="w-8 h-8 bg-white/90 hover:bg-white border border-gray-200 text-gray-600 rounded flex items-center justify-center transition-colors shadow-sm"
+          className="w-8 h-8 hover:bg-gray-100 text-gray-500 hover:text-gray-700 rounded-lg flex items-center justify-center transition-colors"
           aria-label="확대"
         >
           <Plus className="w-4 h-4" />
         </button>
+        <div className="h-px bg-gray-200/60 mx-1" />
         <button
           onClick={handleZoomOut}
-          className="w-8 h-8 bg-white/90 hover:bg-white border border-gray-200 text-gray-600 rounded flex items-center justify-center transition-colors shadow-sm"
+          className="w-8 h-8 hover:bg-gray-100 text-gray-500 hover:text-gray-700 rounded-lg flex items-center justify-center transition-colors"
           aria-label="축소"
         >
           <Minus className="w-4 h-4" />
         </button>
+        <div className="h-px bg-gray-200/60 mx-1" />
         <button
           onClick={handleZoomFit}
-          className="w-8 h-8 bg-white/90 hover:bg-white border border-gray-200 text-gray-600 rounded flex items-center justify-center transition-colors shadow-sm"
+          className="w-8 h-8 hover:bg-gray-100 text-gray-500 hover:text-gray-700 rounded-lg flex items-center justify-center transition-colors"
           aria-label="전체 보기"
         >
           <Maximize2 className="w-4 h-4" />
@@ -535,11 +544,13 @@ export function StatuteForceGraph({ centerId, centerName, onNodeClick, visibleTy
 
       {/* 호버 정보 */}
       {hoveredNode && (
-        <div className="absolute top-4 left-4 bg-black/80 rounded-lg p-3 text-white max-w-xs" style={{ top: '2.5rem' }}>
-          <div className="font-bold text-sm">{hoveredNode.name}</div>
-          <div className="text-xs text-gray-300 mt-1">{hoveredNode.type}</div>
-          <div className="text-xs text-gray-400 mt-1">
-            인용 횟수: {hoveredNode.citation_count.toLocaleString()}
+        <div className="absolute top-12 left-4 bg-white/90 backdrop-blur-md rounded-xl p-3 max-w-xs shadow-lg shadow-gray-200/50 border border-gray-200/60">
+          <div className="font-bold text-sm text-gray-900">{hoveredNode.name}</div>
+          <div className="flex items-center gap-2 mt-1.5">
+            <span className="text-[11px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{hoveredNode.type}</span>
+            <span className="text-[11px] text-amber-600 font-medium">
+              인용 {hoveredNode.citation_count.toLocaleString()}회
+            </span>
           </div>
         </div>
       )}

@@ -268,37 +268,43 @@ export function StatuteHierarchyView() {
   }, [handleNodeClick])
 
   return (
-    <div className="h-full w-full flex flex-col bg-gray-100">
+    <div className="h-full w-full flex flex-col bg-slate-50">
       {/* 헤더 */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-white shrink-0">
-        <div className="flex items-center justify-between mb-4">
+      <div className="px-6 py-4 border-b border-amber-100/60 bg-gradient-to-r from-amber-50 via-white to-orange-50 shrink-0">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <BackButton />
-            <Network className="w-5 h-5 text-amber-500" />
-            <h2 className="text-lg font-semibold text-gray-900">법령 체계도</h2>
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm shadow-amber-200/50">
+              <Network className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight">법령 체계도</h2>
+              <p className="text-[11px] text-gray-400 -mt-0.5">법령 간 계층·인용 관계 시각화</p>
+            </div>
           </div>
         </div>
 
         {/* 검색바 */}
         <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={handleInputChange}
             onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
             placeholder="법령명 또는 약칭 검색 (민법, 민소법, 특가법...)"
-            className="w-full pl-10 pr-10 py-2 bg-white border border-gray-300 rounded-lg
-                       text-gray-900 placeholder-gray-400
-                       focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+            className="w-full pl-10 pr-10 py-2.5 bg-white/80 backdrop-blur-sm border border-amber-200/60 rounded-xl
+                       text-gray-900 placeholder-gray-400 text-sm
+                       focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300
+                       shadow-sm shadow-amber-100/30 transition-all"
           />
           {isSearching && (
-            <Loader2 className="absolute right-10 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
+            <Loader2 className="absolute right-10 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-400 animate-spin" />
           )}
           {(searchQuery || selectedStatute) && (
             <button
               onClick={handleClear}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-amber-50 rounded-lg transition-colors"
             >
               <X className="w-4 h-4 text-gray-400" />
             </button>
@@ -306,12 +312,12 @@ export function StatuteHierarchyView() {
 
           {/* 검색 결과 드롭다운 */}
           {showDropdown && searchResults.length > 0 && (
-            <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+            <div className="absolute z-50 w-full mt-1.5 bg-white/95 backdrop-blur-md border border-gray-200/80 rounded-xl shadow-xl shadow-gray-200/50 max-h-64 overflow-y-auto">
               {searchResults.map((statute) => (
                 <button
                   key={statute.id}
                   onClick={() => handleSelect(statute)}
-                  className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center justify-between"
+                  className="w-full px-4 py-2.5 text-left hover:bg-amber-50/60 flex items-center justify-between transition-colors first:rounded-t-xl last:rounded-b-xl"
                 >
                   <div className="flex flex-col">
                     <span className="text-sm font-medium text-gray-900">{statute.name}</span>
@@ -321,8 +327,8 @@ export function StatuteHierarchyView() {
                     </span>
                   </div>
                   {statute.citation_count > 0 && (
-                    <span className="text-xs text-gray-400">
-                      인용 {statute.citation_count.toLocaleString()}
+                    <span className="text-xs text-amber-600/70 bg-amber-50 px-1.5 py-0.5 rounded">
+                      {statute.citation_count.toLocaleString()}
                     </span>
                   )}
                 </button>
@@ -333,16 +339,16 @@ export function StatuteHierarchyView() {
       </div>
 
       {/* 유형 필터 */}
-      <div className="px-4 py-2 border-b border-gray-200 bg-white flex items-center gap-2 shrink-0">
-        <span className="text-xs text-gray-500 mr-1">유형 필터:</span>
+      <div className="px-5 py-2 border-b border-gray-200/60 bg-white/60 backdrop-blur-sm flex items-center gap-1.5 shrink-0">
+        <span className="text-[11px] text-gray-400 mr-1.5 font-medium">필터</span>
         {ALL_STATUTE_TYPES.map((type) => (
           <button
             key={type}
             onClick={() => toggleType(type)}
-            className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+            className={`px-2.5 py-1 text-xs rounded-lg border transition-all duration-200 font-medium ${
               visibleTypes.has(type)
-                ? TYPE_BADGE_COLORS[type]
-                : 'bg-gray-100 text-gray-400 border-gray-200'
+                ? TYPE_BADGE_COLORS[type] + ' shadow-sm'
+                : 'bg-gray-50 text-gray-400 border-gray-200/60 hover:bg-gray-100'
             }`}
           >
             {type}
