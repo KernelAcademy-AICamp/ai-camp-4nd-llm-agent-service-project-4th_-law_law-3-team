@@ -16,6 +16,7 @@ export interface ChatMetadata {
   speaking_agent?: string
   emotion?: string
   stage?: string
+  step?: string
   evidence?: { cases: unknown[]; articles: unknown[] }
   user_hints?: unknown[]
   references?: Array<{

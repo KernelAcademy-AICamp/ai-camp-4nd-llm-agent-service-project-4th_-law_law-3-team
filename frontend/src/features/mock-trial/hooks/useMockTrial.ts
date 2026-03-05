@@ -60,6 +60,10 @@ export function useMockTrial() {
   const demoInputIndexRef = useRef<Record<string, number>>({})
   const [demoInputTick, setDemoInputTick] = useState(0)
 
+  // 구체화 질문 상태
+  const [clarificationQuestion, setClarificationQuestion] = useState<string | null>(null)
+  const [isClarifying, setIsClarifying] = useState(false)
+
   // 일반 모드 SSE 상태
   const { sendStreamingMessage } = useStreamingChat()
   const sessionDataRef = useRef<Record<string, unknown>>({})
@@ -156,6 +160,13 @@ export function useMockTrial() {
       userRole: UserRole
       caseSummary: string
     }) => {
+      setupInfoRef.current = {
+        caseType: setup.caseType,
+        caseCategory: setup.caseCategory,
+        userRole: setup.userRole,
+        caseSummary: setup.caseSummary,
+      }
+
       setCaseType(setup.caseType)
       setCurrentStageId(
         setup.caseType === 'criminal' ? 'identity' : 'pretrial'
@@ -167,15 +178,113 @@ export function useMockTrial() {
         userRole: setup.userRole,
         caseSummary: setup.caseSummary,
       })
+    },
+    []
+  )
 
-      setupInfoRef.current = {
-        caseType: setup.caseType,
-        caseCategory: setup.caseCategory,
-        userRole: setup.userRole,
-        caseSummary: setup.caseSummary,
+  /** SSE 메타데이터에서 clarification step 감지 시 처리 */
+  const processSetupSSEMetadata = useCallback(
+    (metadata: ChatMetadata) => {
+      const content = tokenBufferRef.current
+      tokenBufferRef.current = ''
+
+      if (metadata.session_data) {
+        sessionDataRef.current = {
+          thread_id: metadata.session_data.thread_id,
+          session_secret: metadata.session_data.session_secret,
+        }
+      }
+
+      if (metadata.step === 'clarification' && content) {
+        setClarificationQuestion(content)
+        setIsClarifying(false)
+        return
+      }
+
+      // clarification이 아닌 경우 → 일반 trial 진행
+      const info = setupInfoRef.current
+      setCaseType(info.caseType as CaseType)
+      setCurrentStageId(
+        info.caseType === 'criminal' ? 'identity' : 'pretrial'
+      )
+      setPhase('trial')
+      setIsClarifying(false)
+
+      eventBus.emit('setup:complete', {
+        caseType: info.caseType,
+        userRole: info.userRole,
+        caseSummary: info.caseSummary,
+      })
+
+      // 첫 번째 stage의 응답 처리
+      if (content) {
+        const speaker = metadata.speaking_agent || 'judge'
+        const event: CourtEvent = {
+          stage: info.caseType === 'criminal' ? 'identity' : 'pretrial',
+          speaker,
+          content,
+          timestamp: new Date().toISOString(),
+          emotion: (metadata.emotion || 'stern') as EmotionType,
+        }
+        setMessages((prev) => [...prev, event])
+        eventBus.emit('dialogue:enqueue', {
+          agent: speaker,
+          text: content,
+          emotion: event.emotion,
+        })
       }
     },
     []
+  )
+
+  /** 구체화 답변 제출 */
+  const handleClarificationSubmit = useCallback(
+    (answer: string) => {
+      setIsClarifying(true)
+      setClarificationQuestion(null)
+
+      const info = setupInfoRef.current
+      sendStreamingMessage(
+        {
+          message: answer,
+          agent: 'mock_trial',
+          session_data: {
+            ...sessionDataRef.current,
+            stage: 'setup',
+            case_type: info.caseType,
+            case_category: info.caseCategory,
+            user_role: info.userRole,
+            case_summary: info.caseSummary,
+          },
+        },
+        {
+          onToken: (content) => {
+            tokenBufferRef.current += content
+          },
+          onMetadata: processSetupSSEMetadata,
+          onDone: () => {
+            setIsClarifying(false)
+          },
+          onError: (error) => {
+            console.error('[MockTrial] Clarification SSE error:', error)
+            setIsClarifying(false)
+            // 구체화 실패 시 원본 개요로 재판 시작
+            const fallbackInfo = setupInfoRef.current
+            setCaseType(fallbackInfo.caseType as CaseType)
+            setCurrentStageId(
+              fallbackInfo.caseType === 'criminal' ? 'identity' : 'pretrial'
+            )
+            setPhase('trial')
+            eventBus.emit('setup:complete', {
+              caseType: fallbackInfo.caseType,
+              userRole: fallbackInfo.userRole,
+              caseSummary: fallbackInfo.caseSummary,
+            })
+          },
+        }
+      )
+    },
+    [sendStreamingMessage, processSetupSSEMetadata]
   )
 
   /** SSE 메타데이터 응답 처리 (일반 모드 공용) */
@@ -620,6 +729,10 @@ export function useMockTrial() {
     // 판결
     judgmentResult,
 
+    // 구체화
+    clarificationQuestion,
+    isClarifying,
+
     // 핸들러
     handleSetupComplete,
     handleSendMessage,
@@ -631,5 +744,6 @@ export function useMockTrial() {
     handleEvidenceSubmit,
     handleRestart,
     handleCloseJudgment,
+    handleClarificationSubmit,
   }
 }

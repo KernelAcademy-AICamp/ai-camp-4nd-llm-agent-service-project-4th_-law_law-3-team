@@ -108,7 +108,10 @@ export default function MockTrialPage() {
     handleEvidenceSubmit,
     handleRestart,
     handleCloseJudgment,
+    handleClarificationSubmit,
     judgmentResult,
+    clarificationQuestion,
+    isClarifying,
   } = useMockTrial()
 
   const handleDismissGuide = useCallback(() => setShowStageGuide(false), [setShowStageGuide])
@@ -261,6 +264,9 @@ export default function MockTrialPage() {
             <MockTrialSetup
               onComplete={handleSetupComplete}
               onDemoStart={handleDemoStart}
+              clarificationQuestion={clarificationQuestion}
+              isClarifying={isClarifying}
+              onClarificationSubmit={handleClarificationSubmit}
             />
           </div>
         ) : phase === 'briefing' && demoScenario ? (
