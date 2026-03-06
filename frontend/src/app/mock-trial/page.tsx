@@ -108,7 +108,14 @@ export default function MockTrialPage() {
     handleEvidenceSubmit,
     handleRestart,
     handleCloseJudgment,
+    handleClarificationSubmit,
+    handleScenarioConfirm,
+    handleScenarioRegenerate,
     judgmentResult,
+    clarificationQuestion,
+    isClarifying,
+    generatedScenario,
+    isGeneratingScenario,
   } = useMockTrial()
 
   const handleDismissGuide = useCallback(() => setShowStageGuide(false), [setShowStageGuide])
@@ -261,14 +268,27 @@ export default function MockTrialPage() {
             <MockTrialSetup
               onComplete={handleSetupComplete}
               onDemoStart={handleDemoStart}
+              clarificationQuestion={clarificationQuestion}
+              isClarifying={isClarifying}
+              onClarificationSubmit={handleClarificationSubmit}
             />
           </div>
-        ) : phase === 'briefing' && demoScenario ? (
+        ) : phase === 'briefing' && (demoScenario || generatedScenario) ? (
           <div className="w-96 border-l border-gray-200 bg-white overflow-y-auto p-6">
             <ScenarioBriefing
-              scenario={demoScenario}
-              onStart={handleBriefingComplete}
+              scenario={demoScenario ?? undefined}
+              generatedScenario={generatedScenario}
+              onStart={demoScenario ? handleBriefingComplete : handleScenarioConfirm}
+              onRegenerate={demoScenario ? undefined : handleScenarioRegenerate}
+              isRegenerating={isGeneratingScenario}
             />
+          </div>
+        ) : phase === 'briefing' && isGeneratingScenario ? (
+          <div className="w-96 border-l border-gray-200 bg-white overflow-y-auto p-6 flex items-center justify-center">
+            <div className="text-center space-y-3">
+              <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto" />
+              <p className="text-sm text-gray-600">시나리오를 생성하고 있습니다...</p>
+            </div>
           </div>
         ) : chatDisplayMode === 'panel' ? (
           <div className="flex-[1.4] border-l border-gray-200">

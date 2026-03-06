@@ -38,14 +38,19 @@ from app.multi_agent.subgraphs.mock_trial_prompts import (
 )
 from app.multi_agent.subgraphs.mock_trial_utils import (
     MAX_LLM_CALLS_PER_SESSION,
+    _build_fallback_scenario,
     _build_rebuttal_context,
     _build_stage_rag_context,
     _case_type_actions,
     _check_rate_limit,
+    _enrich_case_summary,
+    _generate_clarification_questions,
     _generate_feedback,
+    _generate_scenario,
     _get_agent,
     _get_opponent_role,
     _init_agents,
+    _needs_clarification,
     _now_iso,
     _record,
     _update_agent_in_state,
@@ -79,6 +84,7 @@ class MockTrialState(TypedDict, total=False):
     case_category: str
     user_role: str
     case_summary: str
+    generated_scenario: dict[str, Any]
 
     # 에이전트 상태
     agents: dict[str, dict[str, Any]]
@@ -140,6 +146,68 @@ async def setup_node(state: MockTrialState) -> Command[str]:
         str(user_input.get("case_summary", state.get("message", "")))
     )
 
+    # 구체화 판단: 사건 개요가 불충분하면 추가 질문
+    if _needs_clarification(case_summary, case_type):
+        try:
+            questions = await _generate_clarification_questions(
+                case_summary, case_type, case_category
+            )
+            clarification_input = interrupt({
+                "response": questions,
+                "step": "clarification",
+                "speaking_agent": "judge",
+            })
+            clarification_answer = str(clarification_input) if clarification_input else ""
+            if clarification_answer:
+                case_summary = await _enrich_case_summary(
+                    case_summary, clarification_answer, case_type
+                )
+                case_summary = sanitize_user_input(case_summary)
+        except Exception:
+            logger.warning("setup_node 구체화 실패, 원본 개요로 진행")
+
+    # 시나리오 생성 → 사용자 확인 (데모 모드가 아닌 경우)
+    is_demo = bool(user_input.get("is_demo", False))
+    if not is_demo:
+        try:
+            scenario = await _generate_scenario(
+                case_summary, case_type, user_role, case_category
+            )
+        except Exception:
+            logger.warning("setup_node 시나리오 생성 실패, fallback 사용")
+            scenario = _build_fallback_scenario(case_summary, case_type, user_role)
+
+        # interrupt #3: 시나리오 미리보기
+        while True:
+            scenario_input = interrupt({
+                "response": "시나리오가 생성되었습니다. 확인 후 재판을 시작하세요.",
+                "step": "scenario_preview",
+                "scenario": scenario,
+                "speaking_agent": "judge",
+            })
+
+            scenario_action = ""
+            if isinstance(scenario_input, dict):
+                scenario_action = str(scenario_input.get("action", ""))
+            elif isinstance(scenario_input, str):
+                scenario_action = scenario_input
+
+            if scenario_action == "regenerate_scenario":
+                try:
+                    scenario = await _generate_scenario(
+                        case_summary, case_type, user_role, case_category
+                    )
+                except Exception:
+                    logger.warning("시나리오 재생성 실패, fallback 사용")
+                    scenario = _build_fallback_scenario(
+                        case_summary, case_type, user_role
+                    )
+                continue
+            # confirm_scenario 또는 기타 → 재판 시작
+            break
+    else:
+        scenario = {}
+
     agents = _init_agents(case_type)
 
     # RAG 검색: 첫 단계부터 참조 판례/법령을 제공하기 위해 setup에서 실행
@@ -183,6 +251,7 @@ async def setup_node(state: MockTrialState) -> Command[str]:
             "case_category": case_category,
             "user_role": user_role,
             "case_summary": case_summary,
+            "generated_scenario": scenario,
             "agents": agents,
             "stage": "setup",
             "current_round": 1,
@@ -457,4 +526,9 @@ __all__ = [
     "_check_rate_limit",
     "_case_type_actions",
     "_generate_feedback",
+    "_needs_clarification",
+    "_generate_clarification_questions",
+    "_enrich_case_summary",
+    "_generate_scenario",
+    "_build_fallback_scenario",
 ]

@@ -1,11 +1,15 @@
 'use client'
 
 import type { DemoScenario } from '../demo/demo-scenarios'
+import type { GeneratedScenario } from '../types'
 import { PHYSICAL_EVIDENCE_TYPE_LABEL } from '../types'
 
 interface ScenarioBriefingProps {
-  scenario: DemoScenario
+  scenario?: DemoScenario | null
+  generatedScenario?: GeneratedScenario | null
   onStart: () => void
+  onRegenerate?: () => void
+  isRegenerating?: boolean
 }
 
 const ROLE_LABEL: Record<string, { icon: string; color: string }> = {
@@ -16,35 +20,99 @@ const ROLE_LABEL: Record<string, { icon: string; color: string }> = {
   clerk: { icon: '✏️', color: 'bg-green-100 text-green-700' },
 }
 
-export function ScenarioBriefing({ scenario, onStart }: ScenarioBriefingProps) {
-  const { setup, characters = [], objectives = [], evidence = [] } = scenario
-  const caseTypeLabel = setup.caseType === 'criminal' ? '형사' : '민사'
+const EVIDENCE_HINT_ICON: Record<string, string> = {
+  document: '📄',
+  video: '📹',
+  financial: '🏦',
+  photo: '📷',
+  testimony: '🗣️',
+  other: '📎',
+}
+
+export function ScenarioBriefing({
+  scenario,
+  generatedScenario,
+  onStart,
+  onRegenerate,
+  isRegenerating,
+}: ScenarioBriefingProps) {
+  // 데모 모드 vs 일반 모드 데이터 선택
+  const isDemo = !!scenario
+  const title = isDemo ? scenario.name : generatedScenario?.title ?? '시나리오'
+  const description = isDemo ? scenario.description : undefined
+  const background = isDemo
+    ? scenario.setup.caseSummary
+    : generatedScenario?.background ?? ''
+  const caseTypeLabel = isDemo
+    ? scenario.setup.caseType === 'criminal' ? '형사' : '민사'
+    : undefined
+  const characters = isDemo
+    ? scenario.characters ?? []
+    : generatedScenario?.characters ?? []
+  const objectives = isDemo
+    ? scenario.objectives ?? []
+    : generatedScenario?.objectives ?? []
+  const evidence = isDemo ? scenario.evidence ?? [] : []
+  const evidenceHints = isDemo ? [] : generatedScenario?.evidence_hints ?? []
+  const issues = isDemo ? [] : generatedScenario?.issues ?? []
 
   return (
     <div className="space-y-5">
       {/* 헤더 */}
       <div>
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
-            {caseTypeLabel}
-          </span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">
-            데모
+          {caseTypeLabel && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+              {caseTypeLabel}
+            </span>
+          )}
+          <span
+            className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+              isDemo
+                ? 'bg-amber-100 text-amber-700'
+                : 'bg-emerald-100 text-emerald-700'
+            }`}
+          >
+            {isDemo ? '데모' : 'AI 생성'}
           </span>
         </div>
-        <h2 className="text-lg font-bold text-gray-900">{scenario.name}</h2>
-        <p className="text-sm text-gray-500 mt-1">{scenario.description}</p>
+        <h2 className="text-lg font-bold text-gray-900">{title}</h2>
+        {description && (
+          <p className="text-sm text-gray-500 mt-1">{description}</p>
+        )}
       </div>
 
       {/* 사건 개요 */}
       <div>
         <h3 className="text-sm font-semibold text-gray-700 mb-2">사건 개요</h3>
         <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
-          <p className="text-sm text-gray-700 leading-relaxed">
-            {setup.caseSummary}
-          </p>
+          <p className="text-sm text-gray-700 leading-relaxed">{background}</p>
         </div>
       </div>
+
+      {/* 쟁점 (LLM 생성 시나리오에만) */}
+      {issues.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">
+            핵심 쟁점
+          </h3>
+          <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
+            <ul className="space-y-1.5">
+              {issues.map((issue, index) => (
+                <li
+                  key={`issue-${index}`}
+                  className="flex items-start gap-2 text-sm text-orange-800"
+                >
+                  <span className="text-orange-500 mt-0.5 shrink-0">
+                    {index + 1}.
+                  </span>
+                  <span>{issue}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* 사용자 역할 & 목표 */}
       {objectives.length > 0 && (
@@ -104,7 +172,9 @@ export function ScenarioBriefing({ scenario, onStart }: ScenarioBriefingProps) {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500">{character.description}</p>
+                    <p className="text-xs text-gray-500">
+                      {character.description}
+                    </p>
                   </div>
                 </div>
               )
@@ -113,7 +183,7 @@ export function ScenarioBriefing({ scenario, onStart }: ScenarioBriefingProps) {
         </div>
       )}
 
-      {/* 물적 증거 미리보기 */}
+      {/* 물적 증거 미리보기 (데모 모드) */}
       {evidence.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-gray-700 mb-2">
@@ -147,11 +217,15 @@ export function ScenarioBriefing({ scenario, onStart }: ScenarioBriefingProps) {
                     <span className="text-sm font-medium text-gray-800 flex-1 truncate">
                       {item.title}
                     </span>
-                    <span className={`text-[10px] font-medium ${favorableColor}`}>
+                    <span
+                      className={`text-[10px] font-medium ${favorableColor}`}
+                    >
                       {favorableLabel}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">{item.description}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {item.description}
+                  </p>
                 </div>
               )
             })}
@@ -159,13 +233,72 @@ export function ScenarioBriefing({ scenario, onStart }: ScenarioBriefingProps) {
         </div>
       )}
 
-      {/* 시작 버튼 */}
-      <button
-        onClick={onStart}
-        className="w-full py-3 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-      >
-        재판 시작
-      </button>
+      {/* 증거 힌트 (LLM 생성 시나리오) */}
+      {evidenceHints.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">
+            예상 증거
+          </h3>
+          <div className="space-y-2">
+            {evidenceHints.map((hint, index) => {
+              const icon = EVIDENCE_HINT_ICON[hint.type] ?? '📎'
+              const favorableColor =
+                hint.favorable_to === 'prosecutor'
+                  ? 'text-red-500'
+                  : hint.favorable_to === 'attorney'
+                    ? 'text-blue-500'
+                    : 'text-gray-400'
+              const favorableLabel =
+                hint.favorable_to === 'prosecutor'
+                  ? '검찰측 유리'
+                  : hint.favorable_to === 'attorney'
+                    ? '변호측 유리'
+                    : '중립'
+              return (
+                <div
+                  key={`hint-${index}`}
+                  className="p-2.5 rounded-lg border border-gray-200 bg-white"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm">{icon}</span>
+                    <span className="text-sm font-medium text-gray-800 flex-1 truncate">
+                      {hint.title}
+                    </span>
+                    <span
+                      className={`text-[10px] font-medium ${favorableColor}`}
+                    >
+                      {favorableLabel}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {hint.description}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 버튼 */}
+      <div className="space-y-2">
+        <button
+          onClick={onStart}
+          disabled={isRegenerating}
+          className="w-full py-3 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          재판 시작
+        </button>
+        {onRegenerate && (
+          <button
+            onClick={onRegenerate}
+            disabled={isRegenerating}
+            className="w-full py-2.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isRegenerating ? '시나리오 재생성 중...' : '시나리오 재생성'}
+          </button>
+        )}
+      </div>
     </div>
   )
 }
