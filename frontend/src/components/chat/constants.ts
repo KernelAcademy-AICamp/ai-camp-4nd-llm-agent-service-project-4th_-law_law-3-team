@@ -79,4 +79,5 @@ export const FLOATING_MODE_PATHS = new Set([
   '/case-precedent',
   '/law-search',
   '/law-study',
+  '/legal-news',
 ])

@@ -21,11 +21,6 @@ export function SearchResultCard({ result, onClick }: SearchResultCardProps) {
         {result.section && (
           <span className="text-xs text-gray-400">{result.section}</span>
         )}
-        {result.relevance_score !== null && (
-          <span className="ml-auto text-xs font-mono text-blue-600">
-            {result.relevance_score.toFixed(3)}
-          </span>
-        )}
       </div>
 
       <h3 className="text-sm font-semibold text-gray-900 mb-1 line-clamp-2">
