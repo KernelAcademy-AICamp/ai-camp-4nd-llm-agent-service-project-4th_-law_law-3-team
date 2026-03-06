@@ -2,7 +2,6 @@
   "functions": {
     "src/app/api/chat/stream/route.ts": { "maxDuration": 300 },
     "src/app/api/content-marketing/keywords/collect/stream/route.ts": { "maxDuration": 300 },
-    "src/app/api/content-marketing/script/generate/route.ts": { "maxDuration": 300 },
-    "src/app/api/storyboard/[...path]/route.ts": { "maxDuration": 60 }
+    "src/app/api/content-marketing/script/generate/route.ts": { "maxDuration": 300 }
   }
 }

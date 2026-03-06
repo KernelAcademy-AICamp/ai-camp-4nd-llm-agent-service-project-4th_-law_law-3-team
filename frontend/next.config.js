@@ -39,8 +39,10 @@ const nextConfig = {
 
   async rewrites() {
     return [
-      // storyboard는 API Route로 프록시 (Next.js rewrites 버그 우회)
-      // 다른 모듈들은 기존 rewrites 사용
+      {
+        source: '/api/storyboard/:path*',
+        destination: `${BACKEND_URL}/api/storyboard/:path*`,
+      },
       {
         source: '/api/lawyer-finder/:path*',
         destination: `${BACKEND_URL}/api/lawyer-finder/:path*`,
