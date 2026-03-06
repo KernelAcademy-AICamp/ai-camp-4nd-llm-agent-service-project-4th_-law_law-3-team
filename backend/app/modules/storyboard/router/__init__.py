@@ -19,8 +19,6 @@ from ..schema import (
     GenerateImageResponse,
     GenerateImagesBatchRequest,
     GenerateImagesBatchResponse,
-    GenerateVideoRequest,
-    GenerateVideoResponse,
     JobStatusResponse,
     MergeTimelineResponse,
     TimelineItem,
@@ -38,7 +36,6 @@ from ..service.job_manager import (
 )
 from ..service.stt import transcribe_audio
 from ..service.timeline_merger import TimelineMerger
-from ..service.video_generation import generate_video
 from ..service.vision import analyze_image
 
 _file_validation_gate = FileValidationGate()
@@ -474,42 +471,3 @@ async def get_evidence_file(evidence_id: str) -> dict[str, Any]:
     return evidence
 
 
-@router.post("/generate-video", response_model=GenerateVideoResponse)
-@limiter.limit(AI_RATE_LIMIT)
-async def generate_video_endpoint(request: Request, body: GenerateVideoRequest) -> GenerateVideoResponse:
-    """
-    이미지들을 결합하여 영상 생성
-
-    moviepy를 사용하여 여러 이미지를 30초 영상으로 변환합니다.
-    """
-    if len(body.image_urls) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="최소 2개 이상의 이미지가 필요합니다",
-        )
-
-    try:
-        result = await generate_video(
-            timeline_id=body.timeline_id,
-            image_urls=body.image_urls,
-            duration_per_image=body.duration_per_image,
-            transition=body.transition.value,
-            transition_duration=body.transition_duration,
-            resolution=(body.resolution[0], body.resolution[1]),
-        )
-
-        if result["success"]:
-            return GenerateVideoResponse(
-                success=True,
-                video_url=result["video_url"],
-                duration=result.get("duration"),
-                image_count=result.get("image_count"),
-            )
-        else:
-            return GenerateVideoResponse(
-                success=False,
-                error=result.get("error", "영상 생성 실패"),
-            )
-    except Exception as e:
-        logger.error(f"영상 생성 실패: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="영상 생성 중 오류가 발생했습니다")

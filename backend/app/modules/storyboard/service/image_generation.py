@@ -169,7 +169,7 @@ async def generate_image(
 
         # Gemini 2.0 Flash 이미지 생성 (비동기 API 사용)
         response = await client.aio.models.generate_content(
-            model="gemini-2.0-flash-exp-image-generation",
+            model=settings.STORYBOARD_IMAGE_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE", "TEXT"],

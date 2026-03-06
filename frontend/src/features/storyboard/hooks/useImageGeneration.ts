@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import type { MutableRefObject } from 'react'
 import type { TimelineItem } from '../types'
 import { storyboardService } from '../services'
@@ -19,6 +19,7 @@ export function useImageGeneration({
   const [generatingImageIds, setGeneratingImageIds] = useState<Set<string>>(new Set())
   const [isGeneratingBatch, setIsGeneratingBatch] = useState(false)
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | undefined>()
+  const cancelledRef = useRef(false)
 
   const generateItemImage = useCallback(async (itemId: string) => {
     setGeneratingImageIds((prev) => new Set(prev).add(itemId))
@@ -61,12 +62,15 @@ export function useImageGeneration({
 
     if (currentItems.length === 0) return
 
+    cancelledRef.current = false
     setIsGeneratingBatch(true)
     setBatchProgress({ current: 0, total: currentItems.length })
     setActionError(null)
 
     try {
       for (let i = 0; i < currentItems.length; i++) {
+        if (cancelledRef.current) break
+
         const item = currentItems[i]
         setBatchProgress({ current: i, total: currentItems.length })
 
@@ -86,7 +90,9 @@ export function useImageGeneration({
         }
       }
 
-      setBatchProgress({ current: currentItems.length, total: currentItems.length })
+      if (!cancelledRef.current) {
+        setBatchProgress({ current: currentItems.length, total: currentItems.length })
+      }
     } catch (error) {
       console.error('Generate all images error:', error)
       setActionError('일괄 이미지 생성 중 오류가 발생했습니다')
@@ -96,11 +102,18 @@ export function useImageGeneration({
     }
   }, [itemsRef, setItems, setActionError])
 
+  const cancelBatchGeneration = useCallback(() => {
+    cancelledRef.current = true
+    setIsGeneratingBatch(false)
+    setBatchProgress(undefined)
+  }, [])
+
   return {
     generatingImageIds,
     isGeneratingBatch,
     batchProgress,
     generateItemImage,
     generateAllImages,
+    cancelBatchGeneration,
   }
 }

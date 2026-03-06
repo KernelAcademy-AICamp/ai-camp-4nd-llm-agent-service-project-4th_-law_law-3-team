@@ -5,14 +5,6 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
-# 전환 효과 타입
-class TransitionType(str, Enum):
-    FADE = "fade"
-    SLIDE = "slide"
-    ZOOM = "zoom"
-    NONE = "none"
-
-
 # 입력 모드 타입
 class InputMode(str, Enum):
     TEXT = "text"
