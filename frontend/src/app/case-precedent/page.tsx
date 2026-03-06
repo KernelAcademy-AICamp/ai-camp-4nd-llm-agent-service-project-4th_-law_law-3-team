@@ -49,7 +49,8 @@ function CasePrecedentContent() {
 
   const aiReferences = sessionData.aiReferences as unknown[] | undefined
   const hasChatReferences = Array.isArray(aiReferences) && aiReferences.length > 0
-  const isFilterMode = !hasChatReferences && !initialCaseId
+  const isLoadingSources = sessionData.isLoadingSources as boolean | undefined
+  const isFilterMode = !hasChatReferences && !initialCaseId && !isLoadingSources
 
   const pageTitle = '판례 검색'
 
