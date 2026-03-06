@@ -1,5 +1,6 @@
 """이미지 생성 서비스 - Google Gemini 2.0 Flash 사용"""
 import logging
+import os
 import uuid
 from functools import lru_cache
 from pathlib import Path
@@ -21,11 +22,11 @@ def _get_genai_client() -> genai.Client:
     """Gemini 클라이언트 싱글톤 반환 (지연 초기화)"""
     return genai.Client(api_key=settings.GOOGLE_API_KEY)
 
-# 미디어 디렉토리 경로 (settings에서 우선 사용, fallback: backend 루트 기준)
+# 미디어 디렉토리 경로 (환경변수 MEDIA_DIR 우선, fallback: backend 루트 기준)
 def _resolve_media_dir() -> Path:
-    media_dir_setting = getattr(settings, "MEDIA_DIR", None)
-    if media_dir_setting:
-        path = Path(str(media_dir_setting))
+    env_media_dir = os.environ.get("MEDIA_DIR")
+    if env_media_dir:
+        path = Path(env_media_dir)
     else:
         # backend/app/modules/storyboard/service/ → backend 루트 → data/media
         path = Path(__file__).resolve().parent.parent.parent.parent.parent / "data" / "media"
