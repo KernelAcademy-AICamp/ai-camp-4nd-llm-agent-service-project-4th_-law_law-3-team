@@ -83,7 +83,7 @@ export const casePrecedentService = {
     sort?: string
     offset?: number
     limit?: number
-  }): Promise<FilteredPrecedentListResponse> => {
+  }, signal?: AbortSignal): Promise<FilteredPrecedentListResponse> => {
     const searchParams = new URLSearchParams()
     if (params.keyword) searchParams.append('keyword', params.keyword)
     if (params.case_type) searchParams.append('case_type', params.case_type)
@@ -92,7 +92,7 @@ export const casePrecedentService = {
     if (params.sort) searchParams.append('sort', params.sort)
     if (params.offset !== undefined) searchParams.append('offset', params.offset.toString())
     if (params.limit !== undefined) searchParams.append('limit', params.limit.toString())
-    const response = await api.get(`${endpoints.casePrecedent}/precedents/filter?${searchParams}`)
+    const response = await api.get(`${endpoints.casePrecedent}/precedents/filter?${searchParams}`, { signal })
     return response.data
   },
 
@@ -120,7 +120,7 @@ export const casePrecedentService = {
     sort?: string
     offset?: number
     limit?: number
-  }): Promise<FilteredLawListResponse> => {
+  }, signal?: AbortSignal): Promise<FilteredLawListResponse> => {
     const searchParams = new URLSearchParams()
     if (params.keyword) searchParams.append('keyword', params.keyword)
     if (params.law_type) searchParams.append('law_type', params.law_type)
@@ -132,7 +132,7 @@ export const casePrecedentService = {
     if (params.sort) searchParams.append('sort', params.sort)
     if (params.offset !== undefined) searchParams.append('offset', params.offset.toString())
     if (params.limit !== undefined) searchParams.append('limit', params.limit.toString())
-    const response = await api.get(`${endpoints.casePrecedent}/laws/filter?${searchParams}`)
+    const response = await api.get(`${endpoints.casePrecedent}/laws/filter?${searchParams}`, { signal })
     return response.data
   },
 

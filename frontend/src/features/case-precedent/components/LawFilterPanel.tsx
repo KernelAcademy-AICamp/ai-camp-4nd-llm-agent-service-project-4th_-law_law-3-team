@@ -21,6 +21,7 @@ interface LawFilterPanelProps {
   onEnforcementToChange: (value: string) => void
   lawTypes: string[]
   onSearch: () => void
+  onCancel?: () => void
   isLoading: boolean
 }
 
@@ -102,11 +103,13 @@ export function LawFilterPanel({
   enforcementTo, onEnforcementToChange,
   lawTypes,
   onSearch,
+  onCancel,
   isLoading,
 }: LawFilterPanelProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') onSearch()
   }
+  const handleSearch = () => onSearch()
 
   return (
     <div className="border-b border-gray-200 px-4 py-3 space-y-3 bg-white">
@@ -163,14 +166,22 @@ export function LawFilterPanel({
         />
       </div>
 
-      {/* 검색 버튼 */}
-      <button
-        onClick={onSearch}
-        disabled={isLoading}
-        className="w-full py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {isLoading ? '검색 중...' : '검색'}
-      </button>
+      {/* 검색 / 검색 중지 버튼 */}
+      {isLoading ? (
+        <button
+          onClick={onCancel}
+          className="w-full py-2 bg-red-100 text-red-600 text-sm font-medium rounded-lg hover:bg-red-200 transition-colors"
+        >
+          검색 중지
+        </button>
+      ) : (
+        <button
+          onClick={handleSearch}
+          className="w-full py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          검색
+        </button>
+      )}
     </div>
   )
 }

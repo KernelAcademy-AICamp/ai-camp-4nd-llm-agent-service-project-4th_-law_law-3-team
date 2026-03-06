@@ -380,7 +380,7 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
         case_number = metadata.get("case_number", "")
 
         # 기본 응답 데이터 (LanceDB 기반)
-        response_data = {
+        response_data: dict[str, Any] = {
             "id": precedent_id,
             "case_name": case_name,
             "case_number": case_number,
@@ -390,6 +390,12 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
             "content": content,
             "summary": "",  # PostgreSQL에서 가져옴 (LanceDB content 사용 안함)
         }
+
+        # 법령인 경우 doc_id, law_name 추가 (프론트엔드 LawDetailLawyer용)
+        if doc_type == "law":
+            law_source_id = metadata.get("source_id", "") or precedent_id
+            response_data["doc_id"] = law_source_id
+            response_data["law_name"] = case_name
 
         # PostgreSQL에서 상세 필드 조회 (source_id가 serial_number에 매핑)
         source_id = metadata.get("source_id", "")

@@ -103,6 +103,9 @@ export function KeywordCollector({ onGenerateScript, onGenerateScriptWithNews, p
     }
   }
 
+  // tavily, naver만 표시
+  const VISIBLE_SOURCES = new Set(['tavily', 'naver'])
+
   // 뉴스 리스트 뷰
   if (step === 'news' && newsResponse && selectedKeyword) {
     return (
@@ -110,8 +113,8 @@ export function KeywordCollector({ onGenerateScript, onGenerateScriptWithNews, p
         keyword={selectedKeyword.keyword}
         articles={newsResponse.articles}
         relatedLaws={newsResponse.related_laws ?? []}
-        sourcesUsed={newsResponse.sources_used ?? []}
-        sourcesFailed={newsResponse.sources_failed ?? []}
+        sourcesUsed={(newsResponse.sources_used ?? []).filter((s) => VISIBLE_SOURCES.has(s))}
+        sourcesFailed={(newsResponse.sources_failed ?? []).filter((s) => VISIBLE_SOURCES.has(s.source_name))}
         totalCount={newsResponse.total_count}
         selectedArticles={selectedArticles}
         onToggleArticle={handleToggleArticle}
@@ -121,9 +124,11 @@ export function KeywordCollector({ onGenerateScript, onGenerateScriptWithNews, p
       />
     )
   }
+  const filteredSourcesUsed = sourcesUsed.filter((s) => VISIBLE_SOURCES.has(s))
+  const filteredSourcesFailed = sourcesFailed.filter((s) => VISIBLE_SOURCES.has(s.source_name))
 
   const hasResults = keywords.length > 0 || cacheHit
-  const showSourceStatus = step === 'keywords' && (sourcesUsed.length > 0 || sourcesFailed.length > 0)
+  const showSourceStatus = step === 'keywords' && (filteredSourcesUsed.length > 0 || filteredSourcesFailed.length > 0)
 
   return (
     <div className="space-y-5">
@@ -236,8 +241,8 @@ export function KeywordCollector({ onGenerateScript, onGenerateScriptWithNews, p
       {/* 소스 상태 패널 */}
       {showSourceStatus && (
         <SourceStatusPanel
-          sourcesUsed={sourcesUsed}
-          sourcesFailed={sourcesFailed}
+          sourcesUsed={filteredSourcesUsed}
+          sourcesFailed={filteredSourcesFailed}
           hasResults={hasResults}
           onRefresh={handleReset}
         />
@@ -267,9 +272,9 @@ export function KeywordCollector({ onGenerateScript, onGenerateScriptWithNews, p
                 <CollectedAtLabel collectedAt={collectedAt} />
               </span>
             )}
-            {sourcesUsed.length > 0 && (
+            {filteredSourcesUsed.length > 0 && (
               <span>
-                소스 {sourcesUsed.length}/{sourcesUsed.length + sourcesFailed.length} 성공
+                소스 {filteredSourcesUsed.length}/{filteredSourcesUsed.length + filteredSourcesFailed.length} 성공
               </span>
             )}
             <button

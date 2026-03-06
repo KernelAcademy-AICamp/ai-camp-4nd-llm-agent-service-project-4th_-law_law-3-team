@@ -281,8 +281,64 @@ async def collect_trends(
 
 
 async def get_trend_detail(trend_id: str) -> TrendDetailResponse | None:
-    """캐시된 트렌드 이슈 상세 조회"""
-    return _trend_detail_cache.get(trend_id)
+    """트렌드 이슈 상세 조회 (법령/판례는 첫 조회 시 BM25 지연 검색)"""
+    cached = _trend_detail_cache.get(trend_id)
+    if cached is None:
+        return None
+
+    # 이미 법령/판례가 채워져 있으면 그대로 반환
+    if cached.related_laws_detail or cached.related_cases_detail:
+        return cached
+
+    # BM25로 관련 법령/판례 검색
+    from app.services.rag.keyword_search import search_by_keyword
+
+    issue = cached.issue
+    query = issue.title
+    if issue.key_points:
+        query = f"{issue.title} {' '.join(issue.key_points[:2])}"
+
+    law_docs = await asyncio.to_thread(
+        search_by_keyword, query, 3, "law",
+    )
+    case_docs = await asyncio.to_thread(
+        search_by_keyword, query, 3, "precedent",
+    )
+
+    laws_detail = [
+        {
+            "law_id": doc.get("metadata", {}).get("doc_id", ""),
+            "law_name": doc.get("metadata", {}).get("case_name", ""),
+            "relevance_score": round(doc.get("similarity", 0.5), 2),
+        }
+        for doc in law_docs
+    ]
+    cases_detail = [
+        {
+            "case_id": doc.get("metadata", {}).get("doc_id", ""),
+            "case_number": doc.get("metadata", {}).get("case_number", ""),
+            "case_name": doc.get("metadata", {}).get("case_name", ""),
+            "relevance_score": round(doc.get("similarity", 0.5), 2),
+        }
+        for doc in case_docs
+    ]
+
+    # 캐시 업데이트 (다음 조회 시 재검색 방지)
+    cached.related_laws_detail = laws_detail
+    cached.related_cases_detail = cases_detail
+
+    # issue 객체에도 반영 (프론트엔드 fallback 대응)
+    from app.modules.content_marketing.schema import RelatedCase, RelatedLaw
+    cached.issue.related_laws = [
+        RelatedLaw(**law) for law in laws_detail
+    ]
+    cached.issue.related_cases = [
+        RelatedCase(**case) for case in cases_detail
+    ]
+
+    logger.info("트렌드 상세 BM25 검색 완료: trend_id=%s, 법령=%d, 판례=%d",
+                trend_id, len(laws_detail), len(cases_detail))
+    return cached
 
 
 # ── Script 서비스 ──

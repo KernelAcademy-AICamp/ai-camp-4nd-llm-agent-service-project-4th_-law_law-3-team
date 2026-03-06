@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import axios from 'axios'
 import { casePrecedentService } from '../services'
 import type {
   DatePreset,
@@ -49,11 +50,21 @@ export function usePrecedentFilter() {
   const [isDetailLoading, setIsDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
 
+  // AbortController
+  const abortControllerRef = useRef<AbortController | null>(null)
+
   // 마운트 시 사건종류 목록 로드
   useEffect(() => {
     casePrecedentService.getCaseTypes()
       .then(setCaseTypes)
       .catch(() => setCaseTypes([]))
+  }, [])
+
+  // 컴포넌트 언마운트 시 cleanup
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort()
+    }
   }, [])
 
   // 실제 API 호출 날짜 계산
@@ -74,7 +85,14 @@ export function usePrecedentFilter() {
   }, [datePreset, dateFrom, dateTo])
 
   // 검색 실행
-  const search = useCallback(async () => {
+  const search = useCallback(async (sortOverride?: SortOrder) => {
+    // 이전 요청 취소
+    abortControllerRef.current?.abort()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    const effectiveSort = sortOverride ?? sortOrder
+
     setIsLoading(true)
     setError(null)
     setOffset(0)
@@ -86,20 +104,38 @@ export function usePrecedentFilter() {
         case_type: caseType || undefined,
         date_from: dates.date_from,
         date_to: dates.date_to,
-        sort: sortOrder,
+        sort: effectiveSort,
         offset: 0,
         limit: LIMIT,
-      })
+      }, controller.signal)
       setPrecedents(result.precedents)
       setTotal(result.total)
-    } catch {
+    } catch (err: unknown) {
+      if (axios.isCancel(err)) return
       setError('판례 검색 중 오류가 발생했습니다.')
       setPrecedents([])
       setTotal(0)
     } finally {
-      setIsLoading(false)
+      if (!controller.signal.aborted) {
+        setIsLoading(false)
+      }
     }
   }, [keyword, caseType, sortOrder, getEffectiveDates])
+
+  // 검색 취소
+  const cancelSearch = useCallback(() => {
+    abortControllerRef.current?.abort()
+    abortControllerRef.current = null
+    setIsLoading(false)
+  }, [])
+
+  // 정렬 변경 핸들러
+  const handleSortChange = useCallback((newSort: SortOrder) => {
+    setSortOrder(newSort)
+    if (hasSearched) {
+      search(newSort)
+    }
+  }, [hasSearched, search])
 
   // 더 보기
   const loadMore = useCallback(async () => {
@@ -154,7 +190,7 @@ export function usePrecedentFilter() {
     precedents, total, isLoading, error, hasSearched,
     hasMore: precedents.length < total,
     // 액션
-    search, loadMore,
+    search, loadMore, cancelSearch, handleSortChange,
     // 상세
     selectedId, selectItem,
     detail, isDetailLoading, detailError,

@@ -18,7 +18,7 @@ from app.modules.content_marketing.schema import (
     TrendIssue,
     TrendScoreDetail,
 )
-from app.services.rag.pipeline import PipelineConfig, RAGPipeline
+from app.services.rag.keyword_search import search_by_keyword
 from app.tools.llm import get_chat_model
 from app.tools.trend.models import ScoredIssue, ScoredIssueV2
 
@@ -29,7 +29,7 @@ class IssueSummarizer:
     """이슈 요약 + 관련 법령/판례 매칭"""
 
     def __init__(self) -> None:
-        self._rag = RAGPipeline()
+        pass
 
     async def summarize(
         self,
@@ -92,15 +92,14 @@ class IssueSummarizer:
         return list(results)
 
     async def _process_single_issue_v2(self, issue: ScoredIssueV2) -> TrendIssue:
-        """단일 이슈의 LLM 요약 + RAG 검색을 병렬 실행"""
-        # LLM 호출 2개 + RAG 검색 1개를 동시 실행
+        """단일 이슈의 LLM 요약을 병렬 실행 (법령/판례는 상세 조회 시 지연 검색)"""
         key_points_task = self._generate_key_points_v2(issue)
         summary_task = self._generate_summary_v2(issue)
-        legal_task = asyncio.to_thread(self._find_related_legal_v2, issue)
 
-        key_points, summary, (related_laws, related_cases) = await asyncio.gather(
-            key_points_task, summary_task, legal_task
-        )
+        key_points, summary = await asyncio.gather(key_points_task, summary_task)
+
+        related_laws: list[RelatedLaw] = []
+        related_cases: list[RelatedCase] = []
 
         # 카테고리 변환 (str → TrendCategory)
         try:
@@ -183,40 +182,28 @@ class IssueSummarizer:
         self,
         issue: ScoredIssueV2,
     ) -> tuple[list[RelatedLaw], list[RelatedCase]]:
-        """RAG 파이프라인으로 관련 법령/판례 검색 (v2.0)"""
+        """BM25 키워드 검색으로 관련 법령/판례 검색 (v2.1)"""
         query = f"{issue.title} {issue.raw_items[0].snippet[:200]}" if issue.raw_items else issue.title
 
-        law_config = PipelineConfig(
-            n_results=5,
-            doc_type="law",
-            enable_rerank=True,
-            rerank_top_k=3,
-        )
-        law_result = self._rag.execute(query, law_config)
+        law_docs = search_by_keyword(query, n_results=3, doc_type="law")
         related_laws = [
             RelatedLaw(
-                law_id=doc.get("source_id", ""),
-                law_name=doc.get("title", ""),
-                relevance_score=round(doc.get("rerank_score", doc.get("score", 0.5)), 2),
+                law_id=doc.get("metadata", {}).get("doc_id", ""),
+                law_name=doc.get("metadata", {}).get("case_name", ""),
+                relevance_score=round(doc.get("similarity", 0.5), 2),
             )
-            for doc in law_result.documents
+            for doc in law_docs
         ]
 
-        case_config = PipelineConfig(
-            n_results=5,
-            doc_type="precedent",
-            enable_rerank=True,
-            rerank_top_k=3,
-        )
-        case_result = self._rag.execute(query, case_config)
+        case_docs = search_by_keyword(query, n_results=3, doc_type="precedent")
         related_cases = [
             RelatedCase(
-                case_id=doc.get("source_id", ""),
-                case_number=doc.get("case_number", ""),
-                case_name=doc.get("title", ""),
-                relevance_score=round(doc.get("rerank_score", doc.get("score", 0.5)), 2),
+                case_id=doc.get("metadata", {}).get("doc_id", ""),
+                case_number=doc.get("metadata", {}).get("case_number", ""),
+                case_name=doc.get("metadata", {}).get("case_name", ""),
+                relevance_score=round(doc.get("similarity", 0.5), 2),
             )
-            for doc in case_result.documents
+            for doc in case_docs
         ]
 
         return related_laws, related_cases
@@ -256,40 +243,28 @@ class IssueSummarizer:
         self,
         issue: ScoredIssue,
     ) -> tuple[list[RelatedLaw], list[RelatedCase]]:
-        """RAG 파이프라인으로 관련 법령/판례 검색"""
+        """BM25 키워드 검색으로 관련 법령/판례 검색 (v2.1)"""
         query = f"{issue.title} {issue.raw_items[0].snippet[:200]}" if issue.raw_items else issue.title
 
-        law_config = PipelineConfig(
-            n_results=5,
-            doc_type="law",
-            enable_rerank=True,
-            rerank_top_k=3,
-        )
-        law_result = self._rag.execute(query, law_config)
+        law_docs = search_by_keyword(query, n_results=3, doc_type="law")
         related_laws = [
             RelatedLaw(
-                law_id=doc.get("source_id", ""),
-                law_name=doc.get("title", ""),
-                relevance_score=round(doc.get("rerank_score", doc.get("score", 0.5)), 2),
+                law_id=doc.get("metadata", {}).get("doc_id", ""),
+                law_name=doc.get("metadata", {}).get("case_name", ""),
+                relevance_score=round(doc.get("similarity", 0.5), 2),
             )
-            for doc in law_result.documents
+            for doc in law_docs
         ]
 
-        case_config = PipelineConfig(
-            n_results=5,
-            doc_type="precedent",
-            enable_rerank=True,
-            rerank_top_k=3,
-        )
-        case_result = self._rag.execute(query, case_config)
+        case_docs = search_by_keyword(query, n_results=3, doc_type="precedent")
         related_cases = [
             RelatedCase(
-                case_id=doc.get("source_id", ""),
-                case_number=doc.get("case_number", ""),
-                case_name=doc.get("title", ""),
-                relevance_score=round(doc.get("rerank_score", doc.get("score", 0.5)), 2),
+                case_id=doc.get("metadata", {}).get("doc_id", ""),
+                case_number=doc.get("metadata", {}).get("case_number", ""),
+                case_name=doc.get("metadata", {}).get("case_name", ""),
+                relevance_score=round(doc.get("similarity", 0.5), 2),
             )
-            for doc in case_result.documents
+            for doc in case_docs
         ]
 
         return related_laws, related_cases

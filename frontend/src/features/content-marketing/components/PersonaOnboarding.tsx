@@ -169,6 +169,11 @@ export function PersonaOnboarding({
       {/* Step 1: 전문분야 (아이콘 카드 + 대표 키워드) */}
       {state.step === 1 && (
         <div className="space-y-4">
+          {error && error.includes('대화 이력') && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-4 py-3">
+              {error}
+            </div>
+          )}
           <div>
             <h2 className="text-lg font-bold text-gray-900">전문분야 선택</h2>
             <p className="text-sm text-gray-500 mt-1">관심 있는 법률 분야를 1~3개 선택하세요.</p>
@@ -390,8 +395,8 @@ export function PersonaOnboarding({
         </div>
       )}
 
-      {/* 에러 메시지 */}
-      {error && (
+      {/* 에러 메시지 (분석 실패 메시지는 Step 1 상단에 표시) */}
+      {error && !error.includes('대화 이력') && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mt-4">
           {error}
         </div>

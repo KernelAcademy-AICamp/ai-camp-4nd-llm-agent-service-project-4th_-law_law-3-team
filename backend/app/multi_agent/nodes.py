@@ -18,6 +18,7 @@ from app.multi_agent.router import (
     INTENT_OVERRIDE_CONFIDENCE,
     ROLE_AGENTS,
     AgentType,
+    LLMRouter,
     RulesRouter,
     UserRole,
     detect_search_type,
@@ -54,6 +55,7 @@ AGENT_NODE_MAP: dict[str, str] = {
 
 # 싱글톤 라우터
 _rules_router: RulesRouter | None = None
+_llm_router: LLMRouter | None = None
 
 
 def _get_rules_router() -> RulesRouter:
@@ -61,6 +63,13 @@ def _get_rules_router() -> RulesRouter:
     if _rules_router is None:
         _rules_router = RulesRouter()
     return _rules_router
+
+
+def _get_llm_router() -> LLMRouter:
+    global _llm_router
+    if _llm_router is None:
+        _llm_router = LLMRouter()
+    return _llm_router
 
 
 # ──────────────────────────────────────────────
@@ -221,7 +230,7 @@ async def _run_nonstreaming_node(
 # ──────────────────────────────────────────────
 
 
-def router_node(state: ChatState, writer: StreamWriter) -> Command[str]:
+async def router_node(state: ChatState, writer: StreamWriter) -> Command[str]:
     """라우팅 노드: 메시지를 분석하여 적절한 에이전트 노드로 라우팅
 
     Args:
@@ -235,7 +244,7 @@ def router_node(state: ChatState, writer: StreamWriter) -> Command[str]:
     user_role = state.get("user_role", "user")
     session_data = state.get("session_data", {})
     agent_override = state.get("agent_override")
-    router = _get_rules_router()
+    use_llm = settings.USE_LLM_ROUTER
 
     # agent_override ROLE_AGENTS 검증 (#2)
     if agent_override:
@@ -255,16 +264,20 @@ def router_node(state: ChatState, writer: StreamWriter) -> Command[str]:
                 agent_override,
             )
 
-    # 규칙 기반 라우팅 (1회만 호출)
+    # 라우팅 (1회만 호출)
     plan: AgentPlan | None = None
 
     # 강한 명시 의도는 URL agent_override보다 우선
     if agent_override:
-        plan = router.route(
-            message=message,
-            user_role=user_role,
-            session_data={},
-        )
+        if use_llm:
+            plan = await _get_llm_router().route(
+                message=message, user_role=user_role,
+                session_data={}, history=state.get("history"),
+            )
+        else:
+            plan = _get_rules_router().route(
+                message=message, user_role=user_role, session_data={},
+            )
         if (
             plan.confidence >= INTENT_OVERRIDE_CONFIDENCE
             and plan.agent_type != agent_override
@@ -309,11 +322,16 @@ def router_node(state: ChatState, writer: StreamWriter) -> Command[str]:
 
     # override가 없었으면 여기서 라우팅
     if plan is None:
-        plan = router.route(
-            message=message,
-            user_role=user_role,
-            session_data=session_data,
-        )
+        if use_llm:
+            plan = await _get_llm_router().route(
+                message=message, user_role=user_role,
+                session_data=session_data, history=state.get("history"),
+            )
+        else:
+            plan = _get_rules_router().route(
+                message=message, user_role=user_role,
+                session_data=session_data,
+            )
 
     # search_focus 결정
     search_focus = ""
@@ -347,6 +365,45 @@ def router_node(state: ChatState, writer: StreamWriter) -> Command[str]:
             "routing_reason": plan.reason or "",
         },
         goto=target_node,
+    )
+
+
+# ──────────────────────────────────────────────
+# LLM 라우터 general 분류 시 구체화 안내
+# ──────────────────────────────────────────────
+
+# 사용자에게 보여줄 에이전트 레이블 (general 제외)
+_CLARIFICATION_LABELS: dict[str, str] = {
+    "lawyer_finder": "변호사 찾기 — 위치 기반 변호사 추천/검색",
+    "small_claims": "소액소송 가이드 — 내용증명, 지급명령, 금전 분쟁",
+    "case_search": "판례 검색 — 판결, 선례, 유사 사건",
+    "law_search": "법령 검색 — 법령 체계도, 상위법/하위법",
+    "storyboard": "사건 타임라인 — 시간순 사건 정리",
+    "lawyer_stats": "변호사 통계 — 지역별/전문분야별 분포 분석",
+    "law_study": "법학 학습 — 로스쿨, 법학 문제 풀이",
+    "mock_trial": "모의재판 — 모의법정 시뮬레이션 체험",
+    "content_marketing": "콘텐츠 마케팅 — 법률 트렌드 분석, 대본 생성",
+    "workspace": "워크스페이스 — 사건 관리, 타임라인",
+}
+
+
+def _build_clarification_message(user_role: str) -> str:
+    """역할별 허용 에이전트 기반 구체화 안내 메시지 생성"""
+    try:
+        role = UserRole(user_role)
+    except ValueError:
+        role = UserRole.USER
+    allowed = ROLE_AGENTS.get(role, [])
+    lines = [
+        f"- **{_CLARIFICATION_LABELS[a.value]}**"
+        for a in allowed
+        if a.value in _CLARIFICATION_LABELS
+    ]
+    service_list = "\n".join(lines)
+    return (
+        "요구사항을 구체적으로 말씀해주시면 적합한 서비스로 안내드리겠습니다.\n"
+        "현재 이용 가능한 서비스:\n\n"
+        f"{service_list}"
     )
 
 
@@ -419,7 +476,24 @@ async def workspace_node(
 async def simple_chat_node(
     state: ChatState, writer: StreamWriter
 ) -> dict[str, Any]:
-    """일반 채팅 노드"""
+    """일반 채팅 노드
+
+    LLM 라우터가 general로 분류한 경우 에이전트 구체화 안내를 출력한다.
+    """
+    routing_reason = state.get("routing_reason", "")
+
+    # LLM 라우터에서 general로 분류 → 답변 대신 구체화 안내
+    if routing_reason.startswith("LLM 분류:"):
+        clarification = _build_clarification_message(state.get("user_role", "user"))
+        writer({"event": "token", "data": {"content": clarification}})
+        return {
+            "response": clarification,
+            "sources": [],
+            "actions": [],
+            "output_session_data": {},
+            "agent_used": "general",
+        }
+
     from app.multi_agent.agents.base_chat import SimpleChatAgent
 
     return await _run_streaming_node(SimpleChatAgent(), state, writer)

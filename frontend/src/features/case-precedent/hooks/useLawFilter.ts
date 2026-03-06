@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import axios from 'axios'
 import { casePrecedentService } from '../services'
 import type {
   DatePreset,
@@ -57,6 +58,9 @@ export function useLawFilter() {
   const [isDetailLoading, setIsDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
 
+  // AbortController
+  const abortControllerRef = useRef<AbortController | null>(null)
+
   // 마운트 시 필터 옵션 로드
   useEffect(() => {
     casePrecedentService.getLawFilterOptions()
@@ -66,6 +70,13 @@ export function useLawFilter() {
       .catch(() => {
         setLawTypes([])
       })
+  }, [])
+
+  // 컴포넌트 언마운트 시 cleanup
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort()
+    }
   }, [])
 
   // 공포일자 계산
@@ -103,7 +114,14 @@ export function useLawFilter() {
   }, [enforcementPreset, enforcementFrom, enforcementTo])
 
   // 검색 실행
-  const search = useCallback(async () => {
+  const search = useCallback(async (sortOverride?: SortOrder) => {
+    // 이전 요청 취소
+    abortControllerRef.current?.abort()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    const effectiveSort = sortOverride ?? sortOrder
+
     setIsLoading(true)
     setError(null)
     setOffset(0)
@@ -118,20 +136,38 @@ export function useLawFilter() {
         promulgation_to: promDates.promulgation_to,
         enforcement_from: enfDates.enforcement_from,
         enforcement_to: enfDates.enforcement_to,
-        sort: sortOrder,
+        sort: effectiveSort,
         offset: 0,
         limit: LIMIT,
-      })
+      }, controller.signal)
       setLaws(result.laws)
       setTotal(result.total)
-    } catch {
+    } catch (err: unknown) {
+      if (axios.isCancel(err)) return
       setError('법령 검색 중 오류가 발생했습니다.')
       setLaws([])
       setTotal(0)
     } finally {
-      setIsLoading(false)
+      if (!controller.signal.aborted) {
+        setIsLoading(false)
+      }
     }
   }, [keyword, lawType, sortOrder, getPromulgationDates, getEnforcementDates])
+
+  // 검색 취소
+  const cancelSearch = useCallback(() => {
+    abortControllerRef.current?.abort()
+    abortControllerRef.current = null
+    setIsLoading(false)
+  }, [])
+
+  // 정렬 변경 핸들러
+  const handleSortChange = useCallback((newSort: SortOrder) => {
+    setSortOrder(newSort)
+    if (hasSearched) {
+      search(newSort)
+    }
+  }, [hasSearched, search])
 
   // 더 보기
   const loadMore = useCallback(async () => {
@@ -192,7 +228,7 @@ export function useLawFilter() {
     laws, total, isLoading, error, hasSearched,
     hasMore: laws.length < total,
     // 액션
-    search, loadMore,
+    search, loadMore, cancelSearch, handleSortChange,
     // 상세
     selectedId, selectItem,
     detail, isDetailLoading, detailError,

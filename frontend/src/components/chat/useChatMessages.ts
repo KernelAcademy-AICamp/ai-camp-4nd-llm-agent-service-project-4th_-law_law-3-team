@@ -33,12 +33,15 @@ export function useChatMessages() {
     setActivePanel,
     pendingMessage,
     setPendingMessage,
+    isRouting,
+    setIsRouting,
   } = useUI()
   const {
     userRole,
     setUserRole,
     sessionData,
     setSessionData,
+    mergeSessionData,
     userLocation,
     requestUserLocation,
     resetSession,
@@ -77,6 +80,7 @@ export function useChatMessages() {
   } = useLoadingStatus(isLoading, isStreaming)
 
   const [input, setInput] = useState('')
+  const [pendingNavTarget, setPendingNavTarget] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const rafIdRef = useRef<number | null>(null)
 
@@ -88,6 +92,14 @@ export function useChatMessages() {
       }
     }
   }, [])
+
+  // SSE 콜백에서 설정된 네비게이션 대상을 React 라이프사이클에서 실행
+  useEffect(() => {
+    if (pendingNavTarget) {
+      router.push(pendingNavTarget)
+      setPendingNavTarget(null)
+    }
+  }, [pendingNavTarget, router])
 
   // pendingMessage 감지 시 자동 전송
   useEffect(() => {
@@ -102,16 +114,21 @@ export function useChatMessages() {
 
   useEffect(() => {
     if (prevPathnameRef.current === pathname) return
+    const prevPathname = prevPathnameRef.current
     prevPathnameRef.current = pathname
+
+    // 메인 페이지에서 LLM 라우팅으로 에이전트 페이지에 도착한 경우
+    if (isRouting && prevPathname === '/') {
+      setIsRouting(false)
+      setChatMode('floating')
+      setChatOpen(true)
+      return
+    }
 
     setChatOpen(false)
     if (isChatHiddenPage) return
     setChatMode('floating')
-
-    // 페이지 변경 시 세션·메시지 초기화 (stale agent 방지)
-    resetSession()
-    setMessages([getInitialMessage(effectiveAgent)])
-  }, [pathname, setChatMode, setChatOpen, supportsFloatingMode, isChatHiddenPage, resetSession, getInitialMessage, effectiveAgent])
+  }, [pathname, setChatMode, setChatOpen, supportsFloatingMode, isChatHiddenPage, isRouting, setIsRouting])
 
   // 자동 스크롤
   useEffect(() => {
@@ -173,6 +190,7 @@ export function useChatMessages() {
     let receivedActions: ChatAction[] = []
     let receivedSessionData: Record<string, unknown> = {}
     let agentUsed = ''
+    let hasNavigatedOnRouting = false
 
     const isSmallClaims = effectiveAgent === 'small_claims' || sessionData.active_agent === 'small_claims'
     let finalSessionData = { ...sessionData }
@@ -234,7 +252,22 @@ export function useChatMessages() {
           onRouting: (data) => {
             if (data.selected_agent) {
               agentUsed = data.selected_agent
-              setSessionData({ ...sessionData, active_agent: data.selected_agent })
+              const searchAgentsForRouting = ['legal_search', 'case_search', 'legal_answer', 'law_search']
+              const isSearchAgent = searchAgentsForRouting.includes(data.selected_agent)
+              mergeSessionData({
+                active_agent: data.selected_agent,
+                ...(isSearchAgent && { isLoadingSources: true }),
+              })
+
+              // 라우팅 즉시 페이지 전환 (React 라이프사이클에서 실행)
+              const targetPage = AGENT_PAGE_MAP[data.selected_agent]
+              if (targetPage) {
+                const targetPathname = targetPage.split('?')[0]
+                if (pathname !== targetPathname) {
+                  setPendingNavTarget(targetPage)
+                  hasNavigatedOnRouting = true
+                }
+              }
             }
           },
           onSources: (sources) => {
@@ -281,10 +314,10 @@ export function useChatMessages() {
                 return true
               })
 
-              setSessionData({
-                ...sessionData,
+              mergeSessionData({
                 aiGeneratedCase: aiCase,
                 aiReferences: uniqueSources,
+                isLoadingSources: false,
               })
             }
           },
@@ -295,7 +328,7 @@ export function useChatMessages() {
 
             // 에이전트 활성화 상태 즉시 반영 (답변 출력 전)
             if (metadata.agent_used) {
-              setSessionData({ ...sessionData, active_agent: metadata.agent_used })
+              mergeSessionData({ active_agent: metadata.agent_used })
             }
 
             // Proactive UI Trigger: lawyer_finder 자동으로 패널 열기
@@ -387,9 +420,9 @@ export function useChatMessages() {
             }
 
             if (Object.keys(newSessionData).length > 0) {
-              setSessionData({ ...sessionData, ...newSessionData })
+              mergeSessionData(newSessionData)
             } else if (receivedSessionData) {
-              setSessionData(receivedSessionData)
+              mergeSessionData(receivedSessionData)
             }
 
             // NAVIGATE 액션 처리
@@ -410,16 +443,15 @@ export function useChatMessages() {
                 })
                 fullUrl = `${navigateAction.url}?${urlSearchParams.toString()}`
               }
-              router.push(fullUrl)
+              setPendingNavTarget(fullUrl)
               hasNavigated = true
             }
 
-            const currentPageAgent = PATHNAME_AGENT_MAP[pathname]
-            if (!hasNavigated && agentUsed && AGENT_PAGE_MAP[agentUsed] && !currentPageAgent) {
+            if (!hasNavigated && !hasNavigatedOnRouting && agentUsed && AGENT_PAGE_MAP[agentUsed]) {
               const targetPage = AGENT_PAGE_MAP[agentUsed]
               const targetPathname = targetPage.split('?')[0]
               if (pathname !== targetPathname) {
-                router.push(targetPage)
+                setPendingNavTarget(targetPage)
               }
             }
           },
@@ -567,6 +599,7 @@ export function useChatMessages() {
     setChatMode,
     supportsFloatingMode,
     isChatHiddenPage,
+    isRouting,
 
     // 사용자/세션
     userRole,

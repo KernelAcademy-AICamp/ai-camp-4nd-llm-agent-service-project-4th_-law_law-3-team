@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 import type { SectionType, WebtoonPanel } from '../types'
 import type { StageInfo } from '../hooks/useScript'
 import type { StoryboardPhase, StoryboardProgress } from '../hooks/useStoryboardStream'
@@ -192,7 +193,9 @@ function ScriptSectionBlock({
       <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
         {SECTION_NAMES[section]}
       </h4>
-      <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{content}</div>
+      <div className="text-sm text-gray-800 leading-relaxed prose prose-sm max-w-none prose-headings:text-gray-800 prose-headings:text-sm prose-headings:mt-3 prose-headings:mb-1 prose-p:my-1.5 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5">
+        <ReactMarkdown>{content}</ReactMarkdown>
+      </div>
     </div>
   )
 }

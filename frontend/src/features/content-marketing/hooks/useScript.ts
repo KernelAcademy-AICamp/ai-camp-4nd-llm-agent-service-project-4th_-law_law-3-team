@@ -102,6 +102,12 @@ export function useScript() {
               const sectionPercent = range.start + (range.end - range.start) * chunkProgress
               setProgress({ percent: Math.round(sectionPercent), label: range.label })
             }
+          } else if (event.event === 'section_end' && event.section) {
+            const range = SECTION_PROGRESS_RANGES[event.section]
+            if (range) {
+              setProgress({ percent: range.end, label: range.label.replace('중...', '완료') })
+            }
+            chunkCountRef.current = 0
           } else if (event.event === 'metadata' && event.metadata) {
             setMetadata(event.metadata)
             setProgress({ percent: 98, label: '메타데이터 생성 완료' })

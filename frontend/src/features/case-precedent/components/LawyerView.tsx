@@ -181,9 +181,10 @@ export function LawyerView({ initialCaseId, pageType = 'precedent' }: LawyerView
     }
   }, [hasChatReferences, chatSelectCase, serverSelectItem])
 
-  const detail = hasChatReferences ? chatSearch.selectedCase : serverSearch.detail
-  const isDetailLoading = hasChatReferences ? chatSearch.isLoadingDetail : serverSearch.isDetailLoading
-  const detailError = hasChatReferences ? chatSearch.detailError : serverSearch.detailError
+  const useChatDetail = hasChatReferences || !!initialCaseId
+  const detail = useChatDetail ? chatSearch.selectedCase : serverSearch.detail
+  const isDetailLoading = useChatDetail ? chatSearch.isLoadingDetail : serverSearch.isDetailLoading
+  const detailError = useChatDetail ? chatSearch.detailError : serverSearch.detailError
 
   // 서버 모드: 정렬 변경 시 재검색
   const isFirstRender = useRef(true)
@@ -235,6 +236,17 @@ export function LawyerView({ initialCaseId, pageType = 'precedent' }: LawyerView
   const [isProvisionsOpen, setIsProvisionsOpen] = useState(false)
 
   // 빈 상태 메시지
+  const isLoadingSources = sessionData.isLoadingSources as boolean | undefined
+
+  if (isLoadingSources && !hasChatReferences) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-gray-50 text-center p-8">
+        <div className="animate-spin rounded-full h-10 w-10 border-4 border-gray-200 border-t-blue-600 mb-4" />
+        <p className="text-sm text-gray-500">관련 판례와 법령을 검색하고 있습니다...</p>
+      </div>
+    )
+  }
+
   const emptyMessage = (() => {
     if (hasChatReferences && results.length === 0) {
       return { main: '필터 조건에 맞는 결과가 없습니다', hint: datePreset !== 'all' }

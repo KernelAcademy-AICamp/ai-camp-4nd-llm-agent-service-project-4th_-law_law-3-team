@@ -332,25 +332,13 @@ export function FilterableLawView() {
     enforcementPreset, setEnforcementPreset,
     enforcementFrom, setEnforcementFrom,
     enforcementTo, setEnforcementTo,
-    sortOrder, setSortOrder,
+    sortOrder,
     lawTypes,
     laws, total, isLoading, error, hasSearched, hasMore,
-    search, loadMore,
+    search, loadMore, cancelSearch, handleSortChange,
     selectedId, selectItem,
     detail, isDetailLoading, detailError,
   } = useLawFilter()
-
-  // 정렬 변경 시 자동 재검색 (검색 결과가 있을 때만)
-  const isFirstRender = useRef(true)
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false
-      return
-    }
-    if (hasSearched) {
-      search()
-    }
-  }, [sortOrder]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex h-full">
@@ -375,6 +363,7 @@ export function FilterableLawView() {
           onEnforcementToChange={setEnforcementTo}
           lawTypes={lawTypes}
           onSearch={search}
+          onCancel={cancelSearch}
           isLoading={isLoading}
         />
         <FilteredLawResultList
@@ -389,7 +378,7 @@ export function FilterableLawView() {
           hasSearched={hasSearched}
           highlightKeyword={keyword}
           sortOrder={sortOrder}
-          onSortChange={setSortOrder}
+          onSortChange={handleSortChange}
         />
       </div>
 
