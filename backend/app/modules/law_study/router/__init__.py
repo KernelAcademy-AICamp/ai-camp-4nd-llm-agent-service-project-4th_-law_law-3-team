@@ -143,6 +143,14 @@ async def get_answer_feedback(
     ]
 
     response = await llm.ainvoke(messages)
-    feedback_text = str(response.content)
+
+    # response.content가 list[dict]인 경우 text 블록만 추출
+    raw = response.content
+    if isinstance(raw, list):
+        feedback_text = "".join(
+            block["text"] for block in raw if isinstance(block, dict) and block.get("type") == "text"
+        )
+    else:
+        feedback_text = str(raw)
 
     return AnswerFeedbackResponse(feedback=feedback_text)
