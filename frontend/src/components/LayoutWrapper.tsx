@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useUI } from '@/context/UIContext'
@@ -10,7 +10,18 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const role = searchParams.get('role')
-  const { activePanel } = useUI()
+  const { activePanel, setActivePanel } = useUI()
+
+  // 페이지 이동 시 activePanel 초기화 (stale panel 방지)
+  const prevPathnameRef = useRef(pathname)
+  useEffect(() => {
+    if (prevPathnameRef.current !== pathname) {
+      prevPathnameRef.current = pathname
+      if (activePanel) {
+        setActivePanel(null)
+      }
+    }
+  }, [pathname, activePanel, setActivePanel])
 
   // 히어로 페이지(역할 선택 전) 여부 확인
   const isHeroPage = pathname === '/' && !role

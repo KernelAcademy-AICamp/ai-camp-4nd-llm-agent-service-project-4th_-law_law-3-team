@@ -107,7 +107,11 @@ export function useChatMessages() {
     setChatOpen(false)
     if (isChatHiddenPage) return
     setChatMode('floating')
-  }, [pathname, setChatMode, setChatOpen, supportsFloatingMode, isChatHiddenPage])
+
+    // 페이지 변경 시 세션·메시지 초기화 (stale agent 방지)
+    resetSession()
+    setMessages([getInitialMessage(effectiveAgent)])
+  }, [pathname, setChatMode, setChatOpen, supportsFloatingMode, isChatHiddenPage, resetSession, getInitialMessage, effectiveAgent])
 
   // 자동 스크롤
   useEffect(() => {
