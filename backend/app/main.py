@@ -41,6 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         MEDIA_DIR.mkdir(parents=True, exist_ok=True)
         (MEDIA_DIR / "webtoon" / "images").mkdir(parents=True, exist_ok=True)
+        (MEDIA_DIR / "storyboard" / "images").mkdir(parents=True, exist_ok=True)
     except PermissionError:
         logger.warning("미디어 디렉토리 생성 실패 (권한 부족): %s", MEDIA_DIR)
 
