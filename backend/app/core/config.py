@@ -1,10 +1,11 @@
+import json
 import logging
 import os
 from pathlib import Path
 from typing import List
 from urllib.parse import urlparse, urlunparse
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 _config_logger = logging.getLogger(__name__)
@@ -41,8 +42,22 @@ class Settings(BaseSettings):
             parsed = parsed._replace(scheme="postgresql+asyncpg")
         return urlunparse(parsed)
 
-    # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+    # CORS (콤마 구분 문자열로 받아서 프로퍼티에서 리스트 변환)
+    CORS_ORIGINS: str = "http://localhost:3000"
+
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """CORS_ORIGINS 문자열을 리스트로 변환."""
+        raw = self.CORS_ORIGINS.strip().strip("'\"")
+        # JSON 배열 형식 시도
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [str(item) for item in parsed]
+        except (json.JSONDecodeError, ValueError):
+            pass
+        # 콤마 구분 문자열: "https://a.com,https://b.com"
+        return [s.strip() for s in raw.split(",") if s.strip()]
 
     # API Keys
     KAKAO_MAP_API_KEY: str = ""
