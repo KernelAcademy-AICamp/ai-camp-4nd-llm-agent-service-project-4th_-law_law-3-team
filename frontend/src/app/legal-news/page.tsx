@@ -5,7 +5,6 @@ import dynamic from 'next/dynamic'
 import { BackButton } from '@/components/ui/BackButton'
 import { DisclaimerBanner } from '@/features/legal-news/components/DisclaimerBanner'
 import { NewsListPanel } from '@/features/legal-news/components/NewsListPanel'
-import { RagContributionCard } from '@/features/legal-news/components/RagContributionCard'
 import { useNewsStats } from '@/features/legal-news/hooks/useNewsStats'
 import type { NewsTab } from '@/features/legal-news/types'
 
@@ -39,7 +38,6 @@ export default function LegalNewsPage() {
     dailyStats, categoryStats, loading: statsLoading, error: statsError,
     periodDays, setPeriodDays,
     categoryPeriodDays, setCategoryPeriodDays, categoryLoading,
-    ragStats, ragLoading,
   } = useNewsStats()
 
   return (
@@ -123,11 +121,6 @@ export default function LegalNewsPage() {
                   loading={categoryLoading}
                 />
               )}
-              <RagContributionCard
-                stats={ragStats}
-                loading={ragLoading}
-                error={statsError}
-              />
             </aside>
           </div>
         ) : (

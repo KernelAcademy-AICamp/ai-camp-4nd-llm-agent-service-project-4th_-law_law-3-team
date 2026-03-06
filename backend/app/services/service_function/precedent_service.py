@@ -4,13 +4,15 @@
 PostgreSQL에서 판례 상세 정보 조회
 """
 
+import datetime
 import logging
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import and_, case, func, literal, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import async_session_factory
+from app.models.fts_index import FtsIndex
 from app.models.precedent_document import PrecedentDocument
 
 logger = logging.getLogger(__name__)
@@ -153,6 +155,247 @@ class PrecedentService:
         except (SQLAlchemyError, ConnectionError) as e:
             logger.warning("사건번호 검색 실패: %s", e)
             return None
+
+
+    async def search_by_filter(
+        self,
+        keyword: str = "",
+        case_type: Optional[str] = None,
+        date_from: Optional[datetime.date] = None,
+        date_to: Optional[datetime.date] = None,
+        sort: str = "relevance",
+        offset: int = 0,
+        limit: int = 20,
+    ) -> Dict[str, Any]:
+        """
+        필터 조건으로 판례 검색 (BM25 + ILIKE 하이브리드)
+
+        텍스트 필드(사건명, 판시사항, 판결요지)는 BM25 검색,
+        사건번호는 ILIKE 패턴 매칭으로 검색합니다.
+        BM25 불가 시 전체 ILIKE로 fallback합니다.
+
+        Args:
+            keyword: 검색 키워드
+            case_type: 사건종류명 (예: "민사", "형사")
+            date_from: 선고일 시작
+            date_to: 선고일 종료
+            sort: 정렬 기준 ("relevance" | "latest")
+            offset: 페이지 오프셋
+            limit: 결과 수
+
+        Returns:
+            {"total": int, "precedents": [dict]}
+        """
+        try:
+            async with async_session_factory() as session:
+                # BM25 스코어 서브쿼리 생성
+                bm25_subquery = None
+                bm25_source_ids: list[str] = []
+                if keyword:
+                    bm25_subquery = await self._bm25_score_subquery(
+                        session, keyword
+                    )
+                    if bm25_subquery is not None:
+                        result = await session.execute(
+                            select(bm25_subquery.c.source_id)
+                        )
+                        bm25_source_ids = [
+                            row.source_id for row in result.all()
+                        ]
+
+                conditions = self._build_filter_conditions(
+                    keyword, case_type, date_from, date_to, bm25_source_ids
+                )
+
+                count_query = (
+                    select(func.count()).select_from(PrecedentDocument)
+                )
+                data_query = select(PrecedentDocument).offset(offset).limit(
+                    limit
+                )
+
+                if conditions:
+                    where_clause = and_(*conditions)
+                    count_query = count_query.where(where_clause)
+                    data_query = data_query.where(where_clause)
+
+                if sort == "relevance" and keyword and bm25_subquery is not None:
+                    # BM25 스코어 JOIN → 스코어순 정렬
+                    data_query = (
+                        data_query.outerjoin(
+                            bm25_subquery,
+                            PrecedentDocument.serial_number
+                            == bm25_subquery.c.source_id,
+                        )
+                        .order_by(
+                            func.coalesce(
+                                bm25_subquery.c.bm25_score,
+                                literal(999999),
+                            ).asc(),
+                            PrecedentDocument.decision_date.desc(),
+                        )
+                    )
+                elif sort == "relevance" and keyword:
+                    # BM25 불가 시 ILIKE fallback
+                    data_query = self._apply_ilike_order(data_query, keyword)
+                else:
+                    data_query = data_query.order_by(
+                        PrecedentDocument.decision_date.desc()
+                    )
+
+                total = await session.scalar(count_query)
+                result = await session.execute(data_query)
+                precedents = [
+                    self._to_filter_item(p) for p in result.scalars().all()
+                ]
+
+                return {"total": total or 0, "precedents": precedents}
+        except (SQLAlchemyError, ConnectionError) as e:
+            logger.warning("판례 필터 검색 실패: %s", e)
+            return {"total": 0, "precedents": []}
+
+    @staticmethod
+    async def _bm25_score_subquery(
+        session: Any,
+        keyword: str,
+        max_results: int = 500,
+    ) -> Any:
+        """BM25 스코어 서브쿼리 반환 (source_id, bm25_score).
+
+        BM25 인덱스 미사용이거나 실패 시 None 반환 (ILIKE fallback 유도).
+        session 인자는 FTS 가용 여부 확인에 사용.
+        """
+        try:
+            from app.services.rag.keyword_search import (
+                _BM25_INDEX_NAME,
+                _tokenize,
+                is_fts_available,
+            )
+
+            if not await is_fts_available():
+                return None
+
+            tokens = _tokenize(keyword)
+            if not tokens:
+                return None
+
+            search_query = " ".join(tokens)
+            bm25_query = func.to_bm25query(search_query, _BM25_INDEX_NAME)
+            score_expr = FtsIndex.search_text.op("<@>")(bm25_query)
+
+            return (
+                select(
+                    FtsIndex.source_id,
+                    score_expr.label("bm25_score"),
+                )
+                .where(FtsIndex.data_type == "판례")
+                .order_by(score_expr.asc())
+                .limit(max_results)
+                .subquery("bm25_scores")
+            )
+        except Exception as e:
+            logger.warning("BM25 서브쿼리 생성 실패, ILIKE fallback: %s", e)
+            return None
+
+    @staticmethod
+    def _build_filter_conditions(
+        keyword: str,
+        case_type: Optional[str],
+        date_from: Optional[datetime.date],
+        date_to: Optional[datetime.date],
+        bm25_source_ids: Optional[list[str]] = None,
+    ) -> list[Any]:
+        """필터 조건 리스트 생성.
+
+        BM25 source_id가 있으면 텍스트는 BM25, 사건번호는 ILIKE.
+        BM25 불가(빈 리스트)면 전체 ILIKE fallback.
+        """
+        conditions: list[Any] = []
+        if keyword:
+            like_pattern = f"%{keyword}%"
+            if bm25_source_ids:
+                # BM25 텍스트 매칭 OR 사건번호 ILIKE
+                conditions.append(
+                    or_(
+                        PrecedentDocument.serial_number.in_(
+                            bm25_source_ids
+                        ),
+                        PrecedentDocument.case_number.ilike(like_pattern),
+                    )
+                )
+            else:
+                # BM25 불가 시 전체 ILIKE fallback
+                conditions.append(
+                    or_(
+                        PrecedentDocument.case_name.ilike(like_pattern),
+                        PrecedentDocument.summary.ilike(like_pattern),
+                        PrecedentDocument.case_number.ilike(like_pattern),
+                        PrecedentDocument.reasoning.ilike(like_pattern),
+                    )
+                )
+        if case_type:
+            conditions.append(PrecedentDocument.case_type == case_type)
+        if date_from:
+            conditions.append(PrecedentDocument.decision_date >= date_from)
+        if date_to:
+            conditions.append(PrecedentDocument.decision_date <= date_to)
+        return conditions
+
+    @staticmethod
+    def _apply_ilike_order(query: Any, keyword: str) -> Any:
+        """BM25 불가 시 ILIKE boolean 가중치 fallback 정렬."""
+        like_pattern = f"%{keyword}%"
+        relevance_score = (
+            case(
+                (PrecedentDocument.case_name.ilike(like_pattern), 4),
+                else_=0,
+            )
+            + case(
+                (PrecedentDocument.case_number.ilike(like_pattern), 3),
+                else_=0,
+            )
+            + case(
+                (PrecedentDocument.summary.ilike(like_pattern), 2),
+                else_=0,
+            )
+            + case(
+                (PrecedentDocument.reasoning.ilike(like_pattern), 1),
+                else_=0,
+            )
+        )
+        return query.order_by(
+            relevance_score.desc(),
+            PrecedentDocument.decision_date.desc(),
+        )
+
+    @staticmethod
+    def _to_filter_item(p: PrecedentDocument) -> Dict[str, Any]:
+        """PrecedentDocument → 필터 결과 아이템 변환"""
+        return {
+            "id": str(p.serial_number),
+            "serial_number": str(p.serial_number),
+            "case_name": p.case_name,
+            "case_number": p.case_number,
+            "case_type": p.case_type,
+            "court_name": p.court_name,
+            "decision_date": str(p.decision_date) if p.decision_date else None,
+            "summary": (p.summary or "")[:300],
+        }
+
+    async def get_case_types(self) -> List[str]:
+        """사건종류명 DISTINCT 목록 조회"""
+        try:
+            async with async_session_factory() as session:
+                result = await session.execute(
+                    select(PrecedentDocument.case_type)
+                    .distinct()
+                    .where(PrecedentDocument.case_type.is_not(None))
+                    .order_by(PrecedentDocument.case_type)
+                )
+                return [row[0] for row in result if row[0]]
+        except (SQLAlchemyError, ConnectionError) as e:
+            logger.warning("사건종류 목록 조회 실패: %s", e)
+            return []
 
 
 _precedent_service: Optional[PrecedentService] = None

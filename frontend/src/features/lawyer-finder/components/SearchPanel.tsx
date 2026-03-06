@@ -249,8 +249,9 @@ function VirtualizedLawyerList({
   const virtualizer = useVirtualizer({
     count: lawyers.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 96,
+    estimateSize: () => 120,
     overscan: 5,
+    measureElement: (element) => element.getBoundingClientRect().height,
   })
 
   if (loading) {
@@ -299,6 +300,8 @@ function VirtualizedLawyerList({
           return (
             <div
               key={lawyer.id}
+              ref={virtualizer.measureElement}
+              data-index={virtualRow.index}
               style={{
                 position: 'absolute',
                 top: 0,

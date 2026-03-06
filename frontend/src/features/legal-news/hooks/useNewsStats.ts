@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { NewsCategoryStats, NewsStatsDaily, RagContributionStats } from '../types'
-import { fetchNewsCategoryStats, fetchNewsStatsDaily, fetchRagContributionStats } from '../services'
+import type { NewsCategoryStats, NewsStatsDaily } from '../types'
+import { fetchNewsCategoryStats, fetchNewsStatsDaily } from '../services'
 
 interface UseNewsStatsReturn {
   dailyStats: NewsStatsDaily | null
@@ -15,8 +15,6 @@ interface UseNewsStatsReturn {
   categoryPeriodDays: number
   setCategoryPeriodDays: (days: number) => void
   categoryLoading: boolean
-  ragStats: RagContributionStats | null
-  ragLoading: boolean
 }
 
 export function useNewsStats(): UseNewsStatsReturn {
@@ -31,11 +29,6 @@ export function useNewsStats(): UseNewsStatsReturn {
   const categoryQuery = useQuery({
     queryKey: ['news-stats-category', categoryPeriodDays],
     queryFn: () => fetchNewsCategoryStats(categoryPeriodDays),
-  })
-
-  const ragQuery = useQuery({
-    queryKey: ['news-stats-rag'],
-    queryFn: () => fetchRagContributionStats(),
   })
 
   const error = dailyQuery.error
@@ -54,7 +47,5 @@ export function useNewsStats(): UseNewsStatsReturn {
     categoryPeriodDays,
     setCategoryPeriodDays,
     categoryLoading: categoryQuery.isLoading,
-    ragStats: ragQuery.data ?? null,
-    ragLoading: ragQuery.isLoading,
   }
 }

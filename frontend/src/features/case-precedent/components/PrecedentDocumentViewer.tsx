@@ -1,5 +1,8 @@
 'use client'
 
+import { useRef, useEffect, type ReactNode } from 'react'
+import { findHighlightRanges, splitByHighlights } from '../utils/highlightUtils'
+
 interface PrecedentDocumentViewerProps {
   courtName?: string
   caseNumber?: string
@@ -14,6 +17,8 @@ interface PrecedentDocumentViewerProps {
   claim?: string             // 청구취지
   fullReason?: string        // 이유
   fullText?: string          // 판례내용 전문
+  /** RAG 검색 청크 텍스트 (하이라이팅 대상) */
+  highlightContent?: string
 }
 
 /**
@@ -33,7 +38,27 @@ export function PrecedentDocumentViewer({
   claim,
   fullReason,
   fullText,
+  highlightContent,
 }: PrecedentDocumentViewerProps) {
+  const firstHighlightRef = useRef<HTMLElement | null>(null)
+  // 하이라이팅 위치로 자동 스크롤을 위한 ref 사용 여부 추적
+  const hasScrolledRef = useRef(false)
+
+  useEffect(() => {
+    hasScrolledRef.current = false
+  }, [highlightContent])
+
+  useEffect(() => {
+    if (firstHighlightRef.current && !hasScrolledRef.current) {
+      hasScrolledRef.current = true
+      // 렌더링 완료 후 스크롤
+      const timer = setTimeout(() => {
+        firstHighlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  })
+
   // 선고일 포맷팅 (19900612 → 1990. 6. 12.)
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return ''
@@ -54,39 +79,21 @@ export function PrecedentDocumentViewer({
 
   // 항목 패턴 앞에 줄바꿈 추가
   const formatListContent = (text: string) => {
-    // 패턴 정의 (줄바꿈 1번, 이미 줄바꿈이 있으면 적용 안함):
-    // 1. 한글 항목: 가., 나., 다., ... (앞에 공백이 있고 줄바꿈이 아닌 경우)
-    // 2. 숫자 항목: 1., 2., 3., ... (앞에 공백, 뒤에 숫자가 아닌 문자 - 날짜 제외)
-    // 3. 괄호 숫자: (1), (2), (3), ... (앞에 줄바꿈이 없는 경우)
-    // 4. 순서 표현: 첫째,, 둘째,, 셋째,, ... (앞에 줄바꿈이 없는 경우)
     const singleLinePatterns = [
-      /(?<=\s)(?<!\n)([가나다라마바사아자차카타파하]\.\s)/g,  // 한글 항목
-      /(?<=\s)(?<!\n)(\d+\.\s)(?![\d선]|법률)/g,  // 숫자 항목 (뒤에 숫자, "선고", "법률" 오면 날짜로 간주하여 제외)
-      /(?<!\n)(\(\d+\)\s?)/g,  // 괄호 숫자
-      /(?<!\n)(첫째,|둘째,|셋째,|넷째,|다섯째,|여섯째,|일곱째,|여덟째,|아홉째,|열째,)/g,  // 순서 표현
+      /(?<=\s)(?<!\n)([가나다라마바사아자차카타파하]\.\s)/g,
+      /(?<=\s)(?<!\n)(\d+\.\s)(?![\d선]|법률)/g,
+      /(?<!\n)(\(\d+\)\s?)/g,
+      /(?<!\n)(첫째,|둘째,|셋째,|넷째,|다섯째,|여섯째,|일곱째,|여덟째,|아홉째,|열째,)/g,
     ]
-
-    // 대괄호 패턴 (줄바꿈 2번): 【...】
-    // 이미 줄바꿈 2번이 있으면 적용 안함
     const doubleLinePattern = /(?<!\n\n)(【[^】]+】)/g
-
-    // 판사/대법관 서명 패턴 (줄바꿈 2번)
     const judgePattern = /(?<!\n\n)((?:대법관|대법원장|판사)\s)/g
 
     let result = text
-
-    // 줄바꿈 1번 추가
     for (const pattern of singleLinePatterns) {
       result = result.replace(pattern, '\n$1')
     }
-
-    // 대괄호는 줄바꿈 2번 추가
     result = result.replace(doubleLinePattern, '\n\n$1')
-
-    // 판사/대법관 서명은 줄바꿈 2번 추가
     result = result.replace(judgePattern, '\n\n$1')
-
-    // 문서 시작 부분의 불필요한 줄바꿈 제거
     return result.replace(/^\n+/, '')
   }
 
@@ -102,14 +109,24 @@ export function PrecedentDocumentViewer({
     <hr className="border-t border-gray-200 my-4" />
   )
 
-  // 섹션 콘텐츠
+  // 섹션 콘텐츠 (하이라이팅 지원)
   const SectionContent = ({ content }: { content?: string }) => {
     if (!content?.trim()) return null
     const formattedContent = formatListContent(content)
+
+    let rendered: ReactNode = formattedContent
+    if (highlightContent) {
+      const ranges = findHighlightRanges(formattedContent, highlightContent)
+      if (ranges.length > 0) {
+        const refToUse = !hasScrolledRef.current ? firstHighlightRef : undefined
+        rendered = splitByHighlights(formattedContent, ranges, refToUse)
+      }
+    }
+
     return (
       <div className="px-8 pb-8">
         <p className="text-gray-800 leading-loose whitespace-pre-wrap text-base">
-          {formattedContent}
+          {rendered}
         </p>
       </div>
     )
@@ -125,18 +142,18 @@ export function PrecedentDocumentViewer({
     )
   }
 
-  // 헤더 타이틀 생성 (서울중앙지방법원 1995. 9. 28. 선고 95노1985 판결)
+  // 헤더 타이틀 생성
   const headerTitle = `${courtName || '대법원'} ${formatDate(decisionDate)} 선고 ${caseNumber || ''} 판결`
 
   return (
     <div className="bg-white py-6">
       {/* 문서 헤더 */}
-      <div className="text-center mb-10 mt-10">
+      <div className="text-center mb-10 mt-10 max-w-4xl mx-auto px-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-3">
           {headerTitle}
         </h1>
         {caseName && (
-          <p className="text-lg text-gray-600 mb-2">[{caseName}]</p>
+          <p className="text-lg text-gray-600 mb-2 break-all">[{caseName}]</p>
         )}
         <p className="text-base text-gray-400">대법원 종합법률정보</p>
       </div>

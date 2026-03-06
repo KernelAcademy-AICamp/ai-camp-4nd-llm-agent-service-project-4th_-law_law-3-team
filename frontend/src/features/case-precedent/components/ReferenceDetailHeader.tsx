@@ -10,11 +10,7 @@ interface ReferenceDetailHeaderProps {
 export function ReferenceDetailHeader({ selectedRef }: ReferenceDetailHeaderProps) {
   const isLaw = selectedRef.doc_type === 'law'
   const title = isLaw ? selectedRef.law_name : selectedRef.case_name
-  const subtitle = isLaw
-    ? (selectedRef.article_number
-        ? `제${selectedRef.article_number}${selectedRef.article_title ? ` (${selectedRef.article_title})` : ''}`
-        : selectedRef.law_type)
-    : selectedRef.case_number
+  const subtitle = isLaw ? null : selectedRef.case_number
 
   const logoPath = isLaw
     ? getLawTypeLogo(selectedRef.law_type)
@@ -82,7 +78,7 @@ export function ReferenceDetailHeader({ selectedRef }: ReferenceDetailHeaderProp
 
       {/* 핵심 쟁점 (판시사항) */}
       {selectedRef.summary && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-700">
           <strong>핵심 쟁점:</strong> {selectedRef.summary}
         </div>
       )}

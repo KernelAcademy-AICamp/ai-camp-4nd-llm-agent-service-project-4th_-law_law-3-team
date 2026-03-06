@@ -1,8 +1,10 @@
 'use client'
 
-import type { PrecedentDetail } from '../types'
+import { useState, useEffect } from 'react'
+import type { PrecedentDetail, StatuteHierarchyResponse } from '../types'
 import { PrecedentFullTextViewer } from './PrecedentFullTextViewer'
 import { LawDetailLawyer } from './LawDetailLawyer'
+import { casePrecedentService } from '../services'
 
 interface CaseDetailPanelProps {
   case_: PrecedentDetail | null
@@ -90,18 +92,10 @@ export function CaseDetailPanel({
   }
 
   if (isLaw) {
-    const lawName = (case_ as unknown as Record<string, unknown>).law_name as string | undefined
-    const articleNumber = (case_ as unknown as Record<string, unknown>).article_number as string | undefined
-
     return (
       <div className="flex-1 flex flex-col bg-white overflow-hidden">
-        <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 text-sm text-gray-700 truncate">
-          <span className="font-medium">
-            {lawName || '법령'}
-            {articleNumber && ` 제${articleNumber}조`}
-          </span>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6">
+        <LawHierarchyBar case_={case_} />
+        <div key={(case_ as unknown as Record<string, unknown>).doc_id as string} className="flex-1 overflow-y-auto p-6">
           <LawDetailLawyer source={case_} />
         </div>
       </div>
@@ -127,6 +121,37 @@ export function CaseDetailPanel({
       <div className="flex-1 overflow-y-auto">
         <PrecedentFullTextViewer data={case_} mode="direct" />
       </div>
+    </div>
+  )
+}
+
+function LawHierarchyBar({ case_ }: { case_: PrecedentDetail }) {
+  const [hierarchy, setHierarchy] = useState<StatuteHierarchyResponse | null>(null)
+  const record = case_ as unknown as Record<string, unknown>
+  const docId = record.doc_id as string | undefined
+  const lawName = (record.law_name as string) || '법령'
+
+  useEffect(() => {
+    if (!docId) return
+    let cancelled = false
+    casePrecedentService.getStatuteHierarchy(docId)
+      .then((data) => { if (!cancelled) setHierarchy(data) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [docId])
+
+  const parts: string[] = []
+  if (hierarchy) {
+    hierarchy.upper.forEach((n) => parts.push(n.name))
+  }
+  parts.push(lawName)
+  if (hierarchy) {
+    hierarchy.lower.forEach((n) => parts.push(n.name))
+  }
+
+  return (
+    <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 text-sm text-gray-700 truncate">
+      <span className="font-medium">{parts.join(' > ')}</span>
     </div>
   )
 }

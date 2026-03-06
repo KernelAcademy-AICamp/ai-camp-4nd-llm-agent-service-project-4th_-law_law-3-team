@@ -2,9 +2,38 @@
 
 import { memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
+import { motion, type Variants } from 'framer-motion'
 import ChatActions from '../ChatActions'
 import type { ChatAction } from '../ChatActions'
 import type { Message } from './constants'
+
+// 글자 순차 반짝이 애니메이션 (Framer Motion)
+function ShimmerText({ text, className }: { text: string; className?: string }) {
+  const chars = text.split('')
+  const totalDuration = chars.length * 0.06 + 0.8
+  return (
+    <span className={className} aria-label={text}>
+      {chars.map((char, i) => (
+        <motion.span
+          key={i}
+          className="inline-block"
+          animate={{ opacity: [0.4, 1, 0.4] }}
+          transition={{
+            duration: 0.8,
+            ease: 'easeInOut',
+            delay: i * 0.06,
+            repeat: Infinity,
+            repeatDelay: totalDuration - 0.8,
+          }}
+        >
+          {char === ' ' ? '\u00A0' : char}
+        </motion.span>
+      ))}
+    </span>
+  )
+}
+
+export { ShimmerText }
 
 // 판례번호 패턴: 2023다12345, 88도820, 99가합1234 등
 const CASE_NUMBER_PATTERN = /(\d{2,4}[가-힣]{1,3}\d{1,6})/g
@@ -121,7 +150,7 @@ export interface MessageBubbleProps {
   messageBotClass: string
   isLightTheme: boolean
   markdownComponents: MarkdownComponentsType
-  loadingStatus: { title: string; detail: string }
+  loadingStatus: { title: string }
   onAction: (action: string) => void
   onRequestLocation: () => void
 }
@@ -156,12 +185,8 @@ const MessageBubble = memo(function MessageBubble({
                   </span>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold">{loadingStatus.title}</p>
-                  <p className="text-xs opacity-70 mt-1">{loadingStatus.detail}</p>
+                  <p className="text-sm text-blue-600"><ShimmerText text={loadingStatus.title} /></p>
                 </div>
-              </div>
-              <div className="h-1.5 w-full rounded-full bg-blue-500/20 overflow-hidden">
-                <div className="h-full w-1/3 rounded-full bg-blue-500 animate-pulse" />
               </div>
             </div>
           ) : (

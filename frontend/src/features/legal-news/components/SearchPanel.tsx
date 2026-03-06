@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import type { NewsSource } from '../types'
 import { useNewsSearch } from '../hooks/useNewsSearch'
@@ -9,7 +9,10 @@ import { SOURCE_OPTIONS, LIMIT_OPTIONS } from '../utils/constants'
 import { SearchResultCard } from './SearchResultCard'
 import { NewsDetailPanel } from './NewsDetailPanel'
 
+type SortMode = 'relevance' | 'latest'
+
 export function SearchPanel() {
+  const [sortMode, setSortMode] = useState<SortMode>('relevance')
   const {
     query,
     setQuery,
@@ -40,6 +43,16 @@ export function SearchPanel() {
   const handleResultClick = useCallback((articleId: string) => {
     selectArticle(articleId)
   }, [selectArticle])
+
+  const sortedResults = useMemo(() => {
+    if (sortMode === 'relevance') return results
+    return [...results].sort((a, b) => {
+      if (!a.published_at && !b.published_at) return 0
+      if (!a.published_at) return 1
+      if (!b.published_at) return -1
+      return new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
+    })
+  }, [results, sortMode])
 
   return (
     <div className="relative">
@@ -88,8 +101,33 @@ export function SearchPanel() {
           ))}
         </select>
 
+        {results.length > 0 && (
+          <div className="flex items-center gap-1 ml-auto">
+            <button
+              onClick={() => setSortMode('relevance')}
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-l-md border transition-colors ${
+                sortMode === 'relevance'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              정확도순
+            </button>
+            <button
+              onClick={() => setSortMode('latest')}
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-r-md border border-l-0 transition-colors ${
+                sortMode === 'latest'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              최신순
+            </button>
+          </div>
+        )}
+
         {totalResults > 0 && (
-          <span className="text-sm text-gray-500 ml-auto">
+          <span className="text-sm text-gray-500">
             검색 결과 {totalResults}건
           </span>
         )}
@@ -110,9 +148,9 @@ export function SearchPanel() {
       )}
 
       {/* 결과 목록 */}
-      {!searching && !searchError && results.length > 0 && (
+      {!searching && !searchError && sortedResults.length > 0 && (
         <div className="space-y-3">
-          {results.map((result) => (
+          {sortedResults.map((result) => (
             <SearchResultCard
               key={result.id}
               result={result}

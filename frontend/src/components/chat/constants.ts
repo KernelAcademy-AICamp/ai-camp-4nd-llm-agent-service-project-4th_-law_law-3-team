@@ -26,13 +26,15 @@ export const PATHNAME_AGENT_MAP: Record<string, string> = {
   '/law-study': 'law_study',
   '/small-claims': 'small_claims',
   '/statute-hierarchy': 'law_search',
+  '/case-precedent': 'case_search',
+  '/law-search': 'law_search',
 }
 
 // agent → 이동할 페이지 매핑 (에이전트 선택 시 자동 이동)
 export const AGENT_PAGE_MAP: Record<string, string> = {
   'lawyer_finder': '/lawyer-finder',
-  'case_search': '/case-precedent?agent=case_search',
-  'law_search': '/case-precedent?agent=law_search',
+  'case_search': '/case-precedent',
+  'law_search': '/law-search',
   'legal_search': '/case-precedent',
   'legal_answer': '/case-precedent',
   'storyboard': '/storyboard',
@@ -67,11 +69,15 @@ export const AGENT_GREETINGS: Record<string, string> = {
 
 // floating 모드 기본 적용 페이지
 export const FLOATING_MODE_PATHS = new Set([
+  '/',
   '/lawyer-finder',
   '/small-claims',
   '/lawyer-stats',
   '/storyboard',
   '/statute-hierarchy',
   '/workspace',
+  '/case-precedent',
+  '/law-search',
   '/law-study',
+  '/legal-news',
 ])

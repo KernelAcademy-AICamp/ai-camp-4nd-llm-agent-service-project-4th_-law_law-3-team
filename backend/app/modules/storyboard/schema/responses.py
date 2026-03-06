@@ -8,7 +8,6 @@ from .models import (
     Participant,
     TimelineData,
     TimelineItem,
-    TransitionType,
 )
 
 
@@ -87,26 +86,6 @@ class GenerateImagesBatchResponse(BaseModel):
     """일괄 이미지 생성 응답 (작업 ID 반환)"""
     success: bool
     job_id: str | None = None
-    error: str | None = None
-
-
-# --- 영상 생성 ---
-class GenerateVideoRequest(BaseModel):
-    """영상 생성 요청"""
-    timeline_id: str = Field(..., description="타임라인 ID")
-    image_urls: list[str] = Field(..., min_length=2, description="이미지 URL 목록 (최소 2개)")
-    duration_per_image: float = Field(default=6.0, description="이미지당 표시 시간 (초)")
-    transition: TransitionType = Field(default=TransitionType.FADE, description="전환 효과")
-    transition_duration: float = Field(default=1.0, description="전환 효과 시간 (초)")
-    resolution: tuple[int, int] = Field(default=(1280, 720), description="영상 해상도")
-
-
-class GenerateVideoResponse(BaseModel):
-    """영상 생성 응답"""
-    success: bool
-    video_url: str | None = None
-    duration: float | None = None
-    image_count: int | None = None
     error: str | None = None
 
 

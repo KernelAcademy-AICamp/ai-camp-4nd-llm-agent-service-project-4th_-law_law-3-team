@@ -111,17 +111,25 @@ _SECTION_PROMPTS: dict[SectionType, str] = {
 
 
 def _format_rag_context(rag_context: dict[str, Any]) -> str:
-    """RAG 검색 결과를 프롬프트용 텍스트로 변환"""
+    """RAG 검색 결과를 프롬프트용 텍스트로 변환
+
+    문서 구조: metadata.case_name (제목), metadata.case_number (판례번호),
+    content (원문, populate_content/apply_law_article_content 이후 주입됨)
+    """
     parts: list[str] = []
     for doc in rag_context.get("laws", [])[:5]:
-        title = doc.get("title", "")
-        content = doc.get("content", "")[:200]
-        parts.append(f"[법령] {title}: {content}")
+        meta = doc.get("metadata", {})
+        title = meta.get("case_name", "") or doc.get("title", "")
+        content = (doc.get("content", "") or "")[:200]
+        if title or content:
+            parts.append(f"[법령] {title}: {content}")
     for doc in rag_context.get("cases", [])[:5]:
-        title = doc.get("title", "")
-        case_number = doc.get("case_number", "")
-        content = doc.get("content", "")[:200]
-        parts.append(f"[판례] {case_number} {title}: {content}")
+        meta = doc.get("metadata", {})
+        title = meta.get("case_name", "") or doc.get("title", "")
+        case_number = meta.get("case_number", "") or doc.get("case_number", "")
+        content = (doc.get("content", "") or "")[:200]
+        if title or case_number or content:
+            parts.append(f"[판례] {case_number} {title}: {content}")
     return "\n".join(parts) if parts else "(검색 결과 없음)"
 
 

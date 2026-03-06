@@ -2,7 +2,6 @@ interface ChatInputProps {
   input: string
   onInputChange: (value: string) => void
   isDisabled: boolean
-  loadingStatus: { title: string; detail: string }
   chatMode: 'split' | 'floating'
   onSend: () => void
 }
@@ -11,7 +10,6 @@ export function ChatInput({
   input,
   onInputChange,
   isDisabled,
-  loadingStatus,
   chatMode,
   onSend,
 }: ChatInputProps) {
@@ -25,7 +23,7 @@ export function ChatInput({
           value={input}
           onChange={(e) => onInputChange(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !isDisabled && onSend()}
-          placeholder={isDisabled ? loadingStatus.title : '법률 질문을 입력하세요...'}
+          placeholder="법률 질문을 입력하세요..."
           disabled={isDisabled}
           className={`flex-1 rounded-xl px-4 py-3 md:px-6 md:py-4 text-sm md:text-base focus:outline-none transition-all shadow-sm bg-[#F5F5F7] border-black/[0.06] text-[#1D1D1F] placeholder-[#86868B] focus:border-[#007AFF] focus:bg-white ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         />
@@ -55,11 +53,6 @@ export function ChatInput({
           )}
         </button>
       </div>
-      {isDisabled && (
-        <p className="mt-2 text-xs text-[#86868B]">
-          {loadingStatus.detail}
-        </p>
-      )}
     </div>
   )
 }

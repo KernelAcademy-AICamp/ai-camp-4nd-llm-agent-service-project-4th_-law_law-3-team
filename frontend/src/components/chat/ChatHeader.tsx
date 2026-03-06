@@ -1,3 +1,4 @@
+import { Scale } from 'lucide-react'
 import { AGENT_DISPLAY_NAMES } from './constants'
 import type { UserRole } from '@/context/ChatContext'
 
@@ -23,56 +24,36 @@ export function ChatHeader({
   onClose,
 }: ChatHeaderProps) {
   const displayName = activeAgent
-    ? AGENT_DISPLAY_NAMES[activeAgent] || 'Active Now'
-    : 'Active Now'
+    ? AGENT_DISPLAY_NAMES[activeAgent] || activeAgent
+    : null
 
   return (
     <div
       className={`p-4 md:p-6 flex justify-between items-center bg-white border-b border-black/[0.06] ${chatMode === 'floating' ? 'rounded-t-2xl' : ''}`}
     >
-      <div className="flex items-center gap-4">
-        <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
-          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-            />
-          </svg>
-        </div>
+      <div className="flex items-start gap-2">
+        <Scale className="w-5 h-5 text-[#1D1D1F] mt-0.5" />
         <div>
-          <h3 className="font-bold text-lg text-[#1D1D1F]">AI 법률 상담</h3>
-          <p className="text-xs font-bold uppercase tracking-widest text-[#007AFF]">
-            {displayName}
-          </p>
+          <h3 className="font-bold text-lg text-[#1D1D1F]">AI 법률 어시스턴트</h3>
+          {activeAgent ? (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-medium">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              </span>
+              {displayName} 모드
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-xs font-medium">
+              <span className="relative flex h-2 w-2">
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400" />
+              </span>
+              에이전트 대기 중
+            </span>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2">
-        {/* Role Selector */}
-        <div className="flex rounded-lg border text-xs bg-[#F5F5F7] border-black/[0.06]">
-          <button
-            onClick={() => onSetUserRole('user')}
-            className={`px-2 py-1 rounded-l-md transition-colors ${
-              userRole === 'user'
-                ? 'bg-[#007AFF] text-white'
-                : 'text-[#86868B] hover:bg-black/[0.04]'
-            }`}
-          >
-            일반인
-          </button>
-          <button
-            onClick={() => onSetUserRole('lawyer')}
-            className={`px-2 py-1 rounded-r-md transition-colors ${
-              userRole === 'lawyer'
-                ? 'bg-[#007AFF] text-white'
-                : 'text-[#86868B] hover:bg-black/[0.04]'
-            }`}
-          >
-            변호사
-          </button>
-        </div>
-
         {/* Reset Button */}
         <button
           onClick={onReset}

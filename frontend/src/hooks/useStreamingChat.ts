@@ -16,8 +16,17 @@ export interface ChatMetadata {
   speaking_agent?: string
   emotion?: string
   stage?: string
+  step?: string
   evidence?: { cases: unknown[]; articles: unknown[] }
   user_hints?: unknown[]
+  scenario?: {
+    title: string
+    background: string
+    characters: Array<{ role: string; name: string; description: string }>
+    issues: string[]
+    evidence_hints: Array<{ type: string; title: string; description: string; favorable_to: string }>
+    objectives: string[]
+  }
   references?: Array<{
     id: string
     type: string
@@ -31,6 +40,7 @@ export interface ChatMetadata {
 interface StreamingChatOptions {
   onToken?: (content: string) => void
   onSources?: (sources: ChatSource[]) => void
+  onRouting?: (data: { selected_agent: string }) => void
   onMetadata?: (metadata: ChatMetadata) => void
   onDone?: (data?: Record<string, unknown>) => void
   onError?: (error: string) => void
@@ -139,6 +149,9 @@ export function useStreamingChat(): UseStreamingChatReturn {
                   break
                 case 'sources':
                   options.onSources?.(data.sources || [])
+                  break
+                case 'routing':
+                  options.onRouting?.(data as { selected_agent: string })
                   break
                 case 'metadata':
                   options.onMetadata?.(data as ChatMetadata)

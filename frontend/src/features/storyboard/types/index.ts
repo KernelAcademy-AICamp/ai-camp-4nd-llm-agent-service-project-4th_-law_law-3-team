@@ -11,9 +11,6 @@ export interface TaggedItem {
   confidence: number
 }
 
-// 전환 효과 타입
-export type TransitionType = 'fade' | 'slide' | 'zoom' | 'none'
-
 // 입력 모드 타입
 export type InputMode = 'text' | 'voice' | 'image'
 
@@ -231,25 +228,6 @@ export interface GenerateImagesBatchResponse {
   error?: string
 }
 
-// 영상 생성 요청
-export interface GenerateVideoRequest {
-  timeline_id: string
-  image_urls: string[]
-  duration_per_image?: number
-  transition?: TransitionType
-  transition_duration?: number
-  resolution?: [number, number]
-}
-
-// 영상 생성 응답
-export interface GenerateVideoResponse {
-  success: boolean
-  video_url?: string
-  duration?: number
-  image_count?: number
-  error?: string
-}
-
 // 작업 상태 응답
 export interface JobStatusResponse {
   job_id: string
@@ -274,18 +252,3 @@ export interface JobStatusResponse {
 // 편집 모드
 export type EditMode = 'view' | 'edit'
 
-// 영상 생성 설정
-export interface VideoSettings {
-  durationPerImage: number
-  transition: TransitionType
-  transitionDuration: number
-  resolution: [number, number]
-}
-
-// 전환 효과 옵션
-export const TRANSITION_OPTIONS: { value: TransitionType; label: string }[] = [
-  { value: 'fade', label: '페이드' },
-  { value: 'slide', label: '슬라이드' },
-  { value: 'zoom', label: '줌' },
-  { value: 'none', label: '없음' },
-]

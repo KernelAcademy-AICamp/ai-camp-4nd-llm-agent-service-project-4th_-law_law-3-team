@@ -33,12 +33,15 @@ export function useChatMessages() {
     setActivePanel,
     pendingMessage,
     setPendingMessage,
+    isRouting,
+    setIsRouting,
   } = useUI()
   const {
     userRole,
     setUserRole,
     sessionData,
     setSessionData,
+    mergeSessionData,
     userLocation,
     requestUserLocation,
     resetSession,
@@ -51,7 +54,7 @@ export function useChatMessages() {
   const { readState, setChatDisputeType, setChatClaimAmount, setChatStep } = useSmallClaimsSync()
 
   const supportsFloatingMode = FLOATING_MODE_PATHS.has(pathname) || pathname.startsWith('/workspace')
-  const isChatHiddenPage = pathname === '/mock-trial'
+  const isChatHiddenPage = pathname === '/mock-trial' || (pathname === '/' && !searchParams.get('role'))
 
   const getInitialMessage = useCallback((agent: string | null): Message => {
     if (agent && AGENT_GREETINGS[agent]) {
@@ -77,6 +80,7 @@ export function useChatMessages() {
   } = useLoadingStatus(isLoading, isStreaming)
 
   const [input, setInput] = useState('')
+  const [pendingNavTarget, setPendingNavTarget] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const rafIdRef = useRef<number | null>(null)
 
@@ -88,6 +92,14 @@ export function useChatMessages() {
       }
     }
   }, [])
+
+  // SSE 콜백에서 설정된 네비게이션 대상을 React 라이프사이클에서 실행
+  useEffect(() => {
+    if (pendingNavTarget) {
+      router.push(pendingNavTarget)
+      setPendingNavTarget(null)
+    }
+  }, [pendingNavTarget, router])
 
   // pendingMessage 감지 시 자동 전송
   useEffect(() => {
@@ -102,17 +114,21 @@ export function useChatMessages() {
 
   useEffect(() => {
     if (prevPathnameRef.current === pathname) return
+    const prevPathname = prevPathnameRef.current
     prevPathnameRef.current = pathname
 
-    if (isChatHiddenPage) {
-      setChatOpen(false)
-    } else if (supportsFloatingMode) {
+    // 메인 페이지에서 LLM 라우팅으로 에이전트 페이지에 도착한 경우
+    if (isRouting && prevPathname === '/') {
+      setIsRouting(false)
       setChatMode('floating')
       setChatOpen(true)
-    } else {
-      setChatMode('split')
+      return
     }
-  }, [pathname, setChatMode, setChatOpen, supportsFloatingMode, isChatHiddenPage])
+
+    setChatOpen(false)
+    if (isChatHiddenPage) return
+    setChatMode('floating')
+  }, [pathname, setChatMode, setChatOpen, supportsFloatingMode, isChatHiddenPage, isRouting, setIsRouting])
 
   // 자동 스크롤
   useEffect(() => {
@@ -174,6 +190,7 @@ export function useChatMessages() {
     let receivedActions: ChatAction[] = []
     let receivedSessionData: Record<string, unknown> = {}
     let agentUsed = ''
+    let hasNavigatedOnRouting = false
 
     const isSmallClaims = effectiveAgent === 'small_claims' || sessionData.active_agent === 'small_claims'
     let finalSessionData = { ...sessionData }
@@ -232,6 +249,27 @@ export function useChatMessages() {
               })
             }
           },
+          onRouting: (data) => {
+            if (data.selected_agent) {
+              agentUsed = data.selected_agent
+              const searchAgentsForRouting = ['legal_search', 'case_search', 'legal_answer', 'law_search']
+              const isSearchAgent = searchAgentsForRouting.includes(data.selected_agent)
+              mergeSessionData({
+                active_agent: data.selected_agent,
+                ...(isSearchAgent && { isLoadingSources: true }),
+              })
+
+              // 라우팅 즉시 페이지 전환 (React 라이프사이클에서 실행)
+              const targetPage = AGENT_PAGE_MAP[data.selected_agent]
+              if (targetPage) {
+                const targetPathname = targetPage.split('?')[0]
+                if (pathname !== targetPathname) {
+                  setPendingNavTarget(targetPage)
+                  hasNavigatedOnRouting = true
+                }
+              }
+            }
+          },
           onSources: (sources) => {
             receivedSources = sources
             setMessages((prev) =>
@@ -241,12 +279,59 @@ export function useChatMessages() {
                   : msg
               )
             )
+
+            // 판례/법령 검색 에이전트: sources 도착 즉시 왼쪽 패널 업데이트
+            // (LLM 답변 스트리밍 전에 검색 결과를 먼저 표시)
+            const currentAgent = agentUsed || effectiveAgent || ''
+            const searchAgents = ['legal_search', 'case_search', 'legal_answer', 'law_search']
+            if (sources?.length > 0 && searchAgents.includes(currentAgent)) {
+              const mainSource = sources[0]
+              const aiCase = {
+                id: 'ai-generated-' + Date.now(),
+                case_name: mainSource?.case_name || '',
+                case_number: mainSource?.case_number || '',
+                doc_type: mainSource?.doc_type || 'precedent',
+                content: mainSource?.content || '',
+                summary: mainSource?.summary || '',
+                court: mainSource?.court_name || '',
+                court_name: mainSource?.court_name || '',
+                date: mainSource?.decision_date || '',
+                decision_date: mainSource?.decision_date || '',
+                reasoning: mainSource?.reasoning || '',
+                ruling: mainSource?.ruling || '',
+                claim: mainSource?.claim || '',
+                full_reason: mainSource?.full_reason || '',
+                full_text: mainSource?.full_text || '',
+                reference_provisions: mainSource?.reference_provisions || '',
+                reference_cases: mainSource?.reference_cases || '',
+              }
+
+              const seen = new Set<string>()
+              const uniqueSources = sources.filter((ref) => {
+                const key = ref.doc_type === 'law' ? ref.law_name : ref.case_number
+                if (!key || seen.has(key)) return false
+                seen.add(key)
+                return true
+              })
+
+              mergeSessionData({
+                aiGeneratedCase: aiCase,
+                aiReferences: uniqueSources,
+                isLoadingSources: false,
+              })
+            }
           },
           onMetadata: (metadata) => {
             agentUsed = metadata.agent_used
             receivedActions = metadata.actions
             receivedSessionData = metadata.session_data
 
+            // 에이전트 활성화 상태 즉시 반영 (답변 출력 전)
+            if (metadata.agent_used) {
+              mergeSessionData({ active_agent: metadata.agent_used })
+            }
+
+            // Proactive UI Trigger: lawyer_finder 자동으로 패널 열기
             if (metadata.agent_used === 'lawyer_finder' && activePanel !== 'lawyer-finder') {
               setActivePanel('lawyer-finder')
             }
@@ -335,9 +420,9 @@ export function useChatMessages() {
             }
 
             if (Object.keys(newSessionData).length > 0) {
-              setSessionData({ ...sessionData, ...newSessionData })
+              mergeSessionData(newSessionData)
             } else if (receivedSessionData) {
-              setSessionData(receivedSessionData)
+              mergeSessionData(receivedSessionData)
             }
 
             // NAVIGATE 액션 처리
@@ -358,16 +443,15 @@ export function useChatMessages() {
                 })
                 fullUrl = `${navigateAction.url}?${urlSearchParams.toString()}`
               }
-              router.push(fullUrl)
+              setPendingNavTarget(fullUrl)
               hasNavigated = true
             }
 
-            const currentPageAgent = PATHNAME_AGENT_MAP[pathname]
-            if (!hasNavigated && agentUsed && AGENT_PAGE_MAP[agentUsed] && !currentPageAgent) {
+            if (!hasNavigated && !hasNavigatedOnRouting && agentUsed && AGENT_PAGE_MAP[agentUsed]) {
               const targetPage = AGENT_PAGE_MAP[agentUsed]
               const targetPathname = targetPage.split('?')[0]
               if (pathname !== targetPathname) {
-                router.push(targetPage)
+                setPendingNavTarget(targetPage)
               }
             }
           },
@@ -515,6 +599,7 @@ export function useChatMessages() {
     setChatMode,
     supportsFloatingMode,
     isChatHiddenPage,
+    isRouting,
 
     // 사용자/세션
     userRole,

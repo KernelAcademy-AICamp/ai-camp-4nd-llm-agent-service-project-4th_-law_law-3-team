@@ -58,7 +58,7 @@ const MODULE_ICONS: Record<string, LucideIcon> = {
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { userRole, setUserRole, sessionData } = useChat()
+  const { userRole, setUserRole, sessionData, resetSession } = useChat()
   const { setChatOpen } = useUI()
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -106,46 +106,6 @@ export default function Sidebar() {
 
       {/* Navigation Groups */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 space-y-6 pt-2">
-        {/* Dashboard Link */}
-        <NavItem
-          href={`/?role=${userRole}`}
-          icon={LayoutDashboard}
-          label="대시보드"
-          isActive={pathname === '/'}
-          isExpanded={isExpanded}
-        />
-
-        {/* Live Agent Status (New) */}
-        {sessionData.active_agent && (
-          <div className="px-3 py-2 bg-blue-600/5 rounded-xl border border-blue-600/10 mx-1">
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              <span className={cn(
-                "text-[10px] font-bold text-blue-600 uppercase tracking-wider transition-opacity duration-200",
-                !isExpanded && "opacity-0 invisible h-0"
-              )}>
-                Active Agent
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center shrink-0 border border-blue-100">
-                <span className="text-sm">🤖</span>
-              </div>
-              {isExpanded && (
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-[#1D1D1F] truncate">
-                    {modules.find(m => m.id === sessionData.active_agent?.replace('_', '-'))?.name ||
-                      sessionData.active_agent?.replace('_', ' ').toUpperCase()}
-                  </p>
-                  <p className="text-[10px] text-[#86868B]">
-                    {sessionData.step || '대기 중...'}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {categories.map(cat => (
           <div key={cat} className="space-y-1">
             <div
@@ -169,8 +129,9 @@ export default function Sidebar() {
                   href={mod.href}
                   icon={Icon}
                   label={mod.name}
-                  isActive={pathname === mod.href.split('?')[0]}
+                  isActive={pathname === mod.href}
                   isExpanded={isExpanded}
+                  onNavigate={pathname !== mod.href ? resetSession : undefined}
                 />
               )
             })}
@@ -207,17 +168,20 @@ function NavItem({
   icon: Icon,
   label,
   isActive,
-  isExpanded
+  isExpanded,
+  onNavigate
 }: {
   href: string,
   icon: LucideIcon,
   label: string,
   isActive: boolean,
-  isExpanded: boolean
+  isExpanded: boolean,
+  onNavigate?: () => void
 }) {
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       className={cn(
         "group flex items-center gap-3 p-3 rounded-xl transition-all relative",
         isActive

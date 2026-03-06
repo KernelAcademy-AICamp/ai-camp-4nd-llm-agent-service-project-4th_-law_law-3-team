@@ -157,10 +157,7 @@ function CaseCard({ caseItem }: { caseItem: RelatedCaseItem }) {
         </>
       )}
 
-      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
-        <span className="text-xs text-gray-400">
-          유사도 {Math.round(caseItem.similarity * 100)}%
-        </span>
+      <div className="flex items-center justify-end mt-2 pt-2 border-t border-gray-200">
         <a
           href={`/case-precedent?id=${caseItem.id}`}
           target="_blank"

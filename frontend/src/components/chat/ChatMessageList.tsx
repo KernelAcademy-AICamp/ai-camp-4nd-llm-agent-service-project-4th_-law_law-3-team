@@ -1,13 +1,13 @@
 import type { RefObject } from 'react'
 import type { Message } from './constants'
-import MessageBubble from './MessageBubble'
+import MessageBubble, { ShimmerText } from './MessageBubble'
 import type { MarkdownComponentsType } from './MessageBubble'
 
 interface ChatMessageListProps {
   messages: Message[]
   streamingMessageId: string | null
   isLoading: boolean
-  loadingStatus: { title: string; detail: string }
+  loadingStatus: { title: string }
   markdownComponents: MarkdownComponentsType
   onAction: (action: string) => void
   onRequestLocation: () => void
@@ -51,7 +51,7 @@ export function ChatMessageList({
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-              <span className="ml-2 text-sm opacity-70">{loadingStatus.title}</span>
+              <span className="ml-2 text-sm text-blue-600"><ShimmerText text={loadingStatus.title} /></span>
             </div>
           </div>
         </div>

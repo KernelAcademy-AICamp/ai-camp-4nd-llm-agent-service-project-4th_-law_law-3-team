@@ -106,9 +106,6 @@ function LawyerFinderPage() {
             <BackButton />
             <div>
               <h1 className="text-xl font-bold text-gray-900">가까운 변호사를 빠르게 찾아보세요</h1>
-              <p className="text-sm text-gray-500 mt-0.5">
-                위치와 조건으로 쉽게 검색할 수 있습니다
-              </p>
             </div>
           </div>
           {geoLoading && (

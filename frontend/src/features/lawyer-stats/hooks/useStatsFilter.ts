@@ -206,33 +206,40 @@ export function useStatsFilter() {
     scrollToSection(tab)
   }, [scrollToSection])
 
-  // IntersectionObserver로 스크롤 위치에 따라 탭 자동 전환
+  // 스크롤 위치에 따라 탭 자동 전환
   useEffect(() => {
-    const options = {
-      root: null,
-      rootMargin: '-100px 0px -50% 0px',
-      threshold: 0,
+    const OFFSET = 120 // header + sticky nav + 여유 공간
+
+    const sectionEntries: { ref: React.RefObject<HTMLDivElement | null>; tab: TabType }[] = [
+      { ref: regionSectionRef, tab: 'region' },
+      { ref: crossSectionRef, tab: 'cross' },
+    ]
+
+    let ticking = false
+    const handleScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => {
+        ticking = false
+        let activeSection: TabType = 'region'
+        for (const { ref, tab } of sectionEntries) {
+          const element = ref.current
+          if (!element) continue
+          const rect = element.getBoundingClientRect()
+          // 섹션 상단이 OFFSET 아래에 있으면 이전 섹션이 활성
+          if (rect.top <= OFFSET) {
+            activeSection = tab
+          }
+        }
+        setActiveTab(activeSection)
+      })
     }
 
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          const id = entry.target.id
-          if (id === 'region-section') setActiveTab('region')
-          else if (id === 'cross-section') setActiveTab('cross')
-        }
-      })
-    }, options)
-
-    const sections = [regionSectionRef.current, crossSectionRef.current]
-    sections.forEach((section) => {
-      if (section) observer.observe(section)
-    })
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
 
     return () => {
-      sections.forEach((section) => {
-        if (section) observer.unobserve(section)
-      })
+      window.removeEventListener('scroll', handleScroll)
     }
   }, [])
 

@@ -147,11 +147,11 @@ export default function SmallClaimsPage() {
             <span className="text-2xl">⚖️</span>
             <div>
               <h1 className="text-xl font-bold text-gray-900">소액소송 도우미</h1>
-              <p className="text-sm text-gray-500">
-                {selectedDisputeOption
-                  ? `${selectedDisputeOption.icon} ${selectedDisputeOption.name}`
-                  : '나홀로 소송 지원 - 내용증명, 지급명령, 소액심판'}
-              </p>
+              {selectedDisputeOption && (
+                <p className="text-sm text-gray-500">
+                  {`${selectedDisputeOption.icon} ${selectedDisputeOption.name}`}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">

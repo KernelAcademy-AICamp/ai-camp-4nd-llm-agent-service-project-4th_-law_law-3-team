@@ -59,14 +59,40 @@ async def run_webtoon_pipeline(
         # Chain 1: 장면 분할 시작 알림
         _emit_event(
             job_id,
-            WebtoonStreamEvent(event="scene_split_start"),
+            WebtoonStreamEvent(
+                event="scene_split_start",
+                message="대본 분석 준비 중...",
+                progress=2,
+            ),
         )
+
+        # 단계별 진행 콜백
+        def on_split_progress(step: str, attempt: int) -> None:
+            messages = {
+                "llm_start": f"LLM에 장면 분할 요청 중... (시도 {attempt})",
+                "llm_done": "LLM 응답 수신, 패널 파싱 중...",
+                "validate": "패널 데이터 검증 및 보정 중...",
+            }
+            progress_map = {
+                "llm_start": 3,
+                "llm_done": 9,
+                "validate": 12,
+            }
+            _emit_event(
+                job_id,
+                WebtoonStreamEvent(
+                    event="scene_split_progress",
+                    message=messages.get(step, step),
+                    progress=progress_map.get(step, 5),
+                ),
+            )
 
         # Chain 1: 대본 → 장면 분할
         panels: list[WebtoonPanel] = await split_script_to_scenes(
             topic=request.topic,
             sections=request.sections,
             target_panels=request.panel_count,
+            on_progress=on_split_progress,
         )
 
         total = len(panels)
@@ -74,7 +100,12 @@ async def run_webtoon_pipeline(
         # 장면 분할 완료 알림
         _emit_event(
             job_id,
-            WebtoonStreamEvent(event="scene_split_done", total_panels=total),
+            WebtoonStreamEvent(
+                event="scene_split_done",
+                total_panels=total,
+                message=f"장면 분할 완료 ({total}패널)",
+                progress=15,
+            ),
         )
 
         await webtoon_job_manager.update_progress(

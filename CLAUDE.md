@@ -59,20 +59,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-### 모듈 자동 등록
-
-**Backend**: `backend/app/core/registry.py`의 `ModuleRegistry`가 `backend/app/modules/` 폴더를 스캔하여 자동으로 라우터 등록. 각 모듈의 `router/__init__.py`에 `router = APIRouter()` 정의 필요.
-
-**Frontend**: `frontend/src/lib/modules.ts`에서 모듈 정의 후 `getEnabledModules()`로 활성화된 모듈만 표시.
-
-### API 경로 규칙
-
-Backend 모듈명 `snake_case` → API 경로 `/api/kebab-case` (예: `lawyer_finder` → `/api/lawyer-finder`)
-
-### 모듈 비활성화
-
-Backend: `.env`에서 `ENABLED_MODULES=["module1","module2"]` (빈 배열이면 모두 활성화)
-Frontend: `modules.ts`에서 `enabled: false`
+`ModuleRegistry`(`backend/app/core/registry.py`)가 `modules/` 폴더를 스캔하여 자동 등록. → 상세: `backend/CLAUDE.md`
 
 ## Key Files
 
@@ -124,6 +111,10 @@ RAG 검색 품질 평가. 목표: Recall@10 ≥ 0.8, MRR ≥ 0.7, Hit Rate ≥ 0
 
 PostgreSQL, LanceDB → Google Drive (rclone).
 → 상세: `docs/operations/backup-restore.md`
+
+## 코드 구조 변경 시 문서 동기화
+
+코드 구조(파일 경로, 클래스명, 함수 시그니처) 변경 시 관련 스킬/에이전트도 함께 업데이트: `grep -r "변경전_경로" .claude/skills/ .claude/agents/`
 
 ## 상세 참조 인덱스
 

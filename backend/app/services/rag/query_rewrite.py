@@ -8,6 +8,7 @@ import logging
 
 from langsmith import traceable
 
+from app.core.config import settings
 from app.tools.llm import get_chat_model
 
 logger = logging.getLogger(__name__)
@@ -87,7 +88,13 @@ def rewrite_query(
     )
 
     try:
-        model = get_chat_model(temperature=0.3)
+        rewrite_provider = getattr(settings, "QUERY_REWRITE_PROVIDER", "") or None
+        rewrite_model = getattr(settings, "QUERY_REWRITE_MODEL", "") or None
+        model = get_chat_model(
+            provider=rewrite_provider,
+            model=rewrite_model,
+            temperature=0.3,
+        )
         prompt = prompt_template.format(query=query)
 
         response = model.invoke([("user", prompt)])

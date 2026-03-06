@@ -17,6 +17,11 @@ const UserView = dynamic(
   { ssr: false }
 )
 
+const FilterablePrecedentView = dynamic(
+  () => import('@/features/case-precedent/components/FilterablePrecedentView').then((m) => m.FilterablePrecedentView),
+  { ssr: false }
+)
+
 function ViewSkeleton() {
   return (
     <div className="flex h-full">
@@ -37,42 +42,41 @@ function ViewSkeleton() {
 }
 
 function CasePrecedentContent() {
-  const { userRole } = useChat()
-  const { isChatOpen } = useUI()
+  const { userRole, sessionData } = useChat()
+  const { isChatOpen, chatMode } = useUI()
   const searchParams = useSearchParams()
-  const agentType = searchParams.get('agent')
   const initialCaseId = searchParams.get('id')
 
-  const isLawSearch = agentType === 'law_search'
-  const pageTitle = isLawSearch ? '법령 검색' : '판례 검색'
-  const pageIcon = isLawSearch ? '📖' : '📚'
-  const pageDescription = userRole === 'lawyer'
-    ? (isLawSearch ? '전문가용 법령 검색 및 분석 시스템' : '전문가용 판례 검색 및 분석 시스템')
-    : (isLawSearch ? 'AI 기반 쉬운 법령 열람' : 'AI 기반 쉬운 판례/법령 열람')
+  const aiReferences = sessionData.aiReferences as unknown[] | undefined
+  const hasChatReferences = Array.isArray(aiReferences) && aiReferences.length > 0
+  const isFilterMode = !hasChatReferences && !initialCaseId
+
+  const pageTitle = '판례 검색'
 
   return (
     <div
       className={`h-screen flex flex-col bg-gray-100 transition-all duration-500 ease-in-out ${
-        isChatOpen ? 'w-1/2 border-r border-gray-200' : 'w-full'
+        isChatOpen && chatMode === 'split' ? 'w-1/2 border-r border-gray-200' : 'w-full'
       }`}
     >
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center gap-3">
           <BackButton />
-          <span className="text-2xl">{pageIcon}</span>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">{pageTitle}</h1>
-            <p className="text-sm text-gray-500">{pageDescription}</p>
-          </div>
+          <h1 className="text-xl font-bold text-gray-900">{pageTitle}</h1>
         </div>
       </header>
 
       <div className="flex-1 overflow-hidden">
         <Suspense fallback={<ViewSkeleton />}>
-          {initialCaseId
-            ? <LawyerView initialCaseId={initialCaseId} />
-            : userRole === 'lawyer' ? <LawyerView /> : <UserView />
-          }
+          {initialCaseId ? (
+            <LawyerView initialCaseId={initialCaseId} />
+          ) : isFilterMode ? (
+            <FilterablePrecedentView />
+          ) : userRole === 'lawyer' ? (
+            <LawyerView />
+          ) : (
+            <UserView />
+          )}
         </Suspense>
       </div>
     </div>

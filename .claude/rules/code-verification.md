@@ -23,15 +23,7 @@ API 엔드포인트 변경 시 dev 서버에서 `curl`로 실제 응답 확인.
 
 - **snake_case를 양쪽에서 그대로 사용** (camelCase 변환 없음)
 - `backend/app/modules/<module>/schema/` 변경 → `frontend/src/features/<module>/types/` 확인
-
-| Backend 스키마 | Frontend 타입 |
-|---------------|--------------|
-| `modules/lawyer_finder/schema/` | `features/lawyer-finder/types/` |
-| `modules/lawyer_stats/schema/` | `features/lawyer-stats/types/` |
-| `modules/case_precedent/schema/` | `features/case-precedent/types/` |
-| `modules/small_claims/schema/` | `features/small-claims/types/` |
-| `modules/storyboard/schema/` | `features/storyboard/types/` |
-| `modules/law_study/schema/` | `features/law-study/types/` |
+- → 모듈별 매핑: CLAUDE.md "모듈 매핑" 참조
 
 ## 4. 모듈 동기화 (4곳 동시 확인)
 

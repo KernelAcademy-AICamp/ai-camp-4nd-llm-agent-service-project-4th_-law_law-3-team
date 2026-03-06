@@ -9,7 +9,6 @@ import type {
   NewsSearchResponse,
   NewsSource,
   NewsStatsDaily,
-  RagContributionStats,
 } from '../types'
 
 const BASE = endpoints.legalNews
@@ -78,13 +77,3 @@ export async function fetchNewsCategoryStats(
   return data
 }
 
-/** RAG 기여도 통계 조회 */
-export async function fetchRagContributionStats(
-  signal?: AbortSignal,
-): Promise<RagContributionStats> {
-  const { data } = await api.get<RagContributionStats>(
-    `${BASE}/stats/rag-contribution`,
-    { signal },
-  )
-  return data
-}

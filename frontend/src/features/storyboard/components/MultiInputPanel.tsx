@@ -9,6 +9,7 @@ interface MultiInputPanelProps {
   onExtractVoice: (file: File) => Promise<void>
   onExtractImage: (file: File, context: string) => Promise<void>
   onImport: (file: File) => Promise<void>
+  onNewTimeline?: () => void
   isExtracting: boolean
   error: string | null
 }
@@ -18,6 +19,7 @@ export function MultiInputPanel({
   onExtractVoice,
   onExtractImage,
   onImport,
+  onNewTimeline,
   isExtracting,
   error,
 }: MultiInputPanelProps) {
@@ -413,8 +415,18 @@ export function MultiInputPanel({
         </div>
       )}
 
-      {/* JSON 가져오기 버튼 */}
-      <div className="flex justify-center mt-4">
+      {/* 새 사건 / 백업 가져오기 */}
+      <div className="flex justify-center gap-4 mt-4">
+        {onNewTimeline && (
+          <button
+            type="button"
+            onClick={onNewTimeline}
+            className="text-xs text-[#86868B] hover:text-[#007AFF] underline decoration-gray-300 underline-offset-4 transition-colors"
+            title="타임라인 초기화"
+          >
+            새 사건 만들기
+          </button>
+        )}
         <input
           ref={fileInputRef}
           type="file"

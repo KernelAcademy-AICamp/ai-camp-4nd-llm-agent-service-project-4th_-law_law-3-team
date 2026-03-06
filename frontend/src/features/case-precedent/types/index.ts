@@ -8,6 +8,10 @@ export interface PrecedentItem {
   date?: string
   summary: string
   similarity: number
+  // 법령 카드 표시용
+  law_type?: string
+  article_number?: string
+  article_title?: string
 }
 
 export interface PrecedentListResponse {
@@ -126,6 +130,77 @@ export interface CitingCasesResponse {
   statute_id: string
   total: number
   cases: CitingCaseItem[]
+}
+
+// 판례 필터 검색 타입
+export type DatePreset = 'all' | '3y' | '5y' | '10y' | 'custom'
+export type SortOrder = 'relevance' | 'latest'
+
+export interface PrecedentFilterParams {
+  keyword: string
+  case_type: string        // "" = 전체
+  date_preset: DatePreset
+  date_from: string        // YYYY-MM-DD, custom일 때만
+  date_to: string          // YYYY-MM-DD, custom일 때만
+  offset: number
+  limit: number
+}
+
+export interface FilteredPrecedentItem {
+  id: string
+  serial_number: string
+  case_name: string | null
+  case_number: string | null
+  case_type: string | null
+  court_name: string | null
+  decision_date: string | null
+  summary: string | null
+}
+
+export interface FilteredPrecedentListResponse {
+  keyword: string
+  total: number
+  offset: number
+  limit: number
+  precedents: FilteredPrecedentItem[]
+}
+
+// 법령 필터 검색 타입
+export interface LawFilterParams {
+  keyword?: string
+  law_type?: string
+  ministry?: string
+  promulgation_from?: string   // YYYYMMDD (공포일자 시작)
+  promulgation_to?: string     // YYYYMMDD (공포일자 종료)
+  enforcement_from?: string    // YYYY-MM-DD (시행일자 시작)
+  enforcement_to?: string      // YYYY-MM-DD (시행일자 종료)
+  sort: SortOrder
+  offset: number
+  limit: number
+}
+
+export interface FilteredLawItem {
+  id: string               // law_id
+  law_name: string
+  law_type: string | null
+  ministry: string | null
+  enforcement_date: string | null
+  promulgation_date: string | null
+  abbreviation: string | null
+  ai_summary: string | null
+}
+
+export interface FilteredLawListResponse {
+  keyword: string
+  total: number
+  offset: number
+  limit: number
+  laws: FilteredLawItem[]
+}
+
+export interface LawFilterOptions {
+  law_types: string[]
+  ministries: string[]
 }
 
 // 법령 계층도 타입

@@ -137,8 +137,8 @@ export interface TrendResponse {
 export interface TrendDetailResponse {
   issue: TrendIssue
   source_articles: SourceArticle[]
-  related_laws_detail: Record<string, unknown>[]
-  related_cases_detail: Record<string, unknown>[]
+  related_laws_detail: RelatedLaw[]
+  related_cases_detail: RelatedCase[]
 }
 
 // ── Script Types ──
@@ -460,7 +460,7 @@ export interface WebtoonJobResponse {
 }
 
 export interface WebtoonStreamEvent {
-  event: 'scene_split_start' | 'scene_split_done' | 'panel_start' | 'panel_complete' | 'panel_failed' | 'all_done' | 'error'
+  event: 'scene_split_start' | 'scene_split_progress' | 'scene_split_done' | 'panel_start' | 'panel_complete' | 'panel_failed' | 'all_done' | 'error'
   panel_number: number | null
   total_panels: number | null
   section: string | null
@@ -468,6 +468,8 @@ export interface WebtoonStreamEvent {
   scene_description: string | null
   image_url: string | null
   error: string | null
+  message: string | null
+  progress: number | null
 }
 
 export interface WebtoonJobStatus {

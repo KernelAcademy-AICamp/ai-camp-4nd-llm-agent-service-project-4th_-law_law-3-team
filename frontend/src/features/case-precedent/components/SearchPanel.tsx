@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import type { PrecedentItem, PrecedentDetail } from '../types'
 import { CaseCard } from './CaseCard'
 
@@ -12,6 +12,8 @@ interface SearchPanelProps {
   selectedCaseId: string | null
   selectedCase?: PrecedentDetail | null
   onCaseSelect: (id: string) => void
+  /** 채팅 답변에서 클릭된 판례번호 (하이라이팅 + 스크롤용) */
+  highlightedCaseNumber?: string | null
 }
 
 export function SearchPanel({
@@ -22,12 +24,28 @@ export function SearchPanel({
   selectedCaseId,
   selectedCase,
   onCaseSelect,
+  highlightedCaseNumber,
 }: SearchPanelProps) {
-  const [isProvisionsOpen, setIsProvisionsOpen] = useState(true)
+  const [isProvisionsOpen, setIsProvisionsOpen] = useState(false)
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
   const handleCaseSelect = useCallback((id: string) => {
     onCaseSelect(id)
   }, [onCaseSelect])
+
+  // 하이라이트된 카드로 자동 스크롤
+  useEffect(() => {
+    if (!highlightedCaseNumber) return
+    const matchingResult = results.find(
+      (r) => r.case_number && r.case_number.includes(highlightedCaseNumber)
+    )
+    if (matchingResult) {
+      const cardEl = cardRefs.current.get(matchingResult.id)
+      if (cardEl) {
+        cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+  }, [highlightedCaseNumber, results])
 
   const provisions = useMemo(() =>
     selectedCase?.reference_provisions
@@ -65,14 +83,28 @@ export function SearchPanel({
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
           </div>
         ) : results.length > 0 ? (
-          results.map((case_) => (
-            <CaseCard
-              key={case_.id}
-              case_={case_}
-              selected={selectedCaseId === case_.id}
-              onSelect={handleCaseSelect}
-            />
-          ))
+          results.map((case_) => {
+            const isHighlighted = !!(
+              highlightedCaseNumber &&
+              case_.case_number &&
+              case_.case_number.includes(highlightedCaseNumber)
+            )
+            return (
+              <div
+                key={case_.id}
+                ref={(el) => {
+                  if (el) cardRefs.current.set(case_.id, el)
+                }}
+                className={isHighlighted ? 'ring-2 ring-yellow-400 rounded-lg animate-pulse' : ''}
+              >
+                <CaseCard
+                  case_={case_}
+                  selected={selectedCaseId === case_.id}
+                  onSelect={handleCaseSelect}
+                />
+              </div>
+            )
+          })
         ) : (
           <div className="text-center text-gray-500 py-8">
             <svg

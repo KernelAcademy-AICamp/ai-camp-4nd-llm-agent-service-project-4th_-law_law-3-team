@@ -1,9 +1,10 @@
 """
 에이전트 라우팅 모듈
 
-규칙 기반 키워드 라우터 (RulesRouter)
+규칙 기반 키워드 라우터 (RulesRouter) + LLM 의도 분류 라우터 (LLMRouter)
 """
 
+import json
 import logging
 from enum import Enum
 from typing import Any
@@ -216,6 +217,46 @@ def detect_search_type(message: str) -> str:
     return "precedent"
 
 
+_AGENT_DESCRIPTIONS: dict[AgentType, str] = {
+    AgentType.LAWYER_FINDER: "lawyer_finder: 개별 변호사를 찾아서 연결. 상담할 변호사 찾기/추천/소개, 근처 변호사, 위치 기반 매칭. 사용자가 특정 변호사와 상담하고 싶을 때 사용",
+    AgentType.SMALL_CLAIMS: "small_claims: 소액소송 가이드, 내용증명, 지급명령, 금전 분쟁, 사기 피해, 계약 해제, 보증금/임대차 분쟁",
+    AgentType.CASE_SEARCH: "case_search: 판례 검색. 판결, 선례, 유사 사건, 대법원 판례, 판례 분석",
+    AgentType.LAW_SEARCH: "law_search: 법령 검색. 법령 체계도, 상위법/하위법 관계, 시행령 구조, 법령 조문 해석",
+    AgentType.STORYBOARD: "storyboard: 사건 타임라인/스토리보드 생성. 시간순 사건 정리, 사건 경위 구성",
+    AgentType.LAWYER_STATS: "lawyer_stats: 변호사 시장 통계/데이터 분석. 지역별 변호사 수, 인구 대비 밀도, 향후 예측/전망, 개업 지역·전문분야 추천, 경쟁 분석. 숫자/통계/예측/현황/밀도/분포를 물을 때 사용",
+    AgentType.LAW_STUDY: "law_study: 법학 학습/시험 준비. 로스쿨, 법학 문제 풀이, 법률 개념 학습",
+    AgentType.MOCK_TRIAL: "mock_trial: 모의재판/모의법정 시뮬레이션 체험. 법정 역할극",
+    AgentType.CONTENT_MARKETING: "content_marketing: 법률 트렌드 분석, 유튜브 대본 생성, 콘텐츠 마케팅",
+    AgentType.WORKSPACE: "workspace: 워크스페이스 사건 관리. 사건 목록/조회, 타임라인 재생성, 진행 상황 확인",
+    AgentType.GENERAL: "general: 어떤 에이전트에도 해당하지 않는 질문, 인사, 감사 등 일반 대화",
+}
+
+_LLM_ROUTER_SYSTEM_PROMPT = """당신은 법률 서비스 플랫폼의 의도 분류기입니다.
+사용자 메시지를 분석하여 가장 적절한 에이전트를 하나 선택하세요.
+
+## 에이전트 목록
+{agent_descriptions}
+
+## 핵심 구분
+- "변호사 찾아줘/추천해줘/소개해줘" → lawyer_finder (개별 변호사 연결)
+- "변호사 몇 명/밀도/예측/통계/현황/분포" → lawyer_stats (데이터 분석)
+- "개업/창업/사무실 열기/전문분야 추천/경쟁 분석" → lawyer_stats (시장 데이터 분석)
+
+## 규칙
+1. 반드시 위 에이전트 목록의 이름 중 하나를 선택하세요.
+2. 어떤 에이전트에 해당하는지 판단할 수 없으면 "general"을 선택하세요.
+3. JSON만 반환하세요. 다른 텍스트를 포함하지 마세요.
+
+## 출력 형식
+{{"agent_type": "에이전트_이름", "confidence": 0.0~1.0, "reason": "선택 이유 한 줄"}}"""
+
+_SESSION_CONTEXT_ADDENDUM = """
+## 현재 세션 상태
+현재 "{active_agent}" 에이전트로 대화 중입니다.
+- 사용자가 같은 주제를 이어가면 현재 에이전트("{active_agent}")를 유지하세요.
+- 명확히 다른 서비스를 요청하는 경우에만 다른 에이전트를 선택하세요."""
+
+
 class RulesRouter:
     """규칙 기반 라우터"""
 
@@ -347,6 +388,137 @@ class RulesRouter:
         )
 
 
+class LLMRouter:
+    """LLM 기반 의도 분류 라우터"""
+
+    _RAG_AGENTS = frozenset({
+        AgentType.CASE_SEARCH, AgentType.LEGAL_SEARCH,
+        AgentType.LAW_SEARCH, AgentType.LAW_STUDY,
+    })
+
+    def __init__(self) -> None:
+        self._fallback = RulesRouter()
+
+    async def route(
+        self,
+        message: str,
+        user_role: str = "user",
+        session_data: dict[str, Any] | None = None,
+        history: list[dict[str, str]] | None = None,
+    ) -> AgentPlan:
+        session_data = session_data or {}
+        message_nospace = message.lower().replace(" ", "")
+
+        # 1. 세션 탈출 키워드 → 세션 해제, LLM 분류로 진행
+        is_exit = any(kw in message_nospace for kw in _SESSION_EXIT_KEYWORDS)
+
+        # 2. active_agent 세션 유지 (LLM이 유지/전환 판단)
+        active_agent = None if is_exit else session_data.get("active_agent")
+
+        # 3. LLM 분류 시도
+        plan = await self._classify(message, user_role, history, active_agent)
+        if plan is not None:
+            return plan
+
+        # 4. LLM 실패 → RulesRouter fallback
+        logger.warning("LLM 라우팅 실패, RulesRouter fallback")
+        return self._fallback.route(message, user_role, session_data)
+
+    async def _classify(
+        self,
+        message: str,
+        user_role: str,
+        history: list[dict[str, str]] | None,
+        active_agent: str | None,
+    ) -> AgentPlan | None:
+        try:
+            from app.tools.llm import get_chat_model
+
+            model = get_chat_model(temperature=0, max_tokens=128)
+
+            # 역할별 허용 에이전트만 프롬프트에 포함
+            try:
+                role = UserRole(user_role)
+            except ValueError:
+                role = UserRole.USER
+            allowed = ROLE_AGENTS.get(role, [AgentType.GENERAL])
+
+            agent_desc = "\n".join(
+                f"- {_AGENT_DESCRIPTIONS[a]}"
+                for a in allowed
+                if a in _AGENT_DESCRIPTIONS
+            )
+            system = _LLM_ROUTER_SYSTEM_PROMPT.format(agent_descriptions=agent_desc)
+
+            if active_agent:
+                system += _SESSION_CONTEXT_ADDENDUM.format(active_agent=active_agent)
+
+            # 최근 3턴(6메시지)만 포함
+            user_prompt = message
+            if history:
+                recent = history[-6:]
+                context = "\n".join(
+                    f"{t.get('role', 'user')}: {t.get('content', '')[:200]}"
+                    for t in recent
+                )
+                user_prompt = f"최근 대화:\n{context}\n\n현재 메시지: {message}"
+
+            response = await model.ainvoke([
+                ("system", system),
+                ("user", user_prompt),
+            ])
+
+            # content 추출 (str | list[dict] 대응)
+            content = response.content
+            if isinstance(content, list):
+                raw = "".join(
+                    block.get("text", "") if isinstance(block, dict) else str(block)
+                    for block in content
+                ).strip()
+            else:
+                raw = str(content).strip()
+
+            # 코드블록 제거
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            raw = raw.strip()
+
+            result = json.loads(raw)
+            agent_type_str = result.get("agent_type", "general")
+            confidence = min(1.0, max(0.0, float(result.get("confidence", 0.5))))
+            reason = result.get("reason", "")
+
+            # AgentType 유효성 검증
+            try:
+                agent_enum = AgentType(agent_type_str)
+            except ValueError:
+                logger.warning("LLM이 유효하지 않은 에이전트 반환: %s", agent_type_str)
+                return None
+
+            # 역할 권한 검증
+            if agent_enum not in allowed:
+                logger.warning(
+                    "LLM이 허용되지 않은 에이전트 반환: %s (role=%s)",
+                    agent_type_str, user_role,
+                )
+                agent_enum = AgentType.GENERAL
+                confidence = 0.3
+                reason = "역할 권한 외 → general fallback"
+
+            return AgentPlan(
+                agent_type=agent_enum.value,
+                use_rag=agent_enum in self._RAG_AGENTS,
+                confidence=confidence,
+                reason=f"LLM 분류: {reason}",
+            )
+
+        except Exception:
+            logger.warning("LLM 라우팅 실패", exc_info=True)
+            return None
+
+
 __all__ = [
     # Enum
     "AgentType",
@@ -356,8 +528,10 @@ __all__ = [
     "INTENT_PATTERNS",
     "INTENT_OVERRIDE_CONFIDENCE",
     "_SESSION_EXIT_KEYWORDS",
+    "_AGENT_DESCRIPTIONS",
     # 클래스
     "RulesRouter",
+    "LLMRouter",
     # 함수
     "detect_search_type",
 ]

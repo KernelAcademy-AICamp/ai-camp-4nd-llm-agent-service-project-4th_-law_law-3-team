@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     GOOGLE_MODEL: str = "gemini-3-flash-preview"
 
+    # 쿼리 리라이팅 전용 LLM (빈 문자열이면 LLM_PROVIDER/모델 사용)
+    QUERY_REWRITE_PROVIDER: str = ""  # openai | google (빈 문자열 → LLM_PROVIDER)
+    QUERY_REWRITE_MODEL: str = ""  # 빈 문자열 → 프로바이더 기본 모델
+
     # Vector DB 선택 (chroma, qdrant, lancedb)
     VECTOR_DB: str = "lancedb"
 
@@ -106,6 +110,9 @@ class Settings(BaseSettings):
 
     # 법률 용어 사전 (MeCab 토크나이저 법률 복합명사 보강)
     USE_LEGAL_TERM_DICT: bool = True
+
+    # 라우터 선택 (True: LLM 의도 분류, False: 키워드 기반)
+    USE_LLM_ROUTER: bool = True
 
     # 하이브리드 검색 (벡터 + 키워드)
     USE_HYBRID_SEARCH: bool = True

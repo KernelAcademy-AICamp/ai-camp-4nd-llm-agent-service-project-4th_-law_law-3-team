@@ -2,6 +2,7 @@
 판례 추천 모듈 - 업무 사례 기반 관련 판례 제공
 RAG 기반으로 사용자 상황에 맞는 판례 검색 및 변호사 추천
 """
+import datetime
 import logging
 from typing import Any, List, Optional
 
@@ -28,7 +29,13 @@ from app.modules.case_precedent.schema import (
     SearchResult,
 )
 from app.services.rag import search_relevant_documents_async
-from app.services.service_function.precedent_service import fetch_precedent_details
+from app.services.service_function.law_filter_service import (
+    get_law_filter_service,
+)
+from app.services.service_function.precedent_service import (
+    fetch_precedent_details,
+    get_precedent_service,
+)
 from app.tools.graph.pg_graph_service import get_pg_graph_service
 from app.tools.vectorstore import get_vector_store
 
@@ -194,6 +201,94 @@ async def analyze_case(request: Request, description: str) -> dict[str, Any]:
     }
 
 
+# ============================================
+# 판례 필터 검색 API (PostgreSQL 직접 쿼리)
+# ============================================
+
+
+class FilteredPrecedentItem(BaseModel):
+    """필터 검색 결과 아이템"""
+    id: str
+    serial_number: str
+    case_name: Optional[str] = None
+    case_number: Optional[str] = None
+    case_type: Optional[str] = None
+    court_name: Optional[str] = None
+    decision_date: Optional[str] = None
+    summary: Optional[str] = None
+
+
+class FilteredPrecedentListResponse(BaseModel):
+    """필터 검색 응답"""
+    keyword: str
+    total: int
+    offset: int
+    limit: int
+    precedents: List[FilteredPrecedentItem]
+
+
+class CaseTypesResponse(BaseModel):
+    """사건종류 목록 응답"""
+    case_types: List[str]
+
+
+@router.get("/precedents/filter", response_model=FilteredPrecedentListResponse)
+async def filter_precedents(
+    keyword: str = Query("", description="검색 키워드 (사건명, 판시사항, 사건번호, 판결요지 ILIKE)"),
+    case_type: Optional[str] = Query(None, description="사건종류명 (예: 민사, 형사)"),
+    date_from: Optional[datetime.date] = Query(None, description="선고일 시작 (YYYY-MM-DD)"),
+    date_to: Optional[datetime.date] = Query(None, description="선고일 종료 (YYYY-MM-DD)"),
+    sort: str = Query("relevance", description="정렬 기준 (relevance | latest)"),
+    offset: int = Query(0, ge=0, description="페이지 오프셋"),
+    limit: int = Query(20, ge=1, le=100, description="결과 수"),
+) -> FilteredPrecedentListResponse:
+    """
+    판례 필터 검색 (PostgreSQL 직접 쿼리)
+
+    사건종류, 기간, 키워드로 판례를 필터링합니다.
+    사이드바 직접 진입 시 사용됩니다.
+    """
+    try:
+        service = get_precedent_service()
+        result = await service.search_by_filter(
+            keyword=keyword,
+            case_type=case_type,
+            date_from=date_from,
+            date_to=date_to,
+            sort=sort,
+            offset=offset,
+            limit=limit,
+        )
+        return FilteredPrecedentListResponse(
+            keyword=keyword,
+            total=result["total"],
+            offset=offset,
+            limit=limit,
+            precedents=[
+                FilteredPrecedentItem(**p) for p in result["precedents"]
+            ],
+        )
+    except Exception as e:
+        logger.error("판례 필터 검색 실패: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="판례 필터 검색 중 오류가 발생했습니다")
+
+
+@router.get("/precedents/case-types", response_model=CaseTypesResponse)
+async def get_case_types() -> CaseTypesResponse:
+    """
+    사건종류명 목록 조회
+
+    필터 드롭다운에 표시할 DISTINCT 사건종류 목록을 반환합니다.
+    """
+    try:
+        service = get_precedent_service()
+        case_types = await service.get_case_types()
+        return CaseTypesResponse(case_types=case_types)
+    except Exception as e:
+        logger.error("사건종류 목록 조회 실패: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="사건종류 목록 조회 중 오류가 발생했습니다")
+
+
 @router.get("/precedents", response_model=PrecedentListResponse)
 async def search_precedents(
     keyword: str = Query(..., description="검색 키워드"),
@@ -285,7 +380,7 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
         case_number = metadata.get("case_number", "")
 
         # 기본 응답 데이터 (LanceDB 기반)
-        response_data = {
+        response_data: dict[str, Any] = {
             "id": precedent_id,
             "case_name": case_name,
             "case_number": case_number,
@@ -295,6 +390,12 @@ async def get_precedent_detail(precedent_id: str) -> PrecedentDetailResponse:
             "content": content,
             "summary": "",  # PostgreSQL에서 가져옴 (LanceDB content 사용 안함)
         }
+
+        # 법령인 경우 doc_id, law_name 추가 (프론트엔드 LawDetailLawyer용)
+        if doc_type == "law":
+            law_source_id = metadata.get("source_id", "") or precedent_id
+            response_data["doc_id"] = law_source_id
+            response_data["law_name"] = case_name
 
         # PostgreSQL에서 상세 필드 조회 (source_id가 serial_number에 매핑)
         source_id = metadata.get("source_id", "")
@@ -769,3 +870,95 @@ async def ask_about_precedent(request: Request, precedent_id: str, body: AskQues
     except Exception as e:
         logger.error(f"질문 처리 실패: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="질문 처리 중 오류가 발생했습니다")
+
+
+# ============================================
+# 법령 필터 검색 API (PostgreSQL 직접 쿼리)
+# ============================================
+
+
+class FilteredLawItem(BaseModel):
+    """법령 필터 검색 결과 아이템"""
+    id: str
+    law_name: str
+    law_type: Optional[str] = None
+    ministry: Optional[str] = None
+    enforcement_date: Optional[str] = None
+    promulgation_date: Optional[str] = None
+    abbreviation: Optional[str] = None
+    ai_summary: Optional[str] = None
+
+
+class FilteredLawListResponse(BaseModel):
+    """법령 필터 검색 응답"""
+    keyword: str
+    total: int
+    offset: int
+    limit: int
+    laws: List[FilteredLawItem]
+
+
+class LawFilterOptionsResponse(BaseModel):
+    """법령 필터 옵션 응답"""
+    law_types: List[str]
+    ministries: List[str]
+
+
+@router.get("/laws/filter", response_model=FilteredLawListResponse)
+async def filter_laws(
+    keyword: str = Query("", description="검색 키워드 (법령명, 조문 BM25+ILIKE)"),
+    law_type: Optional[str] = Query(None, description="법령 유형 (예: 법률, 시행령)"),
+    ministry: Optional[str] = Query(None, description="소관부처 (예: 법무부)"),
+    promulgation_from: Optional[str] = Query(None, description="공포일자 시작 (YYYYMMDD)"),
+    promulgation_to: Optional[str] = Query(None, description="공포일자 종료 (YYYYMMDD)"),
+    enforcement_from: Optional[datetime.date] = Query(None, description="시행일자 시작 (YYYY-MM-DD)"),
+    enforcement_to: Optional[datetime.date] = Query(None, description="시행일자 종료 (YYYY-MM-DD)"),
+    sort: str = Query("relevance", description="정렬 기준 (relevance | latest)"),
+    offset: int = Query(0, ge=0, description="페이지 오프셋"),
+    limit: int = Query(20, ge=1, le=100, description="결과 수"),
+) -> FilteredLawListResponse:
+    """
+    법령 필터 검색 (PostgreSQL 직접 쿼리, BM25+ILIKE 하이브리드)
+
+    법령유형, 소관부처, 공포일자, 시행일자, 키워드로 법령을 필터링합니다.
+    """
+    try:
+        service = get_law_filter_service()
+        result = await service.search_by_filter(
+            keyword=keyword,
+            law_type=law_type,
+            ministry=ministry,
+            promulgation_from=promulgation_from,
+            promulgation_to=promulgation_to,
+            enforcement_from=enforcement_from,
+            enforcement_to=enforcement_to,
+            sort=sort,
+            offset=offset,
+            limit=limit,
+        )
+        return FilteredLawListResponse(
+            keyword=keyword,
+            total=result["total"],
+            offset=offset,
+            limit=limit,
+            laws=[FilteredLawItem(**law) for law in result["laws"]],
+        )
+    except Exception as e:
+        logger.error("법령 필터 검색 실패: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="법령 필터 검색 중 오류가 발생했습니다")
+
+
+@router.get("/laws/filter-options", response_model=LawFilterOptionsResponse)
+async def get_law_filter_options() -> LawFilterOptionsResponse:
+    """
+    법령 필터 옵션 조회
+
+    필터 드롭다운에 표시할 법령유형, 소관부처 DISTINCT 목록을 반환합니다.
+    """
+    try:
+        service = get_law_filter_service()
+        options = await service.get_filter_options()
+        return LawFilterOptionsResponse(**options)
+    except Exception as e:
+        logger.error("법령 필터 옵션 조회 실패: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="법령 필터 옵션 조회 중 오류가 발생했습니다")

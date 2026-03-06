@@ -6,6 +6,9 @@ import type {
   SearchFilters,
   LawFullText,
   CitingCasesResponse,
+  FilteredPrecedentListResponse,
+  FilteredLawListResponse,
+  LawFilterOptions,
   StatuteSearchResponse,
   StatuteHierarchyResponse,
   StatuteChildrenResponse,
@@ -71,10 +74,70 @@ export const casePrecedentService = {
     return response.data
   },
 
+  // 판례 필터 검색 API (PostgreSQL 직접 쿼리)
+  filterPrecedents: async (params: {
+    keyword?: string
+    case_type?: string
+    date_from?: string
+    date_to?: string
+    sort?: string
+    offset?: number
+    limit?: number
+  }, signal?: AbortSignal): Promise<FilteredPrecedentListResponse> => {
+    const searchParams = new URLSearchParams()
+    if (params.keyword) searchParams.append('keyword', params.keyword)
+    if (params.case_type) searchParams.append('case_type', params.case_type)
+    if (params.date_from) searchParams.append('date_from', params.date_from)
+    if (params.date_to) searchParams.append('date_to', params.date_to)
+    if (params.sort) searchParams.append('sort', params.sort)
+    if (params.offset !== undefined) searchParams.append('offset', params.offset.toString())
+    if (params.limit !== undefined) searchParams.append('limit', params.limit.toString())
+    const response = await api.get(`${endpoints.casePrecedent}/precedents/filter?${searchParams}`, { signal })
+    return response.data
+  },
+
+  getCaseTypes: async (): Promise<string[]> => {
+    const response = await api.get(`${endpoints.casePrecedent}/precedents/case-types`)
+    return response.data.case_types
+  },
+
   getStatuteGraph: async (centerId?: string, limit: number = 100): Promise<{ nodes: GraphNode[]; links: GraphLink[] }> => {
     const params = new URLSearchParams({ limit: limit.toString() })
     if (centerId) params.append('center_id', centerId)
     const response = await api.get(`${endpoints.casePrecedent}/statutes/graph?${params}`)
+    return response.data
+  },
+
+  // 법령 필터 검색 API (PostgreSQL 직접 쿼리, BM25+ILIKE)
+  filterLaws: async (params: {
+    keyword?: string
+    law_type?: string
+    ministry?: string
+    promulgation_from?: string
+    promulgation_to?: string
+    enforcement_from?: string
+    enforcement_to?: string
+    sort?: string
+    offset?: number
+    limit?: number
+  }, signal?: AbortSignal): Promise<FilteredLawListResponse> => {
+    const searchParams = new URLSearchParams()
+    if (params.keyword) searchParams.append('keyword', params.keyword)
+    if (params.law_type) searchParams.append('law_type', params.law_type)
+    if (params.ministry) searchParams.append('ministry', params.ministry)
+    if (params.promulgation_from) searchParams.append('promulgation_from', params.promulgation_from)
+    if (params.promulgation_to) searchParams.append('promulgation_to', params.promulgation_to)
+    if (params.enforcement_from) searchParams.append('enforcement_from', params.enforcement_from)
+    if (params.enforcement_to) searchParams.append('enforcement_to', params.enforcement_to)
+    if (params.sort) searchParams.append('sort', params.sort)
+    if (params.offset !== undefined) searchParams.append('offset', params.offset.toString())
+    if (params.limit !== undefined) searchParams.append('limit', params.limit.toString())
+    const response = await api.get(`${endpoints.casePrecedent}/laws/filter?${searchParams}`, { signal })
+    return response.data
+  },
+
+  getLawFilterOptions: async (): Promise<LawFilterOptions> => {
+    const response = await api.get(`${endpoints.casePrecedent}/laws/filter-options`)
     return response.data
   },
 }

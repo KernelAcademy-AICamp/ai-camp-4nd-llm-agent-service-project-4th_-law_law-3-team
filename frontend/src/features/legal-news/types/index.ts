@@ -118,25 +118,3 @@ export interface NewsCategoryStats {
   period_days: number | null
 }
 
-// ── RAG 기여도 ──
-
-export interface MainRagSourceItem {
-  table_name: string
-  label: string
-  count: number
-}
-
-export interface AssistRagSourceItem {
-  source: string
-  label: string
-  count: number
-  indexed_count: number
-}
-
-export interface RagContributionStats {
-  main_rag_total: number
-  main_rag_sources: MainRagSourceItem[]
-  assist_rag_total: number
-  assist_rag_sources: AssistRagSourceItem[]
-  assist_contribution_percent: number
-}

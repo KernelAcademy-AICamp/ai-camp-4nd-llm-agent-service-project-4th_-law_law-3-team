@@ -89,6 +89,28 @@ export function TrendCard({ issue, rank, onSelect, onGenerateScript }: TrendCard
         </ol>
       </div>
 
+      {/* 관련 법령/판례 (상세 조회 후 표시) */}
+      {(issue.related_laws.length > 0 || issue.related_cases.length > 0) && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {issue.related_laws.slice(0, 2).map((law) => (
+            <span
+              key={law.law_id}
+              className="px-2 py-0.5 text-xs bg-blue-50 text-blue-700 rounded-full truncate max-w-[180px]"
+            >
+              📜 {law.law_name}
+            </span>
+          ))}
+          {issue.related_cases.slice(0, 2).map((caseItem) => (
+            <span
+              key={caseItem.case_id}
+              className="px-2 py-0.5 text-xs bg-purple-50 text-purple-700 rounded-full truncate max-w-[180px]"
+            >
+              ⚖️ {caseItem.case_number}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* 소스 태그 */}
       <div className="flex flex-wrap gap-1 mb-4">
         {issue.sources.map((source) => (
